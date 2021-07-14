@@ -1,0 +1,24 @@
+[Unit]
+Description=Python Asterisk Caller - WebSocket Monitor
+Before=asterisk-call.service
+After=call-register.service
+After=network.target
+
+
+[Service]
+Environment=CALLER_CONFIG="/opt/py-phone-caller/config/caller_config.toml"
+Type=simple
+User=daemon
+Group=daemon
+WorkingDirectory=/opt/py-phone-caller/
+ExecStart=/bin/bash -c 'source venv/bin/activate && python asterisk_ws_monitor.py'
+StandardOutput=journal
+Restart=always
+RestartSec=15s
+TimeoutStopSec=5
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,109 @@
+version: "3.9"
+
+# Use a pre-existing network
+networks:
+  default:
+    external: true
+    name: py-phone-caller
+
+services:
+  asterisk_ws_monitor:
+    image: localhost/py-phone-caller_asterisk_ws_monitor:${VERSION}
+    volumes:
+      - type: bind
+        source: /opt/py-phone-caller/config/caller_config.toml
+        target: /opt/py-phone-caller/config/caller_config.toml
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  asterisk_call:
+    depends_on:
+      - asterisk_call_register
+      - generate_audio
+    image: localhost/py-phone-caller_asterisk_call:${VERSION}
+    volumes:
+      - type: bind
+        source: /opt/py-phone-caller/config/caller_config.toml
+        target: /opt/py-phone-caller/config/caller_config.toml
+    ports:
+      - "8081:8081"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  asterisk_recall:
+    depends_on:
+      - asterisk_ws_monitor
+      - asterisk_call
+    image: localhost/py-phone-caller_asterisk_recall:${VERSION}
+    volumes:
+      - type: bind
+        source: /opt/py-phone-caller/config/caller_config.toml
+        target: /opt/py-phone-caller/config/caller_config.toml
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  asterisk_call_register:
+    depends_on:
+      - asterisk_ws_monitor
+    image: localhost/py-phone-caller_call_register:${VERSION}
+    volumes:
+      - type: bind
+        source: /opt/py-phone-caller/config/caller_config.toml
+        target: /opt/py-phone-caller/config/caller_config.toml
+    ports:
+      - "8080:8080"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  caller_prometheus_webhook:
+    depends_on:
+      - caller_sms
+      - asterisk_call
+    image: localhost/py-phone-caller_caller_prometheus_webhook:${VERSION}
+    volumes:
+      - type: bind
+        source: /opt/py-phone-caller/config/caller_config.toml
+        target: /opt/py-phone-caller/config/caller_config.toml
+    ports:
+      - "8084:8084"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  caller_sms:
+    image: localhost/py-phone-caller_caller_sms:${VERSION}
+    volumes:
+      - type: bind
+        source: /opt/py-phone-caller/config/caller_config.toml
+        target: /opt/py-phone-caller/config/caller_config.toml
+    ports:
+      - "8085:8085"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  generate_audio:
+    depends_on:
+      - asterisk_ws_monitor
+    image: localhost/py-phone-caller_generate_audio:${VERSION}
+    volumes:
+      - type: bind
+        source: /opt/py-phone-caller/config/caller_config.toml
+        target: /opt/py-phone-caller/config/caller_config.toml
+    ports:
+      - "8082:8082"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+

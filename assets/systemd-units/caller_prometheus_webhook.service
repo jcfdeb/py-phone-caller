@@ -1,0 +1,23 @@
+[Unit]
+Description=Python Asterisk Caller -Prometheus Webhook (Make calls or send SMS during alerts in firing state)
+After=network.target
+After=call-register.service
+
+[Service]
+Environment=CALLER_CONFIG="/opt/py-phone-caller/config/caller_config.toml"
+Type=simple
+User=daemon
+Group=daemon
+WorkingDirectory=/opt/py-phone-caller/
+ExecStart=/bin/bash -c 'source venv/bin/activate && python caller_prometheus_webhook.py'
+StandardOutput=journal
+Restart=always
+RestartSec=15s
+TimeoutStopSec=5
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
