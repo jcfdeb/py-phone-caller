@@ -1,0 +1,10 @@
+toml
+aiohttp
+asyncpg
+aiodns
+aiologger
+httpx
+websockets
+gTTS
+pydub
+twilio

@@ -1,0 +1,18 @@
+FROM redhat/ubi8:8.4-206
+
+RUN dnf -y install python39 &&\
+    dnf clean all &&\
+    mkdir -p /opt/py-phone-caller/{config,local_utils}
+
+ADD asterisk_call.py /opt/py-phone-caller/asterisk_call.py
+ADD requirements.txt /opt/py-phone-caller/requirements.txt
+ADD local_utils/caller_configuration.py /opt/py-phone-caller/local_utils/caller_configuration.py
+RUN pip3 install -r /opt/py-phone-caller/requirements.txt
+
+RUN chown -R daemon.daemon /opt/py-phone-caller
+
+USER daemon
+
+WORKDIR /opt/py-phone-caller
+ENTRYPOINT [ "/usr/bin/python3" ]
+CMD [ "asterisk_call.py" ]
