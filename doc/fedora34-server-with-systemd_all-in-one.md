@@ -3,7 +3,7 @@
 > Draft - Work In Progress
 
 ```bash
-~# dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+[root@fedora ~]# dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
 Last metadata expiration check: 0:02:14 ago on Thu 15 Jul 2021 09:25:22 PM CEST.
 rpmfusion-free-release-34.noarch.rpm                                                                                                          18 kB/s |  11 kB     00:00    
 rpmfusion-nonfree-release-34.noarch.rpm                                                                                                       16 kB/s |  11 kB     00:00    
@@ -40,11 +40,11 @@ Complete!
 ```
 
 ```bash
-~# rpm --import "https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-nonfree-fedora-2020" 
+[root@fedora ~]# rpm --import "https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-nonfree-fedora-2020" 
 ```
 
 ```bash
-~# dnf install -y postgresql-server asterisk asterisk-curl asterisk-pjsip asterisk-iax2 ffmpeg 
+[root@fedora ~]# dnf install -y postgresql-server asterisk asterisk-curl asterisk-pjsip asterisk-iax2 ffmpeg 
 RPM Fusion for Fedora 34 - Free                                                                                                              557 kB/s | 941 kB     00:01    
 RPM Fusion for Fedora 34 - Free - Updates                                                                                                    384 kB/s | 281 kB     00:00    
 RPM Fusion for Fedora 34 - Nonfree                                                                                                           250 kB/s | 246 kB     00:00    
@@ -186,17 +186,17 @@ the 'asterisk-sounds-core-it-wav' package.
 
 
 ```bash
-~# /usr/bin/postgresql-setup --initdb
+[root@fedora ~]# /usr/bin/postgresql-setup --initdb
  * Initializing database in '/var/lib/pgsql/data'
  * Initialized, logs are in /var/lib/pgsql/initdb_postgresql.log
 ```
 
 ```bash
-~# systemctl enable --now postgresql
+[root@fedora ~]# systemctl enable --now postgresql
 ```
 
 ```bash
-~# systemctl status postgresql
+[root@fedora ~]# systemctl status postgresql
 ● postgresql.service - PostgreSQL database server
      Loaded: loaded (/usr/lib/systemd/system/postgresql.service; enabled; vendor preset: disabled)
      Active: active (running) since Thu 2021-07-15 21:40:20 CEST; 6s ago
@@ -223,13 +223,13 @@ Jul 15 21:40:20 fedora systemd[1]: Started PostgreSQL database server.
 
 
 ```bash
-~# systemctl enable --now asterisk
+[root@fedora ~]# systemctl enable --now asterisk
 Created symlink /etc/systemd/system/multi-user.target.wants/asterisk.service → /usr/lib/systemd/system/asterisk.service.
 ```
 
 
 ```bash
-~# systemctl status asterisk
+[root@fedora ~]# systemctl status asterisk
 ● asterisk.service - Asterisk PBX and telephony daemon.
      Loaded: loaded (/usr/lib/systemd/system/asterisk.service; enabled; vendor preset: disabled)
      Active: active (running) since Thu 2021-07-15 21:56:02 CEST; 2s ago
@@ -252,7 +252,7 @@ Jul 15 21:56:04 fedora asterisk[4960]: [Jul 15 21:56:04] ERROR[4960]: loader.c:2
 ```
 
 ```bash
-~# dnf install -y git
+[root@fedora ~]# dnf install -y git
 Last metadata expiration check: 0:27:51 ago on Thu 15 Jul 2021 09:31:36 PM CEST.
 Dependencies resolved.
 =============================================================================================================================================================================
@@ -338,7 +338,7 @@ Downloading Packages:
 ```
 
 ```bash
-~# asterisk  -rx "core show version"
+[root@fedora ~]# asterisk  -rx "core show version"
 Asterisk 18.2.0 built by mockbuild @ buildhw-x86-04.iad2.fedoraproject.org on a x86_64 running Linux on 2021-02-08 08:28:42 UTC
 ```
 
@@ -483,6 +483,7 @@ drwxr-xr-x. 5 daemon daemon    74 Jul 15 22:16 venv
 
 ```bash
 (venv) [root@fedora py-phone-caller]# cd assets/
+```
 
 ```bash
 (venv) [root@fedora assets]# ls -al
