@@ -1,5 +1,13 @@
 version: "3.9"
 
+# To bring up the containers: docker-compose --env-file .env-compose up
+#   * Detached mode: docker-compose --env-file .env-compose up -d
+#
+# To stop all the containers: docker-compose --env-file .env-compose down
+#
+# Warning: create the 'pgdata' volume the first time before run this file
+#          'podman volume create pgdata'
+
 # Use a pre-existing network
 networks:
   default:
@@ -7,8 +15,27 @@ networks:
     name: py-phone-caller
 
 services:
+  postgres_13:
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_PASSWORD=SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0
+    image: docker.io/library/postgres:13.3-alpine3.14
+    networks:
+      frontend:
+        ipv4_address: 172.19.0.50
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
   asterisk_ws_monitor:
-    image: localhost/py-phone-caller_asterisk_ws_monitor:${VERSION}
+    depends_on:
+      - postgres_13
+    image: quay.io/py-phone-caller/asterisk_ws_monitor:0.0.1
+    extra_hosts:
+      - postgres-service:172.19.0.50
     volumes:
       - type: bind
         source: /opt/py-phone-caller/config/caller_config.toml
@@ -22,7 +49,7 @@ services:
     depends_on:
       - asterisk_call_register
       - generate_audio
-    image: localhost/py-phone-caller_asterisk_call:${VERSION}
+    image: quay.io/py-phone-caller/asterisk_call:0.0.1
     volumes:
       - type: bind
         source: /opt/py-phone-caller/config/caller_config.toml
@@ -38,7 +65,9 @@ services:
     depends_on:
       - asterisk_ws_monitor
       - asterisk_call
-    image: localhost/py-phone-caller_asterisk_recall:${VERSION}
+    image: quay.io/py-phone-caller/asterisk_recall:0.0.1
+    extra_hosts:
+      - postgres-service:172.19.0.50
     volumes:
       - type: bind
         source: /opt/py-phone-caller/config/caller_config.toml
@@ -51,7 +80,9 @@ services:
   asterisk_call_register:
     depends_on:
       - asterisk_ws_monitor
-    image: localhost/py-phone-caller_call_register:${VERSION}
+    image: quay.io/py-phone-caller/call_register:0.0.1
+    extra_hosts:
+      - postgres-service:172.19.0.50
     volumes:
       - type: bind
         source: /opt/py-phone-caller/config/caller_config.toml
@@ -67,7 +98,7 @@ services:
     depends_on:
       - caller_sms
       - asterisk_call
-    image: localhost/py-phone-caller_caller_prometheus_webhook:${VERSION}
+    image: quay.io/py-phone-caller/caller_prometheus_webhook:0.0.1
     volumes:
       - type: bind
         source: /opt/py-phone-caller/config/caller_config.toml
@@ -80,7 +111,7 @@ services:
         condition: on-failure
 
   caller_sms:
-    image: localhost/py-phone-caller_caller_sms:${VERSION}
+    image: quay.io/py-phone-caller/caller_sms:0.0.1
     volumes:
       - type: bind
         source: /opt/py-phone-caller/config/caller_config.toml
@@ -95,7 +126,7 @@ services:
   generate_audio:
     depends_on:
       - asterisk_ws_monitor
-    image: localhost/py-phone-caller_generate_audio:${VERSION}
+    image: quay.io/py-phone-caller/generate_audio:0.0.1
     volumes:
       - type: bind
         source: /opt/py-phone-caller/config/caller_config.toml

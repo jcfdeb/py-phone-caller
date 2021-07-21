@@ -1,0 +1,169 @@
+  # Work In Progress - Alpha release
+  - name: "Configuring 'py-phone-caller' to be used with 'Podman'"
+    hosts: localhost
+    connection: local
+    # As "ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, podman.yaml"
+    tasks:
+
+    - name: "Creating the 'py-phone-caller' directory tree at '/opt/py-phone-caller'"
+      file:
+        path: /opt/py-phone-caller/config
+        state: directory
+        owner: daemon
+        group: daemon
+        mode: 0770
+        recurse: yes
+
+    - name: Check that the somefile.conf exists
+      stat:
+        path: /opt/py-phone-caller/config/caller_config.toml
+      register: caller_config
+      ignore_errors: yes
+
+    - name: "Download the 'caller_config.toml' file"
+      get_url:
+        url: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/config/caller_config.toml
+        dest: /opt/py-phone-caller/config/caller_config.toml
+        owner: daemon
+        group: daemon
+        mode: 0640
+      when: not caller_config.stat.exists
+
+    - name: "Creating the 'py-phone-caller' container network"
+      containers.podman.podman_network:
+        name: py-phone-caller
+        internal: false
+        subnet: 172.19.0.0/24
+
+    - name: "Checking if the 'pgdata' volume exists"
+      ansible.builtin.command: podman volume inspect pgdata
+      ignore_errors: yes
+      register: volume_exist
+
+    - name: "Creating the 'pgdata' volume for the PostgreSQL container"
+      ansible.builtin.command: podman volume create pgdata
+      when: "'no such volume pgdata' in volume_exist.stderr"
+
+    - name: "Creating the 'postgres_13' container"
+      containers.podman.podman_container:
+        name: postgres_13
+        image: docker.io/library/postgres:13.3-alpine3.14
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - pgdata:/var/lib/postgresql/data
+        network:
+            - py-phone-caller
+        ip: 172.19.0.50
+        ports:
+            - "127.0.0.1:5432:5432"
+        env:
+            PGDATA: /var/lib/postgresql/data/pgdata
+            POSTGRES_PASSWORD: "SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0" # Development password...
+      when: "'no such volume pgdata' not in volume_exist.stderr"
+
+    - name: "Creating the 'asterisk_ws_monitor' container"
+      containers.podman.podman_container:
+        name: asterisk_ws_monitor
+        image: quay.io/py-phone-caller/asterisk_ws_monitor:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.10
+
+    - name: "Creating the 'asterisk_recall' container"
+      containers.podman.podman_container:
+        name: asterisk_recall
+        image: quay.io/py-phone-caller/asterisk_recall:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.11
+        etc_hosts:
+             postgres-service: 172.19.0.50
+
+    - name: "Creating the 'call_register' container"
+      containers.podman.podman_container:
+        name: call_register
+        image: quay.io/py-phone-caller/call_register:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.80
+        ports:
+            - "8080:8080"
+        etc_hosts:
+             postgres-service: 172.19.0.50
+
+    - name: "Creating the 'asterisk_call' container"
+      containers.podman.podman_container:
+        name: asterisk_call
+        image: quay.io/py-phone-caller/asterisk_call:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.81
+        ports:
+            - "8081:8081"
+
+    - name: "Creating the 'caller_prometheus_webhook' container"
+      containers.podman.podman_container:
+        name: caller_prometheus_webhook
+        image: quay.io/py-phone-caller/caller_prometheus_webhook:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.84
+        ports:
+            - "8084:8084"
+
+    - name: "Creating the 'caller_sms' container"
+      containers.podman.podman_container:
+        name: caller_sms
+        image: quay.io/py-phone-caller/caller_sms:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.85
+        ports:
+            - "8085:8085"
+
+    - name: "Creating the 'generate_audio' container"
+      containers.podman.podman_container:
+        name: generate_audio
+        image: quay.io/py-phone-caller/generate_audio:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.82
+        ports:
+            - "8082:8082"
