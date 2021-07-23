@@ -1,8 +1,14 @@
   # Work In Progress - Alpha release
+  # Run with: "ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, podman.yaml"
+  # ToDo: take out the all data into a var file...
   - name: "Configuring 'py-phone-caller' to be used with 'Podman'"
     hosts: localhost
     connection: local
-    # As "ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, podman.yaml"
+    vars:
+      ansible_python_interpreter: /usr/bin/python3
+#    vars_files:
+#      - the_var_file.yml
+
     tasks:
 
     - name: "Creating the 'py-phone-caller' directory tree at '/opt/py-phone-caller'"
@@ -33,16 +39,17 @@
       containers.podman.podman_network:
         name: py-phone-caller
         internal: false
+        disable_dns: yes # In order to resolve external hosts
         subnet: 172.19.0.0/24
 
-    - name: "Checking if the 'pgdata' volume exists"
-      ansible.builtin.command: podman volume inspect pgdata
-      ignore_errors: yes
-      register: volume_exist
+    - name: "PostgreSQL 'pgdata' volume management"
+      block:
+      - name: "Checking if the 'pgdata' volume exists"
+        ansible.builtin.command: podman volume inspect pgdata
 
-    - name: "Creating the 'pgdata' volume for the PostgreSQL container"
-      ansible.builtin.command: podman volume create pgdata
-      when: "'no such volume pgdata' in volume_exist.stderr"
+      rescue:
+      - name: "Creating the 'pgdata' volume for the PostgreSQL container"
+        ansible.builtin.command: podman volume create pgdata
 
     - name: "Creating the 'postgres_13' container"
       containers.podman.podman_container:
@@ -61,52 +68,6 @@
         env:
             PGDATA: /var/lib/postgresql/data/pgdata
             POSTGRES_PASSWORD: "SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0" # Development password...
-      when: "'no such volume pgdata' not in volume_exist.stderr"
-
-    - name: "Creating the 'asterisk_ws_monitor' container"
-      containers.podman.podman_container:
-        name: asterisk_ws_monitor
-        image: quay.io/py-phone-caller/asterisk_ws_monitor:0.0.1
-        state: started
-        restart: no
-        restart_policy: "always"
-        volume:
-            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
-        network:
-            - py-phone-caller
-        ip: 172.19.0.10
-
-    - name: "Creating the 'asterisk_recall' container"
-      containers.podman.podman_container:
-        name: asterisk_recall
-        image: quay.io/py-phone-caller/asterisk_recall:0.0.1
-        state: started
-        restart: no
-        restart_policy: "always"
-        volume:
-            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
-        network:
-            - py-phone-caller
-        ip: 172.19.0.11
-        etc_hosts:
-             postgres-service: 172.19.0.50
-
-    - name: "Creating the 'call_register' container"
-      containers.podman.podman_container:
-        name: call_register
-        image: quay.io/py-phone-caller/call_register:0.0.1
-        state: started
-        restart: no
-        restart_policy: "always"
-        volume:
-            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
-        network:
-            - py-phone-caller
-        ip: 172.19.0.80
-        ports:
-            - "8080:8080"
-        etc_hosts:
-             postgres-service: 172.19.0.50
 
     - name: "Creating the 'asterisk_call' container"
       containers.podman.podman_container:
@@ -167,3 +128,93 @@
         ip: 172.19.0.82
         ports:
             - "8082:8082"
+
+    - name: "Creating the 'py_phone_caller' PostgreSQL user"
+      community.postgresql.postgresql_user:
+        login_host: "127.0.0.1"
+        login_user: "postgres"
+        login_password: "SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0"
+        name: "py_phone_caller"
+        # It will change... used only for development purpose
+        password: "SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0"
+        state: "present"
+
+    - name: "'py_phone_caller' DB Management"
+      block:
+      - name: "Gattering info about the 'py_phone_caller' DB (if exists)"
+        community.postgresql.postgresql_info:
+          login_host: "127.0.0.1"
+          login_user: "postgres"
+          login_password: "SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0"
+          db: "py_phone_caller"
+
+      rescue:
+      - name: "Download the dumped 'py_phone_caller' DB schema (SQL format)"
+        get_url:
+          url: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/DB/db-schema.sql
+          dest: /tmp/db-schema.sql
+          mode: 0600
+
+      - name: "Creating the 'py_phone_caller' DB"
+        community.postgresql.postgresql_db:
+          login_host: "127.0.0.1"
+          login_user: "postgres"
+          login_password: "SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0"
+          name: "py_phone_caller"
+          owner: "py_phone_caller"
+          state: present
+
+      - name: "Restoring the 'py_phone_caller' DB by restoring a dump of the schema"
+        community.postgresql.postgresql_db:
+          login_host: "127.0.0.1"
+          login_user: "postgres"
+          login_password: "SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0"
+          name: "py_phone_caller"
+          owner: "py_phone_caller"
+          state: restore
+          target: /tmp/db-schema.sql
+
+    - name: "Creating the 'asterisk_ws_monitor' container"
+      containers.podman.podman_container:
+        name: asterisk_ws_monitor
+        image: quay.io/py-phone-caller/asterisk_ws_monitor:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.10
+
+    - name: "Creating the 'asterisk_recall' container"
+      containers.podman.podman_container:
+        name: asterisk_recall
+        image: quay.io/py-phone-caller/asterisk_recall:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.11
+        etc_hosts:
+             postgres-service: 172.19.0.50
+
+    - name: "Creating the 'call_register' container"
+      containers.podman.podman_container:
+        name: call_register
+        image: quay.io/py-phone-caller/call_register:0.0.1
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+            - /opt/py-phone-caller/config/caller_config.toml:/opt/py-phone-caller/config/caller_config.toml
+        network:
+            - py-phone-caller
+        ip: 172.19.0.80
+        ports:
+            - "8080:8080"
+        etc_hosts:
+             postgres-service: 172.19.0.50
