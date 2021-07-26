@@ -1,5 +1,5 @@
   # Work In Progress - Alpha release
-  # Run with: "ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, podman.yaml"
+  # Run with: "ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, py-phone-caller-podman.yml"
   # ToDo: take out the all data into a var file...
   - name: "Configuring 'py-phone-caller' installed through 'Podman'"
     hosts: localhost
