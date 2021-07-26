@@ -24,7 +24,7 @@
       register: caller_config
       ignore_errors: yes
 
-    - name: "Download the 'caller_config.toml' file"
+    - name: "Download the 'caller_config.toml' template file"
       get_url:
         url: "{{ caller_config_toml_template_url }}"
         dest: "{{ py_phone_caller_config_tmp_path }}"
@@ -225,6 +225,40 @@
             - "{{ call_register_port }}:{{ call_register_port }}"
         etc_hosts:
              postgres-service: "{{ postgres_ip }}"
+
+    - name: "Download the Systemd Unit files"
+      get_url:
+        url: "{{ item.url }}"
+        dest: "{{ systemd_user_path }}/{{ item.path }}"
+        owner: "{{ installation_user }}"
+        group: "{{ installation_user }}"
+        mode: 0640
+      with_items:
+        - { "url" : "{{ container_asterisk_call_service_url }}", "path" : "{{ container_asterisk_call_service_unit }}" }
+        - { "url" : "{{ container_asterisk_call_register_service_url }}", "path" : "{{ container_asterisk_call_register_service_unit }}" }
+        - { "url" : "{{ container_asterisk_recall_service_url }}", "path" : "{{ container_asterisk_recall_service_unit }}" }
+        - { "url" : "{{ container_asterisk_ws_monitor_service_url }}", "path" : "{{ container_asterisk_ws_monitor_service_unit }}" }
+        - { "url" : "{{ container_caller_prometheus_webhook_service_url }}", "path" : "{{ container_caller_prometheus_webhook_service_unit }}" }
+        - { "url" : "{{ container_caller_sms_service_url }}", "path" : "{{ container_caller_sms_service_unit }}" }
+        - { "url" : "{{ container_generate_audio_service_url }}", "path" : "{{ container_generate_audio_service_unit }}" }
+        - { "url" : "{{ container_postgres_13_service_url }}", "path" : "{{ container_postgres_13_service_unit }}" }
+
+    - name: "Enable and run the user SystemD services for 'py-phone-caller'"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: yes
+        daemon_reload: yes
+        state: started
+        scope: user
+      with_items:
+        - "{{ container_asterisk_call_service_unit }}"
+        - "{{ container_asterisk_call_register_service_unit }}"
+        - "{{ container_asterisk_recall_service_unit }}"
+        - "{{ container_asterisk_ws_monitor_service_unit }}"
+        - "{{ container_caller_prometheus_webhook_service_unit }}"
+        - "{{ container_caller_sms_service_unit }}"
+        - "{{ container_generate_audio_service_unit }}"
+        - "{{ container_postgres_13_service_unit }}"
 
     - name: "Deleting the '/tmp' files"
       ansible.builtin.file:

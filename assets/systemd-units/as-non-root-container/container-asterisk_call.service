@@ -5,11 +5,11 @@ Wants=network.target
 After=network-online.target
 After=container-asterisk_call_register.service
 After=container-generate_audio.service
-RequiresMountsFor=/run/user/1000/containers
+#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
-Restart=on-failure
+Restart=always
 TimeoutStopSec=70
 ExecStart=/usr/bin/podman start asterisk_call
 ExecStop=/usr/bin/podman stop -t 10 asterisk_call

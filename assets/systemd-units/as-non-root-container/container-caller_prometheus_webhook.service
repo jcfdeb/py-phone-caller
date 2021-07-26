@@ -5,11 +5,11 @@ Wants=network.target
 After=network-online.target
 After=container-asterisk_call.service 
 After=container-caller_sms.service
-RequiresMountsFor=/run/user/1000/containers
+#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
-Restart=on-failure
+Restart=always
 TimeoutStopSec=70
 ExecStart=/usr/bin/podman start caller_prometheus_webhook
 ExecStop=/usr/bin/podman stop -t 10 caller_prometheus_webhook

@@ -8,7 +8,7 @@ container_host: 192.168.122.105
 installation_user: fedora
 installation_folder: "/home/{{ installation_user }}"
 installation_folder_name: py-phone-caller
-caller_config_toml_template_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja2"
+caller_config_toml_template_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/9c0bb97110cef988adfd23a6c0cb8e25168bbdfc/assets/ansible/rh/caller_config.toml.jinja2"
 py_phone_caller_config_tmp_path: /tmp/caller_config.toml.jinja
 py_phone_caller_config_path: "{{ installation_folder }}/{{ installation_folder_name }}/config/caller_config.toml"
 config_mounted_in_container: /opt/py-phone-caller/config/caller_config.toml:Z
@@ -31,6 +31,26 @@ postgresql_container_image: "docker.io/library/postgres:13.3-alpine3.14"
 postgresql_login_host: 127.0.0.1
 postgresql_admin: postgres
 postgresql_admin_pass: Use-A-Secure-Password-Here
+
+# SystemD user integration
+container_asterisk_call_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-asterisk_call.service"
+container_asterisk_call_register_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-asterisk_call_register.service"
+container_asterisk_recall_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-asterisk_recall.service"
+container_asterisk_ws_monitor_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-asterisk_ws_monitor.service"
+container_caller_prometheus_webhook_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-caller_prometheus_webhook.service"
+container_caller_sms_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-caller_sms.service"
+container_generate_audio_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-generate_audio.service"
+container_postgres_13_service_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/systemd-units/as-non-root-container/container-postgres_13.service"
+
+systemd_user_path: "/home/{{ installation_user }}/.config/systemd/user"
+container_asterisk_call_service_unit: "container-asterisk_call.service"
+container_asterisk_call_register_service_unit: "container-asterisk_call_register.service"
+container_asterisk_recall_service_unit: "container-asterisk_recall.service"
+container_asterisk_ws_monitor_service_unit: "container-asterisk_ws_monitor.service"
+container_caller_prometheus_webhook_service_unit: "container-caller_prometheus_webhook.service"
+container_caller_sms_service_unit: "container-caller_sms.service"
+container_generate_audio_service_unit: "container-generate_audio.service"
+container_postgres_13_service_unit: "container-postgres_13.service"
 
 # py-phone-caller - 'caller_config.toml' vars
 # [commons]

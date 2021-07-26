@@ -4,11 +4,11 @@ Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
 Before=container-asterisk_recall.service
-RequiresMountsFor=/run/user/1000/containers
+#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
-Restart=on-failure
+Restart=always
 TimeoutStopSec=70
 ExecStart=/usr/bin/podman start postgres_13
 ExecStop=/usr/bin/podman stop -t 10 postgres_13

@@ -4,15 +4,17 @@ Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
 After=container-asterisk_ws_monitor.service
-RequiresMountsFor=/run/user/1000/containers
+After=container-postgres_13.service
+Before=container-asterisk_call.service
+#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
-Restart=on-failure
+Restart=always
 TimeoutStopSec=70
-ExecStart=/usr/bin/podman start asterisk_call_register
-ExecStop=/usr/bin/podman stop -t 10 asterisk_call_register
-ExecStopPost=/usr/bin/podman stop -t 10 asterisk_call_register
+ExecStart=/usr/bin/podman start call_register
+ExecStop=/usr/bin/podman stop -t 10 call_register
+ExecStopPost=/usr/bin/podman stop -t 10 call_register
 Type=forking
 
 [Install]

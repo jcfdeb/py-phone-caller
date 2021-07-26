@@ -4,11 +4,11 @@ Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
 After=container-asterisk_ws_monitor.service
-RequiresMountsFor=/run/user/1000/containers
+#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
-Restart=on-failure
+Restart=always
 TimeoutStopSec=70
 ExecStart=/usr/bin/podman start generate_audio
 ExecStop=/usr/bin/podman stop -t 10 generate_audio
