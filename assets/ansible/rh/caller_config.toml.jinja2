@@ -1,0 +1,85 @@
+[commons]
+asterisk_user = "{{ asterisk_user }}"
+asterisk_pass = "{{ asterisk_pass }}"
+asterisk_host = "{{ asterisk_host }}"
+asterisk_web_port = "{{ asterisk_web_port }}"
+asterisk_http_scheme = "{{ asterisk_http_scheme }}"
+
+[asterisk_call]
+asterisk_ari_channels = "{{ asterisk_ari_channels }}"
+asterisk_ari_play = "{{asterisk_ari_play  }}"
+asterisk_context = "{{ asterisk_context }}"
+asterisk_extension = "{{ asterisk_extension }}"
+asterisk_chan_type = "{{ asterisk_chan_type }}"
+asterisk_callerid = "{{ asterisk_callerid }}"
+asterisk_call_http_scheme = "{{ asterisk_call_http_scheme }}"
+asterisk_call_host = "{{ asterisk_call_host }}"
+asterisk_call_port = "{{ asterisk_call_port }}"
+asterisk_call_app_route_asterisk_init = "{{ asterisk_call_app_route_asterisk_init }}"
+asterisk_call_app_route_play = "{{ asterisk_call_app_route_play }}"
+seconds_to_forget = {{ seconds_to_forget }}
+client_timeout_total = {{ client_timeout_total }} 
+
+[call_register]
+call_register_http_scheme = "{{ call_register_http_scheme }}"
+call_register_host = "{{ call_register_host }}"
+call_register_port = "{{ call_register_port }}"
+call_register_app_route_register_call = "{{ call_register_app_route_register_call }}"
+call_register_app_route_voice_message = "{{ call_register_app_route_voice_message }}"
+call_register_app_route_acknowledge = "{{ call_register_app_route_acknowledge }}"
+call_register_app_route_heard = "{{ call_register_app_route_heard }}"
+
+[asterisk_ws_monitor]
+asterisk_stasis_app = "{{ asterisk_stasis_app }}"
+
+[asterisk_recall]
+times_to_dial = {{ times_to_dial }}
+
+[generate_audio]
+generate_audio_http_scheme = "{{ generate_audio_http_scheme }}"
+generate_audio_host = "{{ generate_audio_host }}"
+generate_audio_port = "{{ generate_audio_port }}"
+generate_audio_app_route = "{{ generate_audio_app_route }}"
+gcloud_tts_language_code = "{{ gcloud_tts_language_code }}"
+serving_audio_folder = "{{ serving_audio_folder }}"
+num_of_cpus = {{ num_of_cpus }}
+
+[caller_prometheus_webhook]
+prometheus_webhook_port = "{{ prometheus_webhook_port }}"
+prometheus_webhook_app_route_call_only = "{{ prometheus_webhook_app_route_call_only }}"
+prometheus_webhook_app_route_sms_only = "{{ prometheus_webhook_app_route_sms_only }}"
+prometheus_webhook_app_route_sms_before_call = "{{ prometheus_webhook_app_route_sms_before_call }}"
+prometheus_webhook_app_route_call_and_sms = "{{ prometheus_webhook_app_route_call_and_sms }}"
+prometheus_webhook_receivers = {{ prometheus_webhook_receivers }}
+
+[caller_sms]
+caller_sms_http_scheme = "{{ caller_sms_http_scheme }}"
+caller_sms_host = "{{ caller_sms_host }}"
+caller_sms_port = "{{ caller_sms_port }}"
+caller_sms_audio_app_route = "{{ caller_sms_audio_app_route }}"
+sms_before_call_wait_seconds = {{ sms_before_call_wait_seconds }}
+caller_sms_carrier = "{{ caller_sms_carrier }}"
+twilio_account_sid = "{{ twilio_account_sid }}"
+twilio_auth_token = "{{ twilio_auth_token }}"
+twilio_sms_from = "{{ twilio_sms_from }}"
+
+[database]
+db_host = "{{ db_host }}"
+db_name = "{{ db_name }}"
+db_user = "{{ db_user }}"
+db_password = '{{ db_password }}'
+db_max_size = {{ db_max_size }}
+db_max_inactive_connection_lifetime = {{ db_max_inactive_connection_lifetime }}
+
+[logger]
+log_formatter = "{{ log_formatter }}"
+acknowledge_error = "{{ acknowledge_error }}"
+heard_error = "{{ heard_error }}"
+registercall_error = "{{ registercall_error }}"
+voice_message_error = "{{ voice_message_error }}"
+asterisk_call_error = "{{ asterisk_call_error }}"
+asterisk_play_error = "{{ asterisk_play_error }}"
+generate_audio_error = "{{ generate_audio_error }}"
+caller_sms_error = "{{ caller_sms_error }}"
+lost_directory_error = "{{ lost_directory_error }}"
+
