@@ -5,7 +5,6 @@ Wants=network.target
 After=network-online.target
 After=container-asterisk_call_register.service
 After=container-generate_audio.service
-#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n

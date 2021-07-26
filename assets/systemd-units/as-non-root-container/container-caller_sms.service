@@ -3,7 +3,6 @@ Description=Podman container-caller_sms.service
 Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
-#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n

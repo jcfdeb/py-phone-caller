@@ -5,7 +5,6 @@ Wants=network.target
 After=network-online.target
 After=container-asterisk_call.service 
 After=container-caller_sms.service
-#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n

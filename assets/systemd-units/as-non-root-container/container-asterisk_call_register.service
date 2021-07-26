@@ -6,7 +6,6 @@ After=network-online.target
 After=container-asterisk_ws_monitor.service
 After=container-postgres_13.service
 Before=container-asterisk_call.service
-#RequiresMountsFor=/run/user/1000/containers
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
