@@ -12,11 +12,8 @@ asterisk_context = "py-phone-caller"
 asterisk_extension = "3216"
 asterisk_chan_type = "SIP/sip-provider"
 asterisk_callerid = "Py-Phone-Caller"
-call_register_http_scheme = "http"
-call_register_host = "192.168.38.104"
-call_register_port = "8080"
 asterisk_call_http_scheme = "http"
-asterisk_call_host = "192.168.38.104"
+asterisk_call_host = "192.168.38.105"
 asterisk_call_port = "8081"
 asterisk_call_app_route_asterisk_init = "asterisk_init"
 asterisk_call_app_route_play = "play"
@@ -25,8 +22,8 @@ client_timeout_total = 5 # For 'ClientTimeout(total=5)'
 
 [call_register]
 call_register_http_scheme = "http"
-call_register_host = "192.168.38.104"
-call_register_port = "8080"
+call_register_host = "192.168.38.105"
+call_register_port = "8083"
 call_register_app_route_register_call = "register_call"
 call_register_app_route_voice_message = "msg"
 call_register_app_route_acknowledge = "ack"
@@ -40,7 +37,7 @@ times_to_dial = 3
 
 [generate_audio]
 generate_audio_http_scheme = "http"
-generate_audio_host = "192.168.38.104"
+generate_audio_host = "192.168.38.105"
 generate_audio_port = "8082"
 generate_audio_app_route = "make_audio"
 gcloud_tts_language_code = "en"
@@ -53,11 +50,11 @@ prometheus_webhook_app_route_call_only = "call_only"
 prometheus_webhook_app_route_sms_only = "sms_only"
 prometheus_webhook_app_route_sms_before_call = "sms_before_call"
 prometheus_webhook_app_route_call_and_sms = "call_and_sms"
-prometheus_webhook_receivers = [ "+123456789", "+987654321" ]
+prometheus_webhook_receivers = [ "+123456789" ]
 
 [caller_sms]
 caller_sms_http_scheme = "http"
-caller_sms_host = "192.168.38.104"
+caller_sms_host = "192.168.38.105"
 caller_sms_port = "8085"
 caller_sms_audio_app_route = "send_sms"
 sms_before_call_wait_seconds = 120
@@ -67,7 +64,7 @@ twilio_auth_token = "your-twilio-auth-token"
 twilio_sms_from = "your-twilio-sms-from"
 
 [database]
-db_host = "192.168.38.104"
+db_host = "192.168.38.105"
 db_name = "py_phone_caller"
 db_user = "py_phone_caller"
 db_password = 'other-strong-password-here'

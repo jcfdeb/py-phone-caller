@@ -1,0 +1,119 @@
+---
+# Variables files for the 'py-phone-caller' installed through Podman
+
+ansible_python_interpreter: /usr/bin/python3
+
+# Podman / 'py-phone-caller' vars
+container_host: 192.168.122.105
+installation_user: fedora
+installation_folder: "/home/{{ installation_user }}"
+installation_folder_name: py-phone-caller
+caller_config_toml_template_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja"
+py_phone_caller_config_tmp_path: /tmp/caller_config.toml.jinja
+py_phone_caller_config_path: "{{ installation_folder }}/{{ installation_folder_name }}/config/caller_config.toml"
+config_mounted_in_container: /opt/py-phone-caller/config/caller_config.toml:Z
+py_phone_caller_version: 0.0.1
+container_registry_url: quay.io/py-phone-caller
+py_phone_caller_network: py-phone-caller
+py_phone_caller_subnet: 172.19.0.0/24
+asterisk_ws_monitor_ip: 172.19.0.10
+asterisk_recall_ip: 172.19.0.11
+postgres_ip: 172.19.0.50
+generate_audio_ip: 172.19.0.82
+call_register_ip: 172.19.0.83
+asterisk_call_ip: 172.19.0.81
+caller_prometheus_webhook_ip: 172.19.0.84
+caller_sms_ip: 172.19.0.85
+
+# PostgreSQL container vars
+db_schema_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/DB/db-schema.sql"
+postgresql_container_image: "docker.io/library/postgres:13.3-alpine3.14"
+postgresql_login_host: 127.0.0.1
+postgresql_admin: postgres
+postgresql_admin_pass: Use-A-Secure-Password-Here
+
+# py-phone-caller - 'caller_config.toml' vars
+# [commons]
+asterisk_user: "py-phone-caller"
+asterisk_pass: "Use-A-Secure-Password-Here"
+asterisk_host: "192.168.122.234"
+asterisk_web_port: "8088"
+asterisk_http_scheme: "http"
+
+# [asterisk_call]
+asterisk_ari_channels: "ari/channels"
+asterisk_ari_play: "play?media=sound"
+asterisk_context: "py-phone-caller"
+asterisk_extension: "3216"
+asterisk_chan_type: "SIP/sip-provider"
+asterisk_callerid: "Py-Phone-Caller"
+asterisk_call_http_scheme: "http"
+asterisk_call_host: "{{ container_host }}"
+asterisk_call_port: "8081"
+asterisk_call_app_route_asterisk_init: "asterisk_init"
+asterisk_call_app_route_play: "play"
+seconds_to_forget: 300
+client_timeout_total: 5 # For 'ClientTimeout(total=5)'
+
+# [call_register]
+call_register_http_scheme: "http"
+call_register_host: "{{ container_host }}"
+call_register_port: "8083"
+call_register_app_route_register_call: "register_call"
+call_register_app_route_voice_message: "msg"
+call_register_app_route_acknowledge: "ack"
+call_register_app_route_heard: "heard"
+
+# [asterisk_ws_monitor]
+asterisk_stasis_app: "py-phone-caller"
+
+# [asterisk_recall]
+times_to_dial: 3
+
+# [generate_audio]
+generate_audio_http_scheme: "http"
+generate_audio_host: "{{ container_host }}"
+generate_audio_port: "8082"
+generate_audio_app_route: "make_audio"
+gcloud_tts_language_code: "es"
+serving_audio_folder: "audio"
+num_of_cpus: 4
+
+# [caller_prometheus_webhook]
+prometheus_webhook_port: "8084"
+prometheus_webhook_app_route_call_only: "call_only"
+prometheus_webhook_app_route_sms_only: "sms_only"
+prometheus_webhook_app_route_sms_before_call: "sms_before_call"
+prometheus_webhook_app_route_call_and_sms: "call_and_sms"
+prometheus_webhook_receivers: '[ "+123456789" ]'
+
+# [caller_sms]
+caller_sms_http_scheme: "http"
+caller_sms_host: "{{ container_host }}"
+caller_sms_port: "8085"
+caller_sms_audio_app_route: "send_sms"
+sms_before_call_wait_seconds: 120
+caller_sms_carrier: "twilio"
+twilio_account_sid: "Your-Twilio-account-sid"
+twilio_auth_token: "Your-Twilio-auth-token"
+twilio_sms_from: "+1987654321"
+
+# [database]
+db_host: "{{ postgres_ip }}"
+db_name: "py_phone_caller"
+db_user: "py_phone_caller"
+db_password: 'Use-A-Secure-Password-Here'
+db_max_size: 50
+db_max_inactive_connection_lifetime: 30.0
+
+# [logger]
+log_formatter: "%(asctime)s %(message)s"
+acknowledge_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/ack?asterisk_chan=[The Asterisk Channel ID]"
+heard_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/heard?asterisk_chan=[The Asterisk Channel ID]"
+registercall_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&messagge=[Alert Message Text]&asterisk_chan=[The Asterisk Channel ID]"
+voice_message_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/msg?asterisk_chan=[The Asterisk Channel ID]"
+asterisk_call_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/asterisk?phone=[Destination Phone Number]&messagge=[Alert Message Text]"
+asterisk_play_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/play?asterisk_chan=[The Asterisk Channel ID]&msg_chk_sum=[The message cecksum]"
+generate_audio_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/make_audio?messagge=[Alert Message Text]&msg_chk_sum=[The message cecksum]"
+caller_sms_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&messagge=[Alert Message Text]"
+lost_directory_error: "The folder to serve the audio files was not found."

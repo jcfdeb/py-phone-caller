@@ -1,0 +1,19 @@
+[Unit]
+Description=Podman container-asterisk_ws_monitor.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-postgres_13.service
+RequiresMountsFor=/run/user/1000/containers
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start asterisk_ws_monitor
+ExecStop=/usr/bin/podman stop -t 10 asterisk_ws_monitor
+ExecStopPost=/usr/bin/podman stop -t 10 asterisk_ws_monitor
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

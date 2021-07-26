@@ -1,0 +1,19 @@
+[Unit]
+Description=Podman container-generate_audio.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-asterisk_ws_monitor.service
+RequiresMountsFor=/run/user/1000/containers
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=on-failure
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start generate_audio
+ExecStop=/usr/bin/podman stop -t 10 generate_audio
+ExecStopPost=/usr/bin/podman stop -t 10 generate_audio
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=Podman container-asterisk_recall.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-asterisk_ws_monitor.service
+After=container-asterisk_call.service
+RequiresMountsFor=/run/user/1000/containers
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start asterisk_recall
+ExecStop=/usr/bin/podman stop -t 10 asterisk_recall
+ExecStopPost=/usr/bin/podman stop -t 10 asterisk_recall
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=Podman container-caller_sms.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+RequiresMountsFor=/run/user/1000/containers
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=on-failure
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start caller_sms
+ExecStop=/usr/bin/podman stop -t 10 caller_sms
+ExecStopPost=/usr/bin/podman stop -t 10 caller_sms
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target
