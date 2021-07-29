@@ -226,6 +226,15 @@
         etc_hosts:
              postgres-service: "{{ postgres_ip }}"
 
+    - name: "Creating the Systemd user folder"
+      file:
+        path: "/home/{{ lookup('env','USER') }}/.config/systemd/user"
+        state: directory
+        owner: "{{ installation_user }}"
+        group: "{{ installation_user }}"
+        mode: 0750
+        recurse: yes
+
     - name: "Download the Systemd Unit files"
       get_url:
         url: "{{ item.url }}"
