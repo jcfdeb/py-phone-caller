@@ -1,8 +1,58 @@
 # Work in Progress - Draft
 
+### Preface 
+
+#### Some assumptions 
+
+> Please don't expose the endpoints publicly without any kind of protection. The setup is intended to be done inside your
+> trusted network. 
+
 In this use case we assume that: the system is inside a LAN and protected by a firewall without allowing connections 
 from outside (*wee need to protect in some way, for example basic auth, the exposed services if we want to publish it 
-in the Internet*) 
+in the Internet*). 
+
+#### The Big Picture
+
+
+* *Work In progress*
+
+![py-phone-caller the big picture](diagram/py_phone_caller_diagram.png "py-phone-caller flow diagram")
+
+#### Prerequisites
+
+* To *send a SMS* message to a cell phone: [a Twillio account](https://www.twilio.com/sms) *(optional to send SMS messages)*.
+* To *call* a cell or landline phone: some SIP trunk able to place calls to the landlines or cell phones.
+* A working Internet connection. 
+
+> About the SMS messages: by now the only service provider is Twilio, but we'll add others soon.
+
+> About the calls to landline or cell phones: the calls can be placed by using a SIP Trunking service offering termination
+> services in order to reach landline and cell phones. However, a media gateway can be used in order to achieve this goal.
+> Last but no least, we need to pay some cents in order to place calls and SMS messages to the landline or cell phones. These services are rarely free.
+
+We can spread some words regarding the ways to reach the landlines and  cell phones, generally it can be done using
+the services of a provider or using a media gateway connected to the landline or with a SIM card inside the device.
+
+* [SIP Trunking in Wikipedia](https://en.wikipedia.org/wiki/SIP_trunking)
+* [Media gateway in Wikipedia](https://en.wikipedia.org/wiki/Media_gateway)
+
+**Note**: *The 'py-phone-caller' packages hasn't any endorsement/relation by/with Twilio or FreePBX, these services/products 
+was used because the easy of use and the commitment with the Open Source.*
+
+### Systems used in this use case 
+
+In order to give the opportunity to those that aren't very familiar with Asterisk we'll use one of the Asterisk
+distributions called FreePBX. Is easy to setting up through the web interface.
+
+And for components that start calls, obviously, we'll use '**Fedora Server 34**' (*you can also use Fedora Workstation but 
+all the tests and working setups are running on Fedora Server or CentOS 7 with Docker. 
+Soon we'll try the deployment on RHEL 8, OpenShift/Kubernetes*).
+
+* [Fedora Server 34](https://getfedora.org/it/server/download/)
+
+* [FreePBX 15 (*CentOS 7 based*)](https://www.freepbx.org/downloads/) (*current version at time of this writing*)
+  * [SNG7-PBX-64bit-2104-1.iso](https://downloads.freepbxdistro.org/ISO/SNG7-PBX-64bit-2104-1.iso)
+
 
 ### Configuration of the Asterisk PBX
 
@@ -14,6 +64,19 @@ in the Internet*)
 ![trunk configuration step 3](freepbx-setup/image/trunk/trunk-03.png "Trunk configuration")
 
 ![trunk configuration step 4](freepbx-setup/image/trunk/trunk-04.png "Trunk configuration")
+
+* Configuration example:
+```ini
+type=peer
+auth=md5
+username=your-username
+fromuser=your-username
+secret=your-password
+host=sip.provider.com
+port=5060
+qualify=yes
+insecure=very
+```
 
 ![trunk configuration step 5](freepbx-setup/image/trunk/trunk-05.png "Trunk configuration")
 
@@ -29,6 +92,45 @@ in the Internet*)
 ![SIP extension step 3](freepbx-setup/image/custom_extension/ediit_custom_exten-03.png "SIP custom extension")
 
 ![SIP extension step 4](freepbx-setup/image/custom_extension/ediit_custom_exten-04.png "SIP custom extension")
+
+* *The dialplan for our use case*: 
+
+```ini
+[py-phone-caller]
+exten => 3216,1,Noop()
+; Greeting message
+same => n,Playback(greeting-message)
+; Give the control of the ongoing call to the 'py-phone-caller' Stasis application
+same => n,Stasis(py-phone-caller)
+; Do a get HTTP request against the 'call_register' when the message was played
+same => n,Set(RES=${CURL(http://192.168.122.104:8083/heard?asterisk_chan=${CHANNEL(uniqueid)})})
+; Play an audio message in order to get the acknowledgement
+; in our case we wait for '4'. "see line xx: {IF($[ ${get} = 4 ..."
+same => n,Playback(press-4-for-acknowledgement)
+same => n,Playback(beep)
+same => n,Read(get,"silence/1",,,,2)
+; If not digit is provided go to the priority 20 in order to say 'goodbye'
+same => n,Set(gotdigit=${ISNULL(${get})})
+same => n,GotoIf(${gotdigit}=1?20)
+; When '4' is pressed go to the priority 30, update the DB record
+; and say Goodbye.
+same => e,Playback(vm-goodbye) ; If there's an error, say goodbye
+same => n,Set(NOTIFYACK=${IF($[ ${get} = 4]?3:0)})
+same => n,Wait(1)
+same => n,GotoIf(${NOTIFYACK}=3?30)
+same => 20,Set(NOTIFYACK=2)
+same => 21,Playback(vm-goodbye)
+same => 22,Wait(1)
+same => 23,Hangup()
+; Do a get HTTP request against the 'call_register' to update the DB record
+; when the call was acknowledged. 
+same => 30,Set(RES=${CURL(http://192.168.122.104:8083/ack?asterisk_chan=${CHANNEL(uniqueid)})})  
+same => 31,Playback(vm-goodbye)
+same => 32,Wait(1)
+same => 33,Hangup()
+same => n,Playback(vm-goodbye)
+same => n,Hangup()
+```
 
 ![SIP extension step 5](freepbx-setup/image/custom_extension/ediit_custom_exten-05.png "SIP custom extension")
 
@@ -46,20 +148,174 @@ in the Internet*)
 ![ARI user step 5](freepbx-setup/image/rest_interface_user/rest_interface_user-05.png "The ARI user for our Stasis app")
 
 
-* Copying the audio files used en the custom extension
+* Creating the audio files used by the custom extension 
 
-> Work in progress
+> *you can create the audio files in your system or wherever you prefer, for this example in this guide we assume
+that the files will be created and converted to wave on your system to be transferred by SSH (scp) to the Asterisk PBX*.
+
+* **Greeting message**: "*Hello, this is a recorded message from the Alerting System. With this message for you*"
+* **Press 4 for acknowledge**: "*Please, Press the number 'four' to acknowledge this call*"
+
+In order to create the audio files we'll use the '**gtts**' Python package, can be installed with:
+
+```bash
+[fedora@fedora ~]$ pip install gtts
+Defaulting to user installation because normal site-packages is not writeable
+Collecting gtts
+  Downloading gTTS-2.2.3-py3-none-any.whl (25 kB)
+Requirement already satisfied: click in /usr/lib/python3.9/site-packages (from gtts) (7.1.2)
+Requirement already satisfied: six in /usr/lib/python3.9/site-packages (from gtts) (1.15.0)
+Requirement already satisfied: requests in /usr/lib/python3.9/site-packages (from gtts) (2.25.1)
+Requirement already satisfied: chardet<5,>=3.0.2 in /usr/lib/python3.9/site-packages (from requests->gtts) (4.0.0)
+Requirement already satisfied: urllib3<1.27,>=1.21.1 in /usr/lib/python3.9/site-packages (from requests->gtts) (1.25.10)
+Requirement already satisfied: idna<3,>=2.5 in /usr/lib/python3.9/site-packages (from requests->gtts) (2.10)
+Installing collected packages: gtts
+Successfully installed gtts-2.2.3
+```
+
+Now we can create the needed files to be copied to the Asterisk PBX after the conversion to wave format.
+
+```bash
+# The first file
+[fedora@fedora-server ~]# gtts-cli "Hello, this is a recorded message from the Alerting System. With this message for you" > /tmp/greeting-message.mp3
+
+# The second file
+[fedora@fedora-server ~]# gtts-cli "Please, Press the number 'four' to acknowledge this call after the beep" > /tmp/press-4-for-acknowledgement.mp3
+```
+
+**Note about gtts-cli**: to change the language use '--lang es' for Spanish or '--lang it' for Italian or whatever you need. The text
+need to be written in the same language that we want to generate the audio file, maybe is something obvious but is better  
+have clear concepts.
+
+
+To convert the MP3 files to wave, we'll use '**ffmpeg**', if isn't installed in your system, we can add it with '**dnf**'
+
+```bash
+[fedora@fedora ~]$ sudo dnf -y install ffmpeg
+```
+
+With 'ffmpeg' we can convert the MP3  to wave with properties to be compatible with Asterisk player.
+We'll proceed with the greeting message.  
+
+```bash
+[fedora@fedora ~]$ ffmpeg -i /tmp/greeting-message.mp3 -ac 1 -ar 8000 /tmp/greeting-message.wav
+ffmpeg version 4.4 Copyright (c) 2000-2021 the FFmpeg developers
+  built with gcc 11 (GCC)
+  configuration: --prefix=/usr --bindir=/usr/bin --datadir=/usr/share/ffmpeg --docdir=/usr/share/doc/ffmpeg --incdir=/usr/include/ffmpeg --libdir=/usr/lib64 --mandir=/usr/share/man --arch=x86_64 --optflags='-O2 -flto=auto -ffat-lto-objects -fexceptions -g -grecord-gcc-switches -pipe -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -fstack-protector-strong -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -m64 -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection' --extra-ldflags='-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-hardened-ld ' --extra-cflags=' -I/usr/include/rav1e' --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-version3 --enable-bzlib --disable-crystalhd --enable-fontconfig --enable-frei0r --enable-gcrypt --enable-gnutls --enable-ladspa --enable-libaom --enable-libdav1d --enable-libass --enable-libbluray --enable-libcdio --enable-libdrm --enable-libjack --enable-libfreetype --enable-libfribidi --enable-libgsm --enable-libmp3lame --enable-libmysofa --enable-nvenc --enable-openal --enable-opencl --enable-opengl --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librsvg --enable-librav1e --enable-libsmbclient --enable-version3 --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtheora --enable-libvorbis --enable-libv4l2 --enable-libvidstab --enable-libvmaf --enable-version3 --enable-vapoursynth --enable-libvpx --enable-vulkan --enable-libglslang --enable-libx264 --enable-libx265 --enable-libxvid --enable-libxml2 --enable-libzimg --enable-libzvbi --enable-lv2 --enable-avfilter --enable-avresample --enable-libmodplug --enable-postproc --enable-pthreads --disable-static --enable-shared --enable-gpl --disable-debug --disable-stripping --shlibdir=/usr/lib64 --enable-lto --enable-libmfx --enable-runtime-cpudetect
+  libavutil      56. 70.100 / 56. 70.100
+  libavcodec     58.134.100 / 58.134.100
+  libavformat    58. 76.100 / 58. 76.100
+  libavdevice    58. 13.100 / 58. 13.100
+  libavfilter     7.110.100 /  7.110.100
+  libavresample   4.  0.  0 /  4.  0.  0
+  libswscale      5.  9.100 /  5.  9.100
+  libswresample   3.  9.100 /  3.  9.100
+  libpostproc    55.  9.100 / 55.  9.100
+[mp3 @ 0x55c2c81df080] Estimating duration from bitrate, this may be inaccurate
+Input #0, mp3, from 'greeting.mp3':
+  Duration: 00:00:06.86, start: 0.000000, bitrate: 32 kb/s
+  Stream #0:0: Audio: mp3, 24000 Hz, mono, fltp, 32 kb/s
+Stream mapping:
+  Stream #0:0 -> #0:0 (mp3 (mp3float) -> pcm_s16le (native))
+Press [q] to stop, [?] for help
+Output #0, wav, to 'greeting.wav':
+  Metadata:
+    ISFT            : Lavf58.76.100
+  Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 8000 Hz, mono, s16, 128 kb/s
+    Metadata:
+      encoder         : Lavc58.134.100 pcm_s16le
+size=     107kB time=00:00:06.86 bitrate= 128.1kbits/s speed=1.14e+03x
+video:0kB audio:107kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.071023%
+```
+
+Now the acknowledgement message 
+
+```bash
+[fedora@fedora ~]$ ffmpeg -i /tmp/press-4-for-acknowledgement.mp3 -ac 1 -ar 8000 /tmp/press-4-for-acknowledgement.wav
+[...]
+```
+
+Getting some extra information about the audio files, only to see their properties.
+
+```bash
+# The MP3 file
+[fedora@fedora ~]$ file /tmp/press-4-for-acknowledgement.mp3
+greeting.mp3: MPEG ADTS, layer III, v2,  32 kbps, 24 kHz, Monaural
+
+# The wave file
+[fedora@fedora ~]$ file /tmp/press-4-for-acknowledgement.wav
+greeting.wav: RIFF (little-endian) data, WAVE audio, Microsoft PCM, 16 bit, mono 8000 Hz
+```
+
+* Copying the audio files used by the custom extension
+
+Now we can copy the recently created files *('/tmp/greeting-message.wav', '/tmp/press-4-for-acknowledgement.wav')* to 
+the Asterisk system. 
+
+```bash
+[fedora@fedora ~]$ scp /tmp/*.wav root@192.168.122.234:
+root@192.168.122.234's password:
+
+greeting-message.wav                                                                 100%  107KB  21.7MB/s   00:00
+press-4-for-acknowledgement.wav                                                      100%   77KB  21.9MB/s   00:00
+
+```
+
+* Login to the Asterisk *(FreePBX distribution)* System
+
+```bash
+[fedora@fedora ~]$ ssh root@192.168.122.234
+root@192.168.122.234's password:
+Last failed login: Tue Aug  3 23:29:04 UTC 2021 from 192.168.122.1 on ssh:notty
+There was 1 failed login attempt since the last successful login.
+Last login: Tue Aug  3 23:33:50 2021 from 192.168.122.1
+______                   ______ ______ __   __
+|  ___|                  | ___ \| ___ \\ \ / /
+| |_    _ __   ___   ___ | |_/ /| |_/ / \ V /
+|  _|  | '__| / _ \ / _ \|  __/ | ___ \ /   \
+| |    | |   |  __/|  __/| |    | |_/ // /^\ \
+\_|    |_|    \___| \___|\_|    \____/ \/   \/
+
+NOTICE! You have 2 notifications! Please log into the UI to see them!
+Current Network Configuration
++-----------+-------------------+-------------------------+
+| Interface | MAC Address       | IP Addresses            |
++-----------+-------------------+-------------------------+
+| eth0      | 52:54:00:F1:1C:F6 | 192.168.122.234         |
+|           |                   | fe80::5054:ff:fef5:6cf1 |
++-----------+-------------------+-------------------------+
+[...]
+
+[root@freepbx ~]#
+```
+
+In our case we're using the default *Asterisk* language, English. The audio files are stored in ```/var/lib/asterisk/sounds/en``` 
+we'll move the recently copied files to this folder *(the folder will change if you're using other language)*. 
+
+* Copying the files to the right location
+
+> With the last '**scp**' command we've placed the files under the '**/root**' folder of the Asterisk system. 
+
+```bash
+[root@freepbx ~]# mv greeting-message.wav press-4-for-acknowledgement.wav /var/lib/asterisk/sounds/en
+```
+
+* As last step on this system, we'll set the right permission for these files.
+
+```bash
+[root@freepbx ~]# chown asterisk.asterisk /var/lib/asterisk/sounds/en/{greeting-message.wav,press-4-for-acknowledgement.wav}
+```
 
 ### Installing the needed dependencies on the Fedora Server
 
 Steps to take as '**root**'
 
-```
+```bash
 [fedora@fedora-server ~]$ sudo -i
 ```
 
 We'll run the containers with **'Podman'**
-```
+```bash
 [root@fedora-server ~]# dnf -y install podman podman-plugins podman-docker
 Last metadata expiration check: 0:42:59 ago on Wed 28 Jul 2021 23:31:23 PM CEST.
 Dependencies resolved.
@@ -102,7 +358,7 @@ Installed size: 123 M
 The installation of '**py-phone-caller**' is done through **Ansible** and some data regarding the call is stored in 
 **PostgreSQL**.
 
-```
+```bash
 [root@fedora-server ~]# dnf install -y ansible python3-psycopg2 postgresql
 Last metadata expiration check: 0:38:54 ago on Wed 28 Jul 2021 23:41:48 PM CEST.
 Dependencies resolved.
@@ -153,14 +409,14 @@ Installed size: 144 M
 
 Dropping the '**root**' privileges
 
-```
+```bash
 [root@fedora-server ~]# 
 logout
 ```
 
 Installing the **Ansible** role to manage '**podman**'
 
-```
+```bash
 [fedora@fedora-server ~]$ ansible-galaxy collection install containers.podman
 Process install dependency map
 Starting collection install process
@@ -169,7 +425,7 @@ Installing 'containers.podman:1.6.1' to '/home/fedora/.ansible/collections/ansib
 
 Installing the **Ansible** role to manage '**PostgreSQL**'
 
-```
+```bash
 [fedora@fedora-server ~]$ ansible-galaxy collection install community.postgresql
 Process install dependency map
 Starting collection install process
@@ -179,7 +435,7 @@ Installing 'community.postgresql:1.4.0' to '/home/fedora/.ansible/collections/an
 
 
 Running our first container... 
-```
+```bash
 [fedora@fedora-server ~]$ podman run hello-world
 Resolved "hello-world" as an alias (/etc/containers/registries.conf.d/000-shortnames.conf)
 Trying to pull docker.io/library/hello-world:latest...
@@ -214,7 +470,7 @@ For more examples and ideas, visit:
 
 Creating a folder to place the installation *playbook*
 
-```
+```bash
 [fedora@fedora-server ~]$ mkdir ansible_py-phone-caller
 ```
 
@@ -226,7 +482,7 @@ Getting the 3 files in order to install the '**py-phone-caller**' through **Ansi
     * py_phone_caller_vars_file.yml
 
 
-```
+```bash
 [fedora@fedora-server ~]$ cd ansible_py-phone-caller/
 
 [fedora@fedora-server ansible_py-phone-caller]$ wget https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja2
@@ -282,7 +538,7 @@ py_phone_caller_vars_file.yml               100%[===============================
 ansible_python_interpreter: /usr/bin/python3
 
 # Podman / 'py-phone-caller' vars
-container_host: 192.168.122.105
+container_host: 192.168.122.104
 installation_user: fedora
 installation_folder: "/home/{{ installation_user }}"
 installation_folder_name: py-phone-caller
@@ -419,7 +675,7 @@ lost_directory_error: "The folder to serve the audio files was not found."
 
 * Ansible starts to play 
 
-```
+```bash
 [fedora@fedora ~]$ ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, ansible_py-phone-caller/py-phone-caller-podman.yml
 
 PLAY [Configuring 'py-phone-caller' installed through 'Podman'] *************************************************************************************************************
@@ -523,7 +779,7 @@ PLAY RECAP *********************************************************************
 
 * Firewalld rules to allow the needed connections 
 
-```
+```bash
 [fedora@fedora-server ~]$ sudo firewall-cmd --add-source="192.168.122.0/24" --permanent
 success
 

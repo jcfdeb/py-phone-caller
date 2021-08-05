@@ -141,7 +141,7 @@ async def asterisk_ws_client():
                             message = await generateaudio_resp.json()
                             await session.close()
 
-                            # Try to play the audio message...
+                            # Try to play the audio message to the callee through the Stasis application...
                             if message["status"] == 200:
 
                                 async def play_audio_to_channel():
