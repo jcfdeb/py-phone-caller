@@ -83,7 +83,9 @@ insecure=very
 ![trunk configuration step 6](freepbx-setup/image/trunk/trunk-06.png "Trunk configuration")
 
 
-* Configuration of the custom **SIP extension**
+* Configuration of the custom **SIP extension** to use with '**py-phone-caller**'
+
+> Can be intended as the **caller** part
 
 ![SIP extension step 1](freepbx-setup/image/custom_extension/ediit_custom_exten-01.png "SIP custom extension")
 
@@ -133,6 +135,21 @@ same => n,Hangup()
 ```
 
 ![SIP extension step 5](freepbx-setup/image/custom_extension/ediit_custom_exten-05.png "SIP custom extension")
+
+
+* Creating a standard Asterisk extension (*can be SIP or IAX2*)
+
+> To be used as alternative of the SIP Trunk (in this case we'll call to a soft-phone or VoIP phone instead of PSTN or cell phone)
+
+![SIP extension for the callee 1](freepbx-setup/image/sip_extension/00_sip_extension.png "A PBX extension instead of a landline or cell")
+
+![SIP extension for the callee 2](freepbx-setup/image/sip_extension/01_sip_extension.png "A PBX extension instead of a landline or cell")
+
+![SIP extension for the callee 3](freepbx-setup/image/sip_extension/03_sip_extension.png "A PBX extension instead of a landline or cell")
+
+![SIP extension for the callee 4](freepbx-setup/image/sip_extension/04_sip_extension.png "A PBX extension instead of a landline or cell")
+
+![SIP extension for the callee 5](freepbx-setup/image/sip_extension/05_sip_extension.png "A PBX extension instead of a landline or cell")
 
 
 * Configuration of the Asterisk **ARI** user
