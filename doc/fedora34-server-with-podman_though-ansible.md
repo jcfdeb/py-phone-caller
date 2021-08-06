@@ -139,7 +139,17 @@ same => n,Hangup()
 
 * Creating a standard Asterisk extension (*can be SIP or IAX2*)
 
-> To be used as alternative of the SIP Trunk (in this case we'll call to a soft-phone or VoIP phone instead of PSTN or cell phone)
+
+
+> To be used as alternative of the SIP Trunk (in this case we'll call to a soft-phone or VoIP phone instead of PSTN or cell phone),
+> within this setup aren't additional costs when calling this kind of extensions, because they're configured in our PBX.
+> Can be used from the same network where is located the PBX, if exposed to the Internet please use a security layer as
+> TLS and secure passwords.
+> If you choose a soft-phone installed in your cell, be sure that your internet connection has a good quality otherwise 
+> the audio quality be will poor.
+
+
+**Note**: this endpoint can be intended as the **callee** part
 
 ![SIP extension for the callee 1](freepbx-setup/image/sip_extension/00_sip_extension.png "A PBX extension instead of a landline or cell")
 
