@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION="0.0.1"
+VERSION="0.0.2"
 
 # asterisk_call
 podman build -t quay.io/py-phone-caller/asterisk_call:${VERSION} -f Dockerfile.asterisk_call

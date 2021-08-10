@@ -36,7 +36,7 @@ spec:
         runAsUser: 2
       containers:
       - name: caller-sms
-        image: quay.io/py-phone-caller/caller_sms:0.0.1
+        image: quay.io/py-phone-caller/caller_sms:0.0.2
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8085

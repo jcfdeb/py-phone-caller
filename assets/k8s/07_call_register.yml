@@ -36,7 +36,7 @@ spec:
         runAsUser: 2
       containers:
       - name: call-register
-        image: quay.io/py-phone-caller/call_register:0.0.1
+        image: quay.io/py-phone-caller/call_register:0.0.2
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8083

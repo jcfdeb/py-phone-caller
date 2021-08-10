@@ -21,7 +21,7 @@ spec:
         runAsUser: 2
       containers:
       - name: asterisk-recall
-        image: quay.io/py-phone-caller/asterisk_recall:0.0.1
+        image: quay.io/py-phone-caller/asterisk_recall:0.0.2
         imagePullPolicy: IfNotPresent
         env:
         - name: TZ
