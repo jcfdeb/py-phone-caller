@@ -1,0 +1,15 @@
+- name: PyCharm Python Security Scanner
+  # You may pin to the exact commit or the version.
+  # uses: tonybaloney/pycharm-security@6377509ea95571c109f15d92d778a5ce89e250c7
+  uses: tonybaloney/pycharm-security@1.24.2
+  with:
+    # Project Directory
+    path: # optional, default is .
+    # Path to an inspection profile XML file
+    profile: # optional, default is /sources/SecurityInspectionProfile.xml
+    # Fail the task if warnings were found in the code
+    fail_on_warnings: # optional, default is no
+    # Subdirectory within path containing Python source
+    source: # optional, default is .
+    # File containing a list of Python packages to be installed before scanning
+    requirements: # optional, default is requirements.txt
