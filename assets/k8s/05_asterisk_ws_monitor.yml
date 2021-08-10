@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: asterisk-ws-monitor-deployment
+  labels:
+    app: asterisk-ws-monitor
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: asterisk-ws-monitor
+  template:
+    metadata:
+      labels:
+        app: asterisk-ws-monitor
+    spec:
+      securityContext:
+        runAsUser: 2
+      containers:
+      - name: asterisk-ws-monitor
+        image: quay.io/py-phone-caller/asterisk_ws_monitor:0.0.1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: TZ
+          value: "Europe/Rome"
+        volumeMounts:
+          - name: caller-config
+            mountPath: /opt/py-phone-caller/config/caller_config.toml
+            subPath: caller_config.toml
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config

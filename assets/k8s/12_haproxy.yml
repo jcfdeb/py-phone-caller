@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: haproxy-service
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    name: http-8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: haproxy
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: py-phone-caller
+  name: haproxy-config
+data:
+  haproxy.cfg: |
+    global
+      log stdout format raw local0
+      user haproxy
+      group haproxy
+
+    defaults
+      mode              http
+      option            dontlognull
+      retries           3
+      maxconn           2000
+      timeout connect   5s
+      timeout client    30s
+      timeout server    30s
+      option httplog
+      # never fail on address resolution
+      default-server init-addr last,libc,none
+      log               global
+
+
+    userlist basic_auth_logins
+       user py-phone-caller password $5$kik5VDeR7cNgH$3JgzwCsSYK2FbfhIZcLTAmV9tj21rYui8DtnNMsx/1A
+
+    frontend http_front
+       bind *:8080
+       stats uri /haproxy?stats
+       default_backend asterisk_call
+
+       acl acl_asterisk_call path_beg -i /asterisk_init
+       acl acl_generate_audio path_beg -i /make_audio /audio
+       acl acl_call_register path_beg -i /register_call /msg /ack /heard
+       acl acl_caller_prometheus_webhook path_beg -i /call_only /sms_only /sms_before_call /call_and_sms
+
+       use_backend asterisk_call if acl_asterisk_call
+       use_backend generate_audio if acl_generate_audio
+       use_backend call_register if acl_call_register
+       use_backend caller_prometheus_webhook if acl_caller_prometheus_webhook
+
+    backend asterisk_call
+       balance roundrobin
+       server asterisk_call asterisk-call-service:8081 check
+
+    backend generate_audio
+       balance roundrobin
+       server generate_audio generate-audio-service:8082 check
+
+    backend call_register
+       balance roundrobin
+       server call_register call-register-service:8083 check
+
+    backend caller_prometheus_webhook
+       #http-request auth unless { http_auth(basic_auth_logins) }
+       balance roundrobin
+       server caller_prometheus_webhook caller-prometheus-webhook-service:8084 check
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haproxy-deployment
+  labels:
+    app: haproxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: haproxy
+  template:
+    metadata:
+      labels:
+        app: haproxy
+    spec:
+      containers:
+      - name: haproxy
+        image: haproxy:2.4.2
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        env:
+        - name: TZ
+          value: "Europe/Rome"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/local/etc/haproxy/haproxy.cfg
+          subPath: haproxy.cfg
+      volumes:
+      - name: config-volume
+        configMap:
+          name: haproxy-config

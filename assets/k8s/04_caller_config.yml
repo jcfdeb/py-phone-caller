@@ -1,0 +1,93 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: py-phone-caller
+  name: py-phone-caller-config
+  labels:
+    app: py-phone-caller
+data:
+  caller_config.toml: |-
+    [commons]
+    asterisk_user = "py-phone-caller"
+    asterisk_pass = "use-a-secure-password-here"
+    asterisk_host = "asterisk-service"
+    asterisk_web_port = "8088"
+    asterisk_http_scheme = "http"
+
+    [asterisk_call]
+    asterisk_ari_channels = "ari/channels"
+    asterisk_ari_play = "play?media=sound"
+    asterisk_context = "py-phone-caller"
+    asterisk_extension = "3216"
+    asterisk_chan_type = "SIP/sip-provider"
+    asterisk_callerid = "Py-Phone-Caller"
+    asterisk_call_http_scheme = "http"
+    asterisk_call_host = "asterisk-call-service"
+    asterisk_call_port = "8081"
+    asterisk_call_app_route_asterisk_init = "asterisk_init"
+    asterisk_call_app_route_play = "play"
+    seconds_to_forget = 300
+    client_timeout_total = 5
+
+    [call_register]
+    call_register_http_scheme = "http"
+    call_register_host = "call-register-service"
+    call_register_port = "8083"
+    call_register_app_route_register_call = "register_call"
+    call_register_app_route_voice_message = "msg"
+    call_register_app_route_acknowledge = "ack"
+    call_register_app_route_heard = "heard"
+
+    [asterisk_ws_monitor]
+    asterisk_stasis_app = "py-phone-caller"
+
+    [asterisk_recall]
+    times_to_dial = 3
+
+    [generate_audio]
+    generate_audio_http_scheme = "http"
+    generate_audio_host = "generate-audio-service"
+    generate_audio_port = "8082"
+    generate_audio_app_route = "make_audio"
+    gcloud_tts_language_code = "es"
+    serving_audio_folder = "audio"
+    num_of_cpus = 4
+
+    [caller_prometheus_webhook]
+    prometheus_webhook_port = "8084"
+    prometheus_webhook_app_route_call_only = "call_only"
+    prometheus_webhook_app_route_sms_only = "sms_only"
+    prometheus_webhook_app_route_sms_before_call = "sms_before_call"
+    prometheus_webhook_app_route_call_and_sms = "call_and_sms"
+    prometheus_webhook_receivers = [ "+391234567890" ]
+
+    [caller_sms]
+    caller_sms_http_scheme = "http"
+    caller_sms_host = "caller-sms-service"
+    caller_sms_port = "8085"
+    caller_sms_audio_app_route = "send_sms"
+    sms_before_call_wait_seconds = 120
+    caller_sms_carrier = "twilio"
+    twilio_account_sid = "your-twilio-sid"
+    twilio_auth_token = "your-twilio-auth-token"
+    twilio_sms_from = "+1123456789"
+
+    [database]
+    db_host = "postgresql-service"
+    db_name = "py_phone_caller"
+    db_user = "py_phone_caller"
+    db_password = 'use-a-secure-password-here'
+    db_max_size = 50
+    db_max_inactive_connection_lifetime = 30.0
+
+    [logger]
+    log_formatter = "%(asctime)s %(message)s"
+    acknowledge_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/ack?asterisk_chan=[The Asterisk Channel ID]"
+    heard_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/heard?asterisk_chan=[The Asterisk Channel ID]"
+    registercall_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&messagge=[Alert Message Text]&asterisk_chan=[The Asterisk Channel ID]"
+    voice_message_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/msg?asterisk_chan=[The Asterisk Channel ID]"
+    asterisk_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/asterisk?phone=[Destination Phone Number]&messagge=[Alert Message Text]"
+    asterisk_play_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/play?asterisk_chan=[The Asterisk Channel ID]&msg_chk_sum=[The message cecksum]"
+    generate_audio_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/make_audio?messagge=[Alert Message Text]&msg_chk_sum=[The message cecksum]"
+    caller_sms_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&messagge=[Alert Message Text]"
+    lost_directory_error = "The folder to serve the audio files was not found."

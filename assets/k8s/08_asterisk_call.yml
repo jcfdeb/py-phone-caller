@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: asterisk-call-service
+spec:
+  type: NodePort
+  ports:
+  - port: 8081
+    name: http-8081
+    targetPort: 8081
+    protocol: TCP
+  selector:
+    app: asterisk-call
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: asterisk-call-deployment
+  labels:
+    app: asterisk-call
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: asterisk-call
+  template:
+    metadata:
+      labels:
+        app: asterisk-call
+    spec:
+      securityContext:
+        runAsUser: 2
+      containers:
+      - name: asterisk-call
+        image: quay.io/py-phone-caller/asterisk_call:0.0.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8081
+        env:
+        - name: TZ
+          value: "Europe/Rome"
+        # 'GENERATE_AUDIO_HOST' and 'GENERATE_AUDIO_PORT' passed to the Asterisk PBX in order to reach the audio files
+        # hosted on the Kubernetes cluster
+        - name: GENERATE_AUDIO_HOST
+          value: "app.py-phone-caller.lan"
+        - name: GENERATE_AUDIO_PORT
+          value: "80"
+        volumeMounts:
+          - name: caller-config
+            mountPath: /opt/py-phone-caller/config/caller_config.toml
+            subPath: caller_config.toml
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config

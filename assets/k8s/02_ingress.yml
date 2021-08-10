@@ -1,0 +1,22 @@
+# Tested with Kubernetes v1.22+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: py-phone-caller
+  name: py-phone-caller-ingress
+  annotations:
+    # https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  # Use the right address for your setup
+  - host: app.py-phone-caller.lan
+    http:
+      paths:
+      - backend:
+          service:
+            name: haproxy-service
+            port:
+              number: 8080
+        path: /
+        pathType: ImplementationSpecific

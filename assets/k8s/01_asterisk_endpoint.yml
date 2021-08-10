@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: asterisk-service
+spec:
+  ports:
+    - protocol: TCP
+      port: 8088
+      targetPort: 8088
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  namespace: py-phone-caller
+  name: asterisk-service
+subsets:
+  - addresses:
+      - ip: 192.168.122.234
+    ports:
+      - port: 8088
