@@ -1,35 +1,29 @@
-# This is a basic workflow to help you get started with Actions
+name: Security check - Bandit
 
-name: bandit-scan
+on: push
 
-# Controls when the workflow will run
-on:
-  # Triggers the workflow on push or pull request events but only for the main branch
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+        python-version: [ '3.9.6' ]
+    name: Python ${{ matrix.python-version }} ${{ matrix.os }} 
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      - name: Python security check using Bandit
-        # You may pin to the exact commit or the version.
-        # uses: Joel-hanson/bandit-report-artifacts@4937329fdd7cb25709ac036407f7b7222617f8ca
-        uses: Joel-hanson/bandit-report-artifacts@V1
-        with:
-          # Version range or exact version of a Python version to use, using SemVer's version range syntax.
-          python_version: 3.9.6 
-          # This is the path at which the your python project is located in you github repo.
-          project_path: . # optional, default is .
-          # This is to ignore the security failures and pass the check.
-  
+    - uses: actions/checkout@v2
+
+    - name: Security check - Bandit
+      uses: ./
+      with:
+        python_version: ${{ matrix.python-version }}
+        project_path: .
+        ignore_failure: true
+
+    - name: Security check report artifacts
+      uses: actions/upload-artifact@v1
+      # if: failure()
+      with:
+        name: Security report
+        path: output/security_report.txt
