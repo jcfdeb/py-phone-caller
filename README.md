@@ -1,3 +1,6 @@
+[![SL Scan](https://github.com/jcfdeb/py-phone-caller/actions/workflows/shiftleft-analysis.yml/badge.svg)](https://github.com/jcfdeb/py-phone-caller/actions/workflows/shiftleft-analysis.yml)
+
+
 # py-phone-caller
 
 > If you've love for yourself and your team, right now this project isn't ready yet for production. 
