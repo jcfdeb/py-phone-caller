@@ -97,6 +97,8 @@ To be clear, to manage more than a single concurrent call *(coming to the **aste
 Maybe the previous paragraph can be a little boring, at the end of this text we'll see an example of this configuration. 
 In order to be more illustrative.
 
+> **Important**: the '**chan_pjsip**' *(PJSIP channel)* is not yet supported, in the future releases the support will be added.
+
 #### Prerequisites
 
 * To *send a SMS* message to a cell phone: [a Twillio account](https://www.twilio.com/sms) *(optional to send SMS messages)*.
@@ -139,16 +141,42 @@ Soon we'll try the deployment on RHEL 8, OpenShift/Kubernetes*).
 
 ### Configuration of the Asterisk PBX
 
-* Configuration of the **SIP** Trunk
+Some configurations are needed from the Asterisk side, in order to place calls to the cell phones or landlines we need 
+to configure a **SIP Trunk**. If we choose to use only local extensions without placing calls to external phones, we need
+to crate a **SIP** or **IAX2** extension.
+
+Last but not least, a *custom extension* and an **ARI** *(Asterisk REST Interface)* user are needed to used by '**py-phone-caller**' 
+
+#### Configuration of the SIP Trunk
+
+> Used to place calls on the public phone network, cell or landline phones.
+
+1. First press the "**Connectivity**" button.
+2. Later press the "**Trunks**" button.
+
 ![trunk configuration step 1](freepbx-setup/image/trunk/trunk-01.png "Trunk configuration")
+
+1. Press the "**+ Add Trunk**" button
+2. Press the "**+ Add SIP (chan_sip) Trunk**" button
 
 ![trunk configuration step 2](freepbx-setup/image/trunk/trunk-02.png "Trunk configuration")
 
+1. Configure the "**Trunk Name**" *(this mane will be referenced in the 'py-phone-caller' config. As value of
+   ```asterisk_chan_type``` with a value like this "*SIP/sip-provider*")*.
+2. In the "**Outbound CallerID**" we can use every preferred value.
+3. Open the tab "**sip Settings**".
+
 ![trunk configuration step 3](freepbx-setup/image/trunk/trunk-03.png "Trunk configuration")
+
+
+1. Open the "**Outgoing**" tab.
+2. Configure the "**Trunk Name**" *(for consistency reasons use the same name of the previous step)*.
+3. On the "**PEER Details**" section insert the correct configuration values in order to reach the SIP provider.
+4. To save the configuration press the "**Submit**" button.
 
 ![trunk configuration step 4](freepbx-setup/image/trunk/trunk-04.png "Trunk configuration")
 
-* Configuration example:
+* **PEER Details** configuration example:
 ```ini
 type=peer
 auth=md5
@@ -161,20 +189,48 @@ qualify=yes
 insecure=very
 ```
 
+1. Press the '**Apply Config**' button.
+
 ![trunk configuration step 5](freepbx-setup/image/trunk/trunk-05.png "Trunk configuration")
+
+1. Wait until the reloading process is done.
 
 ![trunk configuration step 6](freepbx-setup/image/trunk/trunk-06.png "Trunk configuration")
 
 
-* Configuration of the custom **SIP extension** to use with '**py-phone-caller**'
+At this point, we've a **Trunk** configured in order to place calls to the cell and landline phones. Remember, this kind
+of configuration surely has a cost depending on the kind of the provider or device used con converge with the public phone
+network *(cell or landline)*. 
+ 
+
+#### Configuration of the custom **extension** to use with '**py-phone-caller**'
 
 > Can be intended as the **caller** part
 
+Within this configuration we'll be able to start a call and pass the control to the '**py-phone-caller**' in order to 
+play a given message, in our use case the message is the '*description*' of a Prometheus alert sent by the *Alertmanager*
+to the '**caller_prometheus_webhook**'.
+ 
+1. Press the "**Admin**" buttom.
+2. Choose the "**Config Edit**" option.
+
 ![SIP extension step 1](freepbx-setup/image/custom_extension/ediit_custom_exten-01.png "SIP custom extension")
+
+
+1. From the *left side* tree select the '**extensions_custom.conf**' option.
+2. Fill the "**Working on extensions_custom.conf**" text area with the right values for our setup *(we can find the right
+   values on the bellow in the text snippet)*
 
 ![SIP extension step 2](freepbx-setup/image/custom_extension/ediit_custom_exten-02.png "SIP custom extension")
 
+   
+1. Check again the "**Working on extensions_custom.conf**" in order to validate the new settings.
+2. Press the "**Save**" button.
+
 ![SIP extension step 3](freepbx-setup/image/custom_extension/ediit_custom_exten-03.png "SIP custom extension")
+
+
+1. Press the "**Apply Config**" button and wait until the configuration reloading process is done.
 
 ![SIP extension step 4](freepbx-setup/image/custom_extension/ediit_custom_exten-04.png "SIP custom extension")
 
@@ -217,10 +273,26 @@ same => n,Playback(vm-goodbye)
 same => n,Hangup()
 ```
 
+> Wait a minute!, what's doing this custom configuration block?
+
+
+1. Here we define the nome of the *context* (```[py-phone-caller]```)
+2. And here we go with the first line of the *3216* extension *(we can use other extension number, the important thing
+   is to use the same value on the 'py-phone-caller' config)*.
+3. The PBX will play the audio file '**greeting-message.wav**' *(to be created and copied to the PBX)*.
+4. This line with the ```Stasis(py-phone-caller)``` gives the control of the call to the '**py-phone-caller**'.
+5. When the '**py-phone-caller**' lets *continue* the call flow through the Asterisk dialplan *(in this case within our
+   custom extension)* an HTTP GET request will be done against the '**call_register**' in order to record in database when 
+   the message was heard. When the audio file was played, the control of the ongoing call is returned to Asterisk. 
+6. The Asterisk PBX plays the audio file '**press-4-for-acknowledgement.wav**'. 
+7. As the line is showing ```Playback(beep)```, the PBX will play a **beep** in order to wait the callee input.
+8. The ```Read(get,"silence/1",,,,2)``` function will read the callee input *(we're waiting a **4**)*.
+9. If the calle don't press the number **4** the call is terminated.
+
 ![SIP extension step 5](freepbx-setup/image/custom_extension/ediit_custom_exten-05.png "SIP custom extension")
 
 
-* Creating a standard Asterisk extension (*can be SIP or IAX2*)
+#### Creating a standard Asterisk extension (*can be SIP or IAX2*)
 
 
 
@@ -232,33 +304,93 @@ same => n,Hangup()
 > the audio quality be will poor.
 
 
-**Note**: this endpoint can be intended as the **callee** part
+> **Important**: in this case the configuration value of ```asterisk_chan_type``` will be look like ```SIP``` and not
+> as ```SIP/sip-provider```. We're not using a SIP **Trunk** or *Media Gateway* in order to contact phones outside our 
+> PBX system.
 
-![SIP extension for the callee 1](freepbx-setup/image/sip_extension/00_sip_extension.png "A PBX extension instead of a landline or cell")
 
-![SIP extension for the callee 2](freepbx-setup/image/sip_extension/01_sip_extension.png "A PBX extension instead of a landline or cell")
+**Note**: this endpoint can be intended as the **callee** part, the extension or phone number to call in case of a new
+          Prometheus alert or an *HTTP POST* request agains the '**asterisk_call**' *(yes, if we want, also is possible 
+          start a call with **cron** or something else)*
+
+1. Press the "**Applications**" button.
+
+![SIP extension for the callee 0](freepbx-setup/image/sip_extension/00_sip_extension.png "A PBX extension instead of a landline or cell")
+
+
+1. Select the "**Extensions**" option.
+
+![SIP extension for the callee 1](freepbx-setup/image/sip_extension/01_sip_extension.png "A PBX extension instead of a landline or cell")
+
+
+1. Press the "**+ Add Extension**" button.
+2. Select the "**Add New SIP (Legacy) [chan_sip] Extension**" option.
+
+![SIP extension for the callee 2](freepbx-setup/image/sip_extension/02_sip_extension.png "A PBX extension instead of a landline or cell")
+
+
+1. Configure the "**User Extension**", generally is a number. In our case we've chosen the '**1614**'. It will be 
+   referenced / used as value of ```prometheus_webhook_receivers``` in the '**caller_prometheus_webhook**' configuration
+   block.
+2. Configure the "**Display Name**", the text that will appear on the display of the callee phone.
+3. Select a strong "**Secret**" *(the password, FreePBX provides a new one automatically)*. To be configured on your soft
+   phone or SIP phone.
+4. Press the "**Submit**" button.
 
 ![SIP extension for the callee 3](freepbx-setup/image/sip_extension/03_sip_extension.png "A PBX extension instead of a landline or cell")
 
+
+1. Press the "**Apply Config**" button.
+
 ![SIP extension for the callee 4](freepbx-setup/image/sip_extension/04_sip_extension.png "A PBX extension instead of a landline or cell")
+
+
+1. Wait until the "**Reloading**" process is done.
 
 ![SIP extension for the callee 5](freepbx-setup/image/sip_extension/05_sip_extension.png "A PBX extension instead of a landline or cell")
 
 
-* Configuration of the Asterisk **ARI** user
+#### Configuration of the Asterisk **ARI** user
+
+*Last but not least*, the **Asterisk Rest Interface** user. This user will be used within the '**asterisk_ws_monitor**'
+in order to register the *Stasis application* (a permanent WebSocket connection), and by the '**asterisk_call**' in order
+to initialize the calls against the Asterisk PBX *(also we can refer to it as FreePBX)*.
+
+1. Press the "**Settings**" button.
+2. Select the "**Asterisk REST Interface Users**" option.
 
 ![ARI user step 1](freepbx-setup/image/rest_interface_user/rest_interface_user-01.png "The ARI user for our Stasis app")
 
+
+1. Press the "**+ Add User**" button.
+
 ![ARI user step 2](freepbx-setup/image/rest_interface_user/rest_interface_user-02.png "The ARI user for our Stasis app")
+
+
+1. Configure the "**REST Interface User Name**", in our example '**py-phone-caller**'.
+2. Configure the "**REST Interface User Password**", yet proposed by the **FreePBX** web UI, *logically we can change it 
+   to other value if don't agree with the proposed default value*.
+3. We choose the "**Plain Text**" option only for development environments but for production please use '**Crypt**'.
+   More info about the [ARI configuration](https://wiki.asterisk.org/wiki/display/AST/Asterisk+Configuration+for+ARI#AsteriskConfigurationforARI-HTTPServer).
+4. Configure the "**Read Only**" option to "**No**".
+5. In order to save the changes press the "**Submit**" button.
 
 ![ARI user step 3](freepbx-setup/image/rest_interface_user/rest_interface_user-03.png "The ARI user for our Stasis app")
 
+
+1. Press the "**Apply Config**" button.
+
 ![ARI user step 4](freepbx-setup/image/rest_interface_user/rest_interface_user-04.png "The ARI user for our Stasis app")
+
+
+1. Wait until the "**Reloading**" process is done.
 
 ![ARI user step 5](freepbx-setup/image/rest_interface_user/rest_interface_user-05.png "The ARI user for our Stasis app")
 
+Now with the Asterisk *(FreePBX)* system configured we can proceed with the rest of the configuration in order to run the
+'**py-phone-caller**' in our **Fedora Server** instance.
 
-* Creating the audio files used by the custom extension 
+### Creating the audio files used by the custom extension 
 
 > *you can create the audio files in your system or wherever you prefer, for this example in this guide we assume
 that the files will be created and converted to wave on your system to be transferred by SSH (scp) to the Asterisk PBX*.
@@ -357,7 +489,7 @@ greeting.mp3: MPEG ADTS, layer III, v2,  32 kbps, 24 kHz, Monaural
 greeting.wav: RIFF (little-endian) data, WAVE audio, Microsoft PCM, 16 bit, mono 8000 Hz
 ```
 
-* Copying the audio files used by the custom extension
+#### Copying the audio files used by the custom extension to FreePBX host
 
 Now we can copy the recently created files *('/tmp/greeting-message.wav', '/tmp/press-4-for-acknowledgement.wav')* to 
 the Asterisk system. 
@@ -368,7 +500,6 @@ root@192.168.122.234's password:
 
 greeting-message.wav                                                                 100%  107KB  21.7MB/s   00:00
 press-4-for-acknowledgement.wav                                                      100%   77KB  21.9MB/s   00:00
-
 ```
 
 * Login to the Asterisk *(FreePBX distribution)* System
@@ -416,15 +547,23 @@ we'll move the recently copied files to this folder *(the folder will change if 
 [root@freepbx ~]# chown asterisk.asterisk /var/lib/asterisk/sounds/en/{greeting-message.wav,press-4-for-acknowledgement.wav}
 ```
 
+And here we've completed the configuration of the Asterisk PBX, now we can install and configure the "**py-phone-caller**"
+containers through **Ansible**.  
+
 ### Installing the needed dependencies on the Fedora Server
 
-Steps to take as '**root**'
 
+> These steps need to be done as '**root**'
+
+
+We can become **root** user by executing the following command:
 ```bash
 [fedora@fedora-server ~]$ sudo -i
 ```
 
-We'll run the containers with **'Podman'**
+Since we'll run the containers with **'Podman'**, the package installation is needed. And can be done executing the
+following command. 
+
 ```bash
 [root@fedora-server ~]# dnf -y install podman podman-plugins podman-docker
 Last metadata expiration check: 0:42:59 ago on Wed 28 Jul 2021 23:31:23 PM CEST.
@@ -465,8 +604,8 @@ Installed size: 123 M
 [...]
 ```
 
-The installation of '**py-phone-caller**' is done through **Ansible** and some data regarding the call is stored in 
-**PostgreSQL**.
+The installation of '**py-phone-caller**' is done through **Ansible** and some data regarding the calls and the Stasis
+application events are stored in **PostgreSQL**. In order to have the needed packages we can issue the following command.
 
 ```bash
 [root@fedora-server ~]# dnf install -y ansible python3-psycopg2 postgresql
