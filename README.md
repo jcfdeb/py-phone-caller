@@ -4,7 +4,7 @@
 # py-phone-caller
 
 > If you've love for yourself and your team, right now this project isn't ready yet for production. 
-> different blocks of coded need to be improved also some unused lines removed...
+> different blocks of coded need to be improved also some unused lines will be removed...
 
 > More content is coming soon... (also the setup documentation)
 

@@ -14,9 +14,88 @@ in the Internet*).
 #### The Big Picture
 
 
-* *Work In progress*
+The **py-phone-caller** components are represented using the *blue* boxes. The third party components or dependencies are 
+the *green* boxes, and the *yellow* box is the receiver of the *calls/messages*.
 
 ![py-phone-caller the big picture](diagram/py_phone_caller_diagram.png "py-phone-caller flow diagram")
+
+
+#### A Little Description Of The Components
+
+
+* **generate_audio**
+  * *Role*: used to create and host the audio files player by the Asterisk PBX.
+  * *Container repository*: quay.io/py-phone-caller/generate_audio            
+
+
+* **caller_sms**
+  * *Role*: used to send the SMS messages through a service provider.
+  * *Container repository*: quay.io/py-phone-caller/caller_sms     
+
+
+* **caller_prometheus_webhook**
+  * *Role*: start a call or send an SMS message when a Prometheus alert is received. 
+  * *Container repository*: quay.io/py-phone-caller/caller_prometheus_webhook
+
+> The **caller_prometheus_webhook** has 4 endpoints that behaves differently.
+>
+> * call_only: used to originate a single call
+> * sms_only: used to send a single SMS
+> * sms_before_call: first, send an SMS and later originate a call (after the amount of seconds configured in: 
+> ```sms_before_call_wait_seconds```)
+> * call_and_sms: used to send the SMS and place the call at the same time.
+
+
+* **call_register**
+  * *Role*: used to register on the PostgreSQL DB the arriving calls with useful details. 
+  * *Container repository*: quay.io/py-phone-caller/call_register
+  
+
+* **asterisk_ws_monitor**
+  * *Role*: this component register the Stasis application against Asterisk and also log the events to the DB *(table: 'asterisk_ws_events')*.
+  * *Container repository*: quay.io/py-phone-caller/asterisk_ws_monitor
+
+              
+* **asterisk_recall**
+  * *Role*: reading from the database and considering the ```times_to_dial``` and ```seconds_to_forget``` configuration 
+    parameters, retries a failed or not acknowledged call *(... press 4 to acknowledge...)*.  
+  * *Container repository*: quay.io/py-phone-caller/asterisk_recall
+
+  
+* **asterisk_asterisk_call**
+  * *Role*: has the responsibility to place the calls against the Asterisk PBX through the REST interface. 
+  * *Container repository*: quay.io/py-phone-caller/asterisk_call             
+            
+
+
+#### Current Limitations
+
+Right now, within current version (0.0.2) there's not a *call traffic controller*, that means if many requests arrives to
+the '**asterisk_call**' can cause an *undesired behaviour* since every **Stasis application** can manage *only a call at once*. 
+In order to get a usable and *safe* setup we need to send a single alert when used within the '**caller_prometheus_webhook**'
+or a single HTTP POST request when invoked with an HTTP client *(for example using **curl**)*.
+A kind of workaround can be keep in mind the amount of seconds configured in ```seconds_to_forget``` in order to prevent 
+*collisions* in the '**asterisk_call**'.
+
+The other solution, in order to give more resiliency to our setup, is adding many instances of the '**asterisk_call**' 
+and '**asterisk_ws_monitor**', behind a '**HAProxy**' instance. Keep in mind that we need one new extension entry in 
+'**extensions_custom.conf**' for every '**asterisk_call**' instance.
+
+To be clear, to manage more than a single concurrent call *(coming to the **asterisk_call**)* we need to add one more instance of:
+  * '**asterisk_call**' *(has the responsibility of the call initialization using a given custom extension, and this extension
+     calls the Stasis application)*
+  * '**asterisk_ws_monitor**' *(the main role is the registration of a new Stasis application instance, referenced in 
+     **extensions_custom.conf**. Please use unique names)*
+  * An entry in '**extensions_custom.conf**' *(in order to be used exclusively by **asterisk_call** instance and where we'll 
+    reference the Stasis application name configured in ```asterisk_stasis_app```)*
+
+> Good news, we can always use the same **configuration file** and override the setting with environmental variables that
+> have priority over the values in the configuration file. 
+> In order to set up an environmental variable we need to convert the lowercase keyword to uppercase, for example ```asterisk_stasis_app```
+> becomes ```ASTERISK_STASIS_APP```
+
+Maybe the previous paragraph can be a little boring, at the end of this text we'll see an example of this configuration. 
+In order to be more illustrative.
 
 #### Prerequisites
 
@@ -38,6 +117,10 @@ the services of a provider or using a media gateway connected to the landline or
 
 **Note**: *The 'py-phone-caller' packages hasn't any endorsement/relation by/with Twilio or FreePBX, these services/products 
 was used because the easy of use and the commitment with the Open Source.*
+
+> Good news again. if you decide to not send SMS and not place calls to paid phone networks: is possible receive calls 
+> to a SIP or IAX2 extension of the PBX using a soft-phone in your cell or physical phone that supports those protocols.
+
 
 ### Systems used in this use case 
 
