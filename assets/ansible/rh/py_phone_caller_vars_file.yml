@@ -12,7 +12,7 @@ caller_config_toml_template_url: "https://raw.githubusercontent.com/jcfdeb/py-ph
 py_phone_caller_config_tmp_path: /tmp/caller_config.toml.jinja
 py_phone_caller_config_path: "{{ installation_folder }}/{{ installation_folder_name }}/config/caller_config.toml"
 config_mounted_in_container: /opt/py-phone-caller/config/caller_config.toml:Z
-py_phone_caller_version: 0.0.1
+py_phone_caller_version: 0.0.2
 container_registry_url: quay.io/py-phone-caller
 py_phone_caller_network: py-phone-caller
 py_phone_caller_subnet: 172.19.0.0/24

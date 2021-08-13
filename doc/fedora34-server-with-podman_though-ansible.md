@@ -1028,12 +1028,22 @@ success
 
 ### Installing and Configuring the Prometheus Monitoring Stack
 
+> The most steps of this section need to be done on the Fedora Server using the '**root**' account or an user with '**sudo**'
+> permissions.
+
+In this section we'll install and configure the last piece of this use case, using [Prometheus](https://prometheus.io/docs/introduction/overview/), 
+the [Node Expoter](https://prometheus.io/docs/guides/node-exporter/) and the [Alertmanager](https://prometheus.io/docs/alerting/latest/overview/).
+We'll be able to monitor, collect metrics and alert *(through the Alertmanager triggering the caller_prometheus_webhook)* if some 
+metric is violating a condition defined on the *alerting rules*.
 
 Packages to be installed:
 
 * golang-github-prometheus
 * golang-github-prometheus-alertmanager 
 * golang-github-prometheus-node-exporter
+
+Issuing the following command will install all the needed packages:
+
 
 ```bash
 [fedora@fedora ~]$ sudo dnf -y install golang-github-prometheus golang-github-prometheus-alertmanager golang-github-prometheus-node-exporter
@@ -1057,7 +1067,20 @@ Installed size: 212 M
 Downloading Packages:
 [...]
 ```
+Now we need to do some configurations in order to get it working as needed. 
 
+> Before we can view a small diagram in order to understand in a better way how these components works 
+
+```text
+Node Exporter <-- Prometheus --> Alertmanager --> caller_prometheus_webhook
+```
+
+In few words, the **Node Exporter** exposes the *metrics* of the **Fedora Server** system, **Prometheus** does a *pull* 
+of these metrics. When some alerting rules are defined, if some metric violates a condition 
+
+
+
+##### The Prometheus Alertmanager
 
 ```bash
 [root@fedora ~]# dnf repoquery -l golang-github-prometheus-alertmanager
@@ -1107,93 +1130,6 @@ Last metadata expiration check: 0:50:29 ago on Thu 12 Aug 2021 04:23:21 PM CEST.
 [root@fedora ~]# cp /usr/share/doc/golang-github-prometheus-alertmanager/doc/examples/simple.yml /etc/alertmanager/alertmanager.yml
 ```
 
-```bash
-[root@fedora ~]# systemctl cat prometheus.service
-# /usr/lib/systemd/system/prometheus.service
-[Unit]
-Description=Prometheus service monitoring system and time series database
-Documentation=https://prometheus.io/docs/introduction/overview/ man:prometheus(1)
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Restart=on-failure
-EnvironmentFile=/etc/sysconfig/prometheus
-User=prometheus
-Group=prometheus
-ExecStart=/usr/bin/prometheus \
-          --config.file=${CONFIG_FILE} \
-          --storage.tsdb.path=${STORAGE_TSDB_PATH} \
-          --web.console.libraries=${WEB_CONSOLE_LIBRARIES_PATH} \
-          --web.console.templates=${WEB_CONSOLE_TEMPLATES_PATH} \
-          --web.listen-address=${WEB_LISTEN_ADDRESS}
-ExecReload=/bin/kill -HUP $MAINPID
-TimeoutStopSec=20s
-SendSIGKILL=no
-
-[Install]
-WantedBy=multi-user.target
-```
-
-
-* File: **/etc/prometheus/prometheus.yml**
-
-```yaml
-# my global config
-global:
-  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
-  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
-  # scrape_timeout is set to the global default (10s).
-
-# Alertmanager configuration
-alerting:
-  alertmanagers:
-  - static_configs:
-    - targets:
-       - 127.0.0.1:9093
-
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
-rule_files:
-   - "alert_rules.yml"
-  # - "first_rules.yml"
-  # - "second_rules.yml"
-
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
-scrape_configs:
-  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
-  - job_name: 'prometheus'
-
-    # metrics_path defaults to '/metrics'
-    # scheme defaults to 'http'.
-
-    static_configs:
-    - targets: ['localhost:9091']
-
-  # The local node exporter
-  - job_name: 'node-exporter'
-
-    static_configs:
-    - targets: ['localhost:9100']
-```
-
-
-* File: **/etc/prometheus/alert_rules.yml** 
-
-```yaml
-groups:
-- name: py-phone-caller test alerts
-  rules:
-
-  - alert: NodeExporterDown  
-    expr: up{job="node-exporter"} == 0
-    for: 5m
-    labels:
-      severity: disaster
-    annotations:
-      summary: "The Node Exporter instance is down"
-      description: "The Node Exporter instance is down, please check soon as possible"
-```
 
 
 * File: **/etc/alertmanager/alertmanager.yml** 
@@ -1339,6 +1275,37 @@ receivers:
 ```
 
 
+
+```bash
+[root@fedora ~]# systemctl cat prometheus.service
+# /usr/lib/systemd/system/prometheus.service
+[Unit]
+Description=Prometheus service monitoring system and time series database
+Documentation=https://prometheus.io/docs/introduction/overview/ man:prometheus(1)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Restart=on-failure
+EnvironmentFile=/etc/sysconfig/prometheus
+User=prometheus
+Group=prometheus
+ExecStart=/usr/bin/prometheus \
+          --config.file=${CONFIG_FILE} \
+          --storage.tsdb.path=${STORAGE_TSDB_PATH} \
+          --web.console.libraries=${WEB_CONSOLE_LIBRARIES_PATH} \
+          --web.console.templates=${WEB_CONSOLE_TEMPLATES_PATH} \
+          --web.listen-address=${WEB_LISTEN_ADDRESS}
+ExecReload=/bin/kill -HUP $MAINPID
+TimeoutStopSec=20s
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target
+```
+
+
+
 * File: **/etc/systemd/system/alertmanager.service**
 
 ```unit file (systemd)
@@ -1389,7 +1356,7 @@ Aug 12 21:44:32 fedora alertmanager[49281]: level=info ts=2021-08-12T19:44:32.42
 Aug 12 21:44:32 fedora alertmanager[49281]: level=info ts=2021-08-12T19:44:32.430Z caller=main.go:485 msg=Listening address=:9093
 ```
 
-* The Node Exporter
+##### The Node Exporter
 
 ```bash
 [root@fedora ~]# systemctl enable --now node_exporter.service 
@@ -1422,7 +1389,7 @@ Aug 12 21:55:48 fedora node_exporter[49401]: level=info ts=2021-08-12T19:55:48.0
 Aug 12 21:55:48 fedora node_exporter[49401]: level=info ts=2021-08-12T19:55:48.067Z caller=tls_config.go:191 msg="TLS is disabled." http2=false
 ```
 
-* Prometheus 
+##### Prometheus 
 
 
 We need make some changes before start the **Prometheus** service we need to change the default listening port from 9090 
@@ -1443,6 +1410,67 @@ WEB_CONSOLE_LIBRARIES_PATH=/etc/prometheus/console_libraries
 WEB_CONSOLE_TEMPLATES_PATH=/etc/prometheus/consoles
 WEB_LISTEN_ADDRESS=127.0.0.1:9091
 ```
+
+
+* File: **/etc/prometheus/prometheus.yml**
+
+```yaml
+# my global config
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+       - 127.0.0.1:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+   - "alert_rules.yml"
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    static_configs:
+    - targets: ['localhost:9091']
+
+  # The local node exporter
+  - job_name: 'node-exporter'
+
+    static_configs:
+    - targets: ['localhost:9100']
+```
+
+
+* File: **/etc/prometheus/alert_rules.yml** 
+
+```yaml
+groups:
+- name: py-phone-caller test alerts
+  rules:
+
+  - alert: NodeExporterDown  
+    expr: up{job="node-exporter"} == 0
+    for: 5m
+    labels:
+      severity: disaster
+    annotations:
+      summary: "The Node Exporter instance is down"
+      description: "The Node Exporter instance is down, please check soon as possible"
+```
+
 
 Enabling the Prometheus Sercice
 
@@ -1476,6 +1504,21 @@ Aug 12 22:03:57 fedora prometheus[49560]: level=info ts=2021-08-12T20:03:57.756Z
 Aug 12 22:03:58 fedora prometheus[49560]: level=info ts=2021-08-12T20:03:58.005Z caller=main.go:918 msg="Completed loading of configuration file" filename=/etc/prometheus/p>
 Aug 12 22:03:58 fedora prometheus[49560]: level=info ts=2021-08-12T20:03:58.006Z caller=main.go:710 msg="Server is ready to receive web requests."
 ````
+
+
+* The firewall rules for Prometeus and the Alertmanager
+
+```bash
+[fedora@fedora-server ~]$ sudo firewall-cmd --add-port=9091/tcp --permanent
+success
+
+[fedora@fedora-server ~]$ sudo firewall-cmd --add-port=9093/tcp --permanent
+success
+
+[fedora@fedora-server ~]$ sudo firewall-cmd --reload
+success
+```
+
 
 
 ### What's Happening Behind The Scenes
