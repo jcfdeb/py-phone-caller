@@ -1075,12 +1075,24 @@ Now we need to do some configurations in order to get it working as needed.
 Node Exporter <-- Prometheus --> Alertmanager --> caller_prometheus_webhook
 ```
 
-In few words, the **Node Exporter** exposes the *metrics* of the **Fedora Server** system, **Prometheus** does a *pull* 
-of these metrics. When some alerting rules are defined, if some metric violates a condition 
-
+In few words, the **Node Exporter** exposes the *metrics* of the **Fedora Server** system, **Prometheus** does a periodic
+*pull* of these metrics. If some alerting rules are defined and one or many metrics violates a condition, **Prometheus** 
+will send a request to the **Alertmanager**. From there the **caller_prometheus_webhook** will be triggered by the 
+**Alertmanager**.
 
 
 ##### The Prometheus Alertmanager
+
+The role of this component is trigger the different notification systems (e-mail, PagerDuty, Slack, VictorOps, etc ) and 
+is also able to make a *POST* Request to any kind of [*webhook receiver*](https://prometheus.io/docs/alerting/latest/configuration/#webhook_config)
+as the '**aller_prometheus_webhook**' in order to place a call or send an SMS message *(or do whatever you want)*. 
+
+> A very useful of this component is the ability of silence the alerts *(form the web interface)* in firing state, when 
+> someone takes action to solve the issue regarding the alert we can '*silence*' this alert preventing a new notification 
+> after 3 hours *(is the default configuration of the 'Alertmanager' -> ```repeat_interval: 3h ```)* 
+
+
+* And here, the list of the packages contents: 
 
 ```bash
 [root@fedora ~]# dnf repoquery -l golang-github-prometheus-alertmanager
@@ -1115,24 +1127,56 @@ Last metadata expiration check: 0:50:29 ago on Thu 12 Aug 2021 04:23:21 PM CEST.
 /usr/share/licenses/golang-github-prometheus-alertmanager/NOTICE
 ```
 
+From the previous code snippet we can see that there's not a Systemd service file, folder to store the data, and the 
+configuration folder. We'll create them manually.
+
+* Creating the configuration folder and the 'data' folder *(in order to get keep the monitoring data in the same place
+  the 'data' directory will be created at ```/var/lib/prometheus/```)*.
 
 ```bash
 [root@fedora ~]# mkdir -p /etc/alertmanager/template /var/lib/prometheus/alertmanager/data
 ```
 
+* The binary will executed as the 'prometheus' user, we need to change the permissions of the recently created data
+  directory.
 
 ```bash
 [root@fedora ~]# chown -R prometheus. /var/lib/prometheus/alertmanager
 ```
 
+* For the initial configuration we'll take the example file from the package files tree.
 
 ```bash
 [root@fedora ~]# cp /usr/share/doc/golang-github-prometheus-alertmanager/doc/examples/simple.yml /etc/alertmanager/alertmanager.yml
 ```
 
+We need to add some configuration blocks to this file '*/etc/alertmanager/alertmanager.yml*', those blocks are:
 
+* On the routes section:
+```yaml
+[...]
+  # py-phone-caller example
+  - match:
+      severity: disaster
+    receiver: py-phone-caller
+[...]
+```
 
-* File: **/etc/alertmanager/alertmanager.yml** 
+* On the receivers section: 
+```yaml
+[...]
+- name: 'py-phone-caller'
+  webhook_configs:
+  # Onr of the endpoints of 'caller_prometheus_webhook'
+  - url: 'http://127.0.0.1:8084/sms_before_call' 
+    send_resolved: false 
+[...]
+```
+
+* The complete file: **/etc/alertmanager/alertmanager.yml** 
+
+> Please consider, this is an example file and several blocks can be removed because they aren't used. For your use case
+> it will work fine. The unused parts wasn't removed in order to show a complete landscape of this file. 
 
 ```yaml
 global:
@@ -1274,7 +1318,8 @@ receivers:
     send_resolved: false 
 ```
 
-
+We can take as Systemd Service file template, the '*prometheus.service*' service unit. 
+By running ```systemctl cat prometheus.service```.
 
 ```bash
 [root@fedora ~]# systemctl cat prometheus.service
@@ -1305,8 +1350,9 @@ WantedBy=multi-user.target
 ```
 
 
-
 * File: **/etc/systemd/system/alertmanager.service**
+
+We need to change only some lines, using the file paths recently crated/copied for the '*Alertmanager*' 
 
 ```unit file (systemd)
 [Unit]
@@ -1328,10 +1374,14 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 ```
 
+* Enabling the '**alertmanager.service**' service
+
 ```bash
 [root@fedora ~]# systemctl enable --now alertmanager.service
 Created symlink /etc/systemd/system/multi-user.target.wants/alertmanager.service → /etc/systemd/system/alertmanager.service.
 ```
+
+* Getting information about the '**alertmanager.service**' service *(useful to check if the service is running fine)*
 
 ```bash
 [root@fedora ~]# systemctl status alertmanager.service
@@ -1358,12 +1408,18 @@ Aug 12 21:44:32 fedora alertmanager[49281]: level=info ts=2021-08-12T19:44:32.43
 
 ##### The Node Exporter
 
+Regarding this component we can say that it exposes different metrics about the host where's running. In order to learn 
+more about the metrics exposed by this component you can take a look of the [README.md](https://github.com/prometheus/node_exporter#enabled-by-default)
+in the Github repository.
+
+* Enabling and starting the '**node_exporter**' serivce
 ```bash
 [root@fedora ~]# systemctl enable --now node_exporter.service 
 Created symlink /etc/systemd/system/multi-user.target.wants/node_exporter.service → /etc/systemd/system/node_exporter.service.
 ```
 
 
+* Getting information about the '**node_exporter**' service *(recently started)*
 
 ```bash
 [root@fedora ~]# systemctl status node_exporter.service 
@@ -1389,8 +1445,7 @@ Aug 12 21:55:48 fedora node_exporter[49401]: level=info ts=2021-08-12T19:55:48.0
 Aug 12 21:55:48 fedora node_exporter[49401]: level=info ts=2021-08-12T19:55:48.067Z caller=tls_config.go:191 msg="TLS is disabled." http2=false
 ```
 
-##### Prometheus 
-
+##### Prometheus
 
 We need make some changes before start the **Prometheus** service we need to change the default listening port from 9090 
 to other value that we prefer. The port is used by **Cockpit**.
@@ -1400,7 +1455,7 @@ to other value that we prefer. The port is used by **Cockpit**.
 tcp   LISTEN 0      4096                        *:9090                *:*     users:(("systemd",pid=1,fd=139)) ino:18756 sk:e cgroup:/system.slice/cockpit.socket v6only:0 <-
 ```
 
-Changing the Prometheus port.
+Changing the Prometheus port to another one *(for example the 9091/TCP)*.
 
 * File:  **/etc/sysconfig/prometheus**
 ```bash
@@ -1414,6 +1469,40 @@ WEB_LISTEN_ADDRESS=127.0.0.1:9091
 
 * File: **/etc/prometheus/prometheus.yml**
 
+The most important block to modify are the following two blocks.
+
+* The *'alertmanagers'* block:
+```yaml
+[...]
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+       - 127.0.0.1:9093
+[...]
+```
+
+* The '*scrape_configs*' block:
+```yaml
+[...]
+  # The local node exporter
+  - job_name: 'node-exporter'
+
+    static_configs:
+    - targets: ['localhost:9100']
+[...]
+```
+
+* The '*rule_files*' block:
+```yaml
+[...]
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+   - "alert_rules.yml"
+[...]
+```
+
+* The entire file:
 ```yaml
 # my global config
 global:
@@ -1472,12 +1561,14 @@ groups:
 ```
 
 
-Enabling the Prometheus Sercice
+* Enabling and starting the '**prometheus**' service
 
 ```bash
 [root@fedora ~]# systemctl enable --now prometheus.service 
 Created symlink /etc/systemd/system/multi-user.target.wants/prometheus.service → /usr/lib/systemd/system/prometheus.service.
 ```
+
+* Getting information about the status of the '**prometheus**' service.
 
 ````bash
 [root@fedora ~]# systemctl status prometheus.service 
@@ -1506,7 +1597,7 @@ Aug 12 22:03:58 fedora prometheus[49560]: level=info ts=2021-08-12T20:03:58.006Z
 ````
 
 
-* The firewall rules for Prometeus and the Alertmanager
+* The firewall rules for **Prometeus** and the **Alertmanager**.
 
 ```bash
 [fedora@fedora-server ~]$ sudo firewall-cmd --add-port=9091/tcp --permanent
@@ -1527,6 +1618,11 @@ As always, the logs becomes very useful in order to understand what's happening 
 
 
 * Logs of the '**caller_prometheus_webhook**'
+
+When an alerts is sent from **Prometheus** to the **Alermanager**, then the **Alertmanager** sends an *HTTP POST* request
+to the **caller_prometheus_webhook**. In this example we've used the '**/sms_before_call**' endpoint and as consequence 
+an **SMS** will be sent soon as possible and *later*, the **phone call**.
+
 ```bash
 2021-08-12 18:45:01,803 Call/Message 'The Node Exporter instance is down, please check soon as possible.' for '+393312345678' through the endpoint 'sms_before_call'
 2021-08-12 18:45:01,807 - 172.19.0.84 [12/Aug/2021:16:45:01 +0000] "POST /sms_before_call HTTP/1.1" 200 180 "-" "Alertmanager/"
@@ -1534,6 +1630,10 @@ As always, the logs becomes very useful in order to understand what's happening 
 
 
 * Logs of the '**caller_sms**'
+
+When the **caller_prometheus_webhook** receives the POST request from the **Alertmanager** it does other POST requesto to 
+the '**caller_sms**' to send the message to the contact configured in ```prometheus_webhook_receivers```. Through the 
+SMS service provider.
 
 ```bash
 2021-08-12 18:45:01,812 Sending the SMS message 'The Node Exporter instance is down, please check soon as possible.' to '+393312345678'
@@ -1550,6 +1650,21 @@ As always, the logs becomes very useful in order to understand what's happening 
 
 * Logs of the '**asterisk_asterisk_call**'
 
+Some seconds or minutes after the SMS *(configured in ```sms_before_call_wait_seconds```)* the **asterisk_asterisk_call**
+starts the calls round against the receiver number.
+
+> Some interesting parameters to adjust as we prefer.
+
+* Parameters from the ```config/caller_config.toml``` file
+
+```toml
+seconds_to_forget = 300
+times_to_dial = 3
+```
+The '**seconds_to_forget**' is the time window where the '**asterisk_recall**' will try to recall the receiver, and 
+'**times_to_dial**' is the number of times to retry to call. 
+ 
+
 ```bash
 2021-08-12 18:47:02,655 - 172.19.0.81 [12/Aug/2021:18:47:02 +0000] "POST /asterisk_init?phone=00393312345678&message=The+Node+Exporter+instance+is+down,+please+check+soon+as+possible. HTTP/1.1" 200 178 "-" "Python/3.9 aiohttp/3.7.4.post0"
 2021-08-12 18:47:22,690 Asterisk server 'http://192.168.122.234:8088' response: 201. Playing audio 'e23c1ebc.wav' to the channel '1628886822.1'
@@ -1564,6 +1679,8 @@ As always, the logs becomes very useful in order to understand what's happening 
 
 * Logs of the '**asterisk_recall**'
 
+When the number '**4**' is not pressed by the *receiver/callee*, this component will recall again *(```times_to_dial```)*.  
+
 ```bash
 2021-08-12 18:10:56,388 - Using the default path 'config/caller_config.toml'
 2021-08-12 18:48:17,679 Retry to call phone number: '00393312345678' to play the message: 'The Node Exporter instance is down, please check soon as possible.' - Total retry period: '300' seconds
@@ -1572,7 +1689,37 @@ As always, the logs becomes very useful in order to understand what's happening 
 
 * Logs of the '**asterisk_ws_monitor**'
 
+This component manges and records into the database *(into the 'asterisk_ws_events' table)* the events of the Asterisk PBX
+when the '**py-phone-caller**' components are managing the call. 
+
 ```bash
 2021-08-12 18:47:22,695 Response for the playing audio 'e23c1ebc.wav' on the Asterisk channel '1628886822.1': '{"status": 201}'
 2021-08-12 18:48:32,394 Response for the playing audio 'e23c1ebc.wav' on the Asterisk channel '1628886897.2': '{"status": 201}'
 ```
+
+* Last but not least
+
+The '**call_register**' component writes all the managed calls into the 'calls' table. An example of table structure from 
+the ```assets/DB/db-schema.sql``` file:
+
+```sql
+CREATE TABLE calls (
+    id integer NOT NULL,
+    phone character varying(64),
+    message character varying(1024),
+    asterisk_chan character varying(64),
+    msg_chk_sum character varying(64),
+    call_chk_sum character varying(64),
+    unique_chk_sum character varying(64),
+    times_to_dial smallint,
+    dialed_times smallint,
+    seconds_to_forget integer,
+    first_dial timestamp without time zone,
+    last_dial timestamp without time zone,
+    heard_at timestamp without time zone,
+    acknowledge_at timestamp without time zone,
+    cycle_done boolean DEFAULT false
+);
+```
+
+
