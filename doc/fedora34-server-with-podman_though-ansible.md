@@ -769,7 +769,7 @@ caller_config_toml_template_url: "https://raw.githubusercontent.com/jcfdeb/py-ph
 py_phone_caller_config_tmp_path: /tmp/caller_config.toml.jinja
 py_phone_caller_config_path: "{{ installation_folder }}/{{ installation_folder_name }}/config/caller_config.toml"
 config_mounted_in_container: /opt/py-phone-caller/config/caller_config.toml:Z
-py_phone_caller_version: 0.0.1
+py_phone_caller_version: 0.0.2
 container_registry_url: quay.io/py-phone-caller
 py_phone_caller_network: py-phone-caller
 py_phone_caller_subnet: 172.19.0.0/24
@@ -896,7 +896,51 @@ caller_sms_error: "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[
 lost_directory_error: "The folder to serve the audio files was not found."
 ```
 
-* Ansible starts to play 
+* Installing and configuring the '**py-phone-caller**' with **Ansible**.
+
+Whit [Ansible](https://www.ansible.com/resources/get-started), a really cool configuration management and orchestration 
+tool, we can install and configure almost automatically all the **py-phone-caller** components. Once all the parameters 
+are set in the ```assets/ansible/rh/py_phone_caller_vars_file.yml``` after a few minutes through '**ansible-playbook**'
+we get the '**py-phone-caller**' configured and ready to be used.
+
+*Variables that we may change (in the 'assets/ansible/rh/py_phone_caller_vars_file.yml' file)*:
+
+```toml
+[...]
+# Podman / 'py-phone-caller' vars
+[...]
+container_host: 192.168.122.104 # Here we need to configure the IP address of our Fedora Server instance
+installation_user: fedora # The user within the installation will be done. 
+
+[...]
+
+# PostgreSQL container vars
+[...]
+postgresql_admin_pass: Use-A-Secure-Password-Here # The administrative password for PostgreSQL (user: postgres)
+
+[...]
+# py-phone-caller - 'caller_config.toml' vars
+# [commons]
+asterisk_pass: "Use-A-Secure-Password-Here" # The password for the 'py-phone-caller' Asterisk ARI user
+asterisk_host: "192.168.122.234" # The IP address of the Asterisk (in our case FreePBX) instance.
+[...]
+
+# [caller_sms]
+# Only if we want send SMS through Twilio
+[...] 
+twilio_account_sid: "Your-Twilio-account-sid" # The Twilio SID
+twilio_auth_token: "Your-Twilio-auth-token" # The Twilio auth token 
+twilio_sms_from: "+1987654321" # The Twilio number
+[...]
+
+# [database]
+[...]
+db_password: 'Use-A-Secure-Password-Here' # The password for the PostgreSQL 'py-phone-caller' user. 
+[...]
+```
+
+* Output of the ``` ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, ansible_py-phone-caller/py-phone-caller-podman.yml```
+  command.
 
 ```bash
 [fedora@fedora ~]$ ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, ansible_py-phone-caller/py-phone-caller-podman.yml
@@ -1722,4 +1766,10 @@ CREATE TABLE calls (
 );
 ```
 
+### Finally, the classic 'Wrapping Up'
 
+By following the steps of this guide we can set up a *mini* PagerDuty like system, obviously the '**py-phone-caller**' 
+isn't intended to be used in mission critical environments because isn't yet ready for this kind of workloads.
+
+
+Thanks for reading, I hope this article was useful for you.
