@@ -905,7 +905,7 @@ we get the '**py-phone-caller**' configured and ready to be used.
 
 *Variables that we may change (in the 'assets/ansible/rh/py_phone_caller_vars_file.yml' file)*:
 
-```toml
+```ini
 [...]
 # Podman / 'py-phone-caller' vars
 [...]
