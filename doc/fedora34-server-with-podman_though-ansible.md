@@ -25,17 +25,20 @@ the *green* boxes, and the *yellow* box is the receiver of the *calls/messages*.
 
 * **generate_audio**
   * *Role*: used to create and host the audio files player by the Asterisk PBX.
-  * *Container repository*: quay.io/py-phone-caller/generate_audio            
+  * *Container repository*: quay.io/py-phone-caller/generate_audio
+  * *FROM*: fedora:34 *(base container image)*
 
 
 * **caller_sms**
   * *Role*: used to send the SMS messages through a service provider.
-  * *Container repository*: quay.io/py-phone-caller/caller_sms     
+  * *Container repository*: quay.io/py-phone-caller/caller_sms  
+  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
 
 * **caller_prometheus_webhook**
   * *Role*: start a call or send an SMS message when a Prometheus alert is received. 
   * *Container repository*: quay.io/py-phone-caller/caller_prometheus_webhook
+  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
 > The **caller_prometheus_webhook** has 4 endpoints that behaves differently.
 >
@@ -49,22 +52,26 @@ the *green* boxes, and the *yellow* box is the receiver of the *calls/messages*.
 * **call_register**
   * *Role*: used to register on the PostgreSQL DB the arriving calls with useful details. 
   * *Container repository*: quay.io/py-phone-caller/call_register
+  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
   
 
 * **asterisk_ws_monitor**
   * *Role*: this component register the Stasis application against Asterisk and also log the events to the DB *(table: 'asterisk_ws_events')*.
   * *Container repository*: quay.io/py-phone-caller/asterisk_ws_monitor
+  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
               
 * **asterisk_recall**
   * *Role*: reading from the database and considering the ```times_to_dial``` and ```seconds_to_forget``` configuration 
     parameters, retries a failed or not acknowledged call *(... press 4 to acknowledge...)*.  
   * *Container repository*: quay.io/py-phone-caller/asterisk_recall
+  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
   
 * **asterisk_asterisk_call**
   * *Role*: has the responsibility to place the calls against the Asterisk PBX through the REST interface. 
-  * *Container repository*: quay.io/py-phone-caller/asterisk_call             
+  * *Container repository*: quay.io/py-phone-caller/asterisk_call
+  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
             
 
 
