@@ -71,3 +71,7 @@ The files to be imported into the PostgreSQL server
 │      │    ├── db-role.sql
 │      │    └── db-schema.sql
 ```
+
+## Installation
+
+Installation giude coming soon...
