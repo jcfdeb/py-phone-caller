@@ -75,3 +75,5 @@ The files to be imported into the PostgreSQL server
 ## Installation
 
 Installation giude coming soon...
+
+> If you want to try with the experimental Kubernetes manifest, check this [folder](https://github.com/jcfdeb/py-phone-caller/tree/main/assets/k8s).
