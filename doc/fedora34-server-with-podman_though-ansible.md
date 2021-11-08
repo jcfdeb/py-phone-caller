@@ -628,7 +628,7 @@ Installed size: 144 M
 Dropping the '**root**' privileges
 
 ```bash
-[root@fedora-server ~]# 
+[root@fedora-server ~]# exit
 logout
 ```
 
@@ -875,7 +875,7 @@ prometheus_webhook_receivers: '[ "+123456789" ]'
 caller_sms_http_scheme: "http"
 caller_sms_host: "{{ container_host }}"
 caller_sms_port: "8085"
-caller_sms_audio_app_route: "send_sms"
+caller_sms_app_route: "send_sms"
 sms_before_call_wait_seconds: 120
 caller_sms_carrier: "twilio"
 twilio_account_sid: "Your-Twilio-account-sid"
@@ -945,6 +945,8 @@ twilio_sms_from: "+1987654321" # The Twilio number
 db_password: 'Use-A-Secure-Password-Here' # The password for the PostgreSQL 'py-phone-caller' user. 
 [...]
 ```
+
+In order to install the '**py-phone-caller**' we need to run the *ansible-playbook*, as the following example.
 
 * Output of the ``` ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, ansible_py-phone-caller/py-phone-caller-podman.yml```
   command.
@@ -1772,6 +1774,87 @@ CREATE TABLE calls (
     cycle_done boolean DEFAULT false
 );
 ```
+
+### Of Course, we can use or test if this works manually 
+
+We'll be also able to send messages and place calls from the terminal, maybe it can become useful if our intention is
+to don't use the Prometheus monitoring system. We can trigger the messages or calls with Cron for example, or with other
+scripts, etc.
+
+> This is an example of the payload sent from the Prometheus Alert Manager.
+
+* File: "**test-alert-from-the-alertmanager.json**"
+
+````json
+{
+   "receiver":"webhook",
+   "status":"firing",
+   "alerts":[
+      {
+         "status":"firing",
+         "labels":{
+            "alertname":"TestAlertFromAlertmanager",
+            "instance":"localhost:9090",
+            "job":"prometheus"
+         },
+         "annotations":{
+            "description":"This text will be an audio message in order to verify if the setup is working",
+            "summary":"our summary"
+         },
+         "startsAt":"2021-03-02T21:52:26.558311875+01:00",
+         "endsAt":"0001-01-01T00:00:00Z",
+         "generatorURL":"http://prometheus:9090/graph"
+      }
+   ],
+   "groupLabels":{
+      "alertname":"TestAlertFromAlertmanager",
+      "job":"prometheus"
+   },
+   "commonLabels":{
+      "alertname":"TestAlertFromAlertmanager",
+      "instance":"localhost:9090",
+      "job":"prometheus"
+   },
+   "commonAnnotations":{
+      "description":"our description",
+      "summary":"our summary"
+   },
+   "externalURL":"http://alertmanager:9093",
+   "version":"4",
+   "groupKey":"{}:{alertname=\"TestAlertFromAlertmanager\", job=\"prometheus\"}"
+}
+````
+
+* Doing the HTTP POST request
+
+````bash
+[fedora@fedora ~]$ curl --header "Content-Type: application/json" -X POST -d @ansible_py-phone-caller/alert.json http://127.0.0.1:8084/sms_before_call
+{"status": "200"}
+````
+
+
+#### Start a Single Call from the shell
+
+Also, we'll be able to start a call from the shell using the ```curl``` command. Please pay attention to format of the number
+that's using the '00' and the country code '39' because we're using the Asterisk trunk without dial rules in order to modify
+the number. For example if you want to place a call in the UK, the first four numbers will be '0044' and the rest of the number.
+
+````bash
+[fedora@fedora ~]$ curl -X POST "http://127.0.0.1:8081/asterisk_init?phone=00392235896425&message=New%20message%20from%20the%20Fedora%20Server%20shell"
+{"status": 200}
+````
+
+#### Send a Single SMS from the shell
+
+Something like the previous curl command is happening when we want to send a single SMS, Twilio wants the '+' sing instead
+of the '00' prefix. By this reason we need to use the '%2B' string that is the encoded '+' character.
+
+````bash
+[fedora@fedora ~]$ curl -X POST "http://127.0.0.1:8085/send_sms?phone=%2B392235896425&message=New%20message%20from%20the%20Fedora%20Server%20shell"
+{"status": 200}
+````
+
+Note: *maybe in future versions this will be more user-friendly.* 
 
 ### Finally, the classic 'Wrapping Up'
 
