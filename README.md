@@ -4,9 +4,9 @@
 # py-phone-caller
 
 > If you've love for yourself and your team, right now this project isn't ready yet for production. 
-> different blocks of coded need to be improved also some unused lines will be removed...
+> different blocks of code need to be improved and some unused lines will be removed...
 
-> More content is coming soon... (also the setup documentation)
+> More content is coming soon... (the setup documentation, etc.)
 
 **Note**: please, consider that it will not work without setting up a lot of things :) 
 
@@ -71,3 +71,9 @@ The files to be imported into the PostgreSQL server
 │      │    ├── db-role.sql
 │      │    └── db-schema.sql
 ```
+
+## Installation
+
+Installation giude coming soon...
+
+> If you want to try with the experimental Kubernetes manifest, check this [folder](https://github.com/jcfdeb/py-phone-caller/tree/main/assets/k8s).
