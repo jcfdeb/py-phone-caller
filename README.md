@@ -77,3 +77,5 @@ The files to be imported into the PostgreSQL server
 Installation giude coming soon...
 
 > If you want to try with the experimental Kubernetes manifest, check this [folder](https://github.com/jcfdeb/py-phone-caller/tree/main/assets/k8s).
+
+Also you can try the setup on Fedora Server 34 (also 35) following this [guide](doc/fedora34-server-with-podman_though-ansible.md)
