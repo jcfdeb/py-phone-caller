@@ -1,4 +1,4 @@
-# Work in Progress - Draft
+# Work In Progress - Not Yet Stable
 
 ### Preface 
 
