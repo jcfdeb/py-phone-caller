@@ -132,4 +132,4 @@ tmp/
 
 
 # Don't commit the configuration...
-config/caller_config.toml
+config/
