@@ -8,7 +8,7 @@ container_host: 192.168.122.105
 installation_user: fedora
 installation_folder: "/home/{{ installation_user }}"
 installation_folder_name: py-phone-caller
-caller_config_toml_template_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/9c0bb97110cef988adfd23a6c0cb8e25168bbdfc/assets/ansible/rh/caller_config.toml.jinja2"
+caller_config_toml_template_url: "https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja2"
 py_phone_caller_config_tmp_path: /tmp/caller_config.toml.jinja
 py_phone_caller_config_path: "{{ installation_folder }}/{{ installation_folder_name }}/config/caller_config.toml"
 config_mounted_in_container: /opt/py-phone-caller/config/caller_config.toml:Z
