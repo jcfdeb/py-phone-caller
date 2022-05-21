@@ -54,7 +54,7 @@ pycparser==2.20
     # via cffi
 pydub==0.25.1
     # via -r requirements.in
-pyjwt==1.7.1 # required by 'twilio==6.61.0'
+pyjwt==2.4.0 # required by 'twilio==6.61.0'
     # via twilio
 pytz==2021.1
     # via twilio
