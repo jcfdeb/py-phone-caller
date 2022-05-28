@@ -36,7 +36,7 @@ h11==0.12.0
     # via httpcore
 httpcore==0.13.6
     # via httpx
-httpx==0.18.2
+httpx==0.23.0
     # via -r requirements.in
 idna==2.8 # required by 'anyio==3.2.1'
     # via
