@@ -1,13 +1,14 @@
 ### Kubernetes Deployment - draft
 
-After applying the '03_postgresql_13.yml' manifest, some operations inside the POD are needed. 
+After applying the '03_postgresql_13.yml' manifest, some operations inside the POD are needed.
 
-  * The role and DB creation
-  * Restore of the DB schema 
+* The role and DB creation
+* Restore of the DB schema
 
 > For the SQL files please check the '**assets/DB**' folder
 
 * Get the complete POD name
+
 ```bash
 [fedora@fedora k8s]$ kubectl -n py-phone-caller get pods | grep postgresql
 NAME                                     READY   STATUS    RESTARTS   AGE
@@ -15,7 +16,9 @@ postgresql-deployment-6d98db6844-8fnrb   1/1     Running   0          63s
 ```
 
 * Open a shell inside the POD
+
 > If you can't install '**nano**' you can also use '**vi**', yet installed inside the container image.
+
 ```bash
 [fedora@fedora k8s]$ kubectl -n py-phone-caller exec -it postgresql-deployment-6d98db6844-8fnrb -- bash
 
@@ -30,6 +33,7 @@ bash-5.1# su - postgres
 ```
 
 * Crete the role and the DB
+
 ```bash
 postgresql-deployment-6d98db6844-8fnrb:~$ nano /tmp/db-role.sql
 -- This file should by used before 'db-schema.sql'
@@ -49,6 +53,7 @@ GRANT
 ```
 
 * Import the DB schema
+
 ```bash
 postgresql-deployment-6d98db6844-8fnrb:~$ nano /tmp/db-schema.sql
 --

@@ -1,4 +1,4 @@
-## Fedora 34 Server installation  - Draft 
+## Fedora 34 Server installation - Draft
 
 > Work In Progress
 
@@ -28,16 +28,12 @@
 [root@fedora py-phone-caller]# chown g+w /opt/py-phone-caller/config/caller_config.toml 
 ```
 
-
-
 > the py-phone-caller netork
 
-
 * Docker network: py-phone-caller
-   * "Subnet": "172.19.0.0/24",
-   * Can be created with: podman network create --subnet=172.19.0.0/24 py-phone-caller
-    
-    
+    * "Subnet": "172.19.0.0/24",
+    * Can be created with: podman network create --subnet=172.19.0.0/24 py-phone-caller
+
 > The DB Stuff!
 
 ```
@@ -111,20 +107,11 @@ GRANT
 GRANT
 ```
 
-
-
-
-
-
-
-> start the containers 
-
-
+> start the containers
 
 * Run the bash script... ```assets/scripts/start-containers-podman.sh```
 
-
-> Manage the Containers with Systemd 
+> Manage the Containers with Systemd
 
 ```bash
 [fedora@fedora ~]$ podman generate systemd --name asterisk_ws_monitor
@@ -311,12 +298,7 @@ Type=forking
 WantedBy=multi-user.target default.target
 ```
 
-
-
-
-
 > Enabling the user unit files
-
 
 ````bash
 [fedora@fedora ~]$ mkdir -p /home/fedora/.config/systemd/user
@@ -350,10 +332,6 @@ Created symlink /home/fedora/.config/systemd/user/default.target.wants/container
 Created symlink /home/fedora/.config/systemd/user/multi-user.target.wants/container-generate_audio.service → /home/fedora/.config/systemd/user/container-generate_audio.service.
 Created symlink /home/fedora/.config/systemd/user/default.target.wants/container-generate_audio.service → /home/fedora/.config/systemd/user/container-generate_audio.service.
 ````
-
-
-
-
 
 > Firewall stuff in order to get it working from the LAN
 

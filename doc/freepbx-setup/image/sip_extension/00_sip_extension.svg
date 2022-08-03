@@ -2,57 +2,57 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   version="1.1"
-   id="svg2"
-   width="1917"
-   height="876"
-   viewBox="0 0 1917 876"
-   sodipodi:docname="00_sip_extension.svg"
-   inkscape:version="1.1 (c68e22c387, 2021-05-23)"
-   inkscape:export-filename="/home/jcf/Workspace/PyCharm/py-phone-caller/doc/freepbx-setup/image/sip_extension/00_sip_extension.png"
-   inkscape:export-xdpi="93"
-   inkscape:export-ydpi="93"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:xlink="http://www.w3.org/1999/xlink"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <defs
-     id="defs6">
-    <rect
-       x="126.83871"
-       y="48.011334"
-       width="47.640222"
-       height="48.726887"
-       id="rect3221" />
-  </defs>
-  <sodipodi:namedview
-     id="namedview4"
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:pageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     showgrid="false"
-     inkscape:zoom="0.5352175"
-     inkscape:cx="979.97544"
-     inkscape:cy="536.2306"
-     inkscape:window-width="1920"
-     inkscape:window-height="979"
-     inkscape:window-x="0"
-     inkscape:window-y="32"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="g8" />
-  <g
-     inkscape:groupmode="layer"
-     inkscape:label="Image"
-     id="g8">
-    <image
-       width="1917"
-       height="876"
-       preserveAspectRatio="none"
-       xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB30AAANsCAYAAABf2bIFAAAABHNCSVQICAgIfAhkiAAAABl0RVh0
+        version="1.1"
+        id="svg2"
+        width="1917"
+        height="876"
+        viewBox="0 0 1917 876"
+        sodipodi:docname="00_sip_extension.svg"
+        inkscape:version="1.1 (c68e22c387, 2021-05-23)"
+        inkscape:export-filename="/home/jcf/Workspace/PyCharm/py-phone-caller/doc/freepbx-setup/image/sip_extension/00_sip_extension.png"
+        inkscape:export-xdpi="93"
+        inkscape:export-ydpi="93"
+        xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+        xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+        xmlns:xlink="http://www.w3.org/1999/xlink"
+        xmlns="http://www.w3.org/2000/svg"
+        xmlns:svg="http://www.w3.org/2000/svg">
+    <defs
+            id="defs6">
+        <rect
+                x="126.83871"
+                y="48.011334"
+                width="47.640222"
+                height="48.726887"
+                id="rect3221"/>
+    </defs>
+    <sodipodi:namedview
+            id="namedview4"
+            pagecolor="#ffffff"
+            bordercolor="#666666"
+            borderopacity="1.0"
+            inkscape:pageshadow="2"
+            inkscape:pageopacity="0.0"
+            inkscape:pagecheckerboard="0"
+            showgrid="false"
+            inkscape:zoom="0.5352175"
+            inkscape:cx="979.97544"
+            inkscape:cy="536.2306"
+            inkscape:window-width="1920"
+            inkscape:window-height="979"
+            inkscape:window-x="0"
+            inkscape:window-y="32"
+            inkscape:window-maximized="1"
+            inkscape:current-layer="g8"/>
+    <g
+            inkscape:groupmode="layer"
+            inkscape:label="Image"
+            id="g8">
+        <image
+                width="1917"
+                height="876"
+                preserveAspectRatio="none"
+                xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB30AAANsCAYAAABf2bIFAAAABHNCSVQICAgIfAhkiAAAABl0RVh0
 U29mdHdhcmUAZ25vbWUtc2NyZWVuc2hvdO8Dvz4AACAASURBVHic7N13eFRV+sDx72Qyk0x6QkIa
 NQklgUDovSOICAgK4goq9rauZVd/1nV1Xd1dXHV1bYAFsYGI0mvoRVpCSIFU0khCGumTqb8/kgwZ
 UgghpOD7eR6eh8w9c++558y9c+e+97xH8eiqf5oRQgghhBBCCCGEEEIIIYQQQgjRIdkCvDv3ybau
@@ -3559,22 +3559,22 @@ iIiIiIiInMcU+oqIiIiIiIiIiIiIiIiInMcU+oqIiIiIiIiIiIiIiIiInMcU+oqIiIiIiIiIiIiI
 iIiInMcU+oqIiIiIiIiIiIiIiIiInMcU+oqIiIiIiIiIiIiIiIiInMf+H7/HCaaXSI9oAAAAAElF
 TkSuQmCC
 "
-       id="image10" />
-    <rect
-       style="fill:none;stroke:#0013e3;stroke-width:1.84212"
-       id="rect849"
-       width="126.51637"
-       height="31.505945"
-       x="124.96243"
-       y="1.6156042"
-       ry="7.5226469" />
-    <text
-       xml:space="preserve"
-       id="text3219"
-       style="font-style:normal;font-weight:normal;font-size:40px;line-height:1.25;font-family:sans-serif;white-space:pre;shape-inside:url(#rect3221);fill:#ff0000;fill-opacity:1;stroke:none"
-       transform="translate(-31.399512,-13.462259)"><tspan
+                id="image10"/>
+        <rect
+                style="fill:none;stroke:#0013e3;stroke-width:1.84212"
+                id="rect849"
+                width="126.51637"
+                height="31.505945"
+                x="124.96243"
+                y="1.6156042"
+                ry="7.5226469"/>
+        <text
+                xml:space="preserve"
+                id="text3219"
+                style="font-style:normal;font-weight:normal;font-size:40px;line-height:1.25;font-family:sans-serif;white-space:pre;shape-inside:url(#rect3221);fill:#ff0000;fill-opacity:1;stroke:none"
+                transform="translate(-31.399512,-13.462259)"><tspan
          x="126.83789"
          y="83.402344"
          id="tspan4645">1.</tspan></text>
-  </g>
+    </g>
 </svg>

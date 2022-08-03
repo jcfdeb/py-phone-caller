@@ -2,63 +2,63 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   version="1.1"
-   id="svg2"
-   width="2556"
-   height="1168"
-   viewBox="0 0 2556 1168"
-   sodipodi:docname="02_sip_extension.svg"
-   inkscape:export-filename="/home/jcf/Workspace/PyCharm/py-phone-caller/doc/freepbx-setup/image/sip_extension/02_sip_extension.png"
-   inkscape:export-xdpi="93"
-   inkscape:export-ydpi="93"
-   inkscape:version="1.1 (c68e22c387, 2021-05-23)"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:xlink="http://www.w3.org/1999/xlink"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <defs
-     id="defs6">
-    <rect
-       x="456.07302"
-       y="247.56039"
-       width="88.565526"
-       height="73.146919"
-       id="rect8317" />
-    <rect
-       x="52.028559"
-       y="83.080001"
-       width="110.18657"
-       height="93.45853"
-       id="rect3751" />
-  </defs>
-  <sodipodi:namedview
-     id="namedview4"
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:pageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     showgrid="false"
-     inkscape:zoom="0.40141312"
-     inkscape:cx="1373.8963"
-     inkscape:cy="572.97579"
-     inkscape:window-width="1920"
-     inkscape:window-height="979"
-     inkscape:window-x="0"
-     inkscape:window-y="32"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="g8" />
-  <g
-     inkscape:groupmode="layer"
-     inkscape:label="Image"
-     id="g8">
-    <image
-       width="2556"
-       height="1168"
-       preserveAspectRatio="none"
-       xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB30AAANsCAYAAABf2bIFAAABhGlDQ1BJQ0MgcHJvZmlsZQAAKJF9
+        version="1.1"
+        id="svg2"
+        width="2556"
+        height="1168"
+        viewBox="0 0 2556 1168"
+        sodipodi:docname="02_sip_extension.svg"
+        inkscape:export-filename="/home/jcf/Workspace/PyCharm/py-phone-caller/doc/freepbx-setup/image/sip_extension/02_sip_extension.png"
+        inkscape:export-xdpi="93"
+        inkscape:export-ydpi="93"
+        inkscape:version="1.1 (c68e22c387, 2021-05-23)"
+        xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+        xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+        xmlns:xlink="http://www.w3.org/1999/xlink"
+        xmlns="http://www.w3.org/2000/svg"
+        xmlns:svg="http://www.w3.org/2000/svg">
+    <defs
+            id="defs6">
+        <rect
+                x="456.07302"
+                y="247.56039"
+                width="88.565526"
+                height="73.146919"
+                id="rect8317"/>
+        <rect
+                x="52.028559"
+                y="83.080001"
+                width="110.18657"
+                height="93.45853"
+                id="rect3751"/>
+    </defs>
+    <sodipodi:namedview
+            id="namedview4"
+            pagecolor="#ffffff"
+            bordercolor="#666666"
+            borderopacity="1.0"
+            inkscape:pageshadow="2"
+            inkscape:pageopacity="0.0"
+            inkscape:pagecheckerboard="0"
+            showgrid="false"
+            inkscape:zoom="0.40141312"
+            inkscape:cx="1373.8963"
+            inkscape:cy="572.97579"
+            inkscape:window-width="1920"
+            inkscape:window-height="979"
+            inkscape:window-x="0"
+            inkscape:window-y="32"
+            inkscape:window-maximized="1"
+            inkscape:current-layer="g8"/>
+    <g
+            inkscape:groupmode="layer"
+            inkscape:label="Image"
+            id="g8">
+        <image
+                width="2556"
+                height="1168"
+                preserveAspectRatio="none"
+                xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB30AAANsCAYAAABf2bIFAAABhGlDQ1BJQ0MgcHJvZmlsZQAAKJF9
 kT1Iw0AcxV9TS4tUOphBxCFDdbIoKuKoVShChVArtOpgPvoFTRqSFBdHwbXg4Mdi1cHFWVcHV0EQ
 /ABxc3NSdJES/5cUWsR4cNyPd/ced+8ArllVNKtnHNB028ykkkIuvyqEXxFBCDzGEJMUy5gTxTR8
 x9c9Amy9S7As/3N/jj61YClAQCCeVQzTJt4gnt60Dcb7xLxSllTic+JRky5I/Mh02eM3xiWXOZbJ
@@ -1885,38 +1885,38 @@ bh06tn9PgckAQUE3OHj4MEMH9lcwRNQ3ioiIiIiIiIiIiPxnntieviIiIiLyZGhPXxERERERERER
 kReLQSEQEREREREREREREREREXl2adBXREREREREREREREREROQZ9n+9+97r7A4cMgAAAABJRU5E
 rkJggg==
 "
-       id="image10" />
-    <rect
-       style="fill:none;stroke:#0013e3;stroke-width:2"
-       id="rect849"
-       width="234.16434"
-       height="49.901043"
-       x="92.96656"
-       y="125.4783"
-       ry="8.87848" />
-    <rect
-       style="fill:none;stroke:#0013e3;stroke-width:2"
-       id="rect873"
-       width="434.58112"
-       height="35.047237"
-       x="110.05743"
-       y="320.70731"
-       ry="8.87848" />
-    <text
-       xml:space="preserve"
-       id="text3749"
-       style="font-style:normal;font-weight:normal;font-size:40px;line-height:1.25;font-family:sans-serif;white-space:pre;shape-inside:url(#rect3751);fill:#ff0000;fill-opacity:1;stroke:none"
-       transform="translate(-0.17969972,11.406813)"><tspan
+                id="image10"/>
+        <rect
+                style="fill:none;stroke:#0013e3;stroke-width:2"
+                id="rect849"
+                width="234.16434"
+                height="49.901043"
+                x="92.96656"
+                y="125.4783"
+                ry="8.87848"/>
+        <rect
+                style="fill:none;stroke:#0013e3;stroke-width:2"
+                id="rect873"
+                width="434.58112"
+                height="35.047237"
+                x="110.05743"
+                y="320.70731"
+                ry="8.87848"/>
+        <text
+                xml:space="preserve"
+                id="text3749"
+                style="font-style:normal;font-weight:normal;font-size:40px;line-height:1.25;font-family:sans-serif;white-space:pre;shape-inside:url(#rect3751);fill:#ff0000;fill-opacity:1;stroke:none"
+                transform="translate(-0.17969972,11.406813)"><tspan
          x="52.029297"
          y="118.4707"
          id="tspan9271">1.</tspan></text>
-    <text
-       xml:space="preserve"
-       id="text8315"
-       style="font-style:normal;font-weight:normal;font-size:40px;line-height:1.25;font-family:sans-serif;white-space:pre;shape-inside:url(#rect8317);fill:#ff0000;fill-opacity:1;stroke:none"
-       transform="translate(48.705707,33.993526)"><tspan
+        <text
+                xml:space="preserve"
+                id="text8315"
+                style="font-style:normal;font-weight:normal;font-size:40px;line-height:1.25;font-family:sans-serif;white-space:pre;shape-inside:url(#rect8317);fill:#ff0000;fill-opacity:1;stroke:none"
+                transform="translate(48.705707,33.993526)"><tspan
          x="456.07227"
          y="282.95117"
          id="tspan9273">2.</tspan></text>
-  </g>
+    </g>
 </svg>

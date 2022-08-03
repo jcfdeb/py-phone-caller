@@ -1,116 +1,115 @@
 # Work In Progress - Not Yet Stable - But... Works
 
-### Preface 
+### Preface
 
-#### Some assumptions 
+#### Some assumptions
 
 > Please don't expose the endpoints publicly without any kind of protection. The setup is intended to be done inside your
-> trusted network. 
+> trusted network.
 
-In this use case we assume that: the system is inside a LAN and protected by a firewall without allowing connections 
-from outside (*wee need to protect in some way, for example basic auth, the exposed services if we want to publish it 
-in the Internet*). 
+In this use case we assume that: the system is inside a LAN and protected by a firewall without allowing connections
+from outside (*wee need to protect in some way, for example basic auth, the exposed services if we want to publish it in
+the Internet*).
 
 #### The Big Picture
 
-
-The **py-phone-caller** components are represented using the *blue* boxes. The third party components or dependencies are 
-the *green* boxes, and the *yellow* box is the receiver of the *calls/messages*.
+The **py-phone-caller** components are represented using the *blue* boxes. The third party components or dependencies
+are the *green* boxes, and the *yellow* box is the receiver of the *calls/messages*.
 
 ![py-phone-caller the big picture](diagram/py_phone_caller_diagram.png "py-phone-caller flow diagram")
 
-
 #### A Little Description Of The Components
 
-
 * **generate_audio**
-  * *Role*: used to create and host the audio files player by the Asterisk PBX.
-  * *Container repository*: quay.io/py-phone-caller/generate_audio
-  * *FROM*: fedora:34 *(base container image)*
+    * *Role*: used to create and host the audio files player by the Asterisk PBX.
+    * *Container repository*: quay.io/py-phone-caller/generate_audio
+    * *FROM*: fedora:34 *(base container image)*
 
 
 * **caller_sms**
-  * *Role*: used to send the SMS messages through a service provider.
-  * *Container repository*: quay.io/py-phone-caller/caller_sms  
-  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
+    * *Role*: used to send the SMS messages through a service provider.
+    * *Container repository*: quay.io/py-phone-caller/caller_sms
+    * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
 
 * **caller_prometheus_webhook**
-  * *Role*: start a call or send an SMS message when a Prometheus alert is received. 
-  * *Container repository*: quay.io/py-phone-caller/caller_prometheus_webhook
-  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
+    * *Role*: start a call or send an SMS message when a Prometheus alert is received.
+    * *Container repository*: quay.io/py-phone-caller/caller_prometheus_webhook
+    * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
 > The **caller_prometheus_webhook** has 4 endpoints that behaves differently.
 >
 > * call_only: used to originate a single call
 > * sms_only: used to send a single SMS
-> * sms_before_call: first, send an SMS and later originate a call (after the amount of seconds configured in: 
-> ```sms_before_call_wait_seconds```)
+> * sms_before_call: first, send an SMS and later originate a call (after the amount of seconds configured in:
+    > ```sms_before_call_wait_seconds```)
 > * call_and_sms: used to send the SMS and place the call at the same time.
 
-
 * **call_register**
-  * *Role*: used to register on the PostgreSQL DB the arriving calls with useful details. 
-  * *Container repository*: quay.io/py-phone-caller/call_register
-  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
-  
+    * *Role*: used to register on the PostgreSQL DB the arriving calls with useful details.
+    * *Container repository*: quay.io/py-phone-caller/call_register
+    * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
+
 
 * **asterisk_ws_monitor**
-  * *Role*: this component register the Stasis application against Asterisk and also log the events to the DB *(table: 'asterisk_ws_events')*.
-  * *Container repository*: quay.io/py-phone-caller/asterisk_ws_monitor
-  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
+    * *Role*: this component register the Stasis application against Asterisk and also log the events to the DB *(
+      table: 'asterisk_ws_events')*.
+    * *Container repository*: quay.io/py-phone-caller/asterisk_ws_monitor
+    * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
-              
+
 * **asterisk_recall**
-  * *Role*: reading from the database and considering the ```times_to_dial``` and ```seconds_to_forget``` configuration 
-    parameters, retries a failed or not acknowledged call *(... press 4 to acknowledge...)*.  
-  * *Container repository*: quay.io/py-phone-caller/asterisk_recall
-  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
+    * *Role*: reading from the database and considering the ```times_to_dial``` and ```seconds_to_forget```
+      configuration parameters, retries a failed or not acknowledged call *(... press 4 to acknowledge...)*.
+    * *Container repository*: quay.io/py-phone-caller/asterisk_recall
+    * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
-  
+
 * **asterisk_asterisk_call**
-  * *Role*: has the responsibility to place the calls against the Asterisk PBX through the REST interface. 
-  * *Container repository*: quay.io/py-phone-caller/asterisk_call
-  * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
-            
-
+    * *Role*: has the responsibility to place the calls against the Asterisk PBX through the REST interface.
+    * *Container repository*: quay.io/py-phone-caller/asterisk_call
+    * *FROM*: redhat/ubi8:8.4-206.1626828523 *(base container image)*
 
 #### Current Limitations
 
-Right now, within current version (0.0.2) there's not a *call traffic controller*, that means if many requests arrives to
-the '**asterisk_call**' can cause an *undesired behaviour* since every **Stasis application** can manage *only a call at once*. 
-In order to get a usable and *safe* setup we need to send a single alert when used within the '**caller_prometheus_webhook**'
-or a single HTTP POST request when invoked with an HTTP client *(for example using **curl**)*.
-A kind of workaround can be keep in mind the amount of seconds configured in ```seconds_to_forget``` in order to prevent 
+Right now, within current version (0.0.2) there's not a *call traffic controller*, that means if many requests arrives
+to the '**asterisk_call**' can cause an *undesired behaviour* since every **Stasis application** can manage *only a call
+at once*. In order to get a usable and *safe* setup we need to send a single alert when used within the '**
+caller_prometheus_webhook**'
+or a single HTTP POST request when invoked with an HTTP client *(for example using **curl**)*. A kind of workaround can
+be keep in mind the amount of seconds configured in ```seconds_to_forget``` in order to prevent
 *collisions* in the '**asterisk_call**'.
 
-The other solution, in order to give more resiliency to our setup, is adding many instances of the '**asterisk_call**' 
-and '**asterisk_ws_monitor**', behind a '**HAProxy**' instance. Keep in mind that we need one new extension entry in 
+The other solution, in order to give more resiliency to our setup, is adding many instances of the '**asterisk_call**'
+and '**asterisk_ws_monitor**', behind a '**HAProxy**' instance. Keep in mind that we need one new extension entry in
 '**extensions_custom.conf**' for every '**asterisk_call**' instance.
 
-To be clear, to manage more than a single concurrent call *(coming to the **asterisk_call**)* we need to add one more instance of:
-  * '**asterisk_call**' *(has the responsibility of the call initialization using a given custom extension, and this extension
-     calls the Stasis application)*
-  * '**asterisk_ws_monitor**' *(the main role is the registration of a new Stasis application instance, referenced in 
-     **extensions_custom.conf**. Please use unique names)*
-  * An entry in '**extensions_custom.conf**' *(in order to be used exclusively by **asterisk_call** instance and where we'll 
-    reference the Stasis application name configured in ```asterisk_stasis_app```)*
+To be clear, to manage more than a single concurrent call *(coming to the **asterisk_call**)* we need to add one more
+instance of:
+
+* '**asterisk_call**' *(has the responsibility of the call initialization using a given custom extension, and this
+  extension calls the Stasis application)*
+* '**asterisk_ws_monitor**' *(the main role is the registration of a new Stasis application instance, referenced in
+  **extensions_custom.conf**. Please use unique names)*
+* An entry in '**extensions_custom.conf**' *(in order to be used exclusively by **asterisk_call** instance and where
+  we'll reference the Stasis application name configured in ```asterisk_stasis_app```)*
 
 > Good news, we can always use the same **configuration file** and override the setting with environmental variables that
-> have priority over the values in the configuration file. 
+> have priority over the values in the configuration file.
 > In order to set up an environmental variable we need to convert the lowercase keyword to uppercase, for example ```asterisk_stasis_app```
 > becomes ```ASTERISK_STASIS_APP```
 
-Maybe the previous paragraph can be a little boring, at the end of this text we'll see an example of this configuration. 
+Maybe the previous paragraph can be a little boring, at the end of this text we'll see an example of this configuration.
 In order to be more illustrative.
 
 > **Important**: the '**chan_pjsip**' *(PJSIP channel)* is not yet supported, in the future releases the support will be added.
 
 #### Prerequisites
 
-* To *send a SMS* message to a cell phone: [a Twillio account](https://www.twilio.com/sms) *(optional to send SMS messages)*.
+* To *send a SMS* message to a cell phone: [a Twillio account](https://www.twilio.com/sms) *(optional to send SMS
+  messages)*.
 * To *call* a cell or landline phone: some SIP trunk able to place calls to the landlines or cell phones.
-* A working Internet connection. 
+* A working Internet connection.
 
 > About the SMS messages: by now the only service provider is Twilio, but we'll add others soon.
 
@@ -118,47 +117,45 @@ In order to be more illustrative.
 > services in order to reach landline and cell phones. However, a media gateway can be used in order to achieve this goal.
 > Last but no least, we need to pay some cents in order to place calls and SMS messages to the landline or cell phones. These services are rarely free.
 
-We can spread some words regarding the ways to reach the landlines and  cell phones, generally it can be done using
-the services of a provider or using a media gateway connected to the landline or with a SIM card inside the device.
+We can spread some words regarding the ways to reach the landlines and cell phones, generally it can be done using the
+services of a provider or using a media gateway connected to the landline or with a SIM card inside the device.
 
 * [SIP Trunking in Wikipedia](https://en.wikipedia.org/wiki/SIP_trunking)
 * [Media gateway in Wikipedia](https://en.wikipedia.org/wiki/Media_gateway)
 
-**Note**: *The 'py-phone-caller' packages hasn't any endorsement/relation by/with Twilio or FreePBX, these services/products 
-was used because the easy of use and the commitment with the Open Source.*
+**Note**: *The 'py-phone-caller' packages hasn't any endorsement/relation by/with Twilio or FreePBX, these
+services/products was used because the easy of use and the commitment with the Open Source.*
 
-> Good news again. if you decide to not send SMS and not place calls to paid phone networks: is possible receive calls 
+> Good news again. if you decide to not send SMS and not place calls to paid phone networks: is possible receive calls
 > to a SIP or IAX2 extension of the PBX using a soft-phone in your cell or physical phone that supports those protocols.
 
-
-### Systems used in this use case 
+### Systems used in this use case
 
 In order to give the opportunity to those that aren't very familiar with Asterisk we'll use one of the Asterisk
 distributions called FreePBX. Is easy to setting up through the web interface.
 
-And for components that start calls, obviously, we'll use '**Fedora Server 34**' (*you can also use Fedora Workstation but 
-all the tests and working setups are running on Fedora Server or CentOS 7 with Docker. 
-Soon we'll try the deployment on RHEL 8, OpenShift/Kubernetes*).
+And for components that start calls, obviously, we'll use '**Fedora Server 34**' (*you can also use Fedora Workstation
+but all the tests and working setups are running on Fedora Server or CentOS 7 with Docker. Soon we'll try the deployment
+on RHEL 8, OpenShift/Kubernetes*).
 
-* [Fedora Server 34](https://getfedora.org/it/server/download/) 
-  * *(IP Address: 192.168.122.104)*
+* [Fedora Server 34](https://getfedora.org/it/server/download/)
+    * *(IP Address: 192.168.122.104)*
 
 * [FreePBX 15 (*CentOS 7 based*)](https://www.freepbx.org/downloads/) (*current version at time of this writing*)
-  * [SNG7-PBX-64bit-2104-1.iso](https://downloads.freepbxdistro.org/ISO/SNG7-PBX-64bit-2104-1.iso)
-  * *(IP Address: 192.168.122.234)*
+    * [SNG7-PBX-64bit-2104-1.iso](https://downloads.freepbxdistro.org/ISO/SNG7-PBX-64bit-2104-1.iso)
+    * *(IP Address: 192.168.122.234)*
 
-
-> Please consider that the IP address of the Fedora Server and the Asterisk system *maybe will change* according every 
-> single setup. This can be really obvious but advice those without experience is a good practice to share our knowledge.  
-
+> Please consider that the IP address of the Fedora Server and the Asterisk system *maybe will change* according every
+> single setup. This can be really obvious but advice those without experience is a good practice to share our knowledge.
 
 ### Configuration of the Asterisk PBX
 
-Some configurations are needed from the Asterisk side, in order to place calls to the cell phones or landlines we need 
-to configure a **SIP Trunk**. If we choose to use only local extensions without placing calls to external phones, we need
-to crate a **SIP** or **IAX2** extension.
+Some configurations are needed from the Asterisk side, in order to place calls to the cell phones or landlines we need
+to configure a **SIP Trunk**. If we choose to use only local extensions without placing calls to external phones, we
+need to crate a **SIP** or **IAX2** extension.
 
-Last but not least, a *custom extension* and an **ARI** *(Asterisk REST Interface)* user are needed to used by '**py-phone-caller**' 
+Last but not least, a *custom extension* and an **ARI** *(Asterisk REST Interface)* user are needed to used by '**
+py-phone-caller**'
 
 #### Configuration of the SIP Trunk
 
@@ -181,7 +178,6 @@ Last but not least, a *custom extension* and an **ARI** *(Asterisk REST Interfac
 
 ![trunk configuration step 3](freepbx-setup/image/trunk/trunk-03.png "Trunk configuration")
 
-
 1. Open the "**Outgoing**" tab.
 2. Configure the "**Trunk Name**" *(for consistency reasons use the same name of the previous step)*.
 3. On the "**PEER Details**" section insert the correct configuration values in order to reach the SIP provider.
@@ -190,6 +186,7 @@ Last but not least, a *custom extension* and an **ARI** *(Asterisk REST Interfac
 ![trunk configuration step 4](freepbx-setup/image/trunk/trunk-04.png "Trunk configuration")
 
 * **PEER Details** configuration example:
+
 ```ini
 type=peer
 auth=md5
@@ -210,44 +207,40 @@ insecure=very
 
 ![trunk configuration step 6](freepbx-setup/image/trunk/trunk-06.png "Trunk configuration")
 
-
 At this point, we've a **Trunk** configured in order to place calls to the cell and landline phones. Remember, this kind
-of configuration surely has a cost depending on the kind of the provider or device used con converge with the public phone
-network *(cell or landline)*. 
- 
+of configuration surely has a cost depending on the kind of the provider or device used con converge with the public
+phone network *(cell or landline)*.
 
 #### Configuration of the custom **extension** to use with '**py-phone-caller**'
 
 > Can be intended as the **caller** part
 
-Within this configuration we'll be able to start a call and pass the control to the '**py-phone-caller**' in order to 
-play a given message, in our use case the message is the '*description*' of a Prometheus alert sent by the *Alertmanager*
+Within this configuration we'll be able to start a call and pass the control to the '**py-phone-caller**' in order to
+play a given message, in our use case the message is the '*description*' of a Prometheus alert sent by the *
+Alertmanager*
 to the '**caller_prometheus_webhook**'.
- 
+
 1. Press the "**Admin**" buttom.
 2. Choose the "**Config Edit**" option.
 
 ![SIP extension step 1](freepbx-setup/image/custom_extension/ediit_custom_exten-01.png "SIP custom extension")
 
-
 1. From the *left side* tree select the '**extensions_custom.conf**' option.
-2. Fill the "**Working on extensions_custom.conf**" text area with the right values for our setup *(we can find the right
-   values on the bellow in the text snippet)*
+2. Fill the "**Working on extensions_custom.conf**" text area with the right values for our setup *(we can find the
+   right values on the bellow in the text snippet)*
 
 ![SIP extension step 2](freepbx-setup/image/custom_extension/ediit_custom_exten-02.png "SIP custom extension")
 
-   
 1. Check again the "**Working on extensions_custom.conf**" in order to validate the new settings.
 2. Press the "**Save**" button.
 
 ![SIP extension step 3](freepbx-setup/image/custom_extension/ediit_custom_exten-03.png "SIP custom extension")
 
-
 1. Press the "**Apply Config**" button and wait until the configuration reloading process is done.
 
 ![SIP extension step 4](freepbx-setup/image/custom_extension/ediit_custom_exten-04.png "SIP custom extension")
 
-* *The dialplan for our use case*: 
+* *The dialplan for our use case*:
 
 ```ini
 [py-phone-caller]
@@ -288,125 +281,113 @@ same => n,Hangup()
 
 > Wait a minute!, what's doing this custom configuration block?
 
-
 1. Here we define the nome of the *context* (```[py-phone-caller]```)
 2. And here we go with the first line of the *3216* extension *(we can use other extension number, the important thing
    is to use the same value on the 'py-phone-caller' config)*.
 3. The PBX will play the audio file '**greeting-message.wav**' *(to be created and copied to the PBX)*.
 4. This line with the ```Stasis(py-phone-caller)``` gives the control of the call to the '**py-phone-caller**'.
 5. When the '**py-phone-caller**' lets *continue* the call flow through the Asterisk dialplan *(in this case within our
-   custom extension)* an HTTP GET request will be done against the '**call_register**' in order to record in database when 
-   the message was heard. When the audio file was played, the control of the ongoing call is returned to Asterisk. 
-6. The Asterisk PBX plays the audio file '**press-4-for-acknowledgement.wav**'. 
+   custom extension)* an HTTP GET request will be done against the '**call_register**' in order to record in database
+   when the message was heard. When the audio file was played, the control of the ongoing call is returned to Asterisk.
+6. The Asterisk PBX plays the audio file '**press-4-for-acknowledgement.wav**'.
 7. As the line is showing ```Playback(beep)```, the PBX will play a **beep** in order to wait the callee input.
 8. The ```Read(get,"silence/1",,,,2)``` function will read the callee input *(we're waiting a **4**)*.
 9. If the calle don't press the number **4** the call is terminated.
 
 ![SIP extension step 5](freepbx-setup/image/custom_extension/ediit_custom_exten-05.png "SIP custom extension")
 
-
 #### Creating a standard Asterisk extension (*can be SIP or IAX2*)
-
-
 
 > To be used as alternative of the SIP Trunk (in this case we'll call to a soft-phone or VoIP phone instead of PSTN or cell phone),
 > within this setup aren't additional costs when calling this kind of extensions, because they're configured in our PBX.
 > Can be used from the same network where is located the PBX, if exposed to the Internet please use a security layer as
 > TLS and secure passwords.
-> If you choose a soft-phone installed in your cell, be sure that your internet connection has a good quality otherwise 
+> If you choose a soft-phone installed in your cell, be sure that your internet connection has a good quality otherwise
 > the audio quality be will poor.
 
 
 > **Important**: in this case the configuration value of ```asterisk_chan_type``` will be look like ```SIP``` and not
-> as ```SIP/sip-provider```. We're not using a SIP **Trunk** or *Media Gateway* in order to contact phones outside our 
+> as ```SIP/sip-provider```. We're not using a SIP **Trunk** or *Media Gateway* in order to contact phones outside our
 > PBX system.
 
 
 **Note**: this endpoint can be intended as the **callee** part, the extension or phone number to call in case of a new
-          Prometheus alert or an *HTTP POST* request agains the '**asterisk_call**' *(yes, if we want, also is possible 
-          start a call with **cron** or something else)*
+Prometheus alert or an *HTTP POST* request agains the '**asterisk_call**' *(yes, if we want, also is possible start a
+call with **cron** or something else)*
 
 1. Press the "**Applications**" button.
 
 ![SIP extension for the callee 0](freepbx-setup/image/sip_extension/00_sip_extension.png "A PBX extension instead of a landline or cell")
 
-
 1. Select the "**Extensions**" option.
 
 ![SIP extension for the callee 1](freepbx-setup/image/sip_extension/01_sip_extension.png "A PBX extension instead of a landline or cell")
-
 
 1. Press the "**+ Add Extension**" button.
 2. Select the "**Add New SIP (Legacy) [chan_sip] Extension**" option.
 
 ![SIP extension for the callee 2](freepbx-setup/image/sip_extension/02_sip_extension.png "A PBX extension instead of a landline or cell")
 
-
-1. Configure the "**User Extension**", generally is a number. In our case we've chosen the '**1614**'. It will be 
+1. Configure the "**User Extension**", generally is a number. In our case we've chosen the '**1614**'. It will be
    referenced / used as value of ```prometheus_webhook_receivers``` in the '**caller_prometheus_webhook**' configuration
    block.
 2. Configure the "**Display Name**", the text that will appear on the display of the callee phone.
-3. Select a strong "**Secret**" *(the password, FreePBX provides a new one automatically)*. To be configured on your soft
-   phone or SIP phone.
+3. Select a strong "**Secret**" *(the password, FreePBX provides a new one automatically)*. To be configured on your
+   soft phone or SIP phone.
 4. Press the "**Submit**" button.
 
 ![SIP extension for the callee 3](freepbx-setup/image/sip_extension/03_sip_extension.png "A PBX extension instead of a landline or cell")
-
 
 1. Press the "**Apply Config**" button.
 
 ![SIP extension for the callee 4](freepbx-setup/image/sip_extension/04_sip_extension.png "A PBX extension instead of a landline or cell")
 
-
 1. Wait until the "**Reloading**" process is done.
 
 ![SIP extension for the callee 5](freepbx-setup/image/sip_extension/05_sip_extension.png "A PBX extension instead of a landline or cell")
 
-
 #### Configuration of the Asterisk **ARI** user
 
 *Last but not least*, the **Asterisk Rest Interface** user. This user will be used within the '**asterisk_ws_monitor**'
-in order to register the *Stasis application* (a permanent WebSocket connection), and by the '**asterisk_call**' in order
-to initialize the calls against the Asterisk PBX *(also we can refer to it as FreePBX)*.
+in order to register the *Stasis application* (a permanent WebSocket connection), and by the '**asterisk_call**' in
+order to initialize the calls against the Asterisk PBX *(also we can refer to it as FreePBX)*.
 
 1. Press the "**Settings**" button.
 2. Select the "**Asterisk REST Interface Users**" option.
 
 ![ARI user step 1](freepbx-setup/image/rest_interface_user/rest_interface_user-01.png "The ARI user for our Stasis app")
 
-
 1. Press the "**+ Add User**" button.
 
 ![ARI user step 2](freepbx-setup/image/rest_interface_user/rest_interface_user-02.png "The ARI user for our Stasis app")
 
-
 1. Configure the "**REST Interface User Name**", in our example '**py-phone-caller**'.
-2. Configure the "**REST Interface User Password**", yet proposed by the **FreePBX** web UI, *logically we can change it 
+2. Configure the "**REST Interface User Password**", yet proposed by the **FreePBX** web UI, *logically we can change it
    to other value if don't agree with the proposed default value*.
 3. We choose the "**Plain Text**" option only for development environments but for production please use '**Crypt**'.
-   More info about the [ARI configuration](https://wiki.asterisk.org/wiki/display/AST/Asterisk+Configuration+for+ARI#AsteriskConfigurationforARI-HTTPServer).
+   More info about
+   the [ARI configuration](https://wiki.asterisk.org/wiki/display/AST/Asterisk+Configuration+for+ARI#AsteriskConfigurationforARI-HTTPServer)
+   .
 4. Configure the "**Read Only**" option to "**No**".
 5. In order to save the changes press the "**Submit**" button.
 
 ![ARI user step 3](freepbx-setup/image/rest_interface_user/rest_interface_user-03.png "The ARI user for our Stasis app")
 
-
 1. Press the "**Apply Config**" button.
 
 ![ARI user step 4](freepbx-setup/image/rest_interface_user/rest_interface_user-04.png "The ARI user for our Stasis app")
-
 
 1. Wait until the "**Reloading**" process is done.
 
 ![ARI user step 5](freepbx-setup/image/rest_interface_user/rest_interface_user-05.png "The ARI user for our Stasis app")
 
-Now with the Asterisk *(FreePBX)* system configured we can proceed with the rest of the configuration in order to run the
+Now with the Asterisk *(FreePBX)* system configured we can proceed with the rest of the configuration in order to run
+the
 '**py-phone-caller**' in our **Fedora Server** instance.
 
-### Creating the audio files used by the custom extension 
+### Creating the audio files used by the custom extension
 
-> *you can create the audio files in your system or wherever you prefer, for this example in this guide we assume
-that the files will be created and converted to wave on your system to be transferred by SSH (scp) to the Asterisk PBX*.
+> *you can create the audio files in your system or wherever you prefer, for this example in this guide we assume that the files will be created and converted to wave on your system to be transferred by SSH (scp) to the Asterisk PBX*.
 
 * **Greeting message**: "*Hello, this is a recorded message from the Alerting System. With this message for you*"
 * **Press 4 for acknowledge**: "*Please, Press the number 'four' to acknowledge this call*"
@@ -427,7 +408,7 @@ Now we can create the needed files *(wave format)* to be copied to the Asterisk 
 [fedora@fedora ~]$ espeak -s 140 -g 4 -w /tmp/press-4-for-acknowledgement_22050.wav "Please, Press the number 'four' to acknowledge this call after the beep"
 ```
 
-> Why the "_22050" in file names? The '**espeak**' package creates the audio fiels with a frequency of **22050** Hz 
+> Why the "_22050" in file names? The '**espeak**' package creates the audio fiels with a frequency of **22050** Hz
 > Asterisk needs these files at 8000 Hz.
 
 Modifying the audio files to be compliant with Asterisk.
@@ -446,22 +427,20 @@ Resampling the audio files
 [fedora@fedora ~]$ sox /tmp/press-4-for-acknowledgement_22050.wav -r 8000 -c 1 /tmp/press-4-for-acknowledgement.wav
 ```
 
-
-**Note about espeak**: for more options check the *man pages* of **espeak** (```man espeak```).  However, there's a good
-article on the [Fedora Magazine](https://fedoramagazine.org/add-speech-fedora-system/) regarding '*espeak*' where we can 
-find examples to use within this command. 
+**Note about espeak**: for more options check the *man pages* of **espeak** (```man espeak```). However, there's a good
+article on the [Fedora Magazine](https://fedoramagazine.org/add-speech-fedora-system/) regarding '*espeak*' where we can
+find examples to use within this command.
 
 
 > Maybe you or your acquaintance have a beautiful voice, in this case is a good idea do the recordings with this voice.
 
-The files can be found also in the repository under the path: 
+The files can be found also in the repository under the path:
 [assets/generic-audio-for-dialplan](https://github.com/jcfdeb/py-phone-caller/tree/main/assets/generic-audio-for-dialplan)
-
 
 #### Copying the audio files used by the custom extension to FreePBX host
 
-Now we can copy the recently created files *('/tmp/greeting-message.wav', '/tmp/press-4-for-acknowledgement.wav')* to 
-the Asterisk system. 
+Now we can copy the recently created files *('/tmp/greeting-message.wav', '/tmp/press-4-for-acknowledgement.wav')* to
+the Asterisk system.
 
 ```bash
 [fedora@fedora ~]$ scp /tmp/*.wav root@192.168.122.234:
@@ -499,12 +478,13 @@ Current Network Configuration
 [root@freepbx ~]#
 ```
 
-In our case we're using the default *Asterisk* language, English. The audio files are stored in ```/var/lib/asterisk/sounds/en``` 
-we'll move the recently copied files to this folder *(the folder will change if you're using other language)*. 
+In our case we're using the default *Asterisk* language, English. The audio files are stored
+in ```/var/lib/asterisk/sounds/en```
+we'll move the recently copied files to this folder *(the folder will change if you're using other language)*.
 
 * Copying the files to the right location
 
-> With the last '**scp**' command we've placed the files under the '**/root**' folder of the Asterisk system. 
+> With the last '**scp**' command we've placed the files under the '**/root**' folder of the Asterisk system.
 
 ```bash
 [root@freepbx ~]# mv greeting-message.wav press-4-for-acknowledgement.wav /var/lib/asterisk/sounds/en
@@ -516,22 +496,23 @@ we'll move the recently copied files to this folder *(the folder will change if 
 [root@freepbx ~]# chown asterisk.asterisk /var/lib/asterisk/sounds/en/{greeting-message.wav,press-4-for-acknowledgement.wav}
 ```
 
-And here we've completed the configuration of the Asterisk PBX, now we can install and configure the "**py-phone-caller**"
-containers through **Ansible**.  
+And here we've completed the configuration of the Asterisk PBX, now we can install and configure the "**
+py-phone-caller**"
+containers through **Ansible**.
 
 ### Installing the needed dependencies on the Fedora Server
-
 
 > These steps need to be done as '**root**'
 
 
 We can become **root** user by executing the following command:
+
 ```bash
 [fedora@fedora-server ~]$ sudo -i
 ```
 
 Since we'll run the containers with **'Podman'**, the package installation is needed. And can be done executing the
-following command. 
+following command.
 
 ```bash
 [root@fedora-server ~]# dnf -y install podman podman-plugins podman-docker
@@ -574,7 +555,8 @@ Installed size: 123 M
 ```
 
 The installation of '**py-phone-caller**' is done through **Ansible** and some data regarding the calls and the Stasis
-application events are stored in **PostgreSQL**. In order to have the needed packages we can issue the following command.
+application events are stored in **PostgreSQL**. In order to have the needed packages we can issue the following
+command.
 
 ```bash
 [root@fedora-server ~]# dnf install -y ansible python3-psycopg2 postgresql
@@ -650,9 +632,8 @@ Starting collection install process
 Installing 'community.postgresql:1.4.0' to '/home/fedora/.ansible/collections/ansible_collections/community/postgresql'
 ```
 
+Running our first container...
 
-
-Running our first container... 
 ```bash
 [fedora@fedora-server ~]$ podman run hello-world
 Resolved "hello-world" as an alias (/etc/containers/registries.conf.d/000-shortnames.conf)
@@ -685,13 +666,11 @@ For more examples and ideas, visit:
  https://docs.docker.com/get-started/
 ```
 
-
 Creating a folder to place the installation *playbook*
 
 ```bash
 [fedora@fedora-server ~]$ mkdir ansible_py-phone-caller
 ```
-
 
 Getting the 3 files in order to install the '**py-phone-caller**' through **Ansible**
 
@@ -699,14 +678,14 @@ Getting the 3 files in order to install the '**py-phone-caller**' through **Ansi
     * py-phone-caller-podman.yml
     * py_phone_caller_vars_file.yml
 
-
 ```bash
 [fedora@fedora-server ~]$ cd ansible_py-phone-caller/
 ```
 
-* Getting the file: ‘**caller_config.toml.jinja2**’ 
-  * from the URL: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja2
-  
+* Getting the file: ‘**caller_config.toml.jinja2**’
+    * from the
+      URL: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja2
+
 ```bash
 [fedora@fedora-server ansible_py-phone-caller]$ wget https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja2
 --2021-07-28 23:48:11--  https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/caller_config.toml.jinja2
@@ -722,7 +701,8 @@ caller_config.toml.jinja2                   100%[===============================
 ```
 
 * Getting the file: ‘**py-phone-caller-podman.yml**’
-  * from the URL: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/py-phone-caller-podman.yml
+    * from the
+      URL: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/py-phone-caller-podman.yml
 
 ```bash
 [fedora@fedora-server ansible_py-phone-caller]$ wget https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/py-phone-caller-podman.yml
@@ -739,7 +719,8 @@ py-phone-caller-podman.yml                  100%[===============================
 ```
 
 * Getting the file: ‘**py_phone_caller_vars_file.yml**’
-  * from the URL: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/py_phone_caller_vars_file.yml
+    * from the
+      URL: https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/py_phone_caller_vars_file.yml
 
 ```bash
 [fedora@fedora-server ansible_py-phone-caller]$ wget https://raw.githubusercontent.com/jcfdeb/py-phone-caller/main/assets/ansible/rh/py_phone_caller_vars_file.yml
@@ -755,11 +736,7 @@ py_phone_caller_vars_file.yml               100%[===============================
 2021-07-28 23:51:20 (14.6 MB/s) - ‘py_phone_caller_vars_file.yml’ saved [7149/7149]
 ```
 
-
-
 * The varialbes file '**py_phone_caller_vars_file.yml**'
-
-
 
 ```yaml
 ---
@@ -905,8 +882,8 @@ lost_directory_error: "The folder to serve the audio files was not found."
 
 * Installing and configuring the '**py-phone-caller**' with **Ansible**.
 
-Whit [Ansible](https://www.ansible.com/resources/get-started), a really cool configuration management and orchestration 
-tool, we can install and configure almost automatically all the **py-phone-caller** components. Once all the parameters 
+Whit [Ansible](https://www.ansible.com/resources/get-started), a really cool configuration management and orchestration
+tool, we can install and configure almost automatically all the **py-phone-caller** components. Once all the parameters
 are set in the ```assets/ansible/rh/py_phone_caller_vars_file.yml``` after a few minutes through '**ansible-playbook**'
 we get the '**py-phone-caller**' configured and ready to be used.
 
@@ -948,7 +925,8 @@ db_password: 'Use-A-Secure-Password-Here' # The password for the PostgreSQL 'py-
 
 In order to install the '**py-phone-caller**' we need to run the *ansible-playbook*, as the following example.
 
-* Output of the ``` ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, ansible_py-phone-caller/py-phone-caller-podman.yml```
+* Output of
+  the ``` ansible-playbook --connection=local --limit=127.0.0.1 --inventory=127.0.0.1, ansible_py-phone-caller/py-phone-caller-podman.yml```
   command.
 
 ```bash
@@ -1050,10 +1028,7 @@ PLAY RECAP *********************************************************************
 127.0.0.1                  : ok=23   changed=21   unreachable=0    failed=0    skipped=0    rescued=2    ignored=0   
 ```
 
-
-
-
-* Firewalld rules to allow the needed connections 
+* Firewalld rules to allow the needed connections
 
 ```bash
 [fedora@fedora-server ~]$ sudo firewall-cmd --add-source="192.168.122.0/24" --permanent
@@ -1078,25 +1053,25 @@ success
 success
 ```
 
-
 ### Installing and Configuring the Prometheus Monitoring Stack
 
 > The most steps of this section need to be done on the Fedora Server using the '**root**' account or an user with '**sudo**'
 > permissions.
 
-In this section we'll install and configure the last piece of this use case, using [Prometheus](https://prometheus.io/docs/introduction/overview/), 
-the [Node Expoter](https://prometheus.io/docs/guides/node-exporter/) and the [Alertmanager](https://prometheus.io/docs/alerting/latest/overview/).
-We'll be able to monitor, collect metrics and alert *(through the Alertmanager triggering the caller_prometheus_webhook)* if some 
-metric is violating a condition defined on the *alerting rules*.
+In this section we'll install and configure the last piece of this use case,
+using [Prometheus](https://prometheus.io/docs/introduction/overview/),
+the [Node Expoter](https://prometheus.io/docs/guides/node-exporter/) and
+the [Alertmanager](https://prometheus.io/docs/alerting/latest/overview/). We'll be able to monitor, collect metrics and
+alert *(through the Alertmanager triggering the caller_prometheus_webhook)* if some metric is violating a condition
+defined on the *alerting rules*.
 
 Packages to be installed:
 
 * golang-github-prometheus
-* golang-github-prometheus-alertmanager 
+* golang-github-prometheus-alertmanager
 * golang-github-prometheus-node-exporter
 
 Issuing the following command will install all the needed packages:
-
 
 ```bash
 [fedora@fedora ~]$ sudo dnf -y install golang-github-prometheus golang-github-prometheus-alertmanager golang-github-prometheus-node-exporter
@@ -1120,32 +1095,33 @@ Installed size: 212 M
 Downloading Packages:
 [...]
 ```
-Now we need to do some configurations in order to get it working as needed. 
 
-> Before we can view a small diagram in order to understand in a better way how these components works 
+Now we need to do some configurations in order to get it working as needed.
+
+> Before we can view a small diagram in order to understand in a better way how these components works
 
 ```text
 Node Exporter <-- Prometheus --> Alertmanager --> caller_prometheus_webhook
 ```
 
-In few words, the **Node Exporter** exposes the *metrics* of the **Fedora Server** system, **Prometheus** does a periodic
-*pull* of these metrics. If some alerting rules are defined and one or many metrics violates a condition, **Prometheus** 
-will send a request to the **Alertmanager**. From there the **caller_prometheus_webhook** will be triggered by the 
+In few words, the **Node Exporter** exposes the *metrics* of the **Fedora Server** system, **Prometheus** does a
+periodic
+*pull* of these metrics. If some alerting rules are defined and one or many metrics violates a condition, **Prometheus**
+will send a request to the **Alertmanager**. From there the **caller_prometheus_webhook** will be triggered by the
 **Alertmanager**.
-
 
 ##### The Prometheus Alertmanager
 
-The role of this component is trigger the different notification systems (e-mail, PagerDuty, Slack, VictorOps, etc ) and 
-is also able to make a *POST* Request to any kind of [*webhook receiver*](https://prometheus.io/docs/alerting/latest/configuration/#webhook_config)
-as the '**aller_prometheus_webhook**' in order to place a call or send an SMS message *(or do whatever you want)*. 
+The role of this component is trigger the different notification systems (e-mail, PagerDuty, Slack, VictorOps, etc ) and
+is also able to make a *POST* Request to any kind of [*webhook
+receiver*](https://prometheus.io/docs/alerting/latest/configuration/#webhook_config)
+as the '**aller_prometheus_webhook**' in order to place a call or send an SMS message *(or do whatever you want)*.
 
-> A very useful of this component is the ability of silence the alerts *(form the web interface)* in firing state, when 
-> someone takes action to solve the issue regarding the alert we can '*silence*' this alert preventing a new notification 
-> after 3 hours *(is the default configuration of the 'Alertmanager' -> ```repeat_interval: 3h ```)* 
+> A very useful of this component is the ability of silence the alerts *(form the web interface)* in firing state, when
+> someone takes action to solve the issue regarding the alert we can '*silence*' this alert preventing a new notification
+> after 3 hours *(is the default configuration of the 'Alertmanager' -> ```repeat_interval: 3h ```)*
 
-
-* And here, the list of the packages contents: 
+* And here, the list of the packages contents:
 
 ```bash
 [root@fedora ~]# dnf repoquery -l golang-github-prometheus-alertmanager
@@ -1180,7 +1156,7 @@ Last metadata expiration check: 0:50:29 ago on Thu 12 Aug 2021 04:23:21 PM CEST.
 /usr/share/licenses/golang-github-prometheus-alertmanager/NOTICE
 ```
 
-From the previous code snippet we can see that there's not a Systemd service file, folder to store the data, and the 
+From the previous code snippet we can see that there's not a Systemd service file, folder to store the data, and the
 configuration folder. We'll create them manually.
 
 * Creating the configuration folder and the 'data' folder *(in order to get keep the monitoring data in the same place
@@ -1206,6 +1182,7 @@ configuration folder. We'll create them manually.
 We need to add some configuration blocks to this file '*/etc/alertmanager/alertmanager.yml*', those blocks are:
 
 * On the routes section:
+
 ```yaml
 [...]
   # py-phone-caller example
@@ -1215,7 +1192,8 @@ We need to add some configuration blocks to this file '*/etc/alertmanager/alertm
 [...]
 ```
 
-* On the receivers section: 
+* On the receivers section:
+
 ```yaml
 [...]
 - name: 'py-phone-caller'
@@ -1226,10 +1204,10 @@ We need to add some configuration blocks to this file '*/etc/alertmanager/alertm
 [...]
 ```
 
-* The complete file: **/etc/alertmanager/alertmanager.yml** 
+* The complete file: **/etc/alertmanager/alertmanager.yml**
 
 > Please consider, this is an example file and several blocks can be removed because they aren't used. For your use case
-> it will work fine. The unused parts wasn't removed in order to show a complete landscape of this file. 
+> it will work fine. The unused parts wasn't removed in order to show a complete landscape of this file.
 
 ```yaml
 global:
@@ -1371,8 +1349,8 @@ receivers:
     send_resolved: false 
 ```
 
-We can take as Systemd Service file template, the '*prometheus.service*' service unit. 
-By running ```systemctl cat prometheus.service```.
+We can take as Systemd Service file template, the '*prometheus.service*' service unit. By
+running ```systemctl cat prometheus.service```.
 
 ```bash
 [root@fedora ~]# systemctl cat prometheus.service
@@ -1402,10 +1380,9 @@ SendSIGKILL=no
 WantedBy=multi-user.target
 ```
 
-
 * File: **/etc/systemd/system/alertmanager.service**
 
-We need to change only some lines, using the file paths recently crated/copied for the '*Alertmanager*' 
+We need to change only some lines, using the file paths recently crated/copied for the '*Alertmanager*'
 
 ```unit file (systemd)
 [Unit]
@@ -1461,16 +1438,17 @@ Aug 12 21:44:32 fedora alertmanager[49281]: level=info ts=2021-08-12T19:44:32.43
 
 ##### The Node Exporter
 
-Regarding this component we can say that it exposes different metrics about the host where's running. In order to learn 
-more about the metrics exposed by this component you can take a look of the [README.md](https://github.com/prometheus/node_exporter#enabled-by-default)
+Regarding this component we can say that it exposes different metrics about the host where's running. In order to learn
+more about the metrics exposed by this component you can take a look of
+the [README.md](https://github.com/prometheus/node_exporter#enabled-by-default)
 in the Github repository.
 
 * Enabling and starting the '**node_exporter**' serivce
+
 ```bash
 [root@fedora ~]# systemctl enable --now node_exporter.service 
 Created symlink /etc/systemd/system/multi-user.target.wants/node_exporter.service → /etc/systemd/system/node_exporter.service.
 ```
-
 
 * Getting information about the '**node_exporter**' service *(recently started)*
 
@@ -1500,7 +1478,7 @@ Aug 12 21:55:48 fedora node_exporter[49401]: level=info ts=2021-08-12T19:55:48.0
 
 ##### Prometheus
 
-We need make some changes before start the **Prometheus** service we need to change the default listening port from 9090 
+We need make some changes before start the **Prometheus** service we need to change the default listening port from 9090
 to other value that we prefer. The port is used by **Cockpit**.
 
 ```bash
@@ -1511,6 +1489,7 @@ tcp   LISTEN 0      4096                        *:9090                *:*     us
 Changing the Prometheus port to another one *(for example the 9091/TCP)*.
 
 * File:  **/etc/sysconfig/prometheus**
+
 ```bash
 CONFIG_FILE=/etc/prometheus/prometheus.yml
 STORAGE_TSDB_PATH=/var/lib/prometheus
@@ -1519,12 +1498,12 @@ WEB_CONSOLE_TEMPLATES_PATH=/etc/prometheus/consoles
 WEB_LISTEN_ADDRESS=127.0.0.1:9091
 ```
 
-
 * File: **/etc/prometheus/prometheus.yml**
 
 The most important block to modify are the following two blocks.
 
 * The *'alertmanagers'* block:
+
 ```yaml
 [...]
 alerting:
@@ -1536,6 +1515,7 @@ alerting:
 ```
 
 * The '*scrape_configs*' block:
+
 ```yaml
 [...]
   # The local node exporter
@@ -1547,6 +1527,7 @@ alerting:
 ```
 
 * The '*rule_files*' block:
+
 ```yaml
 [...]
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
@@ -1556,6 +1537,7 @@ rule_files:
 ```
 
 * The entire file:
+
 ```yaml
 # my global config
 global:
@@ -1595,8 +1577,7 @@ scrape_configs:
     - targets: ['localhost:9100']
 ```
 
-
-* File: **/etc/prometheus/alert_rules.yml** 
+* File: **/etc/prometheus/alert_rules.yml**
 
 ```yaml
 groups:
@@ -1612,7 +1593,6 @@ groups:
       summary: "The Node Exporter instance is down"
       description: "The Node Exporter instance is down, please check soon as possible"
 ```
-
 
 * Enabling and starting the '**prometheus**' service
 
@@ -1649,7 +1629,6 @@ Aug 12 22:03:58 fedora prometheus[49560]: level=info ts=2021-08-12T20:03:58.005Z
 Aug 12 22:03:58 fedora prometheus[49560]: level=info ts=2021-08-12T20:03:58.006Z caller=main.go:710 msg="Server is ready to receive web requests."
 ````
 
-
 * The firewall rules for **Prometeus** and the **Alertmanager**.
 
 ```bash
@@ -1663,29 +1642,25 @@ success
 success
 ```
 
-
-
 ### What's Happening Behind The Scenes
 
 As always, the logs becomes very useful in order to understand what's happening with your programs, etc.
 
-
 * Logs of the '**caller_prometheus_webhook**'
 
-When an alerts is sent from **Prometheus** to the **Alermanager**, then the **Alertmanager** sends an *HTTP POST* request
-to the **caller_prometheus_webhook**. In this example we've used the '**/sms_before_call**' endpoint and as consequence 
-an **SMS** will be sent soon as possible and *later*, the **phone call**.
+When an alerts is sent from **Prometheus** to the **Alermanager**, then the **Alertmanager** sends an *HTTP POST*
+request to the **caller_prometheus_webhook**. In this example we've used the '**/sms_before_call**' endpoint and as
+consequence an **SMS** will be sent soon as possible and *later*, the **phone call**.
 
 ```bash
 2021-08-12 18:45:01,803 Call/Message 'The Node Exporter instance is down, please check soon as possible.' for '+393312345678' through the endpoint 'sms_before_call'
 2021-08-12 18:45:01,807 - 172.19.0.84 [12/Aug/2021:16:45:01 +0000] "POST /sms_before_call HTTP/1.1" 200 180 "-" "Alertmanager/"
 ```
 
-
 * Logs of the '**caller_sms**'
 
-When the **caller_prometheus_webhook** receives the POST request from the **Alertmanager** it does other POST requesto to 
-the '**caller_sms**' to send the message to the contact configured in ```prometheus_webhook_receivers```. Through the 
+When the **caller_prometheus_webhook** receives the POST request from the **Alertmanager** it does other POST requesto
+to the '**caller_sms**' to send the message to the contact configured in ```prometheus_webhook_receivers```. Through the
 SMS service provider.
 
 ```bash
@@ -1700,10 +1675,10 @@ SMS service provider.
 2021-08-12 18:45:02,544 - 172.19.0.85 [12/Aug/2021:18:45:01 +0000] "POST /None?phone=%2B393312345678&message=The+Node+Exporter+instance+is+down,+please+check+soon+as+possible. HTTP/1.1" 200 178 "-" "Python/3.9 aiohttp/3.7.4.post0"
 ```
 
-
 * Logs of the '**asterisk_asterisk_call**'
 
-Some seconds or minutes after the SMS *(configured in ```sms_before_call_wait_seconds```)* the **asterisk_asterisk_call**
+Some seconds or minutes after the SMS *(configured in ```sms_before_call_wait_seconds```)* the **
+asterisk_asterisk_call**
 starts the calls round against the receiver number.
 
 > Some interesting parameters to adjust as we prefer.
@@ -1714,9 +1689,9 @@ starts the calls round against the receiver number.
 seconds_to_forget = 300
 times_to_dial = 3
 ```
-The '**seconds_to_forget**' is the time window where the '**asterisk_recall**' will try to recall the receiver, and 
-'**times_to_dial**' is the number of times to retry to call. 
- 
+
+The '**seconds_to_forget**' is the time window where the '**asterisk_recall**' will try to recall the receiver, and
+'**times_to_dial**' is the number of times to retry to call.
 
 ```bash
 2021-08-12 18:47:02,655 - 172.19.0.81 [12/Aug/2021:18:47:02 +0000] "POST /asterisk_init?phone=00393312345678&message=The+Node+Exporter+instance+is+down,+please+check+soon+as+possible. HTTP/1.1" 200 178 "-" "Python/3.9 aiohttp/3.7.4.post0"
@@ -1729,21 +1704,20 @@ The '**seconds_to_forget**' is the time window where the '**asterisk_recall**' w
 2021-08-12 18:48:32,393 Restoring the call control to the PBX on the channel '1628886897.2'
 ```
 
-
 * Logs of the '**asterisk_recall**'
 
-When the number '**4**' is not pressed by the *receiver/callee*, this component will recall again *(```times_to_dial```)*.  
+When the number '**4**' is not pressed by the *receiver/callee*, this component will recall
+again *(```times_to_dial```)*.
 
 ```bash
 2021-08-12 18:10:56,388 - Using the default path 'config/caller_config.toml'
 2021-08-12 18:48:17,679 Retry to call phone number: '00393312345678' to play the message: 'The Node Exporter instance is down, please check soon as possible.' - Total retry period: '300' seconds
 ```
 
-
 * Logs of the '**asterisk_ws_monitor**'
 
-This component manges and records into the database *(into the 'asterisk_ws_events' table)* the events of the Asterisk PBX
-when the '**py-phone-caller**' components are managing the call. 
+This component manges and records into the database *(into the 'asterisk_ws_events' table)* the events of the Asterisk
+PBX when the '**py-phone-caller**' components are managing the call.
 
 ```bash
 2021-08-12 18:47:22,695 Response for the playing audio 'e23c1ebc.wav' on the Asterisk channel '1628886822.1': '{"status": 201}'
@@ -1752,8 +1726,8 @@ when the '**py-phone-caller**' components are managing the call.
 
 * Last but not least
 
-The '**call_register**' component writes all the managed calls into the 'calls' table. An example of table structure from 
-the ```assets/DB/db-schema.sql``` file:
+The '**call_register**' component writes all the managed calls into the 'calls' table. An example of table structure
+from the ```assets/DB/db-schema.sql``` file:
 
 ```sql
 CREATE TABLE calls (
@@ -1775,10 +1749,10 @@ CREATE TABLE calls (
 );
 ```
 
-### Of Course, we can use or test if this works manually 
+### Of Course, we can use or test if this works manually
 
-We'll be also able to send messages and place calls from the terminal, maybe it can become useful if our intention is
-to don't use the Prometheus monitoring system. We can trigger the messages or calls with Cron for example, or with other
+We'll be also able to send messages and place calls from the terminal, maybe it can become useful if our intention is to
+don't use the Prometheus monitoring system. We can trigger the messages or calls with Cron for example, or with other
 scripts, etc.
 
 > This is an example of the payload sent from the Prometheus Alert Manager.
@@ -1832,12 +1806,12 @@ scripts, etc.
 {"status": "200"}
 ````
 
-
 #### Start a Single Call from the shell
 
-Also, we'll be able to start a call from the shell using the ```curl``` command. Please pay attention to format of the number
-that's using the '00' and the country code '39' because we're using the Asterisk trunk without dial rules in order to modify
-the number. For example if you want to place a call in the UK, the first four numbers will be '0044' and the rest of the number.
+Also, we'll be able to start a call from the shell using the ```curl``` command. Please pay attention to format of the
+number that's using the '00' and the country code '39' because we're using the Asterisk trunk without dial rules in
+order to modify the number. For example if you want to place a call in the UK, the first four numbers will be '0044' and
+the rest of the number.
 
 ````bash
 [fedora@fedora ~]$ curl -X POST "http://127.0.0.1:8081/asterisk_init?phone=00392235896425&message=New%20message%20from%20the%20Fedora%20Server%20shell"
@@ -1846,20 +1820,19 @@ the number. For example if you want to place a call in the UK, the first four nu
 
 #### Send a Single SMS from the shell
 
-Something like the previous curl command is happening when we want to send a single SMS, Twilio wants the '+' sing instead
-of the '00' prefix. By this reason we need to use the '%2B' string that is the encoded '+' character.
+Something like the previous curl command is happening when we want to send a single SMS, Twilio wants the '+' sing
+instead of the '00' prefix. By this reason we need to use the '%2B' string that is the encoded '+' character.
 
 ````bash
 [fedora@fedora ~]$ curl -X POST "http://127.0.0.1:8085/send_sms?phone=%2B392235896425&message=New%20message%20from%20the%20Fedora%20Server%20shell"
 {"status": 200}
 ````
 
-Note: *maybe in future versions this will be more user-friendly.* 
+Note: *maybe in future versions this will be more user-friendly.*
 
 ### Finally, the classic 'Wrapping Up'
 
-By following the steps of this guide we can set up a *mini* PagerDuty like system, obviously the '**py-phone-caller**' 
+By following the steps of this guide we can set up a *mini* PagerDuty like system, obviously the '**py-phone-caller**'
 isn't intended to be used in mission critical environments because isn't yet ready for this kind of workloads.
-
 
 Thanks for reading, I hope this article was useful for you.

@@ -133,3 +133,6 @@ tmp/
 
 # Don't commit the configuration...
 config/
+
+# Mac Stuff
+.DS_Store
