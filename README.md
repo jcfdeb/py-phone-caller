@@ -1,2 +1,3 @@
-# pdm-second-project
-A Web Interface for the 'py-phone-caller'
+# Not ready to be used in easily way...
+
+A Web Interface for the 'py-phone-caller' was added.
