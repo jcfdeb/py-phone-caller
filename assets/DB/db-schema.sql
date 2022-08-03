@@ -3,41 +3,52 @@
 -- PostgreSQL database dump
 --
 
-SET statement_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SET check_function_bodies = false;
-SET client_min_messages = warning;
+SET
+statement_timeout = 0;
+SET
+client_encoding = 'UTF8';
+SET
+standard_conforming_strings = on;
+SET
+check_function_bodies = false;
+SET
+client_min_messages = warning;
 
 --
 -- Name: plpgsql; Type: EXTENSION; Schema: -; Owner:
 --
 
-CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+CREATE
+EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
 
 
 --
 -- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner:
 --
 
-COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+COMMENT
+ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
 
 
-SET search_path = public, pg_catalog;
+SET
+search_path = public, pg_catalog;
 
-SET default_tablespace = '';
+SET
+default_tablespace = '';
 
-SET default_with_oids = false;
+SET
+default_with_oids = false;
 
 --
 -- Name: asterisk_ws_events; Type: TABLE; Schema: public; Owner: py_phone_caller; Tablespace:
 --
 
-CREATE TABLE asterisk_ws_events (
-    id integer NOT NULL,
+CREATE TABLE asterisk_ws_events
+(
+    id            integer NOT NULL,
     asterisk_chan character varying(64),
-    event_type character varying(64),
-    json_data json
+    event_type    character varying(64),
+    json_data     json
 );
 
 
@@ -51,8 +62,7 @@ CREATE SEQUENCE asterisk_ws_events_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
+    NO MAXVALUE CACHE 1;
 
 
 ALTER TABLE public.asterisk_ws_events_id_seq OWNER TO py_phone_caller;
@@ -68,22 +78,23 @@ ALTER SEQUENCE asterisk_ws_events_id_seq OWNED BY asterisk_ws_events.id;
 -- Name: calls; Type: TABLE; Schema: public; Owner: py_phone_caller; Tablespace:
 --
 
-CREATE TABLE calls (
-    id integer NOT NULL,
-    phone character varying(64),
-    message character varying(1024),
-    asterisk_chan character varying(64),
-    msg_chk_sum character varying(64),
-    call_chk_sum character varying(64),
-    unique_chk_sum character varying(64),
-    times_to_dial smallint,
-    dialed_times smallint,
+CREATE TABLE calls
+(
+    id                integer NOT NULL,
+    phone             character varying(64),
+    message           character varying(1024),
+    asterisk_chan     character varying(64),
+    msg_chk_sum       character varying(64),
+    call_chk_sum      character varying(64),
+    unique_chk_sum    character varying(64),
+    times_to_dial     smallint,
+    dialed_times      smallint,
     seconds_to_forget integer,
-    first_dial timestamp without time zone,
-    last_dial timestamp without time zone,
-    heard_at timestamp without time zone,
-    acknowledge_at timestamp without time zone,
-    cycle_done boolean DEFAULT false
+    first_dial        timestamp without time zone,
+    last_dial         timestamp without time zone,
+    heard_at          timestamp without time zone,
+    acknowledge_at    timestamp without time zone,
+    cycle_done        boolean DEFAULT false
 );
 
 
@@ -97,8 +108,7 @@ CREATE SEQUENCE calls_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
+    NO MAXVALUE CACHE 1;
 
 
 ALTER TABLE public.calls_id_seq OWNER TO py_phone_caller;
@@ -146,8 +156,11 @@ ALTER TABLE ONLY calls
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 REVOKE ALL ON SCHEMA public FROM py_phone_caller;
-GRANT ALL ON SCHEMA public TO py_phone_caller;
-GRANT ALL ON SCHEMA public TO PUBLIC;
+GRANT
+ALL
+ON SCHEMA public TO py_phone_caller;
+GRANT ALL
+ON SCHEMA public TO PUBLIC;
 
 
 --

@@ -1,0 +1,15 @@
+aioflask
+aiohttp
+asyncpg
+aiodns
+celery[redis]
+flask
+flask-login
+flask-session
+gTTS
+httpx
+toml
+piccolo
+pydub
+twilio
+websockets
