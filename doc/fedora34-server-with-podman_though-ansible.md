@@ -1,5 +1,7 @@
 # Work In Progress - Not Yet Stable - But... Works
 
+[Warning]: refers to an old branch, it will not work *(if its work, you're the luckiest person in this planet)* 
+
 ### Preface
 
 #### Some assumptions
