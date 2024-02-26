@@ -1,7 +1,7 @@
 jobs:
 - job: CreateFolderJob
   pool:
-    name: 'TestAgentPool'  # Specify the name of your existing agent pool
+    name: 'default'  # Specify the name of your existing agent pool
   steps:
   - task: Bash@3
     inputs:
