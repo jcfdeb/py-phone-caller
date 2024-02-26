@@ -7,4 +7,5 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
-        mkdir /tmp/folder-2024
+        mkdir -p /tmp/folder-2024
+        exit 0
