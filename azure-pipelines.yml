@@ -1,7 +1,7 @@
 jobs:
 - job: CreateFolderJob
   pool:
-    vmImage: 'ubuntu-latest'
+    name: 'TestAgentPool'  # Specify the name of your existing agent pool
   steps:
   - task: Bash@3
     inputs:
