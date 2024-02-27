@@ -1,8 +1,14 @@
 variables:
   myVariable: 'test-value' # Define variable
 
-steps:
-- script: |
-    # Note how the variable is used below
-    echo "Value of myVariable is: $(myVariable)"
-  displayName: 'Bash script'
+jobs:
+- job: CreateFolderJob
+  pool:
+    name: 'default'
+  steps:
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: |
+        echo "Value of myVariable is: $(myVariable)"
+        exit 0
