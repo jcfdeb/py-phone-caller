@@ -1,4 +1,7 @@
-
+parameters:
+  - name: description
+    type: string
+    default: "test"
 
 jobs:
 - job: CreateFolderJob
