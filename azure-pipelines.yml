@@ -1,16 +1,11 @@
-variables:
-  NEW_RELEASE: ${NEW_RELEASE}
+trigger:
+- master
 
-jobs:
-- job: CreateFolderJob
-  pool:
-    name: 'default'
-  steps:
-  - task: Bash@3
-    inputs:
-      targetType: 'inline'
-      script: |
-        mkdir -p /tmp/folder-2024
-        echo "NEW_RELEASE value: ${NEW_RELEASE}"
-        touch /tmp/${NEW_RELEASE}
-        exit 0
+variables:
+  myVariable: 'test-value' # Define variable
+
+steps:
+- script: |
+    # Note how the variable is used below
+    echo "Value of myVariable is: $(myVariable)"
+  displayName: 'Bash script'
