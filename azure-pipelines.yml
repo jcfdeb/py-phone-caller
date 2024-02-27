@@ -1,5 +1,5 @@
-variables:
-  myVariable: 'test-value' # Define variable
+#variables:
+#  myVariable: 'test-value' # Define variable
 
 jobs:
 - job: CreateFolderJob
