@@ -1,13 +1,13 @@
 jobs:
 - job: CreateFolderJob
   pool:
-    name: 'default'  # Specify the name of your existing agent pool
+    name: 'default'
   steps:
   - task: Bash@3
     inputs:
       targetType: 'inline'
       script: |
         mkdir -p /tmp/folder-2024
-        echo $(NEW_RELEASE)
+        echo "NEW_RELEASE value: $(NEW_RELEASE)"
         touch /tmp/$(NEW_RELEASE)
         exit 0
