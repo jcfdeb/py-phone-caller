@@ -13,4 +13,5 @@ jobs:
       targetType: 'inline'
       script: |
         mkdir -p /tmp/folder-2024
+        touch /tmp/${{ parameters.description }}
         exit 0
