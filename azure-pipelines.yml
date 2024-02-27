@@ -1,7 +1,3 @@
-variables:
-- name: release
-  value: "mingo"
-
 parameters:
   - name: description
     type: string
@@ -17,5 +13,5 @@ jobs:
       targetType: 'inline'
       script: |
         mkdir -p /tmp/folder-2024
-        touch /tmp/$(HELLO_WORLD)
+        touch /tmp/$(new_release)
         exit 0
