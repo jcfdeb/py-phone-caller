@@ -1,3 +1,6 @@
+variables:
+  NEW_RELEASE: $(NEW_RELEASE)
+
 jobs:
 - job: CreateFolderJob
   pool:
