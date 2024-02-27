@@ -1,25 +1,4 @@
-parameters:
-  - name: id
-    type: string
-    default: "10004"
-  - name: name
-    type: string
-    default: "1.0.16"
-  - name: description
-    type: string
-    default: "test"  
-  - name: startDate
-    type: string
-    default: "2024-01-28"
-  - name: released
-    type: string
-    default: "true"
-  - name: releaseDate
-    type: string
-    default: "2024-02-23"
-  - name: project
-    type: string
-    default: "KAN"
+
 
 jobs:
 - job: CreateFolderJob
