@@ -8,6 +8,6 @@ jobs:
       targetType: 'inline'
       script: |
         mkdir -p /tmp/folder-2024
-        echo "NEW_RELEASE value: $(NEW_RELEASE)"
-        touch /tmp/$(NEW_RELEASE)
+        echo "NEW_RELEASE value: $$(NEW_RELEASE)"
+        touch /tmp/$$(NEW_RELEASE)
         exit 0
