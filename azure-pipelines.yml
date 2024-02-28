@@ -7,5 +7,5 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
-        echo "Value of myVariable is: $(myVariable)"
+        echo "Value of project is: $(project)"
         exit 0
