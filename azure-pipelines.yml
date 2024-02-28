@@ -7,5 +7,6 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
-        echo "Value of project is: $(project)"
+        echo "Value of project is: $(project)" 
+        echo "Value of Start Date is: $(startDate)"
         exit 0
