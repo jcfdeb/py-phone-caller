@@ -6,7 +6,7 @@ py-phone-caller is an automated phone calling and SMS notification system built 
 
 The project provides a modular architecture with components for call initiation, audio generation, call tracking, SMS sending, and a web-based user interface. It supports multiple text-to-speech engines and can be configured to retry failed calls.
 
-**Current Status**: Works fine, but several things need to be improved or implemented. The project isn't ready to be used without a deep knowledge of Asterisk, Linux, etc. It is not ready to be used in production. Have patience, maybe in a near future it will be more _usable_.
+**Current Status**: Works fine, but a few things need to be improved or implemented. The project isn't ready to be used without a deep knowledge of Asterisk, Linux, etc. It is ready to be used in production, but the set of updated Ansible playbooks is work in progres _(also runs on containers, Kubernetes...)_. Have patience, maybe in a near future it will be more _usable/installable_.
 
 ## Components
 
