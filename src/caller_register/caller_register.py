@@ -1,23 +1,22 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+import traceback
+from datetime import UTC, datetime, timedelta
 
 from aiohttp import web
 
-import caller_utils.caller_configuration as conf
-from caller_utils.checksums import gen_call_chk_sum, gen_msg_chk_sum, gen_unique_chk_sum
-from caller_utils.db.db_caller_register import (
-    check_call_yet_present,
-    get_current_call_id,
-    get_dialed_times,
-    get_first_dial_age,
-    get_msg_chk_sum,
-    insert_into_db,
-    update_acknowledgement,
-    update_heard_at,
-    update_the_call_db_record,
-)
-from caller_utils.db.db_scheduled_calls import insert_scheduled_call
+import py_phone_caller_utils.caller_configuration as conf
+from py_phone_caller_utils.checksums import (gen_call_chk_sum, gen_msg_chk_sum,
+                                             gen_unique_chk_sum)
+from py_phone_caller_utils.py_phone_caller_db.db_caller_register import (
+    check_call_yet_present, get_current_call_id, get_dialed_times,
+    get_first_dial_age, get_msg_chk_sum, insert_into_db,
+    update_acknowledgement, update_heard_at, update_the_call_db_record)
+from py_phone_caller_utils.py_phone_caller_db.db_scheduled_calls import \
+    insert_scheduled_call
+from py_phone_caller_utils.py_phone_caller_db.piccolo_conf import DB
+from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.piccolo_app import \
+    APP_CONFIG
 
 seconds_to_forget = conf.get_seconds_to_forget()
 times_to_dial = conf.get_times_to_dial()
@@ -25,9 +24,153 @@ times_to_dial = conf.get_times_to_dial()
 logging.basicConfig(level=logging.INFO)
 
 
+async def run_piccolo_migrations():
+    """
+    Runs Piccolo migrations to set up or update the database schema for the application.
+
+    This asynchronous function ensures a database connection, executes migrations, verifies tables, and logs the process.
+
+    Returns:
+        bool: True if migrations were successful, False otherwise.
+    """
+
+    logging.info("Running Piccolo migrations...")
+
+    if not await _ensure_database_connection():
+        return False
+
+    try:
+        logging.info(f"Found app config for {APP_CONFIG.app_name}")
+        migration_success = await _execute_migrations()
+
+        if migration_success:
+            await _verify_tables()
+
+        return migration_success
+    except Exception as e:
+        logging.error(f"Error in migration process: {e}")
+        logging.error(traceback.format_exc())
+        return False
+    finally:
+        logging.info("Piccolo migration process completed")
+
+
+async def _ensure_database_connection():
+    """
+    Ensures that a connection pool to the database is established.
+
+    This asynchronous function checks if the database connection pool exists and starts it if necessary, logging the connection status.
+
+    Returns:
+        bool: True if the connection is established successfully, False otherwise.
+    """
+    try:
+        if DB.pool is None:
+            await DB.start_connection_pool()
+            logging.info("Connected to database")
+        return True
+    except Exception as e:
+        logging.error(f"Error connecting to database: {e}")
+        return False
+
+
+async def _execute_migrations():
+    """
+    Executes Piccolo migrations for the application's database schema.
+
+    This asynchronous function runs the migration commands and logs the outcome.
+
+    Returns:
+        bool: True if migrations were applied successfully, False otherwise.
+    """
+    try:
+
+        from piccolo.apps.migrations.commands.forwards import forwards
+
+        await forwards(app_name=APP_CONFIG.app_name)
+        logging.info("Successfully applied migrations")
+        return True
+    except Exception as e:
+        logging.error(f"Error running migrations: {e}")
+        return False
+
+
+async def _verify_tables():
+    """
+    Verifies the existence and status of all tables defined in the application configuration.
+
+    This asynchronous function checks each table, logs the number of records if it exists, or logs an error if the table cannot be queried.
+
+    Returns:
+        None
+    """
+    tables = APP_CONFIG.table_classes
+    if not tables:
+        return
+
+    logging.info(f"Verifying {len(tables)} tables...")
+    tables_status = []
+
+    for table_class in tables:
+        try:
+            count = await table_class.count()
+            tables_status.append(
+                f"{table_class.__name__}: exists (contains {count} records)"
+            )
+        except Exception as e:
+            tables_status.append(
+                f"{table_class.__name__}: error querying table - {str(e)}"
+            )
+
+    logging.info("Database tables status:")
+    for status in tables_status:
+        logging.info(f"{status}")
+
+
+async def init_database():
+    """
+    Initializes the application's database by running migrations or creating tables directly if migrations fail.
+
+    This asynchronous function attempts to run Piccolo migrations and, if unsuccessful, falls back to direct table creation, logging each step.
+
+    Returns:
+        None
+    """
+    logging.info("Initializing the database...")
+
+    migration_success = await run_piccolo_migrations()
+
+    if not migration_success:
+        logging.warning("Migrations failed, falling back to direct table creation")
+
+        try:
+
+            for table_class in APP_CONFIG.table_classes:
+                try:
+                    logging.info(f"Creating table: {table_class.__name__}")
+                    await table_class.create_table(if_not_exists=True)
+                    logging.info(f"Table {table_class.__name__} created successfully")
+                except Exception as e:
+                    logging.error(f"Error creating table {table_class.__name__}: {e}")
+        except Exception as e:
+            logging.error(f"Error in fallback table creation: {e}")
+
+    logging.info("Database initialization completed")
+
+
 async def present_or_not_logger(phone, first_dial_time, message):
     """
-    Used for display a better indication of the call status
+    Logs whether a call for the given phone and message is within the retry period or if a new cycle will start.
+
+    This asynchronous function checks the first dial time and logs the appropriate message about the call's retry status.
+
+    Args:
+        phone (str): The recipient's phone number.
+        first_dial_time (timedelta or None): The time since the first dial attempt, or None if not available.
+        message (str): The message associated with the call.
+
+    Returns:
+        None
     """
 
     if first_dial_time:
@@ -47,7 +190,20 @@ async def present_or_not_logger(phone, first_dial_time, message):
 
 
 async def get_request_parameters(request):
-    """Getting the needed params from the 'request'"""
+    """
+    Extracts the 'phone', 'message', and 'asterisk_chan' parameters from the incoming request.
+
+    This asynchronous function retrieves required query parameters from the request and raises an HTTP error if any are missing.
+
+    Args:
+        request: The incoming HTTP request containing query parameters.
+
+    Returns:
+        tuple: A tuple containing the phone, message, and asterisk_chan values.
+
+    Raises:
+        web.HTTPClientError: If any required parameter is missing from the request.
+    """
     try:
         phone = request.rel_url.query["phone"]
         message = request.rel_url.query["message"]
@@ -65,7 +221,7 @@ async def get_request_parameters(request):
         ) from err
 
 
-async def fist_call_attempt(
+async def new_call_attempt(
     phone,
     message,
     asterisk_chan,
@@ -74,8 +230,24 @@ async def fist_call_attempt(
     unique_chk_sum,
     first_dial,
 ):
-    """Creates the call DB record at the first dial attempt"""
-    logging.info(f"Is the first call for '{phone}' with the message '{message}'.")
+    """
+    Creates a new call attempt record in the database for the specified phone and message.
+
+    This asynchronous function logs the attempt and inserts a new record, handling and logging any exceptions that occur.
+
+    Args:
+        phone (str): The recipient's phone number.
+        message (str): The message to be delivered during the call.
+        asterisk_chan (str): The identifier of the Asterisk channel.
+        msg_chk_sum (str): The checksum of the message.
+        call_chk_sum (str): The checksum of the call.
+        unique_chk_sum (str): The unique checksum for this call attempt.
+        first_dial (datetime): The timestamp of the first dial attempt.
+
+    Returns:
+        None
+    """
+    logging.info(f"No active call cycles for '{phone}' with the message '{message}'.")
     try:
         await insert_into_db(
             phone,
@@ -98,17 +270,30 @@ async def fist_call_attempt(
 
 
 async def defining_first_dial_time(call_chk_sum, current_call_id, phone, message):
-    """Trying to define the first dial time for a given 'call' and 'message'"""
+    """
+    Determines the time since the first dial attempt for a given call and logs its status.
+
+    This asynchronous function retrieves the first dial time from the database, logs whether the call is within the retry period, and returns the time.
+
+    Args:
+        call_chk_sum (str): The checksum of the call.
+        current_call_id (int): The current call's database ID.
+        phone (str): The recipient's phone number.
+        message (str): The message associated with the call.
+
+    Returns:
+        timedelta or None: The time since the first dial attempt, or None if it cannot be determined.
+    """
     try:
         first_dial_time = await get_first_dial_age(call_chk_sum, current_call_id)
         await present_or_not_logger(phone, first_dial_time, message)
         return first_dial_time
-    except TypeError:
+    except Exception as err:
         # It should only notify if there's no uncompleted cycles here
         # for a given round of calls
-        logging.info(
-            f"There's no uncompleted cycle for '{phone}' with the message"
-            + f" '{message}' in the last '{seconds_to_forget}' seconds."
+        logging.exception(
+            f"We can't define the 'first_dial_time'  for '{phone}' with the message"
+            + f" '{message}' due to the following error: '{err}'"
         )
 
 
@@ -124,8 +309,26 @@ async def updating_the_call_db_record(
     unique_chk_sum,
     first_dial,
 ):
-    """Updated the call DB record in order to keep trace of the cycle, also works as fallback
-    if the operation fails"""
+    """
+    Updates the call database record if within the retry period, or creates a new record if not.
+
+    This asynchronous function attempts to update the existing call record based on the first dial time, and inserts a new record if an update is not possible.
+
+    Args:
+        first_dial_time (timedelta): The time since the first dial attempt.
+        call_chk_sum (str): The checksum of the call.
+        current_call_id (int): The current call's database ID.
+        current_dialed_times (int): The number of times the call has been dialed.
+        asterisk_chan (str): The identifier of the Asterisk channel.
+        phone (str): The recipient's phone number.
+        message (str): The message to be delivered during the call.
+        msg_chk_sum (str): The checksum of the message.
+        unique_chk_sum (str): The unique checksum for this call attempt.
+        first_dial (datetime): The timestamp of the first dial attempt.
+
+    Returns:
+        None
+    """
     try:
         if first_dial_time < timedelta(seconds=seconds_to_forget):
             await update_the_call_db_record(
@@ -136,7 +339,13 @@ async def updating_the_call_db_record(
                 phone,
                 message,
             )
-    except TypeError:
+    except Exception as err:
+        logging.info(
+            (
+                "No update done, creating a new record for:"
+                + f" phone -> {phone} | message -> {message} | cause -> {err}"
+            )
+        )
         await insert_into_db(
             phone,
             message,
@@ -151,8 +360,16 @@ async def updating_the_call_db_record(
 
 
 async def register_call(request):
-    """Handle incoming requests coming to '/CALL_REGISTER_APP_ROUTE_REGISTER_CALL'
-    can be configured through an environmental variable or form the config file
+    """
+    Handles incoming requests to register a new call attempt or update an existing call record.
+
+    This asynchronous function processes the request parameters, manages call control logic, and updates or creates call records as needed.
+
+    Args:
+        request: The incoming HTTP request containing call registration parameters.
+
+    Returns:
+        aiohttp.web.Response: A JSON response indicating the status of the operation.
     """
 
     phone, message, asterisk_chan = await get_request_parameters(request)
@@ -160,12 +377,12 @@ async def register_call(request):
     # Used for the call control logics
     call_chk_sum = await gen_call_chk_sum(phone, message)
     msg_chk_sum = await gen_msg_chk_sum(message)
-    first_dial = datetime.utcnow()
+    first_dial = datetime.now(UTC).replace(tzinfo=None)
     unique_chk_sum = await gen_unique_chk_sum(phone, message, first_dial)
     call_yet_present = await check_call_yet_present(call_chk_sum, phone, message)
 
     if call_yet_present is None:
-        await fist_call_attempt(
+        await new_call_attempt(
             phone,
             message,
             asterisk_chan,
@@ -178,13 +395,31 @@ async def register_call(request):
     else:
         current_call_id = await get_current_call_id(seconds_to_forget, call_chk_sum)
 
+        # When there's no active call cycle (inside the period of 'seconds_to_forget'),
+        # we'll start a new one. By creating a new record.
+        if current_call_id is None:
+            await new_call_attempt(
+                phone,
+                message,
+                asterisk_chan,
+                msg_chk_sum,
+                call_chk_sum,
+                unique_chk_sum,
+                first_dial,
+            )
+            logging.info(
+                f"There's no uncompleted cycle for '{phone}' with the message"
+                + f" '{message}' in the last '{seconds_to_forget}' seconds."
+                + " We'll start a new cycle."
+            )
+            return web.json_response({"status": 200})
+
         first_dial_time = await defining_first_dial_time(
             call_chk_sum, current_call_id, phone, message
         )
 
         current_dialed_times = await get_dialed_times(seconds_to_forget, call_chk_sum)
 
-        # Updating the call record on the DB
         await updating_the_call_db_record(
             first_dial_time,
             call_chk_sum,
@@ -202,9 +437,20 @@ async def register_call(request):
 
 
 async def acknowledge(request):
-    """Handle incoming requests coming to '/ack'"""
-    # TODO manage the acknowledge of the call, when the callee press a number
-    # use in asterisk to call this endpoint "${CHANNEL(uniqueid)}"
+    """
+    Handles incoming requests to acknowledge a call by updating the database record.
+
+    This asynchronous function extracts the 'asterisk_chan' parameter from the request, updates the acknowledgement in the database, and returns a JSON response.
+
+    Args:
+        request: The incoming HTTP request containing the 'asterisk_chan' parameter.
+
+    Returns:
+        aiohttp.web.Response: A JSON response indicating the status of the acknowledgement.
+
+    Raises:
+        web.HTTPClientError: If the 'asterisk_chan' parameter is missing from the request.
+    """
     try:
         asterisk_chan = request.rel_url.query["asterisk_chan"]
     except KeyError as err:
@@ -222,13 +468,23 @@ async def acknowledge(request):
     # Do the acknowledgement on the DB updating the record (the Asterisk channel ID is unique)
     await update_acknowledgement(asterisk_chan)
 
-    # TODO improve the status code reflecting the result of the query (call ack)...
     return web.json_response({"status": 200})
 
 
 async def heard(request):
-    """Handle incoming requests coming to '/heard'
-    if the massage was played add a record with the timestamp
+    """
+    Handles incoming requests to mark a call as heard by updating the database record.
+
+    This asynchronous function extracts the 'asterisk_chan' parameter from the request, updates the 'heard' status in the database, and returns a JSON response.
+
+    Args:
+        request: The incoming HTTP request containing the 'asterisk_chan' parameter.
+
+    Returns:
+        aiohttp.web.Response: A JSON response indicating the status of the update.
+
+    Raises:
+        web.HTTPClientError: If the 'asterisk_chan' parameter is missing from the request.
     """
     try:
         asterisk_chan = request.rel_url.query["asterisk_chan"]
@@ -244,12 +500,24 @@ async def heard(request):
     # Update the call DB record when the Asterisk PBX plays the audio message
     await update_heard_at(asterisk_chan)
 
-    # TODO improve the status code reflecting the result of the query (call heard)...
     return web.json_response({"status": 200})
 
 
 async def voice_message(request):
-    """Handle incoming requests coming to '/msg'"""
+    """
+    Handles incoming requests to retrieve the voice message and its checksum for a given Asterisk channel.
+
+    This asynchronous function extracts the 'asterisk_chan' parameter from the request, fetches the message and checksum from the database, and returns them in a JSON response.
+
+    Args:
+        request: The incoming HTTP request containing the 'asterisk_chan' parameter.
+
+    Returns:
+        aiohttp.web.Response or dict: A JSON response with the message and checksum, or an empty response if no data is found.
+
+    Raises:
+        web.HTTPClientError: If the 'asterisk_chan' parameter is missing from the request.
+    """
     try:
         asterisk_chan = request.rel_url.query["asterisk_chan"]
     except KeyError as err:
@@ -278,8 +546,19 @@ async def voice_message(request):
 
 
 async def scheduled_call(request):
-    """Handle incoming requests coming to '/SCHEDULED_CALL_APP_ROUTE_REGISTER_CALL'
-    can be configured through an environmental variable or form the config file
+    """
+    Handles incoming requests to schedule a call at a specified time.
+
+    This asynchronous function extracts the required parameters from the request, records the scheduled call in the database, and returns a JSON response.
+
+    Args:
+        request: The incoming HTTP request containing 'phone', 'message', and 'scheduled_at' parameters.
+
+    Returns:
+        aiohttp.web.Response: A JSON response indicating the status of the scheduling operation.
+
+    Raises:
+        web.HTTPClientError: If any required parameter is missing from the request.
     """
 
     try:
@@ -299,10 +578,8 @@ async def scheduled_call(request):
 
     # Used to record useful data on the scheduled call into the DB
     scheduled_at = datetime.strptime(scheduled_at_str, "%Y-%m-%d %H:%M")
-    print(scheduled_at_str) # Debug
-    print(scheduled_at) # Debug
     call_chk_sum = await gen_call_chk_sum(phone, message)
-    inserted_at = datetime.utcnow()
+    inserted_at = datetime.now(UTC).replace(tzinfo=None)
 
     await insert_scheduled_call(phone, message, call_chk_sum, inserted_at, scheduled_at)
 
@@ -310,7 +587,14 @@ async def scheduled_call(request):
 
 
 async def init_app():
-    """Start the Application Web Server."""
+    """
+    Initializes and configures the aiohttp web application for call registration and management.
+
+    This asynchronous function sets up the web application and registers routes for call registration, voice messages, scheduled calls, acknowledgements, and heard status.
+
+    Returns:
+        aiohttp.web.Application: The configured aiohttp web application instance.
+    """
     app = web.Application()
 
     # And... here our routes
@@ -330,7 +614,22 @@ async def init_app():
     return app
 
 
-if __name__ == "__main__":
+def main():
+    """
+    Main entry point for the call register web application.
+
+    This function initializes the event loop, starts the database setup, creates the aiohttp web application, and runs the web server.
+
+    Returns:
+        None
+    """
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(init_database())
     app = loop.run_until_complete(init_app())
-    web.run_app(app, port=conf.get_call_register_port())
+
+    web.run_app(app, port=int(conf.get_call_register_port()))
+
+
+if __name__ == "__main__":
+    main()

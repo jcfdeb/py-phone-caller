@@ -1,11 +1,13 @@
 import asyncio
 import datetime
 import logging
+import signal
 
-from aiohttp import ClientSession, client_exceptions, web, web_exceptions
+from aiohttp import ClientSession, client_exceptions, web_exceptions
 
-import caller_utils.caller_configuration as conf
-from caller_utils.db.db_asterisk_recaller import select_to_recall
+import py_phone_caller_utils.caller_configuration as conf
+from py_phone_caller_utils.py_phone_caller_db.db_asterisk_recaller import \
+    select_to_recall
 
 logging.basicConfig(format=conf.get_log_formatter())
 
@@ -16,7 +18,18 @@ sleep_and_retry = seconds_to_forget / (times_to_dial + 1)
 
 
 async def recall_post(phone, message):
-    """Makes the POST against the 'asterisk_call' service in order to call again"""
+    """
+    Sends a POST request to the Asterisk call service to initiate a recall for the specified phone and message.
+
+    This asynchronous function attempts to place a call using the configured Asterisk call endpoint and logs any connection errors.
+
+    Args:
+        phone (str): The recipient's phone number.
+        message (str): The message to be delivered during the call.
+
+    Returns:
+        None
+    """
     asterisk_call_url = conf.get_asterisk_call_url()
     session_recall_post = ClientSession()
     try:
@@ -34,20 +47,29 @@ async def recall_post(phone, message):
 
 
 async def asterisk_recall():
-    """Recall no answered calls following the number of retries and configured time frame
-    to contact the callee again. Using the information stored in PostgreSQL by 'caller_register.py'"""
+    """
+    Periodically checks for calls that need to be retried and initiates recall attempts.
+
+    This asynchronous function queries the database for eligible calls, attempts to recall them, and handles timing and error logging.
+
+    Returns:
+        None
+    """
 
     while True:
         try:
-
-            lesser_seconds_to_forget = datetime.datetime.utcnow() - datetime.timedelta(
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            lesser_seconds_to_forget = now_utc - datetime.timedelta(
                 seconds=seconds_to_forget
             )
-            greater_sleep_and_retry = datetime.datetime.utcnow() - datetime.timedelta(
+            greater_sleep_and_retry = now_utc - datetime.timedelta(
                 seconds=sleep_and_retry
             )
+
             select_recall = await select_to_recall(
-                times_to_dial, lesser_seconds_to_forget, greater_sleep_and_retry
+                times_to_dial,
+                lesser_seconds_to_forget.replace(tzinfo=None),
+                greater_sleep_and_retry.replace(tzinfo=None),
             )
 
             if select_recall is not None:
@@ -65,19 +87,41 @@ async def asterisk_recall():
                         phone,
                         message,
                     )
-                    # Sleep some seconds a retry...
 
                     await asyncio.sleep(sleep_and_retry)
 
-            await asyncio.sleep(SLEEP_BEFORE_QUERYING)  # Don't stress the CPU...
+            await asyncio.sleep(SLEEP_BEFORE_QUERYING)
 
         except Exception as err:
             logging.exception(f"Problem with the PostgreSQL connection: '{err}'")
             exit(1)
 
 
+def receive_signal(signal_number, frame):
+    """
+    Handles received system signals and exits the program gracefully.
+
+    This function prints the received signal number and exits the process for SIGINT (2) or SIGTERM (15).
+
+    Args:
+        signal_number (int): The signal number received.
+        frame: The current stack frame (unused).
+
+    Returns:
+        None
+    """
+    print("Exiting On Signal:", signal_number)
+    match signal_number:
+        case 2:
+            exit(0)
+        case 15:
+            exit(0)
+
+
 if __name__ == "__main__":
     try:
+        signal.signal(signal.SIGTERM, receive_signal)
+        signal.signal(signal.SIGINT, receive_signal)
         loop = asyncio.new_event_loop()
         loop.run_until_complete(asterisk_recall())
         loop.run_forever()

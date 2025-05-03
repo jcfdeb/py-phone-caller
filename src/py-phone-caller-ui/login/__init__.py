@@ -4,8 +4,11 @@ from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import LoginManager, login_user
 from werkzeug.security import check_password_hash
 
-from caller_utils.db.db_user import select_user
-from caller_utils.login.user import User
+from py_phone_caller_utils.login.user import User
+from py_phone_caller_utils.py_phone_caller_db.db_user import select_user
+
+HOME_TEMPLATE = "home_blueprint.home"
+LOGIN_TEMPLATE = "login.html"
 
 login_manager = LoginManager()
 login_manager.session_protection = "strong"
@@ -22,34 +25,47 @@ login_blueprint = Blueprint(
 
 @login_blueprint.route("/login", methods=["GET"])
 async def login():
-    """Display the login form for py-phone-caller"""
-    return render_template("login.html", home_url=url_for("home_blueprint.home"))
+    """
+    Renders the login page for the application.
+
+    This asynchronous view returns the rendered login.html template with the home URL context.
+
+    Returns:
+        flask.Response: The rendered HTML login page.
+    """
+    return render_template(LOGIN_TEMPLATE, home_url=url_for(HOME_TEMPLATE))
 
 
 @login_blueprint.route("/enter", methods=["POST"])
 async def enter():
-    """Managing the logins for py-phone-caller"""
+    """
+    Processes the login form submission and authenticates the user.
+
+    This asynchronous view checks the provided credentials, logs the user in if valid, and redirects to the home page or returns an error.
+
+    Returns:
+        flask.Response: A redirect to the home page on success, or the login page with an error message on failure.
+    """
 
     form_email = request.form.get("email")
     form_password = request.form.get("password")
 
     user_from_db = await select_user(form_email)
 
-    try:
-        current_user = User(username=user_from_db.get("email"))
-        current_user.password = user_from_db.get("password")
-    except AttributeError:
-        redirect(url_for("login_blueprint.login"))
+    if not user_from_db:
+        logging.info(f"Login attempt failed: User '{form_email}' not found.")
+        return redirect(url_for("login_blueprint.login"))
 
-    try:
+    current_user = User(username=user_from_db.get("email"))
+    stored_password_hash = user_from_db.get("password")
 
-        if check_password_hash(current_user.password, form_password):
-            login_user(current_user)
-            return redirect(url_for("home_blueprint.home"))
-        else:
-            logging.info(f"Invalid Username or password for '{form_email}'...")
-    except UnboundLocalError:
-        logging.info(f"Invalid Username or password for '{form_email}'...")
-
-    # In case of wrong user & pass
-    return render_template("login.html", home_url=url_for("home_blueprint.home"))
+    if check_password_hash(stored_password_hash, form_password):
+        login_user(current_user)
+        return redirect(url_for("home_blueprint.home"))
+    else:
+        logging.info(f"Invalid password attempt for user '{form_email}'.")
+        return render_template(
+            LOGIN_TEMPLATE,
+            home_url=url_for(HOME_TEMPLATE),
+            error="Invalid username or password",
+        )

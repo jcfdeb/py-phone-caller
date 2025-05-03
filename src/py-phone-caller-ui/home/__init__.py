@@ -20,7 +20,14 @@ def logout():
 @home_blueprint.route("/")
 @login_required
 async def home():
-    """Returns the home page"""
+    """
+    Renders the home page for authenticated users, providing navigation links to all main sections.
+
+    This asynchronous view returns the rendered home.html template with context URLs for navigation.
+
+    Returns:
+        flask.Response: The rendered HTML home page.
+    """
 
     return render_template(
         "home.html",
@@ -28,5 +35,6 @@ async def home():
         calls_url=url_for("calls_blueprint.calls"),
         ws_events_url=url_for("ws_events_blueprint.ws_events"),
         schedule_call_url=url_for("schedule_call_blueprint.schedule_call"),
+        users_url=url_for("users_blueprint.users"),
         logout_url=url_for("home_blueprint.logout"),
     )

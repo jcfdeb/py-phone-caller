@@ -3,17 +3,43 @@ import logging
 
 from aiohttp import ClientSession, ClientTimeout, web
 
-import caller_utils.caller_configuration as conf
+import py_phone_caller_utils.caller_configuration as conf
 
 logging.basicConfig(format=conf.get_log_formatter())
 
 
 async def producer(payload, queue):
+    """
+    Adds a payload to the provided asyncio queue.
+
+    This asynchronous function enqueues the given payload for later processing.
+
+    Args:
+        payload: The data to be added to the queue.
+        queue (asyncio.Queue): The queue to which the payload will be added.
+
+    Returns:
+        None
+    """
     await queue.put(payload)
 
 
 async def do_call_only(our_receiver, our_message):
+    """
+    Initiates a call to the specified receiver with the provided message.
+
+    This asynchronous function attempts to start a call and logs an error if the call could not be initiated.
+
+    Args:
+        our_receiver: The recipient of the call.
+        our_message: The message to be delivered during the call.
+
+    Returns:
+        None
+
     # https://docs.python.org/3/library/asyncio-task.html#running-tasks-concurrently
+    """
+
     calling = await asyncio.gather(
         start_the_asterisk_call(our_receiver, our_message),
         return_exceptions=True,
@@ -27,20 +53,68 @@ async def do_call_only(our_receiver, our_message):
 
 
 async def send_the_sms(the_number, the_message):
+    """
+    Sends an SMS message to the specified number with the provided message.
+
+    This asynchronous function delegates the actual sending to the SMS utility.
+
+    Args:
+        the_number: The recipient's phone number.
+        the_message: The message content to be sent.
+
+    Returns:
+        None
+    """
     await send_message_to_caller_sms(the_number, the_message)
 
 
 async def schedule_sms_before_call(our_receiver, our_message):
+    """
+    Sends an SMS to the receiver, waits for a configured delay, and then initiates a call.
+
+    This asynchronous function coordinates the process of sending an SMS before making a call to the same receiver.
+
+    Args:
+        our_receiver: The recipient of the SMS and call.
+        our_message: The message content to be sent and spoken.
+
+    Returns:
+        None
+    """
     await send_the_sms(our_receiver, our_message)
     await asyncio.sleep(int(conf.get_sms_before_call_wait_seconds()))
     await do_call_only(our_receiver, our_message)
 
 
 async def do_sms_before_call(our_receiver, our_message):
+    """
+    Schedules an SMS to be sent before making a call to the receiver.
+
+    This asynchronous function creates a background task that sends an SMS and then initiates a call after a delay.
+
+    Args:
+        our_receiver: The recipient of the SMS and call.
+        our_message: The message content to be sent and spoken.
+
+    Returns:
+        None
+    """
     asyncio.create_task(schedule_sms_before_call(our_receiver, our_message))
 
 
 async def do_call_and_sms(our_receiver, our_message):
+    """
+    Sends an SMS to the receiver and then initiates a call with the same message.
+
+    This asynchronous function first sends an SMS and then makes a call to the specified receiver.
+
+    Args:
+        our_receiver: The recipient of the SMS and call.
+        our_message: The message content to be sent and spoken.
+
+    Returns:
+        None
+    """
     await send_the_sms(our_receiver, our_message)
     await do_call_only(our_receiver, our_message)
 
@@ -54,10 +128,35 @@ take_this_action = {
 
 
 async def notification_actions(our_receiver, our_message, caller_func):
+    """
+    Executes the notification action specified by the caller function.
+
+    This asynchronous function dispatches the appropriate notification action (call, SMS, or both) for the given receiver and message.
+
+    Args:
+        our_receiver: The recipient of the notification.
+        our_message: The message content to be sent or spoken.
+        caller_func (str): The key indicating which notification action to perform.
+
+    Returns:
+        None
+    """
     await take_this_action[caller_func](our_receiver, our_message)
 
 
 async def consumer(queue, caller_func):
+    """
+    Consumes items from the queue and processes notification actions.
+
+    This asynchronous function retrieves messages and receivers from the queue, logs the action, and dispatches the appropriate notification.
+
+    Args:
+        queue (asyncio.Queue): The queue containing (message, receiver) tuples.
+        caller_func (str): The key indicating which notification action to perform.
+
+    Returns:
+        None
+    """
     while True:
         our_message, our_receiver = await queue.get()
         await asyncio.sleep(0.4)
@@ -69,10 +168,35 @@ async def consumer(queue, caller_func):
 
 
 async def do_the_call(the_number, the_message):
+    """
+    Initiates a call to the specified number with the provided message.
+
+    This asynchronous function starts the Asterisk call process for the given recipient and message.
+
+    Args:
+        the_number: The recipient's phone number.
+        the_message: The message content to be delivered during the call.
+
+    Returns:
+        None
+    """
     await start_the_asterisk_call(the_number, the_message)  # Near working release test
 
 
 async def process_the_queue(prometheus_message, receiver_nums, caller_func):
+    """
+    Processes a queue of notification tasks for multiple receivers.
+
+    This asynchronous function creates producer tasks for each receiver and a consumer task to handle notifications, ensuring all messages are processed.
+
+    Args:
+        prometheus_message: The message to be sent to each receiver.
+        receiver_nums (list): A list of receiver identifiers (e.g., phone numbers).
+        caller_func (str): The key indicating which notification action to perform.
+
+    Returns:
+        None
+    """
     queue = asyncio.Queue()
     producers = [
         asyncio.create_task(producer((prometheus_message, single_receiver), queue))
@@ -87,7 +211,16 @@ async def process_the_queue(prometheus_message, receiver_nums, caller_func):
 
 async def start_the_asterisk_call(phone, message):
     """
-    Post the Prometheus incoming alert to 'asterisk_caller.py' (we're client now)
+    Starts an Asterisk call to the specified phone number with the given message.
+
+    This asynchronous function sends a POST request to the Asterisk call endpoint to initiate the call.
+
+    Args:
+        phone: The recipient's phone number.
+        message: The message content to be delivered during the call.
+
+    Returns:
+        None
     """
     asterisk_call_url = f"{conf.get_asterisk_call_url()}/{conf.get_asterisk_call_app_route_place_call()}"
     session_start_the_asterisk_call = ClientSession(
@@ -103,7 +236,16 @@ async def start_the_asterisk_call(phone, message):
 
 async def send_message_to_caller_sms(phone, message):
     """
-    Post the Prometheus incoming alert to 'caller_sms.py' (we're client now)
+    Sends an SMS message to the specified phone number using the configured SMS service.
+
+    This asynchronous function sends a POST request to the SMS endpoint to deliver the message.
+
+    Args:
+        phone: The recipient's phone number.
+        message: The message content to be sent.
+
+    Returns:
+        None
     """
     caller_sms_url = f"{conf.get_caller_sms_url()}/{conf.get_caller_sms_app_route()}"
     session_send_message_to_caller_sms = ClientSession(
@@ -119,13 +261,39 @@ async def send_message_to_caller_sms(phone, message):
 
 
 async def the_alert_description(request_payload):
+    """
+    Extracts the description from the first firing alert in the request payload.
+
+    This asynchronous function iterates through the alerts and returns the description annotation of the first alert with status 'firing'.
+
+    Args:
+        request_payload (dict): The payload containing alert information.
+
+    Returns:
+        list: A list containing the description string of the first firing alert, or "No data" if not present.
+    """
     for alert_number, alert_payload in enumerate(request_payload["alerts"]):
         if alert_payload["status"] == "firing":
             return [alert_payload["annotations"].get("description", "No data")]
 
 
 async def data_from_alert_manager(request, caller_func):
+    """
+    Processes alert data from an incoming request and dispatches notification tasks.
+    Data arrives from Prometheus Alertmanager and processes it to send notifications.
+
+    This asynchronous function extracts alert descriptions from the request payload and initiates notification processing for each message.
+
+    Args:
+        request: The incoming HTTP request containing alert data.
+        caller_func (str): The key indicating which notification action to perform.
+
+    Returns:
+        None
+
     # https://docs.aiohttp.org/en/stable/web_reference.html#aiohttp.web.BaseRequest.json
+    """
+
     payload = await request.json()
     some_messages = await the_alert_description(payload)
     for the_message in some_messages:
@@ -135,31 +303,90 @@ async def data_from_alert_manager(request, caller_func):
 
 
 async def response_for_alert_manager():
+    """
+    Returns a standard JSON response for Prometheus Alertmanager requests.
+
+    This asynchronous function generates a JSON response indicating a successful status.
+
+    Returns:
+        aiohttp.web.Response: A JSON response with status code 200.
+    """
     return web.json_response({"status": "200"})
 
 
 async def call_only(request):
+    """
+    Handles incoming requests to trigger a call-only notification action.
+
+    This asynchronous function processes alert data and returns a standard response for Prometheus Alertmanager.
+
+    Args:
+        request: The incoming HTTP request containing alert data.
+
+    Returns:
+        aiohttp.web.Response: A JSON response with status code 200.
+    """
     await data_from_alert_manager(request, call_only.__name__)
     return await response_for_alert_manager()
 
 
 async def sms_only(request):
+    """
+    Handles incoming requests to trigger an SMS-only notification action.
+
+    This asynchronous function processes alert data and returns a standard response for Prometheus Alertmanager.
+
+    Args:
+        request: The incoming HTTP request containing alert data.
+
+    Returns:
+        aiohttp.web.Response: A JSON response with status code 200.
+    """
     await data_from_alert_manager(request, sms_only.__name__)
     return await response_for_alert_manager()
 
 
 async def sms_before_call(request):
+    """
+    Handles incoming requests to trigger an SMS-before-call notification action.
+
+    This asynchronous function processes alert data and returns a standard response for Prometheus Alertmanager.
+
+    Args:
+        request: The incoming HTTP request containing alert data.
+
+    Returns:
+        aiohttp.web.Response: A JSON response with status code 200.
+    """
     await data_from_alert_manager(request, sms_before_call.__name__)
     return await response_for_alert_manager()
 
 
 async def call_and_sms(request):
+    """
+    Handles incoming requests to trigger both call and SMS notification actions.
+
+    This asynchronous function processes alert data and returns a standard response for Prometheus Alertmanager.
+
+    Args:
+        request: The incoming HTTP request containing alert data.
+
+    Returns:
+        aiohttp.web.Response: A JSON response with status code 200.
+    """
     await data_from_alert_manager(request, call_and_sms.__name__)
     return await response_for_alert_manager()
 
 
 async def init_app():
-    """Start the Application Web Server."""
+    """
+    Initializes and configures the aiohttp web application for Prometheus Alertmanager notifications.
+
+    This asynchronous function sets up the web application and registers routes for different notification actions.
+
+    Returns:
+        aiohttp.web.Application: The configured aiohttp web application instance.
+    """
     app = web.Application()
 
     # And... here our routes
@@ -185,4 +412,4 @@ async def init_app():
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     app = loop.run_until_complete(init_app())
-    web.run_app(app, port=conf.get_prometheus_webhook_port())
+    web.run_app(app, port=int(conf.get_prometheus_webhook_port()))

@@ -40,6 +40,7 @@
                         Session
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink">
+                        <li><a class="dropdown-item" href="{{ users_url }}">User Management</a></li>
                         <li><a class="dropdown-item" href="{{ logout_url }}">Logout</a></li>
                     </ul>
                 </li>
@@ -48,26 +49,31 @@
     </div>
 </nav>
 
-<div class="container align-items-center .justify-content-sm-center">
-    <div style="text-align: center"><h2>Main Menu</h2></div>
-    <div class="d-inline-flex p-2 bd-highlight" style="margin-left: 35%; margin-top: 10%">
-
-        <div class="p-2 bd-highlight" style="text-align: center">
-            <a href="{{ calls_url }}"/><img alt="List of the Managed Calls"
-                                            src="{{ url_for('.static', filename='images/calls.png') }}" width="80"/></a>
-            <div>Managed Calls</div>
-        </div>
-        <div class="p-2 bd-highlight" style="text-align: center">
-            <a href="{{ ws_events_url }}"/><img alt="List of the Asterisk WebSocket Events"
-                                                src="{{ url_for('.static', filename='images/ws_events.png') }}"
-                                                width="80"/></a>
-            <div>PBX WebSocket Events</div>
-        </div>
-        <div class="p-2 bd-highlight" style="text-align: center">
-            <a href="{{ schedule_call_url }}"/><img alt="Schedule a Call"
-                                                    src="{{ url_for('.static', filename='images/schedule_call.png') }}"
-                                                    width="80"/></a>
-            <div>Schedule a Call</div>
+<div class="container">
+    <div class="text-center mt-4">
+        <h2>Main Menu</h2>
+    </div>
+    <div class="row justify-content-center mt-5">
+        <div class="col-auto">
+            <div class="d-flex justify-content-center">
+                <div class="p-2 bd-highlight text-center">
+                    <a href="{{ calls_url }}"><img alt="List of the Managed Calls"
+                                                   src="{{ url_for('.static', filename='images/calls.png') }}" width="80"/></a>
+                    <div>Managed Calls</div>
+                </div>
+                <div class="p-2 bd-highlight text-center">
+                    <a href="{{ ws_events_url }}"><img alt="List of the Asterisk WebSocket Events"
+                                                       src="{{ url_for('.static', filename='images/ws_events.png') }}"
+                                                       width="80"/></a>
+                    <div>PBX WebSocket Events</div>
+                </div>
+                <div class="p-2 bd-highlight text-center">
+                    <a href="{{ schedule_call_url }}"><img alt="Schedule a Call"
+                                                           src="{{ url_for('.static', filename='images/schedule_call.png') }}"
+                                                           width="80"/></a>
+                    <div>Schedule a Call</div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

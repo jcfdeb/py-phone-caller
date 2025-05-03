@@ -1,15 +1,28 @@
-aioflask
 aiohttp
 asyncpg
 aiodns
 celery[redis]
 flask
+flask[async]
 flask-login
 flask-session
 gTTS
 httpx
+hypercorn
+num2words
 toml
 piccolo
 pydub
+pytz
 twilio
 websockets
+# Generate Audio (local)
+librosa
+numpy
+soundfile
+scipy
+torch
+torchaudio
+transformers
+# AWS audio
+boto3

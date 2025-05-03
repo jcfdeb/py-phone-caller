@@ -1,6 +1,0 @@
--r requirements.txt.old
-isort
-black
-flake8
-pytest
-

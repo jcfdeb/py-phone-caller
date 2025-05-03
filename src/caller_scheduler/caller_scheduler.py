@@ -5,12 +5,26 @@ from datetime import datetime
 import pytz
 from aiohttp import web
 
-import caller_utils.caller_configuration as conf
-from caller_utils.tasks.celery_task import do_this_call
+import py_phone_caller_utils.caller_configuration as conf
+from py_phone_caller_utils.tasks.celery_task import do_this_call
 
 
 async def schedule_this_call(request):
-    """Handle incoming requests coming to '/schedule_call'"""
+    """
+    Handles incoming requests to schedule a call at a specified time.
+
+    This asynchronous function extracts the required parameters from the request, converts the scheduled time to UTC,
+    enqueues the call task using Celery, and returns a JSON response indicating the status.
+
+    Args:
+        request: The incoming HTTP request containing 'phone', 'message', and 'scheduled_at' parameters.
+
+    Returns:
+        aiohttp.web.Response: A JSON response indicating the status of the scheduling operation.
+
+    Raises:
+        web.HTTPClientError: If any required parameter is missing from the request.
+    """
 
     try:
         phone = request.rel_url.query["phone"]
@@ -49,7 +63,14 @@ async def schedule_this_call(request):
 
 
 async def init_app():
-    """Start the Application Web Server."""
+    """
+    Initializes and configures the aiohttp web application for scheduling calls.
+
+    This asynchronous function sets up the web application and registers the route for scheduling calls.
+
+    Returns:
+        aiohttp.web.Application: The configured aiohttp web application instance.
+    """
     app = web.Application()
 
     # And... here our routes
@@ -62,4 +83,4 @@ async def init_app():
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     app = loop.run_until_complete(init_app())
-    web.run_app(app, port=conf.get_scheduled_calls_port())
+    web.run_app(app, port=int(conf.get_scheduled_calls_port()))
