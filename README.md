@@ -148,7 +148,9 @@ Handles asynchronous task processing for the system:
 
 ## More Information
 
-For more details about the project setup, you can refer to [this documentation](https://github.com/jcfdeb/py-phone-caller/blob/main/doc/fedora34-server-with-podman_though-ansible.md).
+If you want to know how it's organized please read the current [version documentation](https://github.com/jcfdeb/py-phone-caller/blob/main/doc/py-phone-caller_2025.05.md) 
+
+For more details about the project setup and installation, you can refer to [this -OLD- documentation](https://github.com/jcfdeb/py-phone-caller/blob/main/doc/fedora34-server-with-podman_though-ansible.md).
 
 A Web Interface for the 'py-phone-caller' was added and works fine, but several things need to be improved or implemented.
 
