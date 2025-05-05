@@ -157,5 +157,5 @@ A Web Interface for the 'py-phone-caller' was added and works fine, but several 
 ## Good Advice
 
 * The project isn't ready to be used without a deep knowledge of Asterisk, Linux, etc.
-* It is not ready to be used in production
+* Can be used in production, but is hard to configure _(if you want try please keep in mind that is not eaasy to deploy)_.  
 * Have patience, maybe in a near future it will be more _usable_
