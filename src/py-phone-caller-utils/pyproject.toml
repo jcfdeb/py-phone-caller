@@ -1,0 +1,58 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "py_phone_caller_utils"
+version = "0.1.0"
+description = "Utility package for py-phone-caller"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.30.0",
+    "celery[redis]>=5.4.0",
+    "dynaconf>=3.2.0",
+    "piccolo>=1.28.0",
+    "pytz>=2024.1",
+    "twilio>=9.0.0",
+    "websockets>=13.0",
+    "requests>=2.31.0",
+    "werkzeug>=3.0.0",
+    "flask-login>=0.6.3",
+    "billiard>=4.2.0",
+    "kombu[redis]>=5.4.0",
+    "click<8.2.0",
+]
+[project.optional-dependencies]
+audio = [
+    "pydub>=0.25.1",
+    "numpy>=2.0.0",
+    "soundfile>=0.12.1",
+    "scipy>=1.13.0",
+    "torch>=2.4.0",
+    "torchaudio>=2.4.0",
+    "torchvision>=0.19.0",
+    "transformers>=4.44.0",
+    "boto3>=1.34.0",
+    "gTTS>=2.5.4",
+    "num2words>=0.5.13",
+    "piper-tts>=1.2.0",
+]
+telemetry = [
+    "opentelemetry-api>=1.24.0",
+    "opentelemetry-sdk>=1.24.0",
+    "opentelemetry-exporter-otlp>=1.24.0",
+    "opentelemetry-exporter-prometheus>=0.45b0",
+    "opentelemetry-instrumentation-aiohttp-client>=0.45b0",
+    "opentelemetry-instrumentation-aiohttp-server>=0.45b0",
+    "opentelemetry-instrumentation-flask>=0.45b0",
+    "opentelemetry-instrumentation-requests>=0.45b0",
+    "opentelemetry-instrumentation-celery>=0.45b0",
+    "opentelemetry-instrumentation-asyncpg>=0.45b0",
+    "opentelemetry-instrumentation-system-metrics>=0.45b0",
+]
+
+[tool.maturin]
+python-source = "."
+module-name = "py_phone_caller_utils.sms.rust_engine"
+manifest-path = "py_phone_caller_utils/sms/rust_engine/Cargo.toml"

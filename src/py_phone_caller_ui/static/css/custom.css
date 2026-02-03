@@ -1,0 +1,187 @@
+:root {
+    --primary-color: #0d6efd;
+    --bg-light: #f8f9fa;
+    --card-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --card-hover-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+body {
+    background-color: var(--bg-light);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: #333;
+}
+
+.navbar {
+    background-color: #fff !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,.04);
+}
+
+.navbar-brand {
+    font-weight: 700;
+    color: var(--primary-color) !important;
+}
+
+.nav-link {
+    font-weight: 500;
+    padding: 0.5rem 1rem !important;
+    transition: color 0.2s;
+}
+
+.nav-link.active {
+    color: var(--primary-color) !important;
+    position: relative;
+}
+
+.nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 1rem;
+    right: 1rem;
+    height: 2px;
+    background-color: var(--primary-color);
+}
+
+.main-container {
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
+
+.page-header {
+    font-weight: 700;
+    margin-bottom: 2rem;
+    color: #212529;
+}
+
+.card {
+    border: 1px solid #eee;
+    border-radius: 0.75rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card-menu {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.card-menu .card {
+    height: 100%;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.card-menu:hover .card {
+    transform: translateY(-5px);
+    box-shadow: none !important;
+}
+
+.card-icon {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent !important;
+    border: none !important;
+    margin-bottom: 1rem;
+}
+
+.card-icon img {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    display: block;
+    border: none !important;
+}
+
+.json-container {
+    position: relative;
+}
+
+.json-payload {
+    max-height: 450px;
+    overflow-y: auto;
+    padding-right: 2.5rem !important;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.copy-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+.copy-btn:hover {
+    opacity: 1;
+}
+
+.table-container {
+    background: #fff;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+}
+
+.table thead th {
+    background-color: #fcfcfc;
+    border-top: none;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    font-weight: 600;
+    color: #6c757d;
+    padding: 1rem;
+}
+
+.table tbody td {
+    padding: 1rem;
+    border-bottom: 1px solid #f1f1f1;
+}
+
+.badge {
+    padding: 0.5em 0.75em;
+    font-weight: 600;
+}
+
+.rounded-pill {
+    padding-left: 1em;
+    padding-right: 1em;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+}
+
+.form-control, .form-select {
+    border-radius: 0.5rem;
+    padding: 0.6rem 1rem;
+    border: 1px solid #dee2e6;
+}
+
+.form-control:focus, .form-select:focus {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+.modal-content {
+    border-radius: 1rem;
+}
+
+.modal-header {
+    border-bottom: 1px solid #f1f1f1;
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    border-top: 1px solid #f1f1f1;
+    padding: 1.5rem;
+}
+
+.x-small {
+    font-size: 0.75rem;
+}

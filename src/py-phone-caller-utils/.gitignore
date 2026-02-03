@@ -1,0 +1,9 @@
+target/
+*.so
+__pycache__/
+*.pyc
+.venv/
+target/
+**/target/
+**/*.so
+**/__pycache__/

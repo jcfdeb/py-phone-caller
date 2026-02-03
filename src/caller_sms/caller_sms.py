@@ -1,40 +1,42 @@
+"""
+Caller SMS service.
+
+Provides an aiohttp endpoint to send SMS messages using a configured carrier
+backend (e.g., Twilio or on-premise gateway).
+"""
+
 import asyncio
 import logging
-from concurrent.futures.thread import ThreadPoolExecutor
+import os
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+
+if current_dir in sys.path:
+    sys.path.remove(current_dir)
+
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
 
 from aiohttp import web
 
-import py_phone_caller_utils.caller_configuration as conf
-from py_phone_caller_utils.sms.twilio_sms import sms_twilio
+from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+import caller_sms.backend.twilio as twilio_backend
+import caller_sms.backend.rust_on_premise as rust_on_premise
 
-logging.basicConfig(format=conf.get_log_formatter())
+from caller_sms.constants import (
+    CALLER_SMS_PORT,
+    CALLER_SMS_APP_ROUTE,
+    LOG_FORMATTER,
+    CALLER_SMS_ERROR,
+    LOG_LEVEL,
+    CALLER_SMS_CARRIER,
+)
 
+logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 
-async def sms_sender_async(message, phone_number):
-    """
-    Sends an SMS message asynchronously using a thread pool executor.
-
-    This asynchronous function delegates the SMS sending task to a thread pool, allowing non-blocking execution.
-
-    Args:
-        message (str): The SMS message content to be sent.
-        phone_number (str): The recipient's phone number.
-
-    Returns:
-        concurrent.futures.Future: A future representing the execution of the SMS sending task.
-    """
-    inner_loop = asyncio.get_running_loop()
-    executor = ThreadPoolExecutor(max_workers=conf.get_num_of_cpus())
-    logging.info(f"Sending the SMS message '{message}' to '{phone_number}'")
-    return inner_loop.run_in_executor(
-        executor,
-        sms_twilio,
-        message,
-        phone_number,
-        conf.get_twilio_account_sid(),
-        conf.get_twilio_auth_token(),
-        conf.get_twilio_sms_from(),
-    )
+init_telemetry("caller_sms")
 
 
 async def send_the_sms(request):
@@ -50,7 +52,7 @@ async def send_the_sms(request):
         aiohttp.web.Response: A JSON response indicating the status of the SMS sending operation.
 
     Raises:
-        web.HTTPClientError: If any required parameter is missing from the request.
+        web.HTTPBadRequest: If any required parameter is missing from the request.
     """
 
     try:
@@ -62,11 +64,18 @@ async def send_the_sms(request):
         logging.exception(
             f"No 'message' or 'phone' parameter passed on: '{request.rel_url}'"
         )
-        raise web.HTTPClientError(
-            reason=conf.get_caller_sms_error(), body=None, text=None, content_type=None
+        raise web.HTTPBadRequest(
+            reason=CALLER_SMS_ERROR, body=None, text=None, content_type=None
         ) from err
 
-    futures = await sms_sender_async(message, phone)
+    match CALLER_SMS_CARRIER:
+        case "twilio":
+            futures = await twilio_backend.sms_sender_async(message, phone)
+        case "on_premise":
+            futures = await rust_on_premise.sms_sender_async(message, phone)
+        case _:
+            logging.error(f"Carrier '{CALLER_SMS_CARRIER}' not supported.")
+            return web.json_response({"status": 500, "error": "Carrier not supported"})
 
     try:
         await asyncio.ensure_future(futures)
@@ -89,12 +98,16 @@ async def init_app():
     """
     app = web.Application()
 
-    # And... here our routes
-    app.router.add_route("POST", f"/{conf.get_caller_sms_app_route()}", send_the_sms)
+    instrument_aiohttp_app(app)
+
+    if CALLER_SMS_CARRIER == "on_premise":
+        await rust_on_premise.init_backend()
+
+    app.router.add_route("POST", f"/{CALLER_SMS_APP_ROUTE}", send_the_sms)
     return app
 
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     app = loop.run_until_complete(init_app())
-    web.run_app(app, port=int(conf.get_caller_sms_port()))
+    web.run_app(app, port=int(CALLER_SMS_PORT))

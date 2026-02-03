@@ -1,0 +1,564 @@
+{% extends "base.html" %}
+
+{% block title %}py-phone-caller Address Book{% endblock %}
+
+{% block content %}
+<div class="container-fluid main-container px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+        <h2 class="page-header mb-0 text-start">Address Book</h2>
+        <div class="d-flex gap-2 mt-2 mt-md-0 flex-wrap">
+            <a class="btn btn-outline-primary" href="{{ address_book_calendar_url }}">
+                <i class="bi bi-calendar3 me-1"></i> Show Calendar
+            </a>
+            <div class="dropdown">
+                <button class="btn btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-file-earmark-excel me-1"></i> CSV Ops
+                </button>
+                <ul class="dropdown-menu shadow-sm">
+                    <li><a class="dropdown-item" href="{{ url_for('address_book_blueprint.export_contacts_csv') }}"><i class="bi bi-download me-2"></i>Export Contacts</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" onclick="document.getElementById('ab_import_file').click()"><i class="bi bi-upload me-2"></i>Import Contacts</a></li>
+                </ul>
+            </div>
+            <input type="file" id="ab_import_file" class="d-none" accept=".csv,text/csv" onchange="handleABImport(event)">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
+                <i class="bi bi-person-plus me-1"></i> Add Contact
+            </button>
+        </div>
+    </div>
+
+    <!-- Filters & Search -->
+    <div class="card border-0 shadow-sm mb-4 rounded-3">
+        <div class="card-body p-3">
+            <form class="row g-2" method="get" action="{{ address_book_url }}">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                        <input class="form-control border-start-0 ps-0" type="text" name="search" value="{{ search_query }}" placeholder="Search contacts...">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm h-100">
+                        <label class="input-group-text bg-light border-end-0" for="sort_by">Sort by</label>
+                        <select class="form-select border-start-0" name="sort_by" id="sort_by">
+                            <option value="created_time" {% if sort_by=='created_time' %}selected{% endif %}>Created</option>
+                            <option value="name" {% if sort_by=='name' %}selected{% endif %}>Name</option>
+                            <option value="phone_number" {% if sort_by=='phone_number' %}selected{% endif %}>Phone</option>
+                            <option value="enabled" {% if sort_by=='enabled' %}selected{% endif %}>Enabled</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group input-group-sm h-100">
+                        <label class="input-group-text bg-light border-end-0" for="sort_order">Order</label>
+                        <select class="form-select border-start-0" name="sort_order" id="sort_order">
+                            <option value="desc" {% if sort_order=='desc' %}selected{% endif %}>Descending</option>
+                            <option value="asc" {% if sort_order=='asc' %}selected{% endif %}>Ascending</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-secondary w-100 d-flex align-items-center justify-content-center h-100" type="submit">
+                        <i class="bi bi-filter me-1"></i> Filter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="table-container table-responsive border-0 shadow-sm">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+                <th>Contact Name</th>
+                <th>Phone Number</th>
+                <th class="text-center">Enabled</th>
+                <th>Created</th>
+                <th class="text-end">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for c in contacts %}
+                <tr>
+                    <td>
+                        <div class="fw-bold text-dark">{{ c.get('name') }} {{ c.get('surname') }}</div>
+                        {% if c.get('address') %}<div class="small text-muted"><i class="bi bi-geo-alt me-1"></i>{{ c.get('city') }}, {{ c.get('country') }}</div>{% endif %}
+                    </td>
+                    <td><code class="text-primary">{{ c.get('phone_number') }}</code></td>
+                    <td class="text-center">
+                        {% if c.get('enabled') %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>
+                        {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Disabled</span>
+                        {% endif %}
+                    </td>
+                    <td class="small text-muted">{{ c.get('created_time') }}</td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" 
+                                    data-id="{{ c.get('id') }}"
+                                    data-name="{{ c.get('name')|e }}"
+                                    data-surname="{{ c.get('surname')|e }}"
+                                    data-phone="{{ c.get('phone_number')|e }}"
+                                    data-enabled="{{ 'true' if c.get('enabled') else 'false' }}"
+                                    data-address="{{ c.get('address')|e }}"
+                                    data-zip_code="{{ c.get('zip_code')|e }}"
+                                    data-city="{{ c.get('city')|e }}"
+                                    data-state="{{ c.get('state')|e }}"
+                                    data-country="{{ c.get('country')|e }}"
+                                    data-annotations="{{ c.get('annotations')|e }}"
+                                    data-availability='{{ (c.get("on_call_availability") or []) | tojson }}'
+                                    onclick="openEditFromBtn(this)">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-outline-danger" data-id="{{ c.get('id') }}" onclick="deleteOne('{{ c.get('id') }}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            {% if contacts|length == 0 %}
+            <tr>
+                <td colspan="5" class="text-center py-5 text-muted">
+                    <i class="bi bi-person-x fs-1 d-block mb-2"></i>
+                    No contacts found in address book
+                </td>
+            </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus me-2 text-primary"></i>Add New Contact</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Name</label>
+                        <input id="add_name" class="form-control" placeholder="John"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Surname</label>
+                        <input id="add_surname" class="form-control" placeholder="Doe"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Phone Number</label>
+                        <input id="add_phone" class="form-control" placeholder="+39..."/>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Status</label>
+                        <select id="add_enabled" class="form-select">
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold small text-secondary">Address</label>
+                        <input id="add_address" class="form-control" placeholder="123 Street Name"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">ZIP Code</label>
+                        <input id="add_zip_code" class="form-control"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">City</label>
+                        <input id="add_city" class="form-control"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">Country</label>
+                        <input id="add_country" class="form-control"/>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold small text-secondary">Annotations</label>
+                        <textarea id="add_annotations" class="form-control" rows="2" placeholder="Additional notes..."></textarea>
+                    </div>
+                    
+                    <div class="col-12 mt-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body">
+                                <h6 class="card-title fw-bold mb-3 d-flex align-items-center">
+                                    <i class="bi bi-clock-history me-2 text-primary"></i>On-call Availability Windows
+                                </h6>
+                                <div class="row g-2 align-items-end mb-3">
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">Start Date</label>
+                                        <input type="date" id="avail_start_date" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">Start Time</label>
+                                        <input type="time" id="avail_start_time" step="1" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">End Date</label>
+                                        <input type="date" id="avail_end_date" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">End Time</label>
+                                        <input type="time" id="avail_end_time" step="1" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">Priority</label>
+                                        <select id="avail_priority" class="form-select form-select-sm">
+                                            <option value="0">0 (Highest)</option>
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                            <option value="3">3</option>
+                                            <option value="4">4 (Lowest)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="button" class="btn btn-primary btn-sm w-100" onclick="addAvailability()">
+                                            <i class="bi bi-plus-lg"></i> Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="table-responsive bg-white rounded-3 border mb-2">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead class="table-light border-bottom">
+                                            <tr>
+                                                <th class="ps-3 small">Start (local)</th>
+                                                <th class="small">End (local)</th>
+                                                <th class="small">Priority</th>
+                                                <th class="text-end pe-3 small">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="availability_tbody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted small"><i class="bi bi-info-circle me-1"></i>UTC conversion is automatic. TZ: <span id="tz_name" class="fw-bold"></span></small>
+                                    <button type="button" class="btn btn-link btn-sm text-danger p-0" onclick="clearAvailability()">Clear all</button>
+                                </div>
+                                <input type="hidden" id="add_availability" value="[]">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-4" onclick="addContact()">Save Contact</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2 text-primary"></i>Edit Contact</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="edit_id">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Name</label>
+                        <input id="edit_name" class="form-control"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Surname</label>
+                        <input id="edit_surname" class="form-control"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Phone Number</label>
+                        <input id="edit_phone" class="form-control"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Status</label>
+                        <select id="edit_enabled" class="form-select">
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold small text-secondary">Address</label>
+                        <input id="edit_address" class="form-control"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">ZIP Code</label>
+                        <input id="edit_zip_code" class="form-control"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">City</label>
+                        <input id="edit_city" class="form-control"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">Country</label>
+                        <input id="edit_country" class="form-control"/>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold small text-secondary">Annotations</label>
+                        <textarea id="edit_annotations" class="form-control" rows="2"></textarea>
+                    </div>
+                    
+                    <div class="col-12 mt-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body">
+                                <h6 class="card-title fw-bold mb-3 d-flex align-items-center">
+                                    <i class="bi bi-clock-history me-2 text-primary"></i>On-call Availability Windows
+                                </h6>
+                                <div class="row g-2 align-items-end mb-3">
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">Start Date</label>
+                                        <input type="date" id="edit_avail_start_date" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">Start Time</label>
+                                        <input type="time" id="edit_avail_start_time" step="1" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">End Date</label>
+                                        <input type="date" id="edit_avail_end_date" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">End Time</label>
+                                        <input type="time" id="edit_avail_end_time" step="1" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1 text-muted">Priority</label>
+                                        <select id="edit_avail_priority" class="form-select form-select-sm">
+                                            <option value="0">0 (Highest)</option>
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                            <option value="3">3</option>
+                                            <option value="4">4 (Lowest)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="button" class="btn btn-primary btn-sm w-100" onclick="addEditAvailability()">
+                                            <i class="bi bi-plus-lg"></i> Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="table-responsive bg-white rounded-3 border mb-2">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead class="table-light border-bottom">
+                                            <tr>
+                                                <th class="ps-3 small">Start (local)</th>
+                                                <th class="small">End (local)</th>
+                                                <th class="small">Priority</th>
+                                                <th class="text-end pe-3 small">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="edit_availability_tbody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted small">TZ: <span id="edit_tz_name" class="fw-bold"></span></small>
+                                    <button type="button" class="btn btn-link btn-sm text-danger p-0" onclick="clearEditAvailability()">Clear all</button>
+                                </div>
+                                <input type="hidden" id="edit_availability" value="[]">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-4" onclick="saveEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let availabilityWindows = [];
+let editAvailabilityWindows = [];
+
+function tzName() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'; } catch(e) { return 'local'; } }
+
+function toIsoUtc(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return null;
+    const local = new Date(`${dateStr}T${timeStr}`);
+    if (isNaN(local.getTime())) return null;
+    return local.toISOString();
+}
+
+function parseAvailability(availabilityJson) {
+    if (!availabilityJson) return [];
+    let raw = String(availabilityJson);
+    raw = raw.replaceAll('&quot;', '"').replaceAll('&#34;', '"').replaceAll('&#39;', "'").replaceAll('&amp;', '&');
+    try {
+        let val = JSON.parse(raw);
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+            try { val = JSON.parse(val); if (Array.isArray(val)) return val; } catch (e) {}
+        }
+    } catch (e) {
+        try { const fixed = raw.replace(/'/g, '"'); const val = JSON.parse(fixed); if (Array.isArray(val)) return val; } catch (e2) {}
+    }
+    return [];
+}
+
+function renderAvailabilityTable() {
+    const tbody = document.getElementById('availability_tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    availabilityWindows.forEach((w, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="ps-3 small">${new Date(w.start_at).toLocaleString()}</td>
+                        <td class="small">${new Date(w.end_at).toLocaleString()}</td>
+                        <td class="small">${w.priority}</td>
+                        <td class="text-end pe-3">
+                            <button class="btn btn-sm btn-link text-danger p-0" onclick="removeAvailability(${idx})"><i class="bi bi-trash"></i></button>
+                        </td>`;
+        tbody.appendChild(tr);
+    });
+    const hidden = document.getElementById('add_availability');
+    if (hidden) hidden.value = JSON.stringify(availabilityWindows);
+}
+
+function addAvailability() {
+    const sd = document.getElementById('avail_start_date').value;
+    const st = document.getElementById('avail_start_time').value;
+    const ed = document.getElementById('avail_end_date').value;
+    const et = document.getElementById('avail_end_time').value;
+    const prio = parseInt(document.getElementById('avail_priority').value) || 0;
+    const startIso = toIsoUtc(sd, st);
+    const endIso = toIsoUtc(ed, et);
+    if (!startIso || !endIso) { showToast('Error', 'Invalid date/time', 'danger'); return; }
+    if (new Date(startIso) > new Date(endIso)) { showToast('Error', 'Start must be before end', 'danger'); return; }
+    availabilityWindows.push({start_at: startIso, end_at: endIso, priority: prio});
+    availabilityWindows.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+    renderAvailabilityTable();
+}
+
+function removeAvailability(idx) { availabilityWindows.splice(idx, 1); renderAvailabilityTable(); }
+function clearAvailability() { availabilityWindows = []; renderAvailabilityTable(); }
+
+function renderEditAvailabilityTable() {
+    const tbody = document.getElementById('edit_availability_tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    editAvailabilityWindows.forEach((w, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="ps-3 small">${new Date(w.start_at).toLocaleString()}</td>
+                        <td class="small">${new Date(w.end_at).toLocaleString()}</td>
+                        <td class="small">${w.priority}</td>
+                        <td class="text-end pe-3">
+                            <button class="btn btn-sm btn-link text-danger p-0" onclick="removeEditAvailability(${idx})"><i class="bi bi-trash"></i></button>
+                        </td>`;
+        tbody.appendChild(tr);
+    });
+    const hidden = document.getElementById('edit_availability');
+    if (hidden) hidden.value = JSON.stringify(editAvailabilityWindows);
+}
+
+function addEditAvailability() {
+    const sd = document.getElementById('edit_avail_start_date').value;
+    const st = document.getElementById('edit_avail_start_time').value;
+    const ed = document.getElementById('edit_avail_end_date').value;
+    const et = document.getElementById('edit_avail_end_time').value;
+    const prio = parseInt(document.getElementById('edit_avail_priority').value) || 0;
+    const startIso = toIsoUtc(sd, st);
+    const endIso = toIsoUtc(ed, et);
+    if (!startIso || !endIso) { showToast('Error', 'Invalid date/time', 'danger'); return; }
+    if (new Date(startIso) > new Date(endIso)) { showToast('Error', 'Start must be before end', 'danger'); return; }
+    editAvailabilityWindows.push({start_at: startIso, end_at: endIso, priority: prio});
+    editAvailabilityWindows.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+    renderEditAvailabilityTable();
+}
+
+function removeEditAvailability(idx) { editAvailabilityWindows.splice(idx, 1); renderEditAvailabilityTable(); }
+function clearEditAvailability() { editAvailabilityWindows = []; renderEditAvailabilityTable(); }
+
+function openEditFromBtn(btn) { 
+    const d = btn.dataset; 
+    document.getElementById('edit_id').value = d.id;
+    document.getElementById('edit_name').value = d.name || '';
+    document.getElementById('edit_surname').value = d.surname || '';
+    document.getElementById('edit_phone').value = d.phone || '';
+    document.getElementById('edit_enabled').value = d.enabled === 'true' ? 'true' : 'false';
+    document.getElementById('edit_address').value = d.address || '';
+    document.getElementById('edit_zip_code').value = d.zip_code || '';
+    document.getElementById('edit_city').value = d.city || '';
+    document.getElementById('edit_country').value = d.country || '';
+    document.getElementById('edit_annotations').value = d.annotations || '';
+    const avail = parseAvailability(d.availability);
+    editAvailabilityWindows = Array.isArray(avail) ? avail.map(w => ({ start_at: w.start_at, end_at: w.end_at, priority: w.priority || 0 })) : [];
+    renderEditAvailabilityTable();
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+async function addContact() {
+    const payload = {
+        name: document.getElementById('add_name').value,
+        surname: document.getElementById('add_surname').value,
+        address: document.getElementById('add_address').value,
+        zip_code: document.getElementById('add_zip_code').value,
+        city: document.getElementById('add_city').value,
+        country: document.getElementById('add_country').value,
+        annotations: document.getElementById('add_annotations').value,
+        phone_number: document.getElementById('add_phone').value,
+        enabled: document.getElementById('add_enabled').value === 'true',
+        on_call_availability: availabilityWindows
+    };
+    const resp = await fetch("{{ url_for('address_book_blueprint.api_add_contact') }}", {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    if (resp.ok) { window.location.reload(); } else { const data = await resp.json(); showToast('Error', data.message || 'Failed to add contact', 'danger'); }
+}
+
+async function saveEdit() {
+    const id = document.getElementById('edit_id').value;
+    const changes = {
+        name: document.getElementById('edit_name').value,
+        surname: document.getElementById('edit_surname').value,
+        phone_number: document.getElementById('edit_phone').value,
+        enabled: document.getElementById('edit_enabled').value === 'true',
+        address: document.getElementById('edit_address').value,
+        zip_code: document.getElementById('edit_zip_code').value,
+        city: document.getElementById('edit_city').value,
+        country: document.getElementById('edit_country').value,
+        annotations: document.getElementById('edit_annotations').value,
+        on_call_availability: editAvailabilityWindows
+    };
+    const resp = await fetch("{{ url_for('address_book_blueprint.api_modify_contact', contact_id='__ID__') }}".replace('__ID__', id), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes)
+    });
+    if (resp.ok) { window.location.reload(); } else { const data = await resp.json(); showToast('Error', data.message || 'Failed to update contact', 'danger'); }
+}
+
+async function deleteOne(id) {
+    if (!confirm('Are you sure you want to delete this contact?')) return;
+    const resp = await fetch("{{ url_for('address_book_blueprint.api_delete_contacts') }}", {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ids: [id]})
+    });
+    if (resp.ok) { window.location.reload(); } else { const data = await resp.json(); showToast('Error', data.message || 'Failed to delete contact', 'danger'); }
+}
+
+async function handleABImport(evt){
+    const file = evt.target.files[0];
+    if(!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    showToast('Import', 'Uploading CSV...', 'info');
+    const resp = await fetch("{{ url_for('address_book_blueprint.import_contacts_csv') }}", { method: 'POST', body: fd });
+    const data = await resp.json();
+    if(resp.ok){
+        alert(`Import successful!\nProcessed: ${data.processed_rows}\nCreated: ${data.created}\nUpdated: ${data.updated}`);
+        window.location.reload();
+    } else {
+        showToast('Error', data.message || 'Import failed', 'danger');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const tzEl = document.getElementById('tz_name'); if (tzEl) tzEl.textContent = tzName();
+    const tzEl2 = document.getElementById('edit_tz_name'); if (tzEl2) tzEl2.textContent = tzName();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
+    <title>{% block title %}py-phone-caller{% endblock %}</title>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="d-flex flex-column min-vh-100">
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/htmx.min.js') }}" defer></script>
+
+    {% block navbar %}
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('home_blueprint.home') }}">
+                <i class="bi bi-telephone-outbound-fill me-2"></i>py-phone-caller
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown"
+                    aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNavDropdown">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'home_blueprint.home' %}active{% endif %}" href="{{ url_for('home_blueprint.home') }}">
+                            <i class="bi bi-house-door me-1"></i>Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'calls_blueprint.calls' %}active{% endif %}" href="{{ url_for('calls_blueprint.calls') }}">
+                            <i class="bi bi-list-ul me-1"></i>Managed Calls
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'ws_events_blueprint.ws_events' %}active{% endif %}" href="{{ url_for('ws_events_blueprint.ws_events') }}">
+                            <i class="bi bi-activity me-1"></i>PBX Events
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'schedule_call_blueprint.schedule_call' %}active{% endif %}" href="{{ url_for('schedule_call_blueprint.schedule_call') }}">
+                            <i class="bi bi-calendar-event me-1"></i>Schedule Call
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'address_book_blueprint.address_book' %}active{% endif %}" href="{{ url_for('address_book_blueprint.address_book') }}">
+                            <i class="bi bi-journal-bookmark me-1"></i>Address Book
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownMenuLink" role="button"
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle me-1"></i>Session
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0" aria-labelledby="navbarDropdownMenuLink">
+                            <li><a class="dropdown-item" href="{{ url_for('users_blueprint.users') }}"><i class="bi bi-people me-2"></i>User Management</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="{{ url_for('home_blueprint.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    {% endblock %}
+
+    <main class="flex-grow-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block footer %}
+    <footer class="text-center text-muted py-4 mt-5 border-top bg-white">
+        <div class="container">
+            <small>&copy; {{ now.year if now else '2026' }} py-phone-caller. All rights reserved.</small>
+        </div>
+    </footer>
+    {% endblock %}
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1060;"></div>
+
+    <script>
+        function showToast(title, message, type) {
+            const toastContainer = document.querySelector('.toast-container');
+            const toastId = 'toast-' + Date.now();
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type} border-0 mb-2 shadow-lg`;
+            toast.id = toastId;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-${type === 'success' ? 'check-circle' : (type === 'danger' ? 'x-circle' : 'exclamation-triangle')} me-2 fs-5"></i>
+                            <div><strong>${title}</strong><br>${message}</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            `;
+
+            toastContainer.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast, { autohide: true, delay: 5000 });
+            bsToast.show();
+            toast.addEventListener('hidden.bs.toast', () => toast.remove());
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            replaceWeirdTimestamps();
+            
+            document.body.addEventListener('htmx:afterSwap', function(evt) {
+                replaceWeirdTimestamps();
+            });
+        });
+
+        function replaceWeirdTimestamps() {
+            const weirdValues = ['-infinity', 'None', 'infinity'];
+            const cells = document.querySelectorAll('td');
+            cells.forEach(cell => {
+                const text = cell.textContent.trim();
+                if (weirdValues.includes(text) || text.startsWith('0001-01-01') || text.startsWith('01/01/1 ')) {
+                    cell.textContent = 'No Data';
+                }
+            });
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

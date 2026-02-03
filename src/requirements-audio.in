@@ -1,0 +1,21 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+-r requirements.in
+gTTS>=2.5.4
+num2words
+pydub
+boto3
+numpy
+soundfile
+scipy
+torch
+torchaudio
+torchvision
+transformers
+piper-tts
+onnxruntime
+# Kokoro TTS dependencies (PyTorch version):
+kokoro
+huggingface_hub
+soundfile
+scipy

@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+
+{% block title %}py-phone-caller User Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid main-container px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+        <h2 class="page-header mb-0 text-start">User Management</h2>
+        {% if is_admin_session %}
+        <button type="button" class="btn btn-primary" id="addUserBtn">
+            <i class="bi bi-person-plus me-1"></i> Add New User
+        </button>
+        {% endif %}
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4 rounded-3">
+        <div class="card-body p-3">
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <form method="get" action="{{ url_for('users_blueprint.users') }}" class="d-flex">
+                        <input type="hidden" name="per_page" value="{{ per_page }}">
+                        <input type="hidden" name="sort_by" value="{{ sort_by }}">
+                        <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input class="form-control border-start-0 ps-0" type="search" placeholder="Search users by name or email..."
+                                   aria-label="Search" name="search" value="{{ search_query }}">
+                            {% if search_query %}
+                            <a href="{{ url_for('users_blueprint.users', per_page=per_page, sort_by=sort_by, sort_order=sort_order) }}"
+                               class="btn btn-outline-secondary d-flex align-items-center"><i class="bi bi-x-lg"></i></a>
+                            {% endif %}
+                            <button class="btn btn-primary px-4" type="submit">Search</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container table-responsive border-0 shadow-sm">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+                <th>
+                    <a href="{{ url_for('users_blueprint.users', sort_by='given_name', sort_order='asc' if sort_by != 'given_name' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
+                        Full Name
+                        {% if sort_by == 'given_name' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="{{ url_for('users_blueprint.users', sort_by='email', sort_order='asc' if sort_by != 'email' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
+                        Email Address
+                        {% if sort_by == 'email' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th class="text-center">Active</th>
+                <th>Created On</th>
+                <th>Last Login</th>
+                <th class="text-end">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for element in paginated_data %}
+            {% set user = users_data[element] %}
+            <tr>
+                <td><div class="fw-bold text-dark">{{ user.get("given_name") }}</div></td>
+                <td><code class="text-primary">{{ user.get("email") }}</code></td>
+                <td class="text-center">
+                    {% if user.get("is_active") %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">Yes</span>
+                    {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">No</span>
+                    {% endif %}
+                </td>
+                <td class="small text-muted">{{ user.get("created_on") }}</td>
+                <td class="small text-muted">{{ user.get("last_login") or "Never" }}</td>
+                <td class="text-end">
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-primary change-password-btn" 
+                                data-user-id="{{ user.get('id') }}"
+                                data-user-email="{{ user.get('email') }}"
+                                title="Change Password">
+                            <i class="bi bi-key"></i>
+                        </button>
+                        {% if is_admin_session %}
+                        {% set is_admin_row = user.get('email') == admin_email %}
+                        <button type="button" class="btn btn-outline-warning toggle-active-btn" 
+                                data-user-id="{{ user.get('id') }}" 
+                                {% if is_admin_row %}disabled{% endif %}
+                                title="{{ 'Deactivate' if user.get('is_active') else 'Activate' }}">
+                            <i class="bi bi-power"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-danger delete-user-btn" 
+                                data-user-id="{{ user.get('id') }}"
+                                {% if is_admin_row %}disabled{% endif %}
+                                title="Delete User">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            {% if paginated_data|length == 0 %}
+            <tr>
+                <td colspan="6" class="text-center py-5 text-muted">
+                    <i class="bi bi-person-x fs-1 d-block mb-2"></i>
+                    No users found{% if search_query %} for "{{ search_query }}"{% endif %}
+                </td>
+            </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mt-4 gap-3">
+        <div class="order-2 order-md-1">
+            <form method="get" action="{{ url_for('users_blueprint.users') }}" class="d-flex align-items-center">
+                {% if search_query %}<input type="hidden" name="search" value="{{ search_query }}">{% endif %}
+                <input type="hidden" name="sort_by" value="{{ sort_by }}">
+                <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                <div class="input-group input-group-sm">
+                    <label class="input-group-text bg-light border-end-0" for="items-per-page">Items per page:</label>
+                    <select class="form-select border-start-0" id="items-per-page" name="per_page" onchange="this.form.submit()">
+                        {% for option in [5, 10, 25, 50, 100] %}
+                        <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+
+        {% if total_pages > 1 %}
+        <nav aria-label="Page navigation" class="order-1 order-md-2">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('users_blueprint.users', page=page-1, per_page=per_page, search=search_query, sort_by=sort_by, sort_order=sort_order) if page > 1 else '#' }}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% for p in range(1, total_pages + 1) %}
+                <li class="page-item {% if p == page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('users_blueprint.users', page=p, per_page=per_page, search=search_query, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('users_blueprint.users', page=page+1, per_page=per_page, search=search_query, sort_by=sort_by, sort_order=sort_order) if page < total_pages else '#' }}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="addUserModalLabel"><i class="bi bi-person-plus me-2 text-primary"></i>Add New User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="addUserForm">
+                    <div class="mb-3">
+                        <label for="givenName" class="form-label fw-bold small text-secondary">Full Name</label>
+                        <input type="text" class="form-control" id="givenName" name="given_name" placeholder="John Doe" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label fw-bold small text-secondary">Email Address</label>
+                        <input type="email" class="form-control" id="email" name="email" placeholder="john@example.com" required>
+                    </div>
+                    <div class="alert alert-danger d-none" id="addUserError"></div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-4" id="saveAddUserBtn">Create User</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="generatedPasswordModal" tabindex="-1" data-bs-backdrop="static" aria-labelledby="generatedPasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold" id="generatedPasswordModalLabel"><i class="bi bi-check-circle me-2"></i>User Created Successfully</h5>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <p class="text-muted">A temporary password has been generated for the new user.</p>
+                <div class="alert alert-warning mb-4">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>Important:</strong> Copy this password now. It will not be shown again!
+                </div>
+                <div class="input-group input-group-lg mb-3">
+                    <input type="text" class="form-control font-monospace text-center bg-light" id="generatedPasswordField" readonly>
+                    <button class="btn btn-outline-primary" type="button" id="copyPasswordBtn">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer border-0 justify-content-center">
+                <button type="button" class="btn btn-primary btn-lg px-5" data-bs-dismiss="modal">I've saved it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="changePasswordModalLabel"><i class="bi bi-key me-2 text-primary"></i>Change Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="changePasswordForm">
+                    <input type="hidden" id="userId" name="user_id">
+                    
+                    <div class="mb-4 text-center">
+                        <label class="form-label small text-muted mb-0">Updating password for:</label>
+                        <div id="userEmailDisplay" class="fw-bold text-dark"></div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="oldPassword" class="form-label fw-bold small text-secondary">Current Password</label>
+                        <input type="password" class="form-control" id="oldPassword" name="old_password" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="newPassword" class="form-label fw-bold small text-secondary">New Password</label>
+                        <input type="password" class="form-control" id="newPassword" name="new_password" required>
+                        <div class="form-text x-small text-muted mt-2">
+                            <i class="bi bi-shield-lock me-1"></i>
+                            Must be at least 17 characters with uppercase, lowercase, numbers, and symbols.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="confirmPassword" class="form-label fw-bold small text-secondary">Confirm New Password</label>
+                        <input type="password" class="form-control" id="confirmPassword" name="confirm_password" required>
+                    </div>
+                    
+                    <div class="alert alert-danger d-none" id="passwordError"></div>
+                    <div class="alert alert-success d-none" id="passwordSuccess"></div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-4" id="savePasswordBtn">Update Password</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function prepareChangePassword(userId, userEmail) {
+        document.getElementById('userId').value = userId;
+        document.getElementById('userEmailDisplay').textContent = userEmail;
+        document.getElementById('oldPassword').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+        
+        document.getElementById('passwordError').classList.add('d-none');
+        document.getElementById('passwordSuccess').classList.add('d-none');
+        
+        new bootstrap.Modal(document.getElementById('changePasswordModal')).show();
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.change-password-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                prepareChangePassword(this.dataset.userId, this.dataset.userEmail);
+            });
+        });
+
+        document.getElementById('addUserBtn')?.addEventListener('click', function() {
+            document.getElementById('addUserError').classList.add('d-none');
+            document.getElementById('givenName').value = '';
+            document.getElementById('email').value = '';
+            new bootstrap.Modal(document.getElementById('addUserModal')).show();
+        });
+
+        document.getElementById('savePasswordBtn').addEventListener('click', function() {
+            const formData = new FormData(document.getElementById('changePasswordForm'));
+            document.getElementById('passwordError').classList.add('d-none');
+            
+            fetch('{{ url_for("users_blueprint.change_password") }}', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Success', data.message, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('changePasswordModal')).hide();
+                } else {
+                    const err = document.getElementById('passwordError');
+                    err.textContent = data.message;
+                    err.classList.remove('d-none');
+                }
+            }).catch(e => {
+                showToast('Error', 'An unexpected error occurred', 'danger');
+            });
+        });
+
+        document.getElementById('saveAddUserBtn')?.addEventListener('click', function() {
+            const formData = new FormData(document.getElementById('addUserForm'));
+            fetch('{{ url_for("users_blueprint.add_user") }}', { method: 'POST', body: formData })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('addUserModal')).hide();
+                    document.getElementById('generatedPasswordField').value = data.password || '';
+                    new bootstrap.Modal(document.getElementById('generatedPasswordModal')).show();
+                } else {
+                    const err = document.getElementById('addUserError');
+                    err.textContent = data.message || 'Failed to create user';
+                    err.classList.remove('d-none');
+                }
+            }).catch(e => {
+                console.error(e);
+                showToast('Error', 'Failed to communicate with server', 'danger');
+            });
+        });
+
+        document.getElementById('copyPasswordBtn')?.addEventListener('click', function() {
+            const pwdField = document.getElementById('generatedPasswordField');
+            pwdField.select();
+            document.execCommand('copy');
+            showToast('Copied', 'Password copied to clipboard', 'info');
+        });
+
+        document.getElementById('generatedPasswordModal')?.addEventListener('hidden.bs.modal', function () {
+            window.location.reload();
+        });
+
+        document.querySelectorAll('.toggle-active-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const userId = this.getAttribute('data-user-id');
+                const fd = new FormData();
+                fd.append('user_id', userId);
+                fetch('{{ url_for("users_blueprint.toggle_active") }}', { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) window.location.reload();
+                    else showToast('Error', data.message || 'Operation failed', 'danger');
+                }).catch(e => showToast('Error', 'Server communication error', 'danger'));
+            });
+        });
+
+        document.querySelectorAll('.delete-user-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (!confirm('Are you sure you want to delete this user?')) return;
+                const userId = this.getAttribute('data-user-id');
+                const fd = new FormData();
+                fd.append('user_id', userId);
+                fetch('{{ url_for("users_blueprint.delete_user") }}', { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) window.location.reload();
+                    else showToast('Error', data.message || 'Delete failed', 'danger');
+                }).catch(e => showToast('Error', 'Server communication error', 'danger'));
+            });
+        });
+    });
+</script>
+{% endblock %}

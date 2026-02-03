@@ -1,19 +1,58 @@
+"""
+Asterisk WebSocket Monitor service.
+
+This module connects to the Asterisk ARI WebSocket, listens to call events,
+triggers audio generation, and coordinates playback by calling the appropriate
+HTTP endpoints in the system.
+"""
+
 import asyncio
 import json
 import logging
 import signal
+import sys
+import os
 
-import py_phone_caller_utils.caller_configuration as conf
 import websockets
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+
+if current_dir in sys.path:
+    sys.path.remove(current_dir)
+
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
+
 from aiohttp import ClientSession, client_exceptions, web, web_exceptions
-from py_phone_caller_utils.py_phone_caller_db.db_asterisk_ws_monitor import \
-    insert_ws_event
+from py_phone_caller_utils.py_phone_caller_db.db_asterisk_ws_monitor import (
+    insert_ws_event,
+)
+from py_phone_caller_utils.telemetry import init_telemetry
 
-logging.basicConfig(format=conf.get_log_formatter())
+from asterisk_ws_monitor.constants import (
+    EVENT_TYPE,
+    CHANNEL_STATE,
+    IS_AUDIO_READY_ENDPOINT,
+    CALL_REGISTER_URL,
+    CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE,
+    GENERATE_AUDIO_URL,
+    GENERATE_AUDIO_APP_ROUTE,
+    ASTERISK_HOST,
+    ASTERISK_WEB_PORT,
+    ASTERISK_USER,
+    ASTERISK_CALL_URL,
+    ASTERISK_CALL_APP_ROUTE_PLAY,
+    ASTERISK_STASIS_APP,
+    WS_URL,
+    LOG_FORMATTER,
+    LOG_LEVEL,
+)
 
-EVENT_TYPE = "StasisStart"
-CHANNEL_STATE = "Up"
-IS_AUDIO_READY_ENDPOINT = conf.get_is_audio_ready_endpoint()
+logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
+
+init_telemetry("asterisk_ws_monitor")
 
 
 async def get_asterisk_chan(response_json):
@@ -47,20 +86,20 @@ async def querying_call_register(asterisk_chan):
         dict: The JSON response from the call register service.
 
     Raises:
-        web.HTTPClientError: If there is a connection error with the Asterisk system.
+        web.HTTPBadRequest: If there is a connection error with the Asterisk system.
     """
     call_register_session = ClientSession()
     try:
         call_register_resp = await call_register_session.post(
-            url=conf.get_call_register_url()
-            + f"/{conf.get_call_register_app_route_voice_message()}"
+            url=CALL_REGISTER_URL
+            + f"/{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}"
             + f"?asterisk_chan={asterisk_chan}",
             data=None,
         )
         return json.loads(await call_register_resp.text())
     except client_exceptions.ClientConnectorError as err:
         logging.exception(f"Unable to connect to the Asterisk system: '{err}'")
-        raise web.HTTPClientError(
+        raise web.HTTPBadRequest(
             reason=str(err), body=None, text=None, content_type=None
         ) from err
     finally:
@@ -81,14 +120,14 @@ async def generate_the_audio_file(response_data):
         dict: The JSON response from the audio generation endpoint.
 
     Raises:
-        web.HTTPClientError: If there is a connection error with the audio generation process.
+        web.HTTPBadRequest: If there is a connection error with the audio generation process.
     """
     try:
         generate_audio_session = ClientSession()
 
         generate_audio_resp = await generate_audio_session.post(
-            url=conf.get_generate_audio_url()
-            + f"/{conf.get_generate_audio_app_route()}"
+            url=GENERATE_AUDIO_URL
+            + f"/{GENERATE_AUDIO_APP_ROUTE}"
             + f"?message={response_data.get('message')}"
             + f"&msg_chk_sum={response_data.get('msg_chk_sum')}"
         )
@@ -102,7 +141,7 @@ async def generate_the_audio_file(response_data):
         while not audio_ready and retry_count < max_retries:
             try:
                 audio_ready_resp = await generate_audio_session.get(
-                    url=conf.get_generate_audio_url()
+                    url=GENERATE_AUDIO_URL
                     + f"/{IS_AUDIO_READY_ENDPOINT}"
                     + f"?msg_chk_sum={msg_chk_sum}"
                 )
@@ -135,7 +174,7 @@ async def generate_the_audio_file(response_data):
     except client_exceptions.ClientConnectorError as err:
         logging.exception(f"Unable to connect to the GenerateAudio Process: '{err}'")
         # Send the 'continue' here to the websocket to _hangup_ the call
-        raise web.HTTPClientError(
+        raise web.HTTPBadRequest(
             reason=str(err), body=None, text=None, content_type=None
         ) from err
     finally:
@@ -180,8 +219,8 @@ async def play_audio_to_channel(asterisk_chan, response_data):
     asterisk_call_session = ClientSession()
     try:
         audio_play_resp = await asterisk_call_session.post(
-            url=conf.get_asterisk_call_url()
-            + f"/{conf.get_asterisk_call_app_route_play()}"
+            url=ASTERISK_CALL_URL
+            + f"/{ASTERISK_CALL_APP_ROUTE_PLAY}"
             + f"?asterisk_chan={asterisk_chan}"
             + f"&msg_chk_sum={response_data.get('msg_chk_sum')}",
             data=None,
@@ -280,48 +319,51 @@ async def asterisk_ws_client():
     Returns:
         None
     """
+    while True:
+        try:
+            async with websockets.connect(WS_URL) as websocket:
+                await ws_connection_log(
+                    ASTERISK_HOST,
+                    ASTERISK_WEB_PORT,
+                    ASTERISK_USER,
+                    ASTERISK_STASIS_APP,
+                )
 
-    try:
-        async with websockets.connect(conf.get_ws_url()) as websocket:
-            await ws_connection_log(
-                conf.get_asterisk_host(),
-                conf.get_asterisk_web_port(),
-                conf.get_asterisk_user(),
-                conf.get_asterisk_stasis_app(),
+                while True:
+                    response = await websocket.recv()
+                    response_json = json.loads(response)
+                    asterisk_chan = await get_asterisk_chan(response_json)
+                    event_type = response_json["type"]
+
+                    # Insert the Asterisk WebSocket events into the DB
+                    try:
+                        await insert_ws_event(
+                            asterisk_chan, event_type, json.dumps(response_json)
+                        )
+
+                        await take_control_of_dialplan(
+                            event_type, response_json, asterisk_chan
+                        )
+
+                    except Exception as err:
+                        logging.exception(
+                            f"Problem with the PostgreSQL connection: '{err}'"
+                        )
+
+        except websockets.exceptions.ConnectionClosedError as err:
+            logging.exception(f"Connection to the Asterisk PBX lost!: '{err}'")
+            logging.info("Retrying connection in 5 seconds...")
+            await asyncio.sleep(5)
+        except ConnectionRefusedError as err:
+            logging.exception(
+                f"Unable to establish a connection with the Asterisk PBX: '{err}'"
             )
-
-            while True:
-                response = await websocket.recv()
-                response_json = json.loads(response)
-                asterisk_chan = await get_asterisk_chan(response_json)
-                event_type = response_json["type"]
-
-                # Insert the Asterisk WebSocket events into the DB
-                try:
-                    await insert_ws_event(
-                        asterisk_chan, event_type, json.dumps(response_json)
-                    )
-
-                    await take_control_of_dialplan(
-                        event_type, response_json, asterisk_chan
-                    )
-
-                except Exception as err:
-                    logging.exception(
-                        f"Problem with the PostgreSQL connection: '{err}'"
-                    )
-                    exit(1)
-
-    except (
-        websockets.exceptions.ConnectionClosedError
-    ) as err:  # TODO: check what's happen when Asterisk is stopped
-        logging.exception(f"Connection to the Asterisk PBX lost!: '{err}'")
-        exit(1)
-    except ConnectionRefusedError as err:
-        logging.exception(
-            f"Unable to establish a connection with the Asterisk PBX: '{err}'"
-        )
-        exit(1)
+            logging.info("Retrying connection in 5 seconds...")
+            await asyncio.sleep(5)
+        except Exception as err:
+            logging.exception(f"Unexpected error in WebSocket client: '{err}'")
+            logging.info("Retrying connection in 5 seconds...")
+            await asyncio.sleep(5)
 
 
 def receive_signal(signal_number, frame):

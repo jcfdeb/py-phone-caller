@@ -1,0 +1,10 @@
+from py_phone_caller_utils.config import settings
+
+
+CALLER_ADDR_BOOK_BASE = f"{settings.caller_address_book.caller_address_book_http_scheme}://{settings.caller_address_book.caller_address_book_host}:{settings.caller_address_book.caller_address_book_port}"
+ROUTE_ADD = settings.caller_address_book.caller_address_book_route_add_contact
+ROUTE_MODIFY = settings.caller_address_book.caller_address_book_route_modify_contact
+ROUTE_DELETE = settings.caller_address_book.caller_address_book_route_delete_contact
+SERVICE_EXPORT = settings.caller_address_book.caller_address_book_service_export
+SERVICE_IMPORT = settings.caller_address_book.caller_address_book_service_import
+LOG_FORMATTER = settings.logs.log_formatter

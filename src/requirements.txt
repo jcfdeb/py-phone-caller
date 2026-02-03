@@ -4,68 +4,62 @@
 #
 #    pip-compile --output-file=requirements.txt requirements.in
 #
-# With:
-#  - torch
-#  - torchaudio
-#  - transformers
-#  - scipy
-
-aiodns==3.2.0
+aiodns==4.0.0
     # via -r requirements.in
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.16
+aiohttp==3.13.3
     # via
     #   -r requirements.in
     #   aiohttp-retry
     #   twilio
 aiohttp-retry==2.9.1
     # via twilio
-aiosignal==1.3.2
+aiosignal==1.4.0
     # via aiohttp
 amqp==5.3.1
     # via kombu
 annotated-types==0.7.0
     # via pydantic
-anyio==4.9.0
+anyio==4.12.1
     # via httpx
-asgiref==3.8.1
+asgiref==3.11.0
     # via flask
-asyncpg==0.30.0
+asyncpg==0.31.0
     # via -r requirements.in
-attrs==25.3.0
+attrs==25.4.0
     # via aiohttp
-billiard==4.2.1
+billiard==4.2.4
     # via celery
-black==25.1.0
+black==26.1.0
     # via piccolo
 blinker==1.9.0
     # via flask
 cachelib==0.13.0
     # via flask-session
-celery[redis]==5.5.1
+celery[redis]==5.6.2
     # via -r requirements.in
-certifi==2025.1.31
+certifi==2026.1.4
     # via
     #   httpcore
     #   httpx
     #   requests
-cffi==1.17.1
+cffi==2.0.0
     # via pycares
-charset-normalizer==3.4.1
+charset-normalizer==3.4.4
     # via requests
 click==8.1.8
     # via
+    #   -r requirements.in
     #   black
     #   celery
     #   click-didyoumean
     #   click-plugins
     #   click-repl
     #   flask
-    #   gtts
 click-didyoumean==0.3.1
     # via celery
-click-plugins==1.1.1
+click-plugins==1.1.1.2
     # via celery
 click-repl==0.3.0
     # via celery
@@ -73,18 +67,15 @@ colorama==0.4.6
     # via
     #   piccolo
     #   targ
-dnspython==2.7.0
+dnspython==2.8.0
     # via email-validator
-docstring-parser==0.16
+docstring-parser==0.17.0
     # via targ
-email-validator==2.2.0
+dynaconf==3.2.12
+    # via -r requirements.in
+email-validator==2.3.0
     # via pydantic
-filelock==3.18.0
-    # via
-    #   huggingface-hub
-    #   torch
-    #   transformers
-flask[async]==3.1.0
+flask[async]==3.1.2
     # via
     #   -r requirements.in
     #   flask-login
@@ -93,44 +84,44 @@ flask-login==0.6.3
     # via -r requirements.in
 flask-session==0.8.0
     # via -r requirements.in
-frozenlist==1.5.0
+frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-fsspec==2025.3.2
-    # via
-    #   huggingface-hub
-    #   torch
-gtts==2.5.4
+gunicorn==21.2.0
     # via -r requirements.in
-h11==0.14.0
+googleapis-common-protos==1.72.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+grpcio==1.76.0
+    # via opentelemetry-exporter-otlp-proto-grpc
+h11==0.16.0
     # via
     #   httpcore
     #   hypercorn
     #   wsproto
-h2==4.2.0
+h2==4.3.0
     # via hypercorn
 hpack==4.1.0
     # via h2
-httpcore==1.0.7
+httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via -r requirements.in
-huggingface-hub==0.30.2
-    # via
-    #   tokenizers
-    #   transformers
-hypercorn==0.17.3
+hypercorn==0.18.0
     # via -r requirements.in
 hyperframe==6.1.0
     # via h2
-idna==3.10
+idna==3.11
     # via
     #   anyio
     #   email-validator
     #   httpx
     #   requests
     #   yarl
+importlib-metadata==8.7.1
+    # via opentelemetry-api
 inflection==0.5.1
     # via piccolo
 itsdangerous==2.2.0
@@ -139,176 +130,208 @@ jinja2==3.1.6
     # via
     #   flask
     #   piccolo
-    #   torch
-kombu==5.5.2
+kombu[redis]==5.6.2
     # via celery
-markupsafe==3.0.2
+markupsafe==3.0.3
     # via
+    #   flask
     #   jinja2
     #   werkzeug
-mpmath==1.3.0
-    # via sympy
-msgspec==0.19.0
+msgspec==0.20.0
     # via flask-session
-multidict==6.4.2
+multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
-mypy-extensions==1.0.0
+mypy-extensions==1.1.0
     # via black
-networkx==3.4.2
-    # via torch
-numpy==2.2.4
+opentelemetry-api==1.39.1
     # via
-    #   scipy
-    #   transformers
-nvidia-cublas-cu12==12.4.5.8
+    #   -r requirements.in
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-aiohttp-client
+    #   opentelemetry-instrumentation-aiohttp-server
+    #   opentelemetry-instrumentation-asyncpg
+    #   opentelemetry-instrumentation-celery
+    #   opentelemetry-instrumentation-flask
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-system-metrics
+    #   opentelemetry-instrumentation-wsgi
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-otlp==1.39.1
+    # via -r requirements.in
+opentelemetry-exporter-otlp-proto-common==1.39.1
     # via
-    #   nvidia-cudnn-cu12
-    #   nvidia-cusolver-cu12
-    #   torch
-nvidia-cuda-cupti-cu12==12.4.127
-    # via torch
-nvidia-cuda-nvrtc-cu12==12.4.127
-    # via torch
-nvidia-cuda-runtime-cu12==12.4.127
-    # via torch
-nvidia-cudnn-cu12==9.1.0.70
-    # via torch
-nvidia-cufft-cu12==11.2.1.3
-    # via torch
-nvidia-curand-cu12==10.3.5.147
-    # via torch
-nvidia-cusolver-cu12==11.6.1.9
-    # via torch
-nvidia-cusparse-cu12==12.3.1.170
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.39.1
+    # via opentelemetry-exporter-otlp
+opentelemetry-exporter-otlp-proto-http==1.39.1
+    # via opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation==0.60b1
     # via
-    #   nvidia-cusolver-cu12
-    #   torch
-nvidia-cusparselt-cu12==0.6.2
-    # via torch
-nvidia-nccl-cu12==2.21.5
-    # via torch
-nvidia-nvjitlink-cu12==12.4.127
+    #   opentelemetry-instrumentation-aiohttp-client
+    #   opentelemetry-instrumentation-aiohttp-server
+    #   opentelemetry-instrumentation-asyncpg
+    #   opentelemetry-instrumentation-celery
+    #   opentelemetry-instrumentation-flask
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-system-metrics
+    #   opentelemetry-instrumentation-wsgi
+opentelemetry-instrumentation-aiohttp-client==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation-aiohttp-server==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation-asyncpg==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation-celery==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation-flask==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation-requests==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation-system-metrics==0.60b1
+    # via -r requirements.in
+opentelemetry-instrumentation-wsgi==0.60b1
+    # via opentelemetry-instrumentation-flask
+opentelemetry-proto==1.39.1
     # via
-    #   nvidia-cusolver-cu12
-    #   nvidia-cusparse-cu12
-    #   torch
-nvidia-nvtx-cu12==12.4.127
-    # via torch
-packaging==24.2
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.39.1
+    # via
+    #   -r requirements.in
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
+opentelemetry-semantic-conventions==0.60b1
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-aiohttp-client
+    #   opentelemetry-instrumentation-aiohttp-server
+    #   opentelemetry-instrumentation-asyncpg
+    #   opentelemetry-instrumentation-celery
+    #   opentelemetry-instrumentation-flask
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-wsgi
+    #   opentelemetry-sdk
+opentelemetry-util-http==0.60b1
+    # via
+    #   opentelemetry-instrumentation-aiohttp-client
+    #   opentelemetry-instrumentation-aiohttp-server
+    #   opentelemetry-instrumentation-flask
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-wsgi
+packaging==26.0
     # via
     #   black
-    #   huggingface-hub
-    #   transformers
-pathspec==0.12.1
+    #   kombu
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-flask
+pathspec==1.0.4
     # via black
-piccolo==1.24.2
+piccolo==1.30.0
     # via -r requirements.in
-platformdirs==4.3.7
+platformdirs==4.5.1
     # via black
 priority==2.0.0
     # via hypercorn
-prompt-toolkit==3.0.50
+prometheus-client==0.24.1
+    # via
+    #   -r requirements.in
+    #   opentelemetry-exporter-prometheus
+prompt-toolkit==3.0.52
     # via click-repl
-propcache==0.3.1
+propcache==0.4.1
     # via
     #   aiohttp
     #   yarl
-pycares==4.6.0
+protobuf==6.33.5
+    # via
+    #   googleapis-common-protos
+    #   opentelemetry-proto
+psutil==7.2.2
+    # via opentelemetry-instrumentation-system-metrics
+pycares==5.0.1
     # via aiodns
-pycparser==2.22
+pycparser==3.0
     # via cffi
-pydantic[email]==2.11.3
+pydantic[email]==2.12.5
     # via piccolo
-pydantic-core==2.33.1
+pydantic-core==2.41.5
     # via pydantic
-pydub==0.25.1
-    # via -r requirements.in
 pyjwt==2.10.1
     # via twilio
 python-dateutil==2.9.0.post0
     # via celery
+pytokens==0.4.1
+    # via black
 pytz==2025.2
     # via -r requirements.in
-pyyaml==6.0.2
+redis==6.4.0
+    # via kombu
+requests==2.32.5
     # via
-    #   huggingface-hub
-    #   transformers
-redis==5.2.1
-    # via celery
-regex==2024.11.6
-    # via transformers
-requests==2.32.3
-    # via
-    #   gtts
-    #   huggingface-hub
-    #   transformers
+    #   opentelemetry-exporter-otlp-proto-http
     #   twilio
-safetensors==0.5.3
-    # via transformers
-scipy==1.15.2
-    # via -r requirements.in
 six==1.17.0
     # via python-dateutil
-sniffio==1.3.1
-    # via anyio
-sympy==1.13.1
-    # via torch
-targ==0.4.0
+targ==0.6.0
     # via piccolo
-tokenizers==0.21.1
-    # via transformers
 toml==0.10.2
     # via -r requirements.in
-torch==2.6.0
-    # via
-    #   -r requirements.in
-    #   torchaudio
-torchaudio==2.6.0
+twilio==9.10.0
     # via -r requirements.in
-tqdm==4.67.1
+typing-extensions==4.15.0
     # via
-    #   huggingface-hub
-    #   transformers
-transformers==4.51.1
-    # via -r requirements.in
-triton==3.2.0
-    # via torch
-twilio==9.5.2
-    # via -r requirements.in
-typing-extensions==4.13.1
-    # via
+    #   aiosignal
     #   anyio
-    #   huggingface-hub
+    #   grpcio
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   piccolo
     #   pydantic
     #   pydantic-core
-    #   torch
     #   typing-inspection
-typing-inspection==0.4.0
+typing-inspection==0.4.2
     # via pydantic
-tzdata==2025.2
+tzdata==2025.3
     # via kombu
-urllib3==2.3.0
+tzlocal==5.3.1
+    # via celery
+urllib3==2.6.3
     # via requests
 vine==5.1.0
     # via
     #   amqp
     #   celery
     #   kombu
-wcwidth==0.2.13
+wcwidth==0.5.2
     # via prompt-toolkit
-websockets==15.0.1
+websockets==16.0
     # via -r requirements.in
-werkzeug==3.1.3
+werkzeug==3.1.5
     # via
     #   flask
     #   flask-login
-wsproto==1.2.0
+wrapt==1.17.3
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-aiohttp-client
+    #   opentelemetry-instrumentation-aiohttp-server
+wsproto==1.3.2
     # via hypercorn
-yarl==1.19.0
+yarl==1.22.0
     # via aiohttp
-
-# The following packages are considered to be unsafe in a requirements file:
-# setuptools
+zipp==3.23.0
+    # via importlib-metadata

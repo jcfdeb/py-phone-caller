@@ -1,11 +1,49 @@
+"""
+Prometheus Webhook service.
+
+Exposes endpoints compatible with Prometheus Alertmanager to trigger phone calls
+and SMS notifications (call-only, SMS-only, SMS-before-call, call-and-SMS).
+"""
+
 import asyncio
 import logging
+import os
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+
+if current_dir in sys.path:
+    sys.path.remove(current_dir)
+
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
 
 from aiohttp import ClientSession, ClientTimeout, web
 
-import py_phone_caller_utils.caller_configuration as conf
+from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
 
-logging.basicConfig(format=conf.get_log_formatter())
+from caller_prometheus_webhook.constants import (
+    ASTERISK_CALL_URL,
+    ASTERISK_CALL_APP_ROUTE_PLACE_CALL,
+    SMS_BEFORE_CALL_WAIT_SECONDS,
+    CALLER_SMS_URL,
+    CALLER_SMS_APP_ROUTE,
+    CLIENT_TIMEOUT_TOTAL,
+    PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY,
+    PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY,
+    PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_BEFORE_CALL,
+    PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_AND_SMS,
+    PROMETHEUS_WEBHOOK_PORT,
+    PROMETHEUS_WEBHOOK_RECEIVERS,
+    LOG_FORMATTER,
+    LOG_LEVEL,
+)
+
+logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
+
+init_telemetry("caller_prometheus_webhook")
 
 
 async def producer(payload, queue):
@@ -82,7 +120,7 @@ async def schedule_sms_before_call(our_receiver, our_message):
         None
     """
     await send_the_sms(our_receiver, our_message)
-    await asyncio.sleep(int(conf.get_sms_before_call_wait_seconds()))
+    await asyncio.sleep(int(SMS_BEFORE_CALL_WAIT_SECONDS))
     await do_call_only(our_receiver, our_message)
 
 
@@ -222,9 +260,9 @@ async def start_the_asterisk_call(phone, message):
     Returns:
         None
     """
-    asterisk_call_url = f"{conf.get_asterisk_call_url()}/{conf.get_asterisk_call_app_route_place_call()}"
+    asterisk_call_url = f"{ASTERISK_CALL_URL}/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}"
     session_start_the_asterisk_call = ClientSession(
-        timeout=ClientTimeout(total=conf.get_client_timeout_total())
+        timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
     )
     await session_start_the_asterisk_call.post(
         url=asterisk_call_url + f"?phone={phone.replace('+', '00')}&message={message}",
@@ -247,12 +285,12 @@ async def send_message_to_caller_sms(phone, message):
     Returns:
         None
     """
-    caller_sms_url = f"{conf.get_caller_sms_url()}/{conf.get_caller_sms_app_route()}"
+    caller_sms_url = f"{CALLER_SMS_URL}/{CALLER_SMS_APP_ROUTE}"
     session_send_message_to_caller_sms = ClientSession(
-        timeout=ClientTimeout(total=conf.get_client_timeout_total())
+        timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
     )
     await session_send_message_to_caller_sms.post(
-        url=f'{caller_sms_url}?phone={phone.replace("+", "%2B")}&message={message}',
+        url=f"{caller_sms_url}?phone={phone.replace('+', '%2B')}&message={message}",
         data=None,
         headers=None,
     )
@@ -297,9 +335,7 @@ async def data_from_alert_manager(request, caller_func):
     payload = await request.json()
     some_messages = await the_alert_description(payload)
     for the_message in some_messages:
-        await process_the_queue(
-            the_message, conf.get_prometheus_webhook_receivers(), caller_func
-        )
+        await process_the_queue(the_message, PROMETHEUS_WEBHOOK_RECEIVERS, caller_func)
 
 
 async def response_for_alert_manager():
@@ -389,21 +425,20 @@ async def init_app():
     """
     app = web.Application()
 
-    # And... here our routes
+    instrument_aiohttp_app(app)
+
     app.router.add_route(
-        "POST", f"/{conf.get_prometheus_webhook_app_route_call_only()}", call_only
+        "POST", f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}", call_only
     )
-    app.router.add_route(
-        "POST", f"/{conf.get_prometheus_webhook_app_route_sms_only()}", sms_only
-    )
+    app.router.add_route("POST", f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY}", sms_only)
     app.router.add_route(
         "POST",
-        f"/{conf.get_prometheus_webhook_app_route_sms_before_call()}",
+        f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_BEFORE_CALL}",
         sms_before_call,
     )
     app.router.add_route(
         "POST",
-        f"/{conf.get_prometheus_webhook_app_route_call_and_sms()}",
+        f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_AND_SMS}",
         call_and_sms,
     )
     return app
@@ -412,4 +447,4 @@ async def init_app():
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     app = loop.run_until_complete(init_app())
-    web.run_app(app, port=int(conf.get_prometheus_webhook_port()))
+    web.run_app(app, port=int(PROMETHEUS_WEBHOOK_PORT))

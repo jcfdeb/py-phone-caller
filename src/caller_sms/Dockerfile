@@ -1,18 +1,59 @@
-FROM redhat/ubi8:8.4-206.1626828523
+# syntax=docker/dockerfile:1
+FROM rockylinux:9-minimal AS builder
 
-RUN dnf -y install python39 &&\
-    dnf clean all &&\
-    mkdir -p /opt/py-phone-caller/{config,py_phone_caller_utils} &&\
-    mkdir /opt/py-phone-caller/py_phone_caller_utils/sms
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_HTTP_TIMEOUT=300
 
-COPY caller_sms/caller_sms.py /opt/py-phone-caller/caller_sms.py
-COPY requirements.txt /opt/py-phone-caller/requirements.txt
-COPY py_phone_caller_utils/caller_configuration.py /opt/py-phone-caller/py_phone_caller_utils/caller_configuration.py
-COPY py_phone_caller_utils/sms/twilio_sms.py /opt/py-phone-caller/py_phone_caller_utils/sms/twilio_sms.py
-RUN pip3 install -r /opt/py-phone-caller/requirements.txt && chown -R daemon.daemon /opt/py-phone-caller
+RUN microdnf install -y shadow-utils ca-certificates libsndfile python3.12 gcc python3.12-devel curl && \
+    microdnf clean all
 
-USER daemon
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
-WORKDIR /opt/py-phone-caller
-ENTRYPOINT [ "/usr/bin/python3" ]
-CMD [ "caller_sms.py" ]
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+RUN uv venv /opt/venv --python python3.12
+
+COPY requirements.txt .
+RUN VIRTUAL_ENV=/opt/venv uv pip install --no-cache -r requirements.txt
+
+COPY py-phone-caller-utils ./py-phone-caller-utils
+WORKDIR /app/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine
+ENV PYO3_PYTHON=/usr/bin/python3.12
+RUN cargo build --release
+RUN cp target/release/librust_engine.so ../rust_engine.so
+
+FROM rockylinux:9-minimal
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app \
+    CALLER_CONFIG_DIR=/app/config
+
+RUN microdnf install -y shadow-utils ca-certificates libsndfile python3.12 && \
+    useradd -r -s /sbin/nologin -G dialout appuser && \
+    microdnf clean all
+
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
+
+COPY config /app/config
+COPY caller_sms /app/caller_sms
+COPY py-phone-caller-utils/py_phone_caller_utils /app/py_phone_caller_utils
+COPY --from=builder /app/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine.so /app/py_phone_caller_utils/sms/rust_engine.so
+
+RUN chown -R appuser:appuser /app
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(2); s.connect(('127.0.0.1', 8085)); s.close()" || exit 1
+
+ENTRYPOINT ["python3"]
+CMD ["-m", "caller_sms.caller_sms"]

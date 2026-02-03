@@ -1,30 +1,68 @@
+"""
+Generate Audio service.
+
+Provides endpoints to generate and serve audio files from text using various
+TTS engines (Google gTTS, Facebook MMS, Piper, AWS Polly, Kokoro) and to verify
+when an audio file is ready to be played.
+"""
+
 import asyncio
+import importlib
+import importlib.util
 import logging
 import os
+import sys
 import pathlib
 import site
 import subprocess
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+
+if current_dir in sys.path:
+    sys.path.remove(current_dir)
+
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+
 from concurrent.futures.thread import ThreadPoolExecutor
 from enum import Enum
 
-import py_phone_caller_utils.caller_configuration as conf
 from aiohttp import web
-from py_phone_caller_utils.py_phone_caller_voices.aws_polly import \
-    aws_polly_text_to_wave
-from py_phone_caller_utils.py_phone_caller_voices.facebook_mms import \
-    text_to_speech_facebook_mms
-from py_phone_caller_utils.py_phone_caller_voices.google_gtts import \
-    create_audio_file
+from py_phone_caller_utils.py_phone_caller_voices.aws_polly import (
+    aws_polly_text_to_wave,
+)
+from py_phone_caller_utils.py_phone_caller_voices.facebook_mms import (
+    text_to_speech_facebook_mms,
+)
+from py_phone_caller_utils.py_phone_caller_voices.google_gtts import create_audio_file
+from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
 
-SERVING_AUDIO_FOLDER = conf.get_serving_audio_folder()
-IS_AUDIO_READY_ENDPOINT = conf.get_is_audio_ready_endpoint()
-PRE_TRAINED_MODELS_FOLDER = conf.get_pre_trained_models_folder()
-FACEBOOK_MMS_MODELS_FOLDER = conf.get_facebook_mms_models_folder()
-FACEBOOK_MMS_LANGUAGE_CODE = conf.get_facebook_mms_language_code()
-PIPER_MODELS_FOLDER = conf.get_piper_models_folder()
-PIPER_LANGUAGE_CODE = conf.get_piper_language_code()
-CONFIG_TTS_ENGINE = conf.get_tts_engine()
-logging.basicConfig(format=conf.get_log_formatter())
+from generate_audio.constants import (
+    GENERATE_AUDIO_APP_ROUTE,
+    GENERATE_AUDIO_PORT,
+    LOG_FORMATTER,
+    LOG_LEVEL,
+    NUM_OF_CPUS,
+    SERVING_AUDIO_FOLDER,
+    IS_AUDIO_READY_ENDPOINT,
+    PRE_TRAINED_MODELS_FOLDER,
+    FACEBOOK_MMS_MODELS_FOLDER,
+    FACEBOOK_MMS_LANGUAGE_CODE,
+    PIPER_MODELS_FOLDER,
+    PIPER_LANGUAGE_CODE,
+    CONFIG_TTS_ENGINE,
+    PIPER_PYTHON_INTERPRETER,
+    GENERATE_AUDIO_ERROR,
+    KOKORO_MODELS_FOLDER,
+    KOKORO_LANG,
+    KOKORO_PYTHON_INTERPRETER,
+)
+
+logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
+
+init_telemetry("generate_audio")
 
 
 class TTSEngine(Enum):
@@ -38,12 +76,14 @@ class TTSEngine(Enum):
         FACEBOOK_MMS: Facebook MMS TTS engine.
         PIPER: Piper TTS engine.
         AWS_POLLY: Amazon Polly TTS engine.
+        KOKORO: Kokoro TTS engine (on-premise ONNX model).
     """
 
     GOOGLE_GTTS = "google_gtts"
     FACEBOOK_MMS = "facebook_mms"
     PIPER = "piper_tts"
     AWS_POLLY = "aws_polly"
+    KOKORO = "kokoro_tts"
 
     @classmethod
     def from_string(cls, value: str):
@@ -73,7 +113,7 @@ try:
     TTS_ENGINE = TTSEngine.from_string(CONFIG_TTS_ENGINE)
 except ValueError as e:
     logging.error(f"Invalid TTS engine configuration: {e}")
-    TTS_ENGINE = TTSEngine.GOOGLE_GTTS  # Default to Google if invalid config
+    TTS_ENGINE = TTSEngine.GOOGLE_GTTS
 
 
 async def create_audio_folder(folder_name):
@@ -91,7 +131,7 @@ async def create_audio_folder(folder_name):
     try:
         pathlib.Path(folder_name).mkdir(parents=True, exist_ok=True)
     except Exception as err:
-        logging.exception(f"Unable to create the 'audio' folder: '{err}'")
+        logging.exception(f"Unable to create the folder '{folder_name}': '{err}'")
 
 
 def generate_tts_audio(
@@ -116,6 +156,8 @@ def generate_tts_audio(
         text_to_speech_piper_tts(message, output_path)
     elif engine == TTSEngine.AWS_POLLY:
         aws_polly_text_to_wave(message, output_path)
+    elif engine == TTSEngine.KOKORO:
+        text_to_speech_kokoro_tts(message, output_path)
     else:
         raise ValueError(f"Unsupported TTS engine: {engine}")
 
@@ -159,24 +201,41 @@ def text_to_speech_piper_tts(message, output_path):
         FileNotFoundError: If the Python interpreter, Piper script, model, or config file is missing.
         RuntimeError: If the Piper TTS process fails to execute successfully.
     """
-    python_interpreter = conf.get_piper_python_interpreter()
-    if not os.path.exists(python_interpreter):
-        file_not_found_error(
-            "Python 3.11 interpreter not found at: ", python_interpreter
-        )
-    piper_script = os.path.join(
-        site.getsitepackages()[0],
+    python_interpreter = PIPER_PYTHON_INTERPRETER
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    local_script = os.path.join(
+        current_file_dir,
+        "..",
         "py_phone_caller_utils",
         "py_phone_caller_voices",
         "piper_tts.py",
     )
+
+    if os.path.exists(local_script):
+        piper_script = os.path.abspath(local_script)
+    else:
+        spec = importlib.util.find_spec(
+            "py_phone_caller_utils.py_phone_caller_voices.piper_tts"
+        )
+        if spec and spec.origin:
+            piper_script = spec.origin
+        else:
+            piper_script = os.path.join(
+                site.getsitepackages()[0],
+                "py_phone_caller_utils",
+                "py_phone_caller_voices",
+                "piper_tts.py",
+            )
+
     if not os.path.exists(piper_script):
         file_not_found_error("Piper TTS script not found at: ", piper_script)
-    model_dir = os.path.abspath(
-        f"{PRE_TRAINED_MODELS_FOLDER}/{PIPER_MODELS_FOLDER}/{PIPER_LANGUAGE_CODE}"
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dir = os.path.join(
+        script_dir, PRE_TRAINED_MODELS_FOLDER, PIPER_MODELS_FOLDER, PIPER_LANGUAGE_CODE
     )
-    model_path = os.path.abspath(f"{model_dir}/{PIPER_LANGUAGE_CODE}.onnx")
-    config_path = os.path.abspath(f"{model_dir}/{PIPER_LANGUAGE_CODE}.onnx.json")
+    model_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx")
+    config_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx.json")
 
     if not os.path.exists(model_path):
         file_not_found_error("Piper model file not found at: ", model_path)
@@ -210,6 +269,110 @@ def text_to_speech_piper_tts(message, output_path):
         raise RuntimeError(error_msg) from e
     except Exception as e:
         error_msg = f"Error running Piper TTS: {str(e)}"
+        logging.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
+
+def text_to_speech_kokoro_tts(message, output_path):
+    """
+    Generates an audio file from text using the Kokoro TTS engine.
+
+    This function constructs the command to run the Kokoro TTS script with the appropriate model and voices files,
+    executes the command, and logs the process. It raises an error if any required file is missing or if the TTS process fails.
+
+    Supported language codes (configured via kokoro_lang in settings.toml):
+        'a' => American English
+        'b' => British English
+        'e' => Spanish (es)
+        'f' => French (fr-fr)
+        'h' => Hindi (hi)
+        'i' => Italian (it)
+        'j' => Japanese (requires: pip install misaki[ja])
+        'p' => Brazilian Portuguese (pt-br)
+        'z' => Mandarin Chinese (requires: pip install misaki[zh])
+
+    Args:
+        message (str): The text to convert to speech.
+        output_path (str): The path where the generated audio file will be saved.
+
+    Returns:
+        None
+
+    Raises:
+        FileNotFoundError: If the Python interpreter, Kokoro script, model, or voices file is missing.
+        RuntimeError: If the Kokoro TTS process fails to execute successfully.
+    """
+    python_interpreter = KOKORO_PYTHON_INTERPRETER
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    local_script = os.path.join(
+        current_file_dir,
+        "..",
+        "py_phone_caller_utils",
+        "py_phone_caller_voices",
+        "kokoro_tts.py",
+    )
+
+    if os.path.exists(local_script):
+        kokoro_script = os.path.abspath(local_script)
+    else:
+        spec = importlib.util.find_spec(
+            "py_phone_caller_utils.py_phone_caller_voices.kokoro_tts"
+        )
+        if spec and spec.origin:
+            kokoro_script = spec.origin
+        else:
+            # Fallback to the old method
+            kokoro_script = os.path.join(
+                site.getsitepackages()[0],
+                "py_phone_caller_utils",
+                "py_phone_caller_voices",
+                "kokoro_tts.py",
+            )
+
+    if not os.path.exists(kokoro_script):
+        file_not_found_error("Kokoro TTS script not found at: ", kokoro_script)
+
+    # Voice name mapping based on language code (matches get_kokoro_tts_model.py)
+    voice_name_map = {
+        "a": "af_heart",  # American English
+        "b": "bf_emma",  # British English
+        "e": "ef_dora",  # Spanish
+        "f": "ff_siwis",  # French
+        "h": "hf_alpha",  # Hindi
+        "i": "if_sara",  # Italian
+        "j": "jf_alpha",  # Japanese
+        "p": "pf_dora",  # Brazilian Portuguese
+        "z": "zf_xiaobei",  # Mandarin Chinese
+    }
+    voice_name = voice_name_map.get(KOKORO_LANG, "af_heart")
+
+    cmd = [
+        python_interpreter,
+        kokoro_script,
+        message,
+        "--voice-name",
+        voice_name,
+        "--lang",
+        KOKORO_LANG,
+        "--output",
+        output_path,
+    ]
+
+    logging.info(f"Running Kokoro TTS with command: {' '.join(cmd)}")
+
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logging.info(f"Kokoro TTS completed successfully for output: {output_path}")
+        if result.stdout:
+            logging.debug(f"Kokoro TTS output: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        error_msg = (
+            f"Kokoro TTS process failed with exit code {e.returncode}: {e.stderr}"
+        )
+        logging.error(error_msg)
+        raise RuntimeError(error_msg) from e
+    except Exception as e:
+        error_msg = f"Error running Kokoro TTS: {str(e)}"
         logging.error(error_msg)
         raise RuntimeError(error_msg) from e
 
@@ -253,20 +416,21 @@ async def is_audio_ready(request):
         aiohttp.web.Response: A JSON response indicating whether the audio file exists.
 
     Raises:
-        web.HTTPClientError: If the 'msg_chk_sum' parameter is missing from the request.
+        web.HTTPBadRequest: If the 'msg_chk_sum' parameter is missing from the request.
     """
     try:
         msg_chk_sum = request.rel_url.query["msg_chk_sum"]
     except KeyError as err:
         logging.exception(f"No 'msg_chk_sum' parameter passed on: '{request.rel_url}'")
-        raise web.HTTPClientError(
+        raise web.HTTPBadRequest(
             reason="Missing msg_chk_sum parameter",
             body=None,
             text=None,
             content_type=None,
         ) from err
 
-    output_path = f"{SERVING_AUDIO_FOLDER}/{msg_chk_sum}.wav"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, f"{msg_chk_sum}.wav")
     exists = await asyncio.to_thread(wave_file_exists, output_path)
 
     return web.json_response({"exists": exists})
@@ -286,23 +450,24 @@ async def create_audio(request):
         aiohttp.web.Response: A JSON response indicating the status and whether the audio was cached.
 
     Raises:
-        web.HTTPClientError: If any required parameter is missing from the request.
+        web.HTTPBadRequest: If any required parameter is missing from the request.
     """
     try:
         message = request.rel_url.query["message"]
         msg_chk_sum = request.rel_url.query["msg_chk_sum"]
     except KeyError as err:
         logging.exception(
-            f"No 'message' or 'msg_chk_sum' parameters passed on: '{request.rel_url}'"
+            f"No 'message' or 'msg_chk_sum' parameter passed on: '{request.rel_url}'"
         )
-        raise web.HTTPClientError(
-            reason=conf.get_generate_audio_error(),
+        raise web.HTTPBadRequest(
+            reason=GENERATE_AUDIO_ERROR,
             body=None,
             text=None,
             content_type=None,
         ) from err
 
-    output_path = f"{SERVING_AUDIO_FOLDER}/{msg_chk_sum}.wav"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, f"{msg_chk_sum}.wav")
 
     exists = await asyncio.to_thread(wave_file_exists, output_path)
     if exists:
@@ -312,7 +477,7 @@ async def create_audio(request):
         return web.json_response({"status": 200, "cached": True})
 
     inner_loop = asyncio.get_running_loop()
-    executor = ThreadPoolExecutor(max_workers=conf.get_num_of_cpus())
+    executor = ThreadPoolExecutor(max_workers=NUM_OF_CPUS)
 
     try:
         futures = inner_loop.run_in_executor(
@@ -329,6 +494,78 @@ async def create_audio(request):
     return web.json_response({"status": status_code, "cached": False})
 
 
+async def ensure_models_present():
+    """
+    Ensures that the pre-trained models for the configured TTS engine are present.
+    If not, it attempts to download them.
+
+    Uses absolute paths based on the script's directory to ensure consistency
+    with the paths used by the TTS functions during audio generation.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    abs_pre_trained_models = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
+
+    try:
+        if TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
+            model_name = f"mms-tts-{FACEBOOK_MMS_LANGUAGE_CODE}"
+            model_dir = os.path.join(
+                abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER, model_name
+            )
+            config_path = os.path.join(model_dir, "config.json")
+            if not os.path.exists(config_path):
+                logging.info(
+                    f"Facebook MMS model for '{FACEBOOK_MMS_LANGUAGE_CODE}' not found. Downloading..."
+                )
+                from py_phone_caller_utils.py_phone_caller_voices.get_fb_mms_language_model import (
+                    download_mms_model_async,
+                )
+
+                await download_mms_model_async(
+                    FACEBOOK_MMS_LANGUAGE_CODE,
+                    os.path.join(abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER),
+                )
+            else:
+                logging.info(
+                    f"Facebook MMS model for '{FACEBOOK_MMS_LANGUAGE_CODE}' is present."
+                )
+
+        elif TTS_ENGINE == TTSEngine.PIPER:
+            model_dir = os.path.join(
+                abs_pre_trained_models, PIPER_MODELS_FOLDER, PIPER_LANGUAGE_CODE
+            )
+            model_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx")
+            config_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx.json")
+
+            if not os.path.exists(model_path) or not os.path.exists(config_path):
+                logging.info(
+                    f"Piper TTS model for '{PIPER_LANGUAGE_CODE}' not found. Downloading..."
+                )
+                from py_phone_caller_utils.py_phone_caller_voices.get_pipper_tts_language_model import (
+                    download_piper_model_async,
+                )
+
+                await download_piper_model_async(
+                    PIPER_LANGUAGE_CODE, abs_pre_trained_models
+                )
+            else:
+                logging.info(
+                    f"Piper TTS model for '{PIPER_LANGUAGE_CODE}' is present at {model_path}"
+                )
+
+        elif TTS_ENGINE == TTSEngine.KOKORO:
+            logging.info("Ensuring Kokoro TTS model is present (checking HF cache)...")
+            from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
+                download_kokoro_model_async,
+            )
+
+            await download_kokoro_model_async(
+                os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER)
+            )
+            logging.info("Kokoro TTS model check completed.")
+    except Exception as e:
+        logging.error(f"Failed to ensure models are present: {e}")
+
+
 async def init_app():
     """
     Initializes and configures the aiohttp web application for audio generation and serving.
@@ -336,34 +573,66 @@ async def init_app():
     This asynchronous function creates necessary folders, registers routes for audio generation and readiness checks,
     and sets up static file serving for development purposes.
 
+    Uses absolute paths based on the script's directory to ensure consistency
+    regardless of the current working directory when the service starts.
+
     Returns:
         aiohttp.web.Application: The configured aiohttp web application instance.
     """
     app = web.Application()
 
-    folders_to_create = [
-        SERVING_AUDIO_FOLDER,
-        f"{PRE_TRAINED_MODELS_FOLDER}/{FACEBOOK_MMS_MODELS_FOLDER}",
-        f"{PRE_TRAINED_MODELS_FOLDER}/{PIPER_MODELS_FOLDER}/{PIPER_LANGUAGE_CODE}",
-    ]
+    instrument_aiohttp_app(app)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    abs_serving_audio = os.path.join(script_dir, SERVING_AUDIO_FOLDER)
+    abs_pre_trained_models = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
+
+    folders_to_create = [abs_serving_audio]
+
+    if TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
+        folders_to_create.extend(
+            [
+                abs_pre_trained_models,
+                os.path.join(abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER),
+                os.path.join(
+                    abs_pre_trained_models,
+                    FACEBOOK_MMS_MODELS_FOLDER,
+                    f"mms-tts-{FACEBOOK_MMS_LANGUAGE_CODE}",
+                ),
+            ]
+        )
+    elif TTS_ENGINE == TTSEngine.PIPER:
+        folders_to_create.extend(
+            [
+                abs_pre_trained_models,
+                os.path.join(abs_pre_trained_models, PIPER_MODELS_FOLDER),
+                os.path.join(
+                    abs_pre_trained_models, PIPER_MODELS_FOLDER, PIPER_LANGUAGE_CODE
+                ),
+            ]
+        )
+    elif TTS_ENGINE == TTSEngine.KOKORO:
+        folders_to_create.extend(
+            [
+                abs_pre_trained_models,
+                os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER),
+            ]
+        )
 
     for folder in folders_to_create:
         await create_audio_folder(folder)
 
-    app.router.add_route(
-        "POST", f"/{conf.get_generate_audio_app_route()}", create_audio
-    )
+    await ensure_models_present()
+
+    app.router.add_route("POST", f"/{GENERATE_AUDIO_APP_ROUTE}", create_audio)
 
     app.router.add_route("GET", f"/{IS_AUDIO_READY_ENDPOINT}", is_audio_ready)
 
-    # Self-serving audio files (use Nginx or a CDN when running in production)
-    path_to_static_folder = SERVING_AUDIO_FOLDER  # Only for development proposes
+    path_to_static_folder = abs_serving_audio
     try:
-        app.router.add_static(
-            "/audio", path_to_static_folder, show_index=True
-        )  # Only for development proposes
+        app.router.add_static("/audio", path_to_static_folder, show_index=True)
     except ValueError:
-        await logging.exception(
+        logging.exception(
             f"No '{path_to_static_folder}' folder present... I can't serve the audio files"
         )
         exit(1)
@@ -374,4 +643,4 @@ async def init_app():
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     app = loop.run_until_complete(init_app())
-    web.run_app(app, port=int(conf.get_generate_audio_port()))
+    web.run_app(app, port=int(GENERATE_AUDIO_PORT))

@@ -1,23 +1,61 @@
+"""
+Asterisk Recaller service.
+
+This module periodically scans for call attempts that need to be retried and
+optionally performs backup calls to on-call contacts when the original call is
+not acknowledged.
+
+It communicates with the Asterisk Caller service and the database via
+`py_phone_caller_utils`.
+"""
+
 import asyncio
 import datetime
 import logging
 import signal
+import sys
+import os
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+
+if current_dir in sys.path:
+    sys.path.remove(current_dir)
+
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
 
 from aiohttp import ClientSession, client_exceptions, web_exceptions
 
-import py_phone_caller_utils.caller_configuration as conf
-from py_phone_caller_utils.py_phone_caller_db.db_asterisk_recaller import \
-    select_to_recall
+from py_phone_caller_utils.py_phone_caller_db.db_asterisk_recaller import (
+    select_to_recall,
+    select_backup_calls,
+    increment_backup_call_count,
+)
+from py_phone_caller_utils.py_phone_caller_db.db_address_book import (
+    get_on_call_contacts,
+)
+from py_phone_caller_utils.telemetry import init_telemetry
 
-logging.basicConfig(format=conf.get_log_formatter())
+from asterisk_recaller.constants import (
+    ASTERISK_CALL_URL,
+    ASTERISK_CALL_APP_ROUTE_PLACE_CALL,
+    LOG_FORMATTER,
+    LOG_LEVEL,
+    TIMES_TO_DIAL,
+    SECONDS_TO_FORGET,
+    SLEEP_AND_RETRY,
+    SLEEP_BEFORE_QUERYING,
+    CALL_BACKUP_CALLEE_MAX_TIMES,
+)
 
-SLEEP_BEFORE_QUERYING = 10
-times_to_dial = conf.get_times_to_dial()
-seconds_to_forget = conf.get_seconds_to_forget()
-sleep_and_retry = seconds_to_forget / (times_to_dial + 1)
+logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
+
+init_telemetry("asterisk_recaller")
 
 
-async def recall_post(phone, message):
+async def recall_post(phone, message, backup_callee="false"):
     """
     Sends a POST request to the Asterisk call service to initiate a recall for the specified phone and message.
 
@@ -26,17 +64,18 @@ async def recall_post(phone, message):
     Args:
         phone (str): The recipient's phone number.
         message (str): The message to be delivered during the call.
+        backup_callee (str): Whether this is a backup call ("true" or "false").
 
     Returns:
         None
     """
-    asterisk_call_url = conf.get_asterisk_call_url()
+    asterisk_call_url = ASTERISK_CALL_URL
     session_recall_post = ClientSession()
     try:
         call_register_resp = await session_recall_post.post(
             url=asterisk_call_url
-            + f"/{conf.get_asterisk_call_app_route_place_call()}"
-            + f"?phone={phone}&message={message}",
+            + f"/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}"
+            + f"?phone={phone}&message={message}&backup_callee={backup_callee}",
             data=None,
         )
         message = await call_register_resp.text()
@@ -46,7 +85,7 @@ async def recall_post(phone, message):
         await session_recall_post.close()
 
 
-async def asterisk_recall():
+async def asterisk_recaller():
     """
     Periodically checks for calls that need to be retried and initiates recall attempts.
 
@@ -60,14 +99,14 @@ async def asterisk_recall():
         try:
             now_utc = datetime.datetime.now(datetime.timezone.utc)
             lesser_seconds_to_forget = now_utc - datetime.timedelta(
-                seconds=seconds_to_forget
+                seconds=SECONDS_TO_FORGET
             )
             greater_sleep_and_retry = now_utc - datetime.timedelta(
-                seconds=sleep_and_retry
+                seconds=SLEEP_AND_RETRY
             )
 
             select_recall = await select_to_recall(
-                times_to_dial,
+                TIMES_TO_DIAL,
                 lesser_seconds_to_forget.replace(tzinfo=None),
                 greater_sleep_and_retry.replace(tzinfo=None),
             )
@@ -88,13 +127,46 @@ async def asterisk_recall():
                         message,
                     )
 
-                    await asyncio.sleep(sleep_and_retry)
+                    await asyncio.sleep(SLEEP_AND_RETRY)
+
+            # Backup calls logic - only selects calls where the main retry window has expired
+            backup_calls = await select_backup_calls(
+                CALL_BACKUP_CALLEE_MAX_TIMES,
+            )
+
+            if backup_calls:
+                on_call_contacts = await get_on_call_contacts()
+                if on_call_contacts:
+                    for call in backup_calls:
+                        call_id = call.get("id")
+                        message = call.get("message")
+                        original_phone = call.get("phone")
+                        backup_count = call.get("call_backup_callee_number_calls")
+
+                        # Primary was contacts[0], so backup 1 is contacts[1], etc.
+                        # We use modulo to cycle through available backup contacts.
+                        backup_idx = (backup_count + 1) % len(on_call_contacts)
+                        backup_contact = on_call_contacts[backup_idx]
+                        backup_phone = backup_contact.get("phone_number")
+
+                        logging.info(
+                            f"Call not acknowledged for '{original_phone}'. "
+                            f"Backup attempt {backup_count + 1}. "
+                            f"Initiating backup call to '{backup_phone}'."
+                        )
+
+                        await recall_post(backup_phone, message, backup_callee="true")
+                        await increment_backup_call_count(call_id)
+                        await asyncio.sleep(SLEEP_AND_RETRY)
+                else:
+                    logging.warning("No on-call contacts found for backup calls.")
 
             await asyncio.sleep(SLEEP_BEFORE_QUERYING)
 
         except Exception as err:
             logging.exception(f"Problem with the PostgreSQL connection: '{err}'")
-            exit(1)
+            logging.info("Retrying connection in 5 seconds...")
+            await asyncio.sleep(5)
 
 
 def receive_signal(signal_number, frame):
@@ -123,7 +195,7 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTERM, receive_signal)
         signal.signal(signal.SIGINT, receive_signal)
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(asterisk_recall())
+        loop.run_until_complete(asterisk_recaller())
         loop.run_forever()
     except OSError as err:
         logging.exception(f"Error when starting the event loop -> {err}")

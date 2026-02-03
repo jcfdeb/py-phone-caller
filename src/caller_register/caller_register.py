@@ -1,27 +1,81 @@
+"""
+Caller Register service.
+
+Handles call registration, voice message retrieval, scheduled call recording,
+acknowledgement and heard status endpoints, and database initialization tasks.
+"""
+
 import asyncio
 import logging
 import traceback
-from datetime import UTC, datetime, timedelta
+import os
+import sys
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+
+if current_dir in sys.path:
+    sys.path.remove(current_dir)
+
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
+
+from datetime import UTC, datetime, timedelta
+import pytz
+from dateutil import parser
 from aiohttp import web
 
-import py_phone_caller_utils.caller_configuration as conf
-from py_phone_caller_utils.checksums import (gen_call_chk_sum, gen_msg_chk_sum,
-                                             gen_unique_chk_sum)
+from py_phone_caller_utils.checksums import (
+    gen_call_chk_sum,
+    gen_msg_chk_sum,
+    gen_unique_chk_sum,
+)
 from py_phone_caller_utils.py_phone_caller_db.db_caller_register import (
-    check_call_yet_present, get_current_call_id, get_dialed_times,
-    get_first_dial_age, get_msg_chk_sum, insert_into_db,
-    update_acknowledgement, update_heard_at, update_the_call_db_record)
-from py_phone_caller_utils.py_phone_caller_db.db_scheduled_calls import \
-    insert_scheduled_call
+    check_call_yet_present,
+    get_current_call_id,
+    get_dialed_times,
+    get_first_dial_age,
+    get_msg_chk_sum,
+    insert_into_db,
+    update_acknowledgement,
+    update_heard_at,
+    update_the_call_db_record,
+)
+from py_phone_caller_utils.py_phone_caller_db.db_scheduled_calls import (
+    insert_scheduled_call,
+)
 from py_phone_caller_utils.py_phone_caller_db.piccolo_conf import DB
-from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.piccolo_app import \
-    APP_CONFIG
+from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.piccolo_app import (
+    APP_CONFIG,
+)
+from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
 
-seconds_to_forget = conf.get_seconds_to_forget()
-times_to_dial = conf.get_times_to_dial()
+from caller_register.constants import (
+    SECONDS_TO_FORGET,
+    TIMES_TO_DIAL,
+    ACKNOWLEDGE_ERROR,
+    HEARD_ERROR,
+    CALL_REGISTER_PORT,
+    LOCAL_TIMEZONE,
+    CALL_REGISTER_APP_ROUTE_REGISTER_CALL,
+    CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE,
+    CALL_REGISTER_SCHEDULED_CALL_APP_ROUTE,
+    CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE,
+    CALL_REGISTER_APP_ROUTE_HEARD,
+    REGISTER_CALL_ERROR,
+    VOICE_MESSAGE_ERROR,
+    LOG_FORMATTER,
+    LOG_LEVEL,
+    LOST_PARAMETERS_ERROR,
+)
 
-logging.basicConfig(level=logging.INFO)
+seconds_to_forget = SECONDS_TO_FORGET
+times_to_dial = TIMES_TO_DIAL
+
+logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
+
+init_telemetry("caller_register")
 
 
 async def run_piccolo_migrations():
@@ -78,12 +132,15 @@ async def _execute_migrations():
     """
     Executes Piccolo migrations for the application's database schema.
 
-    This asynchronous function runs the migration commands and logs the outcome.
+    This asynchronous function ensures the uuid-ossp extension is enabled,
+    runs the migration commands, and logs the outcome.
 
     Returns:
         bool: True if migrations were applied successfully, False otherwise.
     """
     try:
+        await DB.run_ddl('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+        logging.info("Ensured uuid-ossp extension is enabled")
 
         from piccolo.apps.migrations.commands.forwards import forwards
 
@@ -144,7 +201,6 @@ async def init_database():
         logging.warning("Migrations failed, falling back to direct table creation")
 
         try:
-
             for table_class in APP_CONFIG.table_classes:
                 try:
                     logging.info(f"Creating table: {table_class.__name__}")
@@ -191,30 +247,34 @@ async def present_or_not_logger(phone, first_dial_time, message):
 
 async def get_request_parameters(request):
     """
-    Extracts the 'phone', 'message', and 'asterisk_chan' parameters from the incoming request.
+    Extracts the 'phone', 'message', 'asterisk_chan', 'oncall', and 'backup_callee' parameters from the incoming request.
 
-    This asynchronous function retrieves required query parameters from the request and raises an HTTP error if any are missing.
+    This asynchronous function retrieves query parameters from the request and raises an HTTP error if required ones are missing.
 
     Args:
         request: The incoming HTTP request containing query parameters.
 
     Returns:
-        tuple: A tuple containing the phone, message, and asterisk_chan values.
+        tuple: A tuple containing the phone, message, asterisk_chan, oncall, and backup_callee values.
 
     Raises:
-        web.HTTPClientError: If any required parameter is missing from the request.
+        web.HTTPBadRequest: If any required parameter is missing from the request.
     """
     try:
         phone = request.rel_url.query["phone"]
         message = request.rel_url.query["message"]
         asterisk_chan = request.rel_url.query["asterisk_chan"]
-        return phone, message, asterisk_chan
+        oncall = request.rel_url.query.get("oncall", "false").lower() == "true"
+        backup_callee = (
+            request.rel_url.query.get("backup_callee", "false").lower() == "true"
+        )
+        return phone, message, asterisk_chan, oncall, backup_callee
     except KeyError as err:
         logging.exception(
             f"No 'phone', 'message' or 'asterisk_chan' parameters passed on: '{request.rel_url}'"
         )
-        raise web.HTTPClientError(
-            reason=conf.get_register_call_error(),
+        raise web.HTTPBadRequest(
+            reason=REGISTER_CALL_ERROR,
             body=None,
             text=None,
             content_type=None,
@@ -229,6 +289,8 @@ async def new_call_attempt(
     call_chk_sum,
     unique_chk_sum,
     first_dial,
+    oncall=False,
+    backup_callee=False,
 ):
     """
     Creates a new call attempt record in the database for the specified phone and message.
@@ -243,6 +305,8 @@ async def new_call_attempt(
         call_chk_sum (str): The checksum of the call.
         unique_chk_sum (str): The unique checksum for this call attempt.
         first_dial (datetime): The timestamp of the first dial attempt.
+        oncall (bool): Whether this is an oncall call.
+        backup_callee (bool): Whether this is a backup call.
 
     Returns:
         None
@@ -259,6 +323,8 @@ async def new_call_attempt(
             first_dial,
             seconds_to_forget,
             times_to_dial,
+            oncall=oncall,
+            backup_callee=backup_callee,
         )
     except Exception as err:
         logging.exception(
@@ -289,8 +355,6 @@ async def defining_first_dial_time(call_chk_sum, current_call_id, phone, message
         await present_or_not_logger(phone, first_dial_time, message)
         return first_dial_time
     except Exception as err:
-        # It should only notify if there's no uncompleted cycles here
-        # for a given round of calls
         logging.exception(
             f"We can't define the 'first_dial_time'  for '{phone}' with the message"
             + f" '{message}' due to the following error: '{err}'"
@@ -372,9 +436,14 @@ async def register_call(request):
         aiohttp.web.Response: A JSON response indicating the status of the operation.
     """
 
-    phone, message, asterisk_chan = await get_request_parameters(request)
+    (
+        phone,
+        message,
+        asterisk_chan,
+        oncall,
+        backup_callee,
+    ) = await get_request_parameters(request)
 
-    # Used for the call control logics
     call_chk_sum = await gen_call_chk_sum(phone, message)
     msg_chk_sum = await gen_msg_chk_sum(message)
     first_dial = datetime.now(UTC).replace(tzinfo=None)
@@ -390,13 +459,13 @@ async def register_call(request):
             call_chk_sum,
             unique_chk_sum,
             first_dial,
+            oncall=oncall,
+            backup_callee=backup_callee,
         )
 
     else:
         current_call_id = await get_current_call_id(seconds_to_forget, call_chk_sum)
 
-        # When there's no active call cycle (inside the period of 'seconds_to_forget'),
-        # we'll start a new one. By creating a new record.
         if current_call_id is None:
             await new_call_attempt(
                 phone,
@@ -406,6 +475,8 @@ async def register_call(request):
                 call_chk_sum,
                 unique_chk_sum,
                 first_dial,
+                oncall=oncall,
+                backup_callee=backup_callee,
             )
             logging.info(
                 f"There's no uncompleted cycle for '{phone}' with the message"
@@ -441,6 +512,7 @@ async def acknowledge(request):
     Handles incoming requests to acknowledge a call by updating the database record.
 
     This asynchronous function extracts the 'asterisk_chan' parameter from the request, updates the acknowledgement in the database, and returns a JSON response.
+    If the call is outside the firing period or not found, it returns a 400 status code with an error message.
 
     Args:
         request: The incoming HTTP request containing the 'asterisk_chan' parameter.
@@ -449,7 +521,7 @@ async def acknowledge(request):
         aiohttp.web.Response: A JSON response indicating the status of the acknowledgement.
 
     Raises:
-        web.HTTPClientError: If the 'asterisk_chan' parameter is missing from the request.
+        web.HTTPBadRequest: If the 'asterisk_chan' parameter is missing from the request.
     """
     try:
         asterisk_chan = request.rel_url.query["asterisk_chan"]
@@ -458,17 +530,25 @@ async def acknowledge(request):
         logging.exception(
             f"No 'asterisk_chan' parameter passed on: '{request.rel_url}'"
         )
-        raise web.HTTPClientError(
-            reason=conf.get_acknowledge_error(),
+        raise web.HTTPBadRequest(
+            reason=ACKNOWLEDGE_ERROR,
             body=None,
             text=None,
             content_type=None,
         ) from err
 
-    # Do the acknowledgement on the DB updating the record (the Asterisk channel ID is unique)
-    await update_acknowledgement(asterisk_chan)
+    acknowledged = await update_acknowledgement(asterisk_chan)
 
-    return web.json_response({"status": 200})
+    if acknowledged:
+        return web.json_response({"status": 200})
+    else:
+        return web.json_response(
+            {
+                "status": 400,
+                "message": "Call is outside the firing period or not found",
+            },
+            status=400,
+        )
 
 
 async def heard(request):
@@ -484,7 +564,7 @@ async def heard(request):
         aiohttp.web.Response: A JSON response indicating the status of the update.
 
     Raises:
-        web.HTTPClientError: If the 'asterisk_chan' parameter is missing from the request.
+        web.HTTPBadRequest: If the 'asterisk_chan' parameter is missing from the request.
     """
     try:
         asterisk_chan = request.rel_url.query["asterisk_chan"]
@@ -493,11 +573,10 @@ async def heard(request):
         logging.exception(
             f"No 'asterisk_chan' parameter passed on: '{request.rel_url}'"
         )
-        raise web.HTTPClientError(
-            reason=conf.get_heard_error(), body=None, text=None, content_type=None
+        raise web.HTTPBadRequest(
+            reason=HEARD_ERROR, body=None, text=None, content_type=None
         ) from err
 
-    # Update the call DB record when the Asterisk PBX plays the audio message
     await update_heard_at(asterisk_chan)
 
     return web.json_response({"status": 200})
@@ -516,7 +595,7 @@ async def voice_message(request):
         aiohttp.web.Response or dict: A JSON response with the message and checksum, or an empty response if no data is found.
 
     Raises:
-        web.HTTPClientError: If the 'asterisk_chan' parameter is missing from the request.
+        web.HTTPBadRequest: If the 'asterisk_chan' parameter is missing from the request.
     """
     try:
         asterisk_chan = request.rel_url.query["asterisk_chan"]
@@ -525,14 +604,13 @@ async def voice_message(request):
         logging.exception(
             f"No 'asterisk_chan' parameter passed on: '{request.rel_url}'"
         )
-        raise web.HTTPClientError(
-            reason=conf.get_voice_message_error(),
+        raise web.HTTPBadRequest(
+            reason=VOICE_MESSAGE_ERROR,
             body=None,
             text=None,
             content_type=None,
         ) from err
 
-    # Sending an empty response if no data is restored from the query
     try:
         message, msg_chk_sum = await get_msg_chk_sum(asterisk_chan)
         return web.json_response(
@@ -558,7 +636,7 @@ async def scheduled_call(request):
         aiohttp.web.Response: A JSON response indicating the status of the scheduling operation.
 
     Raises:
-        web.HTTPClientError: If any required parameter is missing from the request.
+        web.HTTPBadRequest: If any required parameter is missing from the request.
     """
 
     try:
@@ -569,19 +647,38 @@ async def scheduled_call(request):
         logging.exception(
             f"No 'phone', 'message', or 'scheduled_at' parameter passed on: '{request.rel_url}'"
         )
-        raise web.HTTPClientError(
-            reason="Lost parameters 'phone', 'message', or 'scheduled_at'...",  # ToDo: use an error form the config module
+        raise web.HTTPBadRequest(
+            reason=LOST_PARAMETERS_ERROR,
             body=None,
             text=None,
             content_type=None,
         ) from err
 
-    # Used to record useful data on the scheduled call into the DB
-    scheduled_at = datetime.strptime(scheduled_at_str, "%Y-%m-%d %H:%M")
+    try:
+        scheduled_at = parser.parse(scheduled_at_str)
+        local_timezone = pytz.timezone(LOCAL_TIMEZONE)
+
+        if scheduled_at.tzinfo is None:
+            localized_time = local_timezone.localize(scheduled_at, is_dst=None)
+        else:
+            localized_time = scheduled_at
+
+        scheduled_at_utc = localized_time.astimezone(pytz.utc).replace(tzinfo=None)
+        logging.info(
+            f"Recording scheduled call for {scheduled_at_str} localized as {localized_time} and converted to UTC: {scheduled_at_utc}"
+        )
+    except Exception as err:
+        logging.exception(
+            f"Unable to parse or convert the scheduled_at date '{scheduled_at_str}' due: {err}"
+        )
+        return web.json_response({"status": 400, "message": str(err)})
+
     call_chk_sum = await gen_call_chk_sum(phone, message)
     inserted_at = datetime.now(UTC).replace(tzinfo=None)
 
-    await insert_scheduled_call(phone, message, call_chk_sum, inserted_at, scheduled_at)
+    await insert_scheduled_call(
+        phone, message, call_chk_sum, inserted_at, scheduled_at_utc
+    )
 
     return web.json_response({"status": 200})
 
@@ -597,20 +694,19 @@ async def init_app():
     """
     app = web.Application()
 
-    # And... here our routes
+    instrument_aiohttp_app(app)
+
     app.router.add_route(
-        "POST", f"/{conf.get_call_register_app_route_register_call()}", register_call
+        "POST", f"/{CALL_REGISTER_APP_ROUTE_REGISTER_CALL}", register_call
     )
     app.router.add_route(
-        "POST", f"/{conf.get_call_register_app_route_voice_message()}", voice_message
+        "POST", f"/{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}", voice_message
     )
     app.router.add_route(
-        "POST", f"/{conf.get_call_register_scheduled_call_app_route()}", scheduled_call
+        "POST", f"/{CALL_REGISTER_SCHEDULED_CALL_APP_ROUTE}", scheduled_call
     )
-    app.router.add_route(
-        "GET", f"/{conf.get_call_register_app_route_acknowledge()}", acknowledge
-    )
-    app.router.add_route("GET", f"/{conf.get_call_register_app_route_heard()}", heard)
+    app.router.add_route("GET", f"/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}", acknowledge)
+    app.router.add_route("GET", f"/{CALL_REGISTER_APP_ROUTE_HEARD}", heard)
     return app
 
 
@@ -619,16 +715,28 @@ def main():
     Main entry point for the call register web application.
 
     This function initializes the event loop, starts the database setup, creates the aiohttp web application, and runs the web server.
+    The database initialization is run directly in the main event loop to ensure all database operations use the same event loop.
 
     Returns:
         None
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.create_task(init_database())
+
+    loop.run_until_complete(init_database())
+
     app = loop.run_until_complete(init_app())
 
-    web.run_app(app, port=int(conf.get_call_register_port()))
+    async def cleanup_db(app):
+        from py_phone_caller_utils.py_phone_caller_db.piccolo_conf import DB
+
+        if DB.pool is not None:
+            await DB.pool.close()
+            logging.info("Database connection pool closed")
+
+    app.on_cleanup.append(cleanup_db)
+
+    web.run_app(app, port=int(CALL_REGISTER_PORT), loop=loop)
 
 
 if __name__ == "__main__":

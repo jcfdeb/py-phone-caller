@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}Address Book Calendar - py-phone-caller{% endblock %}
+
+{% block extra_css %}
+<style>
+    .calendar {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: .75rem;
+    }
+    .day-cell {
+        min-height: 140px;
+        border: 1px solid #e9ecef;
+        border-radius: .75rem;
+        padding: .75rem;
+        background: #fff;
+        transition: all 0.2s;
+        display: flex;
+        flex-direction: column;
+    }
+    .day-cell:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.08);
+        border-color: var(--primary-color);
+    }
+    .day-num { 
+        font-weight: 700; 
+        font-size: 1rem; 
+        color: #adb5bd; 
+        text-align: right;
+        margin-bottom: 0.5rem;
+    }
+    .day-cell.today .day-num {
+        color: var(--primary-color);
+    }
+    .day-header { 
+        font-weight: 700; 
+        text-align: center;
+        padding: 0.75rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.05em;
+    }
+    .entry { 
+        font-size: .75rem; 
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis;
+        margin-bottom: 4px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background-color: #f8f9fa;
+        border-left: 3px solid #dee2e6;
+        transition: all 0.2s;
+    }
+    .entry:hover {
+        background-color: #e9ecef;
+        transform: translateX(2px);
+    }
+    .entry-p0 { border-left-color: #dc3545; }
+    .entry-p1 { border-left-color: #ffc107; }
+    .entry-p2 { border-left-color: #0dcaf0; }
+    .entry-p3 { border-left-color: #198754; }
+
+    .muted { 
+        background: #f8f9fa; 
+        opacity: 0.5;
+    }
+    .calendar-toolbar {
+        background: #fff;
+        padding: 1.25rem;
+        border-radius: 1rem;
+        box-shadow: var(--card-shadow);
+        margin-bottom: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container main-container px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+        <h2 class="page-header mb-0 text-start">On-call Calendar</h2>
+        <div class="d-flex gap-2 mt-2 mt-md-0">
+            <a class="btn btn-outline-secondary" href="{{ address_book_url }}">
+                <i class="bi bi-list-ul me-1"></i> Back to List
+            </a>
+            <div class="dropdown">
+                <button class="btn btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-file-earmark-excel me-1"></i> CSV Ops
+                </button>
+                <ul class="dropdown-menu shadow-sm">
+                    <li>
+                        <form method="get" action="{{ url_for('address_book_blueprint.calendar_export_csv') }}">
+                            <input type="hidden" name="month" value="{{ month_str }}">
+                            <button type="submit" class="dropdown-item"><i class="bi bi-download me-2"></i>Export Current Month</button>
+                        </form>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" onclick="document.getElementById('import_file').click()"><i class="bi bi-upload me-2"></i>Import Windows</a></li>
+                </ul>
+            </div>
+            <input type="file" id="import_file" class="d-none" accept=".csv,text/csv" onchange="handleImportCSV(event)">
+        </div>
+    </div>
+
+    <div class="calendar-toolbar">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-4 order-2 order-md-1">
+                <div class="d-flex align-items-center gap-1">
+                    <a class="btn btn-outline-primary btn-sm" href="{{ address_book_calendar_url }}?month={{ prev_month }}">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                    <h4 class="mb-0 mx-3 fw-bold text-dark">{{ month_str }}</h4>
+                    <a class="btn btn-outline-primary btn-sm" href="{{ address_book_calendar_url }}?month={{ next_month }}">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="col-md-4 order-1 order-md-2 text-center">
+                <span class="badge bg-light text-dark border">
+                    <i class="bi bi-info-circle me-1 text-primary"></i> Preview uses UTC times
+                </span>
+            </div>
+            <div class="col-md-4 order-3 text-md-end">
+                <form class="d-inline-block" method="get" action="{{ address_book_calendar_url }}">
+                    <div class="input-group input-group-sm">
+                        <input type="month" class="form-control" name="month" value="{{ month_str }}">
+                        <button class="btn btn-primary" type="submit">Jump to Date</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="calendar-container">
+        <div class="row text-center mb-2 g-0">
+            <div class="col"><div class="day-header">Mon</div></div>
+            <div class="col"><div class="day-header">Tue</div></div>
+            <div class="col"><div class="day-header">Wed</div></div>
+            <div class="col"><div class="day-header">Thu</div></div>
+            <div class="col"><div class="day-header">Fri</div></div>
+            <div class="col"><div class="day-header text-danger-emphasis">Sat</div></div>
+            <div class="col"><div class="day-header text-danger-emphasis">Sun</div></div>
+        </div>
+        <div class="calendar">
+            {% for week in weeks %}
+                {% for cell in week %}
+                    {% if cell %}
+                        <div class="day-cell">
+                            <div class="day-num">{{ cell.date.day }}</div>
+                            {% if cell.entries|length == 0 %}
+                                <div class="text-muted x-small text-center mt-auto mb-auto fst-italic" style="opacity: 0.5;">No on-call</div>
+                            {% else %}
+                                <div class="entries-wrapper flex-grow-1 overflow-hidden">
+                                {% for e in cell.entries %}
+                                    {% set pr = e.priority %}
+                                    <div class="entry entry-p{{ pr if pr <= 3 else 3 }}">
+                                        <a href="{{ address_book_url }}?edit_id={{ e.id }}"
+                                           class="text-decoration-none text-dark d-block"
+                                           data-bs-toggle="tooltip"
+                                           data-bs-html="true"
+                                           title="<strong>{{ e.name }} {{ e.surname }}</strong><br>P{{ pr }}: {{ e.start }} - {{ e.end }}">
+                                            <span class="fw-bold">P{{ pr }}</span> {{ e.name }}
+                                        </a>
+                                    </div>
+                                {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="day-cell muted"></div>
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
+    });
+
+    async function handleImportCSV(evt){
+        const file = evt.target.files[0];
+        if(!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        showToast('Import', 'Uploading calendar data...', 'info');
+        
+        try {
+            const resp = await fetch("{{ url_for('address_book_blueprint.calendar_import_csv') }}", { method: 'POST', body: fd });
+            const data = await resp.json();
+            if(resp.ok){
+                alert(`Import successful!\nWindows: ${data.imported_windows}\nUpdated: ${data.updated_contacts}\nErrors: ${data.errors_count}`);
+                window.location.reload();
+            } else {
+                showToast('Error', data.message || 'Import failed', 'danger');
+            }
+        } catch(e) {
+            showToast('Error', 'Network error', 'danger');
+        }
+    }
+</script>
+{% endblock %}

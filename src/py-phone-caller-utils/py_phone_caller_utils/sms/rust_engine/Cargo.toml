@@ -1,0 +1,19 @@
+[package]
+name = "sms_rust_backend"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"] }
+pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
+tokio-serial = "5.4"
+log = "0.4"
+env_logger = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

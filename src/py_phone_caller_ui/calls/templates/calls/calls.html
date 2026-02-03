@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+
+{% block title %}py-phone-caller Managed Calls{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ack-button:hover {
+        transform: scale(1.05);
+        transition: transform 0.2s;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid main-container px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+        <h2 class="page-header mb-0 text-start">Managed Calls</h2>
+        <div class="d-flex gap-2 mt-2 mt-md-0">
+            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#exportModal">
+                <i class="bi bi-file-earmark-excel me-1"></i> Export CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- Filters & Search -->
+    <div class="card border-0 shadow-sm mb-4 rounded-3">
+        <div class="card-body p-3">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-6">
+                    <form method="get" action="{{ url_for('calls_blueprint.calls') }}" class="d-flex">
+                        <input type="hidden" name="per_page" value="{{ per_page }}">
+                        <input type="hidden" name="sort_by" value="{{ sort_by }}">
+                        <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input class="form-control border-start-0 ps-0" type="search" placeholder="Search managed calls..."
+                                   aria-label="Search" name="search" value="{{ search_query }}">
+                            {% if search_query %}
+                            <a href="{{ url_for('calls_blueprint.calls', per_page=per_page, sort_by=sort_by, sort_order=sort_order) }}"
+                               class="btn btn-outline-secondary d-flex align-items-center"><i class="bi bi-x-lg"></i></a>
+                            {% endif %}
+                            <button class="btn btn-primary px-4" type="submit">Search</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-md-end flex-wrap gap-2">
+                        <label for="autoRefreshSelect" class="mb-0 small fw-bold text-secondary"><i class="bi bi-clock-history me-1"></i>Auto refresh:</label>
+                        <select id="autoRefreshSelect" class="form-select form-select-sm border-secondary-subtle" style="max-width: 120px;">
+                            <option value="0">Disable</option>
+                            <option value="5">5s</option>
+                            <option value="10">10s</option>
+                            <option value="15">15s</option>
+                            <option value="30">30s</option>
+                            <option value="60">60s</option>
+                        </select>
+                        <span id="autoRefreshCountdown" class="badge bg-light text-dark border"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container table-responsive border-0 shadow-sm">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+                <th>
+                    <a href="{{ url_for('calls_blueprint.calls', sort_by='element', sort_order='asc' if sort_by != 'element' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
+                        Element
+                        {% if sort_by == 'element' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>Id</th>
+                <th>Callee</th>
+                <th class="text-center">Flags</th>
+                <th style="min-width: 200px;">Message</th>
+                <th>Channel</th>
+                <th class="text-center">
+                    <a href="{{ url_for('calls_blueprint.calls', sort_by='times_to_dial', sort_order='asc' if sort_by != 'times_to_dial' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
+                        To Dial
+                        {% if sort_by == 'times_to_dial' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th class="text-center">
+                    <a href="{{ url_for('calls_blueprint.calls', sort_by='dialed_times', sort_order='asc' if sort_by != 'dialed_times' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
+                        Dialed
+                        {% if sort_by == 'dialed_times' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="{{ url_for('calls_blueprint.calls', sort_by='first_dial_time', sort_order='asc' if sort_by != 'first_dial_time' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
+                        First Dial
+                        {% if sort_by == 'first_dial_time' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="{{ url_for('calls_blueprint.calls', sort_by='last_dial_time', sort_order='asc' if sort_by != 'last_dial_time' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
+                        Last Dial
+                        {% if sort_by == 'last_dial_time' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="{{ url_for('calls_blueprint.calls', sort_by='acknowledge_at', sort_order='asc' if sort_by != 'acknowledge_at' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
+                        Acknowledgement
+                        {% if sort_by == 'acknowledge_at' %}
+                            <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                <th class="text-center">Status</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for element in paginated_data %}
+            {% set call = table_data[element] %}
+            <tr>
+                <td><span class="badge bg-light text-dark border">{{ element }}</span></td>
+                <td><code class="small">{{ call.get("id") }}</code></td>
+                <td><span class="fw-bold text-primary">{{ call.get("phone") }}</span></td>
+                <td class="text-center">
+                    {% if call.get("oncall") %}
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle" title="Primary On-call request">On Call</span>
+                    {% endif %}
+                    {% if call.get("backup_callee") %}
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle" title="Backup call">Backup</span>
+                    {% endif %}
+                </td>
+                <td class="text-wrap small">{{ call.get("message") }}</td>
+                <td class="small text-muted">{{ call.get("asterisk_chan") }}</td>
+                <td class="text-center"><span class="badge bg-secondary rounded-pill">{{ call.get("times_to_dial") }}</span></td>
+                <td class="text-center"><span class="badge bg-{{ 'success' if call.get('dialed_times') >= call.get('times_to_dial') else 'info' }} rounded-pill">{{ call.get("dialed_times") }}</span></td>
+                <td class="small text-nowrap">{{ call.get("first_dial").strftime("%d/%m/%Y %H:%M:%S") if call.get("first_dial") else "-" }}</td>
+                <td class="small text-nowrap">{{ call.get("last_dial").strftime("%d/%m/%Y %H:%M:%S") if call.get("last_dial") else "-" }}</td>
+                <td class="small text-nowrap">{{ call.get("acknowledge_at").strftime("%d/%m/%Y %H:%M:%S") if call.get("acknowledge_at") else "-" }}</td>
+                <td class="text-center">
+                    {% if call.get("cycle_done") == True %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>
+                    {% else %}
+                        {% set first_dial = call.get("first_dial") %}
+                        {% set seconds_to_forget = call.get("seconds_to_forget") %}
+                        {% set current_time = now %}
+                        {% if first_dial and seconds_to_forget %}
+                            {% set firing_end_time = first_dial + timedelta(seconds=seconds_to_forget) %}
+                            {% if current_time <= firing_end_time %}
+                                <button class="btn btn-warning btn-sm ack-button shadow-sm fw-bold px-3" 
+                                        data-asterisk-chan="{{ call.get('asterisk_chan') }}">
+                                    <i class="bi bi-check-circle me-1"></i>Ack
+                                </button>
+                            {% else %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-x-circle me-1"></i>Expired</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
+                        {% endif %}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% if paginated_data|length == 0 %}
+            <tr>
+                <td colspan="12" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                    No managed calls found{% if search_query %} for "{{ search_query }}"{% endif %}
+                </td>
+            </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mt-4 gap-3">
+        <div class="order-2 order-md-1">
+            <form method="get" action="{{ url_for('calls_blueprint.calls') }}" class="d-flex align-items-center">
+                {% if search_query %}<input type="hidden" name="search" value="{{ search_query }}">{% endif %}
+                <input type="hidden" name="sort_by" value="{{ sort_by }}">
+                <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                <div class="input-group input-group-sm">
+                    <label class="input-group-text bg-light border-end-0" for="items-per-page">Items per page:</label>
+                    <select class="form-select border-start-0" id="items-per-page" name="per_page" onchange="this.form.submit()">
+                        {% for option in [5, 10, 25, 50, 100] %}
+                        <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+
+        {% if total_pages > 1 %}
+        <nav aria-label="Page navigation" class="order-1 order-md-2">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('calls_blueprint.calls', page=page-1, per_page=per_page, search=search_query, sort_by=sort_by, sort_order=sort_order) if page > 1 else '#' }}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% for p in range(1, total_pages + 1) %}
+                <li class="page-item {% if p == page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('calls_blueprint.calls', page=p, per_page=per_page, search=search_query, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('calls_blueprint.calls', page=page+1, per_page=per_page, search=search_query, sort_by=sort_by, sort_order=sort_order) if page < total_pages else '#' }}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="exportModalLabel"><i class="bi bi-file-earmark-excel me-2 text-success"></i>Export to CSV</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form action="{{ url_for('calls_blueprint.export_csv') }}" method="get">
+                    <div class="mb-4">
+                        <label for="export-month" class="form-label fw-bold small text-secondary">Select Month and Year</label>
+                        <input type="month" class="form-control form-control-lg" id="export-month" name="export_month" required>
+                        <div class="form-text mt-2">Data is exported one month at a time for optimal performance.</div>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-download me-2"></i>Download CSV
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function acknowledgeCall(asteriskChan, element) {
+        element.disabled = true;
+        const originalContent = element.innerHTML;
+        element.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+        fetch(`{{ call_register_endpoint }}?asterisk_chan=${encodeURIComponent(asteriskChan)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 200) {
+                    showToast('Success', 'Call acknowledged successfully', 'success');
+                    element.parentNode.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+                } else {
+                    showToast('Note', data.message || 'Call acknowledged but outside firing period', 'warning');
+                    element.parentNode.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Error', 'Communication error with backend', 'danger');
+                element.disabled = false;
+                element.innerHTML = originalContent;
+            });
+
+        return false; 
+    }
+
+    (function(){
+        const STORAGE_KEY = 'calls_auto_refresh_seconds';
+        const selectId = 'autoRefreshSelect';
+        const countdownId = 'autoRefreshCountdown';
+        let timerId = null;
+        let remaining = 0;
+
+        function updateCountdownText() {
+            const el = document.getElementById(countdownId);
+            if (!el) return;
+            const sel = document.getElementById(selectId);
+            const secs = parseInt(sel?.value || '0', 10) || 0;
+            if (secs === 0) {
+                el.textContent = '';
+                el.style.display = 'none';
+                return;
+            }
+            el.style.display = 'inline-block';
+            el.textContent = `${remaining}s`;
+            el.className = remaining <= 3 ? 'badge bg-danger ms-2' : 'badge bg-info-subtle text-info border border-info-subtle ms-2';
+        }
+
+        function start(seconds) {
+            if (timerId) clearInterval(timerId);
+            const sel = document.getElementById(selectId);
+            if (sel) sel.value = String(seconds);
+            localStorage.setItem(STORAGE_KEY, String(seconds));
+
+            if (!seconds) { remaining = 0; updateCountdownText(); return; }
+            remaining = seconds;
+            updateCountdownText();
+            timerId = setInterval(() => {
+                if (document.hidden) return;
+                if (remaining <= 1) {
+                    window.location.reload();
+                    return;
+                }
+                remaining -= 1;
+                updateCountdownText();
+            }, 1000);
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+
+            // Add event listeners for ack buttons
+            document.querySelectorAll('.ack-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const asteriskChan = this.getAttribute('data-asterisk-chan');
+                    acknowledgeCall(asteriskChan, this);
+                });
+            });
+
+            let stored = parseInt(localStorage.getItem(STORAGE_KEY) || '', 10);
+            if (isNaN(stored) || ![0,5,10,15,30,60].includes(stored)) {
+                stored = 15;
+            }
+            start(stored);
+            sel.addEventListener('change', function(){
+                start(parseInt(sel.value, 10) || 0);
+            });
+        });
+    })();
+</script>
+{% endblock %}
