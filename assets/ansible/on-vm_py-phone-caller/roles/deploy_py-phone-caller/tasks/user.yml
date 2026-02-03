@@ -1,0 +1,14 @@
+---
+- name: Create py-phone-caller group
+  group:
+    name: "{{ py_phone_caller_group }}"
+    state: present
+
+- name: Create py-phone-caller user
+  user:
+    name: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    home: "{{ py_phone_caller_install_dir }}"
+    shell: /bin/bash
+    system: yes
+    create_home: yes

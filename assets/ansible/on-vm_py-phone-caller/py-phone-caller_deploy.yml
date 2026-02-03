@@ -1,0 +1,14 @@
+---
+- hosts: all
+  become: yes
+  roles:
+    - role: deploy_py-phone-caller
+      vars:
+        py_phone_caller_local_src_path: "{{ playbook_dir }}/../../../src"
+        py_phone_caller_config:
+          commons:
+            asterisk_host: "pbx.lan"
+            asterisk_user: "py-phone-caller"
+            asterisk_pass: "CHANGE_ME"
+          database:
+            db_password: "CHANGE_ME"

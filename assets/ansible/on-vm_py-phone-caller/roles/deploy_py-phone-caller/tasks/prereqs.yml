@@ -1,0 +1,121 @@
+---
+- name: Add local domain mappings to /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "127.0.0.1 pbx.lan redis.lan postgresql.lan py-phone-caller.lan"
+    state: present
+    create: yes
+
+- name: Update apt cache (Debian/Ubuntu)
+  apt:
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install dependencies (Debian/Ubuntu)
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-dev
+      - build-essential
+      - git
+      - rsync
+      - redis-server
+      - acl
+      - libsndfile1
+      - curl
+      - python3-psycopg2
+      - ffmpeg
+      - postgresql-contrib
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Set Python binary (Debian)
+  set_fact:
+    python_binary: python3
+  when: ansible_os_family == "Debian"
+
+- name: Install EPEL release (RHEL/Rocky)
+  dnf:
+    name: epel-release
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Enable CRB repository (RHEL/Rocky)
+  command: dnf config-manager --set-enabled crb
+  when: ansible_os_family == "RedHat"
+  changed_when: false
+
+- name: Check if ffmpeg is already installed (RHEL/Rocky)
+  command: rpm -q ffmpeg
+  register: ffmpeg_check
+  ignore_errors: true
+  changed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Define base dependencies (RHEL/Rocky)
+  set_fact:
+    rhel_packages:
+      - python3
+      - python3.12
+      - python3.12-pip
+      - python3.12-devel
+      - python3-rpm-macros
+      - gcc
+      - git
+      - rsync
+      - redis
+      - acl
+      - libsndfile
+      - curl
+      - python3-psycopg2
+      - postgresql-contrib
+  when: ansible_os_family == "RedHat"
+
+- name: Add ffmpeg-free to dependencies if ffmpeg is missing (RHEL/Rocky)
+  set_fact:
+    rhel_packages: "{{ rhel_packages + ['ffmpeg-free'] }}"
+  when: ansible_os_family == "RedHat" and ffmpeg_check.rc != 0
+
+- name: Install dependencies (RHEL/Rocky)
+  dnf:
+    name: "{{ rhel_packages }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Set Python binary (RedHat)
+  set_fact:
+    python_binary: python3.12
+  when: ansible_os_family == "RedHat"
+
+- name: Enable and start Redis
+  service:
+    name: redis
+    state: started
+    enabled: yes
+  ignore_errors: yes
+
+- name: Install PostgreSQL (Debian/Ubuntu)
+  apt:
+    name: postgresql
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install PostgreSQL (RHEL/Rocky)
+  dnf:
+    name: postgresql-server
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Initialize PostgreSQL (RHEL/Rocky)
+  command: postgresql-setup --initdb
+  args:
+    creates: /var/lib/pgsql/data/postgresql.conf
+  when: ansible_os_family == "RedHat"
+
+- name: Enable and start PostgreSQL
+  service:
+    name: postgresql
+    state: started
+    enabled: yes

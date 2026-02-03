@@ -1,0 +1,50 @@
+[py-phone-caller]
+; Primary Extension
+exten => {{ asterisk_extension }},1,Noop(py-phone-caller Start)
+ same => n,Playback(greeting-message)
+ same => n,Stasis({{ ari_app_name }})
+ same => n,Set(RES=${CURL({{ callback_service_url }}/heard?asterisk_chan=${CHANNEL(uniqueid)})})
+ same => n,Playback(press-4-for-acknowledgement)
+ same => n,Playback(beep)
+ same => n,Read(get,"silence/1",,,,2)
+ same => n,Set(gotdigit=${ISNULL(${get})})
+ same => n,GotoIf(${gotdigit}=1?20)
+ same => n,GotoIf($[ ${get} = 4 ]?30)
+ same => n,Goto(20)
+ ; Failure
+ same => 20,Set(NOTIFYACK=2)
+ same => 21,Playback(vm-goodbye)
+ same => 22,Wait(1)
+ same => 23,Hangup()
+ ; Success (ACK)
+ same => 30,Set(RES=${CURL({{ callback_service_url }}/ack?asterisk_chan=${CHANNEL(uniqueid)})})
+ same => 31,Playback(vm-goodbye)
+ same => 32,Wait(1)
+ same => 33,Hangup()
+
+{% if local_sip %}
+; Call Local SIP Extension
+exten => {{ local_sip_exten }},1,NoOp(Calling Local SIP Extension {{ local_sip_exten }})
+ same => n,Dial(PJSIP/{{ local_sip_exten }},30)
+ same => n,Hangup()
+{% endif %}
+
+{% if local_iax %}
+; Call Local IAX Extension
+exten => {{ local_iax_exten }},1,NoOp(Calling Local IAX Extension {{ local_iax_exten }})
+ same => n,Dial(IAX2/{{ local_iax_exten }},30)
+ same => n,Hangup()
+{% endif %}
+
+{% if local_sip or local_iax %}
+; Generic Local Extension Dialing (4 digits)
+; Attempts to dial PJSIP or IAX2 endpoints if they exist
+exten => _XXXX,1,NoOp(Generic Dialing for ${EXTEN})
+{% if local_sip %}
+ same => n,ExecIf($[ "${DEVICE_STATE(PJSIP/${EXTEN})}" != "INVALID" ]?Dial(PJSIP/${EXTEN},30))
+{% endif %}
+{% if local_iax %}
+ same => n,ExecIf($[ "${DEVICE_STATE(IAX2/${EXTEN})}" != "INVALID" ]?Dial(IAX2/${EXTEN},30))
+{% endif %}
+ same => n,Hangup()
+{% endif %}

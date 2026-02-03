@@ -1,0 +1,26 @@
+---
+- name: Install DNF plugins core
+  ansible.builtin.dnf:
+    name: dnf-plugins-core
+    state: present
+  check_mode: no
+
+- name: Enable CRB or PowerTools repository
+  ansible.builtin.command: "dnf config-manager --set-enabled {{ (ansible_distribution_major_version | int >= 9) | ternary('crb', 'powertools') }}"
+  register: repo_enable
+  changed_when: "'already enabled' not in repo_enable.stdout"
+  ignore_errors: true
+  check_mode: no
+
+- name: Install EPEL Release
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  check_mode: no
+
+- name: Install Asterisk Packages
+  ansible.builtin.dnf:
+    name: "{{ asterisk_packages + system_dependencies }}"
+    state: present
+    update_cache: yes
+  notify: restart asterisk

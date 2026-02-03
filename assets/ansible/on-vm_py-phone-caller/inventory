@@ -1,0 +1,10 @@
+[ubuntu]
+ubuntu-server ansible_user=ubuntu ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
+
+[rocky]
+rocky-server ansible_user=rocky ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
+
+[all:vars]
+ansible_become=yes
+ansible_become_method=sudo
+ansible_python_interpreter=/usr/bin/python3

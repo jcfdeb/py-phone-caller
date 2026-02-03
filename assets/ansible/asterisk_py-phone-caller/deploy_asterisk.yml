@@ -1,0 +1,21 @@
+---
+- name: Deploy Asterisk for py-phone-caller
+  hosts: pbx_servers
+  become: yes
+
+  vars:
+    # Override defaults here or use Ansible Vault
+    ari_password: "CHANGE_ME"
+    sip_username: "YOUR_SIP_USERNAME"
+    sip_password: "CHANGE_ME"
+
+    # --- Local Extensions (Air-Gapped Mode) ---
+    local_sip: yes
+    local_sip_exten: 2500
+    local_sip_pass: "CHANGE_ME"
+    local_iax: yes
+    local_iax_exten: 2600
+    local_iax_pass: "CHANGE_ME"
+    
+  roles:
+    - asterisk_py_phone_caller

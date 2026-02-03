@@ -1,0 +1,11 @@
+{% if local_iax %}
+; --- Local IAX2 Extension {{ local_iax_exten }} ---
+[{{ local_iax_exten }}]
+type=friend
+host=dynamic
+secret={{ local_iax_pass }}
+context=py-phone-caller
+requirecalltoken=no
+disallow=all
+allow=ulaw,alaw,gsm
+{% endif %}

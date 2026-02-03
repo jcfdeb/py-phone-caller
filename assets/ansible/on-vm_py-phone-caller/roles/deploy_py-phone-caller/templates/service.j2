@@ -1,0 +1,24 @@
+[Unit]
+Description={{ item.description }}
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User={{ py_phone_caller_user }}
+Group={{ py_phone_caller_group }}
+WorkingDirectory={{ py_phone_caller_install_dir }}/src
+Environment="PYTHONPATH={{ py_phone_caller_install_dir }}/src"
+Environment="CALLER_CONFIG_DIR={{ py_phone_caller_config_dir }}"
+Environment="PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+{% if item.type is defined and item.type == 'celery' %}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/celery {{ item.cmd }}
+{% elif item.type is defined and item.type == 'gunicorn' %}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn {{ item.cmd }}
+{% else %}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/python3 {{ item.cmd }}
+{% endif %}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

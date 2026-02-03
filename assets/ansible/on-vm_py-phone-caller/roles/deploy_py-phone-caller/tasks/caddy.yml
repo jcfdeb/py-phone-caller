@@ -1,0 +1,86 @@
+---
+- name: Install Caddy dependencies (Debian)
+  apt:
+    name:
+      - debian-keyring
+      - debian-archive-keyring
+      - apt-transport-https
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: caddy
+
+- name: Download Caddy GPG key (Debian)
+  get_url:
+    url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+    dest: /tmp/caddy.gpg.key
+  when: ansible_os_family == "Debian"
+  tags: caddy
+
+- name: Dearmor Caddy GPG key (Debian)
+  command: gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg /tmp/caddy.gpg.key
+  args:
+    creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  when: ansible_os_family == "Debian"
+  tags: caddy
+
+- name: Add Caddy repository (Debian)
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
+    state: present
+    filename: caddy-stable
+  when: ansible_os_family == "Debian"
+  tags: caddy
+
+- name: Install Caddy (Debian)
+  apt:
+    name: caddy
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  tags: caddy
+
+- name: Install 'dnf-command(copr)' (RedHat)
+  dnf:
+    name: "dnf-command(copr)"
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: caddy
+
+- name: Enable Caddy COPR repository (RedHat)
+  command: dnf copr enable -y @caddy/caddy
+  when: ansible_os_family == "RedHat"
+  register: copr_result
+  changed_when: "'Enabled copr' in copr_result.stdout"
+  failed_when: false
+  tags: caddy
+
+- name: Install Caddy (RedHat)
+  dnf:
+    name: caddy
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: caddy
+
+- name: Ensure Caddy config directory exists
+  file:
+    path: /etc/caddy
+    state: directory
+    owner: caddy
+    group: caddy
+    mode: '0755'
+  ignore_errors: yes
+  tags: caddy
+
+- name: Configure Caddy
+  template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+  notify: Reload Caddy
+  tags: caddy
+
+- name: Enable and start Caddy
+  service:
+    name: caddy
+    state: started
+    enabled: yes
+  tags: caddy

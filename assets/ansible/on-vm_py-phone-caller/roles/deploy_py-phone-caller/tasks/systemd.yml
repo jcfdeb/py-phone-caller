@@ -1,0 +1,15 @@
+---
+- name: Create systemd service files
+  template:
+    src: service.j2
+    dest: "/etc/systemd/system/py-phone-caller-{{ item.name | replace('_', '-') }}.service"
+  loop: "{{ py_phone_caller_services }}"
+  notify: Restart py-phone-caller services
+
+- name: Enable and start services
+  systemd:
+    name: "py-phone-caller-{{ item.name | replace('_', '-') }}"
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  loop: "{{ py_phone_caller_services }}"

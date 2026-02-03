@@ -1,0 +1,27 @@
+---
+- name: Configure pg_hba.conf to use md5 for local connections (RHEL/Rocky)
+  replace:
+    path: /var/lib/pgsql/data/pg_hba.conf
+    regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+ident'
+    replace: 'host    all             all             127.0.0.1/32            md5'
+  become: yes
+  when: ansible_os_family == "RedHat"
+  notify: Reload PostgreSQL
+
+- name: Flush handlers to ensure PostgreSQL is reloaded
+  meta: flush_handlers
+
+- name: Create PostgreSQL user
+  postgresql_user:
+    name: "{{ py_phone_caller_final_config.database.db_user }}"
+    password: "{{ py_phone_caller_final_config.database.db_password }}"
+    role_attr_flags: NOSUPERUSER,CREATEDB,LOGIN
+  become: yes
+  become_user: postgres
+
+- name: Create PostgreSQL database
+  postgresql_db:
+    name: "{{ py_phone_caller_final_config.database.db_name }}"
+    owner: "{{ py_phone_caller_final_config.database.db_user }}"
+  become: yes
+  become_user: postgres

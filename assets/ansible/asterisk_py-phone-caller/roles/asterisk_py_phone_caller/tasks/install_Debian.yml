@@ -1,0 +1,8 @@
+---
+- name: Install System Dependencies and Asterisk
+  ansible.builtin.apt:
+    name: "{{ system_dependencies + asterisk_packages }}"
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600
+  notify: restart asterisk

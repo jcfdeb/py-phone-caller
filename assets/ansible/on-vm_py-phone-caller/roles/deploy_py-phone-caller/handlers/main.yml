@@ -1,0 +1,16 @@
+---
+- name: Restart py-phone-caller services
+  systemd:
+    name: "py-phone-caller-{{ item.name | replace('_', '-') }}"
+    state: restarted
+  loop: "{{ py_phone_caller_services }}"
+
+- name: Reload PostgreSQL
+  service:
+    name: postgresql
+    state: reloaded
+
+- name: Reload Caddy
+  service:
+    name: caddy
+    state: reloaded

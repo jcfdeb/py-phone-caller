@@ -1,0 +1,62 @@
+---
+- name: Remove unnecessary files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ py_phone_caller_install_dir }}/pytest.ini"
+    - "{{ py_phone_caller_install_dir }}/src/build_all_images.sh"
+    - "{{ py_phone_caller_install_dir }}/src/requirements-audio.in"
+    - "{{ py_phone_caller_install_dir }}/src/requirements-dev.txt"
+    - "{{ py_phone_caller_install_dir }}/src/requirements.in"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Find Dockerfiles
+  find:
+    paths: "{{ py_phone_caller_install_dir }}/src"
+    patterns: "Dockerfile"
+    recurse: yes
+  register: dockerfiles_to_delete
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Remove Dockerfiles
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ dockerfiles_to_delete.files }}"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Remove Rust build environment directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ py_phone_caller_install_dir }}/.rustup"
+    - "{{ py_phone_caller_install_dir }}/.cargo"
+    - "{{ py_phone_caller_install_dir }}/.cache/uv"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Remove build packages (Debian/Ubuntu)
+  apt:
+    name:
+      - build-essential
+      - python3-dev
+    state: absent
+    autoremove: yes
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Remove build packages (RHEL/Rocky)
+  dnf:
+    name:
+      - gcc
+      - python3.12-devel
+      - python3-rpm-macros
+    state: absent
+    autoremove: yes
+  become: yes
+  when: ansible_os_family == "RedHat"

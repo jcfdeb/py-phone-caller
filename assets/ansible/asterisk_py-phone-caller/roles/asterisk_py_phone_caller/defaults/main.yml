@@ -1,0 +1,42 @@
+---
+# --- HTTP Server (ARI Interface) ---
+asterisk_http_enabled: "yes"
+asterisk_http_bindaddr: "0.0.0.0"
+asterisk_http_bindport: 8088
+
+# --- ARI Credentials ---
+ari_app_name: "py-phone-caller"
+ari_username: "py-phone-caller"
+ari_password: "CHANGE_ME"  # Use Ansible Vault in production
+
+# --- SIP Provider (e.g., Messagenet) ---
+sip_provider_host: "sip.provider.it"
+sip_provider_port: 5060
+sip_username: "CHANGE_ME"
+sip_password: "CHANGE_ME"  # Use Ansible Vault in production
+sip_contact_user: "CHANGE_ME"
+
+# --- Callback URL (Rust/Python Service) ---
+# The URL Asterisk calls to register events or ACKs
+callback_service_url: "http://py-phone-caller.lan:8083"
+
+# --- SIP Transport ---
+asterisk_sip_bindaddr: "0.0.0.0:5060"
+
+# --- Asterisk Dialplan ---
+asterisk_extension: "3216"
+
+# --- Custom Audio ---
+# These files must exist in roles/asterisk_py_phone_caller/files/sounds/
+custom_audio_files:
+  - greeting-message.wav
+  - press-4-for-acknowledgement.wav
+
+# --- Local Extensions (Air-Gapped Mode) ---
+local_sip: no
+local_sip_exten: 2500
+local_sip_pass: "change_me"
+
+local_iax: no
+local_iax_exten: 2500
+local_iax_pass: "change_me"

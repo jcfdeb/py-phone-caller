@@ -1,0 +1,37 @@
+---
+- name: Check if source code exists
+  stat:
+    path: "{{ py_phone_caller_install_dir }}/src"
+  register: src_dir
+
+- name: Clone source code from Git
+  git:
+    repo: "{{ py_phone_caller_git_repo }}"
+    dest: "{{ py_phone_caller_install_dir }}"
+    version: "{{ py_phone_caller_git_version }}"
+    force: yes
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+  when: 
+    - not src_dir.stat.exists
+    - py_phone_caller_git_repo | length > 0
+
+- name: Synchronize source code from local path
+  synchronize:
+    src: "{{ py_phone_caller_local_src_path }}/"
+    dest: "{{ py_phone_caller_install_dir }}/src/"
+    recursive: yes
+    rsync_opts:
+      - "--include=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/wheels/***"
+      - "--exclude=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/***"
+  when: 
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Ensure correct permissions on install directory
+  file:
+    path: "{{ py_phone_caller_install_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    recurse: yes

@@ -1,0 +1,13 @@
+---
+- name: restart asterisk
+  ansible.builtin.service:
+    name: "{{ asterisk_service }}"
+    state: restarted
+    enabled: yes
+  when: not ansible_check_mode
+
+- name: reload asterisk
+  ansible.builtin.service:
+    name: "{{ asterisk_service }}"
+    state: reloaded
+  when: not ansible_check_mode

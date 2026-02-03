@@ -1,0 +1,41 @@
+---
+- name: Merge configuration
+  set_fact:
+    py_phone_caller_final_config: "{{ py_phone_caller_config_defaults | combine(py_phone_caller_config, recursive=True) }}"
+  tags: always
+
+- name: Include prerequisites tasks
+  include_tasks: prereqs.yml
+
+- name: Include user creation tasks
+  include_tasks: user.yml
+
+- name: Include source code tasks
+  include_tasks: source.yml
+  tags: source
+
+- name: Include installation tasks
+  include_tasks: install.yml
+
+- name: Include database setup tasks
+  include_tasks: database.yml
+  tags: database
+
+- name: Include configuration tasks
+  import_tasks: config.yml
+  tags: config
+
+- name: Include Caddy tasks
+  import_tasks: caddy.yml
+  tags: caddy
+
+- name: Include firewall tasks
+  include_tasks: firewall.yml
+  tags: firewall
+
+- name: Include systemd service tasks
+  import_tasks: systemd.yml
+  tags: systemd
+
+- name: Include cleanup tasks
+  include_tasks: cleanup.yml

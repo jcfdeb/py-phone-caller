@@ -1,0 +1,25 @@
+galaxy_info:
+  author: py-phone-caller Team
+  description: Ansible role to install and configure Asterisk PBX for py-phone-caller emergency alerts.
+  company: "py-phone-caller Team"
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+        - noble
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+    - name: EL
+      versions:
+        - 8
+        - 9
+  categories:
+    - system
+    - telephony
+
+dependencies: []

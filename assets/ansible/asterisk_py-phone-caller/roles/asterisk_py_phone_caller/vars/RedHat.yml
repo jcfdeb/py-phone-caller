@@ -1,0 +1,28 @@
+---
+asterisk_service: asterisk
+asterisk_user: asterisk
+asterisk_group: asterisk
+asterisk_conf_dir: /etc/asterisk
+asterisk_module_dir: /usr/lib64/asterisk/modules
+asterisk_data_dir: /var/lib/asterisk
+asterisk_cache_dir: /var/cache/asterisk
+asterisk_sounds_dir: /usr/share/asterisk/sounds/en
+
+# Asterisk packages for EL8/9.
+# NOTE: Rocky/RHEL 9 is the RECOMMENDED version for this role.
+# RHEL 10 is currently experimental because Asterisk packages are missing from EPEL 10.
+asterisk_packages:
+  - asterisk
+  - asterisk-devel
+  - asterisk-pjsip
+  - asterisk-voicemail-plain
+  - asterisk-curl
+  - curl
+
+system_dependencies:
+  - "@Development Tools"
+  - git
+  - libuuid-devel
+  - libxml2-devel
+  - policycoreutils-python-utils
+  - python3-libselinux

@@ -1,0 +1,29 @@
+---
+- name: Deploy Asterisk PBX
+  hosts: all
+  become: yes
+  vars:
+    # Credentials to match py-phone-caller defaults or overrides
+    ari_password: "CHANGE_ME"
+    sip_username: "YOUR_SIP_USERNAME"
+    sip_password: "CHANGE_ME"
+  roles:
+    - asterisk_py_phone_caller
+
+- name: Deploy py-phone-caller Stack
+  hosts: all
+  become: yes
+  vars:
+    # Path to local source code relative to this playbook
+    py_phone_caller_local_src_path: "{{ playbook_dir }}/../../../src"
+    
+    # Configuration overrides
+    py_phone_caller_config:
+      commons:
+        asterisk_host: "pbx.lan"
+        asterisk_user: "py-phone-caller"
+        asterisk_pass: "CHANGE_ME"
+      database:
+        db_password: "CHANGE_ME"
+  roles:
+    - deploy_py-phone-caller

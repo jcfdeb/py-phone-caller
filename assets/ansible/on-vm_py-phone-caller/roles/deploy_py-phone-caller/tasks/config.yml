@@ -1,0 +1,15 @@
+---
+- name: Ensure config directory exists
+  file:
+    path: "{{ py_phone_caller_config_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+
+- name: Template settings.toml
+  template:
+    src: settings.toml.j2
+    dest: "{{ py_phone_caller_config_dir }}/settings.toml"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+  notify: Restart py-phone-caller services

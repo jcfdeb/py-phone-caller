@@ -1,0 +1,12 @@
+{
+    {% if caddy_email %}
+    email {{ caddy_email }}
+    {% endif %}
+}
+
+{{ caddy_domain_name | default(':80') }} {
+    reverse_proxy localhost:{{ py_phone_caller_config_defaults.py_phone_caller_ui.ui_listen_on_port }}
+    {% if caddy_domain_name.endswith('.lan') %}
+    tls internal
+    {% endif %}
+}

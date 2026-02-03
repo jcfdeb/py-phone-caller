@@ -1,0 +1,81 @@
+---
+- name: Ensure firewalld is installed (RHEL/Rocky)
+  dnf:
+    name: firewalld
+    state: present
+  when: ansible_os_family == "RedHat"
+  become: yes
+  tags: firewall
+
+- name: Ensure firewalld is started and enabled (RHEL/Rocky)
+  service:
+    name: firewalld
+    state: started
+    enabled: yes
+  when: ansible_os_family == "RedHat"
+  become: yes
+  tags: firewall
+
+- name: Open application ports in firewalld (RHEL/Rocky)
+  firewalld:
+    port: "{{ item }}/tcp"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  loop:
+    - 80
+    - 443
+    - 5000
+    - 8081
+    - 8082
+    - 8083
+    - 8084
+    - 8085
+    - 8086
+    - 8087
+  when: ansible_os_family == "RedHat"
+  become: yes
+  tags: firewall
+
+- name: Ensure UFW is installed (Debian/Ubuntu)
+  apt:
+    name: ufw
+    state: present
+  when: ansible_os_family == "Debian"
+  become: yes
+  tags: firewall
+
+- name: Allow SSH in UFW (Debian/Ubuntu)
+  ufw:
+    rule: allow
+    name: OpenSSH
+  when: ansible_os_family == "Debian"
+  become: yes
+  tags: firewall
+
+- name: Open application ports in UFW (Debian/Ubuntu)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - 80
+    - 443
+    - 5000
+    - 8081
+    - 8082
+    - 8083
+    - 8084
+    - 8085
+    - 8086
+    - 8087
+  when: ansible_os_family == "Debian"
+  become: yes
+  tags: firewall
+
+- name: Enable UFW (Debian/Ubuntu)
+  ufw:
+    state: enabled
+  when: ansible_os_family == "Debian"
+  become: yes
+  tags: firewall

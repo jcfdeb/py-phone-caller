@@ -1,0 +1,62 @@
+---
+- name: Create virtual environment
+  command: "{{ python_binary }} -m venv {{ py_phone_caller_venv_dir }}"
+  args:
+    creates: "{{ py_phone_caller_venv_dir }}/bin/python"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Install requirements
+  pip:
+    requirements: "{{ py_phone_caller_install_dir }}/src/requirements.txt"
+    virtualenv: "{{ py_phone_caller_venv_dir }}"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Install uv
+  pip:
+    name: uv
+    virtualenv: "{{ py_phone_caller_venv_dir }}"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Ensure venv ownership
+  file:
+    path: "{{ py_phone_caller_venv_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    recurse: yes
+  become: yes
+
+- name: Install audio requirements
+  command: "{{ py_phone_caller_venv_dir }}/bin/uv pip install -r {{ py_phone_caller_install_dir }}/src/requirements-audio.txt --python {{ py_phone_caller_venv_dir }} --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple --index-strategy unsafe-best-match"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+
+- name: Check for pre-built wheels (local deployment)
+  find:
+    paths: "{{ py_phone_caller_install_dir }}/src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/wheels"
+    patterns: "*.whl"
+  register: found_wheels
+  failed_when: false
+
+- name: Install py-phone-caller-utils from wheel
+  command: "{{ py_phone_caller_venv_dir }}/bin/uv pip install {{ found_wheels.files[0].path }} --python {{ py_phone_caller_venv_dir }}"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+  when: found_wheels.matched > 0
+
+- name: Install py-phone-caller-utils from source (ensure that the tools are installed)
+  command: "{{ py_phone_caller_venv_dir }}/bin/uv pip install -e {{ py_phone_caller_install_dir }}/src/py-phone-caller-utils --python {{ py_phone_caller_venv_dir }}"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+  when: found_wheels.matched == 0
+
+- name: Ensure log directory exists
+  file:
+    path: "{{ py_phone_caller_log_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: '0755'

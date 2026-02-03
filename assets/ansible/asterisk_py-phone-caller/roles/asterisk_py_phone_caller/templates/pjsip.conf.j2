@@ -1,0 +1,87 @@
+; --- Transport ---
+[transport-udp]
+type=transport
+protocol=udp
+bind={{ asterisk_sip_bindaddr }}
+
+; --- Registration ---
+[{{ ari_app_name }}]
+type=registration
+transport=transport-udp
+outbound_auth={{ ari_app_name }}_auth
+server_uri=sip:{{ sip_provider_host }}
+client_uri=sip:{{ sip_username }}@{{ sip_provider_host }}
+contact_user={{ sip_contact_user }}
+retry_interval=60
+max_retries=10
+forbidden_retry_interval=600
+expiration=3600
+line=yes
+endpoint={{ ari_app_name }}
+
+; --- Endpoint ---
+[{{ ari_app_name }}]
+type=endpoint
+transport=transport-udp
+disallow=all
+allow=ulaw,alaw
+aors={{ ari_app_name }}
+outbound_auth={{ ari_app_name }}_auth
+from_domain={{ sip_provider_host }}
+from_user={{ sip_username }}
+t38_udptl=no
+t38_udptl_ec=none
+fax_detect=no
+trust_id_inbound=no
+t38_udptl_nat=no
+direct_media=no
+rewrite_contact=yes
+rtp_symmetric=yes
+message_context=incoming
+dtmf_mode=auto
+
+; --- Auth ---
+[{{ ari_app_name }}_auth]
+type=auth
+auth_type=userpass
+password={{ sip_password }}
+username={{ sip_username }}
+realm={{ sip_provider_host }}
+
+; --- AOR ---
+[{{ ari_app_name }}]
+type=aor
+qualify_frequency=60
+contact=sip:{{ sip_username }}@{{ sip_provider_host }}:{{ sip_provider_port }}
+
+; --- Identify ---
+[{{ ari_app_name }}]
+type=identify
+endpoint={{ ari_app_name }}
+match={{ sip_provider_host }}
+
+{% if local_sip %}
+; --- Local Extension {{ local_sip_exten }} ---
+[{{ local_sip_exten }}]
+type=endpoint
+context=py-phone-caller
+disallow=all
+allow=ulaw,alaw,gsm,g722
+auth={{ local_sip_exten }}
+aors={{ local_sip_exten }}
+transport=transport-udp
+rewrite_contact=yes
+rtp_symmetric=yes
+direct_media=no
+
+[{{ local_sip_exten }}]
+type=auth
+auth_type=userpass
+password={{ local_sip_pass }}
+username={{ local_sip_exten }}
+
+[{{ local_sip_exten }}]
+type=aor
+max_contacts=1
+remove_existing=yes
+{% endif %}

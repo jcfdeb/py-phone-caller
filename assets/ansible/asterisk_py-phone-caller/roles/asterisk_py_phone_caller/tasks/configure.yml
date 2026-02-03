@@ -1,0 +1,144 @@
+---
+- name: Ensure Asterisk data directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: '0755'
+  loop:
+    - "{{ asterisk_data_dir }}"
+    - "{{ asterisk_data_dir }}/tmp"
+    - "{{ asterisk_cache_dir }}"
+    - "{{ asterisk_cache_dir }}/tmp"
+
+- name: Create custom sounds directory
+  ansible.builtin.file:
+    path: "{{ asterisk_sounds_dir }}"
+    state: directory
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: '0755'
+
+- name: Check for standard sounds (RedHat specific)
+  ansible.builtin.stat:
+    path: "{{ asterisk_sounds_dir }}/beep.wav"
+  register: standard_sounds_check
+  when: ansible_os_family == "RedHat"
+
+- name: Check if sounds directory exists
+  ansible.builtin.stat:
+    path: "{{ asterisk_sounds_dir }}"
+  register: sounds_dir_stat
+
+- name: Download and install Asterisk Core Sounds (RedHat)
+  ansible.builtin.unarchive:
+    src: http://downloads.asterisk.org/pub/telephony/sounds/asterisk-core-sounds-en-wav-current.tar.gz
+    dest: "{{ asterisk_sounds_dir }}"
+    remote_src: yes
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+  when: ansible_os_family == "RedHat" and not standard_sounds_check.stat.exists and sounds_dir_stat.stat.exists
+
+- name: Check if custom audio files exist
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/sounds/{{ item }}"
+  delegate_to: localhost
+  loop: "{{ custom_audio_files }}"
+  register: audio_files_stat
+  become: no
+
+- name: Deploy custom .wav files
+  ansible.builtin.copy:
+    src: "sounds/{{ item.item }}"
+    dest: "{{ asterisk_sounds_dir }}/{{ item.item }}"
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: '0644'
+  loop: "{{ audio_files_stat.results }}"
+  when: item.stat.exists
+
+- name: Warn if audio files are missing
+  ansible.builtin.debug:
+    msg: "WARNING: Audio file {{ item.item }} not found in {{ role_path }}/files/sounds/. Skipping."
+  loop: "{{ audio_files_stat.results }}"
+  when: not item.stat.exists
+
+- name: Deploy py-phone-caller partial configurations
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ asterisk_conf_dir }}/{{ item.dest }}"
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: '0640'
+  loop:
+    - { src: 'extensions.conf.j2', dest: 'extensions_py_phone_caller.conf' }
+    - { src: 'pjsip.conf.j2', dest: 'pjsip_py_phone_caller.conf' }
+    - { src: 'ari.conf.j2', dest: 'ari_py_phone_caller.conf' }
+    - { src: 'iax.conf.j2', dest: 'iax_py_phone_caller.conf' }
+  notify: reload asterisk
+
+- name: Inject Includes into main configuration files
+  ansible.builtin.lineinfile:
+    path: "{{ asterisk_conf_dir }}/{{ item.file }}"
+    line: "#include {{ item.include }}"
+    state: present
+    insertafter: EOF
+    create: yes
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: '0640'
+  loop:
+    - { file: 'extensions.conf', include: 'extensions_py_phone_caller.conf' }
+    - { file: 'pjsip.conf', include: 'pjsip_py_phone_caller.conf' }
+    - { file: 'ari.conf', include: 'ari_py_phone_caller.conf' }
+    - { file: 'iax.conf', include: 'iax_py_phone_caller.conf' }
+  notify: reload asterisk
+
+- name: Check if modules.conf exists
+  ansible.builtin.stat:
+    path: "{{ asterisk_conf_dir }}/modules.conf"
+  register: modules_conf_stat
+
+- name: Disable deprecated chan_sip to free up port 5060
+  ansible.builtin.lineinfile:
+    path: "{{ asterisk_conf_dir }}/modules.conf"
+    line: "noload => chan_sip.so"
+    insertafter: '\[modules\]'
+    state: present
+  when: modules_conf_stat.stat.exists
+  notify: restart asterisk
+
+- name: Configure HTTP Server settings
+  community.general.ini_file:
+    path: "{{ asterisk_conf_dir }}/http.conf"
+    section: general
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    no_extra_spaces: yes
+  loop:
+    - { option: 'enabled', value: "{{ asterisk_http_enabled }}" }
+    - { option: 'bindaddr', value: "{{ asterisk_http_bindaddr }}" }
+    - { option: 'bindport', value: "{{ asterisk_http_bindport | string }}" }
+  notify: restart asterisk
+
+- name: Allow Asterisk to connect to custom HTTP ports (SELinux)
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  community.general.seport:
+    ports: "{{ item }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  loop:
+    - 8082
+    - 8083
+  when: ansible_os_family == "RedHat" and ansible_selinux.status == "enabled"
+  notify: restart asterisk
+
+- name: Ensure Asterisk service is started and enabled
+  ansible.builtin.service:
+    name: "{{ asterisk_service }}"
+    state: started
+    enabled: yes
+  when: not ansible_check_mode
