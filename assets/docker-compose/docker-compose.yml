@@ -1,140 +1,306 @@
 version: "3.9"
+  
+x-common-env: &common-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL}
+  ENABLE_TELEMETRY: ${ENABLE_TELEMETRY}
 
-# To bring up the containers: docker-compose --env-file .env-compose up
-#   * Detached mode: docker-compose --env-file .env-compose up -d
-#
-# To stop all the containers: docker-compose --env-file .env-compose down
-#
-# Warning: create the 'pgdata' volume the first time before run this file
-#          'podman volume create pgdata'
-
-# Use a pre-existing network
-networks:
-  default:
-    external: true
-    name: py-phone-caller
+x-db-common-env: &db-common-env
+  <<: *common-env
+  DYNACONF_DATABASE__DB_HOST: db
+  DYNACONF_DATABASE__DB_USER: py_phone_caller
+  DYNACONF_DATABASE__DB_PASSWORD: ${POSTGRES_PASSWORD:-py_phone_caller_password}
+  DYNACONF_DATABASE__DB_NAME: py_phone_caller
+  PICCOLO_CONF: py_phone_caller_utils.py_phone_caller_db.piccolo_conf
 
 services:
-  postgres_13:
+  # --- Infrastructure ---
+  db:
+    image: postgres:18-alpine
+    container_name: py-phone-caller-db
+    ports:
+      - "5432:5432"
     environment:
-      - PGDATA=/var/lib/postgresql/data/pgdata
-      - POSTGRES_PASSWORD=SWaaDvuf9zemkoCkkFhyo0HWx9zWApluiI9JS0
-    image: docker.io/library/postgres:13.3-alpine3.14
-    networks:
-      frontend:
-        ipv4_address: 172.19.0.50
+      - POSTGRES_DB=py_phone_caller
+      - POSTGRES_USER=py_phone_caller
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-py_phone_caller_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U py_phone_caller"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
 
-  asterisk_ws_monitor:
+  redis:
+    image: redis:7-alpine
+    container_name: py-phone-caller-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    command: caddy reverse-proxy --from ${CADDY_DOMAIN_NAME:-py-phone-caller.lan} --to py-phone-caller-ui:5000
     depends_on:
-      - postgres_13
-    image: quay.io/py-phone-caller/asterisk_ws_monitor:0.0.1
+      - py_phone_caller_ui
+
+  # --- Microservices ---
+  caller_register:
+    build:
+      context: ../../src
+      dockerfile: caller_register/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_register:${VERSION:-latest}
+    container_name: caller-register
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
     extra_hosts:
-      - postgres-service:172.19.0.50
-    volumes:
-      - type: bind
-        source: /opt/py-phone-caller/config/caller_config.toml
-        target: /opt/py-phone-caller/config/caller_config.toml
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-
-  asterisk_call:
-    depends_on:
-      - asterisk_call_register
-      - generate_audio
-    image: quay.io/py-phone-caller/asterisk_call:0.0.1
-    volumes:
-      - type: bind
-        source: /opt/py-phone-caller/config/caller_config.toml
-        target: /opt/py-phone-caller/config/caller_config.toml
-    ports:
-      - "8081:8081"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-
-  asterisk_recall:
-    depends_on:
-      - asterisk_ws_monitor
-      - asterisk_call
-    image: quay.io/py-phone-caller/asterisk_recall:0.0.1
-    extra_hosts:
-      - postgres-service:172.19.0.50
-    volumes:
-      - type: bind
-        source: /opt/py-phone-caller/config/caller_config.toml
-        target: /opt/py-phone-caller/config/caller_config.toml
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-
-  asterisk_call_register:
-    depends_on:
-      - asterisk_ws_monitor
-    image: quay.io/py-phone-caller/call_register:0.0.1
-    extra_hosts:
-      - postgres-service:172.19.0.50
-    volumes:
-      - type: bind
-        source: /opt/py-phone-caller/config/caller_config.toml
-        target: /opt/py-phone-caller/config/caller_config.toml
-    ports:
-      - "8080:8080"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-
-  caller_prometheus_webhook:
-    depends_on:
-      - caller_sms
-      - asterisk_call
-    image: quay.io/py-phone-caller/caller_prometheus_webhook:0.0.1
-    volumes:
-      - type: bind
-        source: /opt/py-phone-caller/config/caller_config.toml
-        target: /opt/py-phone-caller/config/caller_config.toml
-    ports:
-      - "8084:8084"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-
-  caller_sms:
-    image: quay.io/py-phone-caller/caller_sms:0.0.1
-    volumes:
-      - type: bind
-        source: /opt/py-phone-caller/config/caller_config.toml
-        target: /opt/py-phone-caller/config/caller_config.toml
-    ports:
-      - "8085:8085"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *db-common-env
+      OTEL_SERVICE_NAME: caller-register
+    restart: always
 
   generate_audio:
-    depends_on:
-      - asterisk_ws_monitor
-    image: quay.io/py-phone-caller/generate_audio:0.0.1
-    volumes:
-      - type: bind
-        source: /opt/py-phone-caller/config/caller_config.toml
-        target: /opt/py-phone-caller/config/caller_config.toml
+    build:
+      context: ../../src
+      dockerfile: generate_audio/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/generate_audio:${VERSION:-latest}
+    container_name: generate-audio
     ports:
       - "8082:8082"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
+    volumes:
+      - audio_data:/app/audio
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *common-env
+      OTEL_SERVICE_NAME: generate-audio
+    restart: always
 
+  caller_address_book:
+    build:
+      context: ../../src
+      dockerfile: caller_address_book/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_address_book:${VERSION:-latest}
+    container_name: caller-address-book
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8087:8087"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *db-common-env
+      OTEL_SERVICE_NAME: caller-address-book
+    restart: always
+
+  asterisk_caller:
+    build:
+      context: ../../src
+      dockerfile: asterisk_caller/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_caller:${VERSION:-latest}
+    container_name: asterisk-caller
+    depends_on:
+      caller_register:
+        condition: service_healthy
+      generate_audio:
+        condition: service_healthy
+      caller_address_book:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *common-env
+      OTEL_SERVICE_NAME: asterisk-caller
+      DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: caller_register
+      DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST: generate_audio
+      DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST: caller_address_book
+    restart: always
+
+  asterisk_ws_monitor:
+    build:
+      context: ../../src
+      dockerfile: asterisk_ws_monitor/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_ws_monitor:${VERSION:-latest}
+    container_name: asterisk-ws-monitor
+    depends_on:
+      db:
+        condition: service_healthy
+      asterisk_caller:
+        condition: service_healthy
+      generate_audio:
+        condition: service_healthy
+      caller_register:
+        condition: service_healthy
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *db-common-env
+      OTEL_SERVICE_NAME: asterisk-ws-monitor
+      DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: asterisk_caller
+      DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST: generate_audio
+      DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: caller_register
+    restart: always
+
+  asterisk_recaller:
+    build:
+      context: ../../src
+      dockerfile: asterisk_recaller/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_recaller:${VERSION:-latest}
+    container_name: asterisk-recaller
+    depends_on:
+      db:
+        condition: service_healthy
+      asterisk_caller:
+        condition: service_healthy
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *db-common-env
+      OTEL_SERVICE_NAME: asterisk-recaller
+      DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: asterisk_caller
+    restart: always
+
+  caller_sms:
+    build:
+      context: ../../src
+      dockerfile: caller_sms/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_sms:${VERSION:-latest}
+    container_name: caller-sms
+    ports:
+      - "8085:8085"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *common-env
+      OTEL_SERVICE_NAME: caller-sms
+    # devices:
+    #   - "/dev/ttyUSB2:/dev/ttyUSB2"
+    restart: always
+
+  caller_prometheus_webhook:
+    build:
+      context: ../../src
+      dockerfile: caller_prometheus_webhook/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_prometheus_webhook:${VERSION:-latest}
+    container_name: caller-prometheus-webhook
+    depends_on:
+      asterisk_caller:
+        condition: service_healthy
+      caller_sms:
+        condition: service_healthy
+    ports:
+      - "8084:8084"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *common-env
+      OTEL_SERVICE_NAME: caller-prometheus-webhook
+      DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: asterisk_caller
+      DYNACONF_CALLER_SMS__CALLER_SMS_HOST: caller_sms
+    restart: always
+
+  caller_scheduler:
+    build:
+      context: ../../src
+      dockerfile: caller_scheduler/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_scheduler:${VERSION:-latest}
+    container_name: caller-scheduler
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8086:8086"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *common-env
+      OTEL_SERVICE_NAME: caller-scheduler
+      DYNACONF_QUEUE__QUEUE_HOST: redis
+      DYNACONF_QUEUE__QUEUE_URL: redis://redis:6379
+    restart: always
+
+  py_phone_caller_ui:
+    build:
+      context: ../../src
+      dockerfile: py_phone_caller_ui/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/py_phone_caller_ui:${VERSION:-latest}
+    container_name: py-phone-caller-ui
+    depends_on:
+      db:
+        condition: service_healthy
+      caller_scheduler:
+        condition: service_healthy
+      caller_register:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *db-common-env
+      OTEL_SERVICE_NAME: py-phone-caller-ui
+      DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: caller_scheduler
+      DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: caller_register
+      DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST: caller_address_book
+      UI_USER_RESET_PASSWORD: false
+    restart: always
+
+  celery_worker:
+    build:
+      context: ../../src
+      dockerfile: celery_worker/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/celery_worker:${VERSION:-latest}
+    container_name: celery-worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      caller_register:
+        condition: service_healthy
+      asterisk_caller:
+        condition: service_healthy
+      caller_scheduler:
+        condition: service_healthy
+    healthcheck:
+      test: ["NONE"]
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      <<: *db-common-env
+      OTEL_SERVICE_NAME: celery-worker
+      DYNACONF_QUEUE__QUEUE_HOST: redis
+      DYNACONF_QUEUE__QUEUE_URL: redis://redis:6379
+      DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: caller_register
+      DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: asterisk_caller
+      DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: caller_scheduler
+    restart: always
+
+volumes:
+  pgdata:
+  audio_data:
+  caddy_data:
+  caddy_config:
+    
