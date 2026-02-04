@@ -1,0 +1,176 @@
+# Where the components run through SSH: 192.168.10.111
+
+[commons]
+asterisk_user = "py-phone-caller"
+asterisk_host = "pbx.lan"
+asterisk_web_port = "8088"
+sms_db_path = "sqlite:///tmp/sms.db"
+asterisk_ami_user = "admin"
+asterisk_ami_port = 5038
+asterisk_http_scheme = "http"
+
+[asterisk_call]
+asterisk_ari_channels = "ari/channels"
+asterisk_ari_play = "play?media=sound"
+asterisk_context = "py-phone-caller"
+asterisk_extension = "3216"
+#asterisk_chan_type = "SIP/sip-provider"
+#asterisk_chan_type = "PJSIP/py-phone-caller"
+asterisk_chan_type = "Local/{phone}@py-phone-caller"
+asterisk_caller_id = "Py-Phone-Caller"
+asterisk_call_http_scheme = "http"
+asterisk_call_host = "192.168.10.111"
+asterisk_call_port = "8081"
+asterisk_call_app_route_place_call = "place_call"
+asterisk_call_app_route_call_to_queue = "call_to_queue"
+asterisk_call_app_route_play = "play"
+seconds_to_forget = 180
+client_timeout_total = 5 # For 'ClientTimeout(total=5)'
+
+[call_register]
+call_register_http_scheme = "http"
+call_register_host = "192.168.10.111"
+#call_register_host = "127.0.0.1" # Development
+call_register_port = "8083"
+call_register_app_route_register_call = "register_call"
+call_register_app_route_voice_message = "msg"
+call_register_app_route_acknowledge = "ack"
+call_register_app_route_heard = "heard"
+call_register_scheduled_call_app_route = "scheduled_call"
+
+[asterisk_ws_monitor]
+asterisk_stasis_app = "py-phone-caller"
+
+[asterisk_recaller]
+times_to_dial = 3
+call_backup_callee_after_seconds = 60
+call_backup_callee_max_times = 3
+
+[generate_audio]
+generate_audio_http_scheme = "http"
+generate_audio_host = "192.168.10.111"
+generate_audio_port = 8082
+generate_audio_app_route = "make_audio"
+tts_engine = "kokoro_tts"
+gcloud_tts_language_code = "en"
+aws_polly_region_name = 'eu-north-1'
+aws_polly_voice = "Enrique"
+pre_trained_models_folder = "pre_trained_models"
+facebook_mms_models_folder = "facebook"
+facebook_mms_language_code = "spa"
+facebook_mms_num2words_language_code = "es"
+piper_models_folder = "piper_tts"
+piper_language_code = "it_IT"
+piper_language_default_code = "EN_us"
+piper_python_interpreter = "python3"
+piper_voices_url = "https://huggingface.co/rhasspy/piper-voices/tree/main"
+kokoro_models_folder = "kokoro_tts"
+kokoro_lang = "e"
+kokoro_python_interpreter = "python3"
+kokoro_model_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/e9d173129d407bf1378c402aba163de4dde2615e/kokoro-v0_19.onnx"
+kokoro_voices_base_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices"
+kokoro_repo_id = "hexgrad/Kokoro-82M"
+kokoro_model_filename = "kokoro-v1_0.pth"
+serving_audio_folder = "audio"
+is_audio_ready_endpoint = "is_audio_ready"
+num_of_cpus = 2
+
+[caller_prometheus_webhook]
+prometheus_webhook_port = 8084
+prometheus_webhook_app_route_call_only = "call_only"
+prometheus_webhook_app_route_sms_only = "sms_only"
+prometheus_webhook_app_route_sms_before_call = "sms_before_call"
+prometheus_webhook_app_route_call_and_sms = "call_and_sms"
+prometheus_webhook_receivers = ["+393341212123"]
+
+# -------------------------------------------------------------------------
+# UPDATED SMS CONFIGURATION FOR HIGH AVAILABILITY (HA)
+# -------------------------------------------------------------------------
+[caller_sms]
+caller_sms_http_scheme = "http"
+caller_sms_host = "192.168.10.111"
+caller_sms_port = "8085"
+caller_sms_app_route = "send_sms"
+sms_before_call_wait_seconds = 120
+
+# The carrier to use. Options: "twilio", "on_premise"
+caller_sms_carrier = "on_premise"
+
+# Twilio configuration (Cloud option)
+twilio_sms_from = "+15512235678"
+
+# --- On-premise Configuration (Rust Engine HA) ---
+on_premise_sms_db = "/tmp/sms.db"
+on_premise_sms_db_retry_records = 5
+sms_strategy = "round_robin" # Options: "failover", "round_robin", "single_carrier"
+
+# MODEM 1: Primary Carrier (e.g., TIM/Verizon)
+# Note: Use udev rules to map specific USB ports to symlinks (e.g. /dev/modem_primary) 
+# to avoid device swapping on reboot.
+[[caller_sms.modems]]
+id = "primary_carrier"
+port = "/dev/ttyUSB2"   # Recommended: "/dev/modem_primary"
+baud_rate = 115200
+priority = 1            # Lower number = Higher priority
+
+# MODEM 2: Backup Carrier (e.g., Vodafone/AT&T)
+[[caller_sms.modems]]
+id = "backup_carrier"
+port = "/dev/ttyUSB3"   # Recommended: "/dev/modem_backup"
+baud_rate = 115200
+priority = 2            # Only used if Primary fails
+
+# -------------------------------------------------------------------------
+
+[scheduled_calls]
+scheduled_calls_http_scheme = "http"
+scheduled_calls_host = "192.168.10.111"
+scheduled_calls_port = "8086"
+scheduled_call_app_route = "schedule_call"
+local_timezone = "Europe/Rome"
+
+[queue]
+queue_scheme = "redis"
+queue_host = "redis.lan"
+queue_port = 6379
+queue_url = "redis://redis.lan:6379/7"
+
+[database]
+db_host = "postgresql.lan"
+db_port = 5432
+db_name = "py_phone_caller"
+db_user = "py_phone_caller"
+db_max_size = 50
+db_max_inactive_connection_lifetime = 30.0
+
+[py_phone_caller_ui]
+ui_session_protection = "strong"
+ui_listen_on_host = "0.0.0.0"
+ui_listen_on_port = 5000
+ui_admin_user = "admin@py-phone-caller.link"
+min_password_length = 17
+
+[logs]
+log_formatter = "%(asctime)s %(message)s"
+log_level = "INFO"
+acknowledge_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/ack?asterisk_chan=[The Asterisk Channel ID]"
+heard_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/heard?asterisk_chan=[The Asterisk Channel ID]"
+register_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&message=[Alert Message Text]&asterisk_chan=[The Asterisk Channel ID]"
+voice_message_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/msg?asterisk_chan=[The Asterisk Channel ID]"
+asterisk_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/asterisk?phone=[Destination Phone Number]&message=[Alert Message Text]"
+asterisk_play_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/play?asterisk_chan=[The Asterisk Channel ID]&msg_chk_sum=[The message checksum]"
+generate_audio_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/make_audio?message=[Alert Message Text]&msg_chk_sum=[The message checksum]"
+caller_sms_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&message=[Alert Message Text]"
+scheduled_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/schedule_call?phone=[Destination Phone Number]&message=[Alert Message Text]&scheduled_at=[Date and Time YYYY-MM-DD HH:MM]"
+lost_directory_error = "The folder to serve the audio files was not found."
+
+[caller_address_book]
+caller_address_book_http_scheme = "http"
+caller_address_book_host = "192.168.10.111"
+caller_address_book_port = 8087
+caller_address_book_route_add_contact = "contact_add"
+caller_address_book_route_modify_contact = "contact_modify"
+caller_address_book_route_delete_contact = "contact_delete"
+caller_address_book_route_on_call_contact = "contact_on_call"
+caller_address_book_service_export = "contacts_export_csv"
+caller_address_book_service_import = "contacts_import_csv"
