@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>py-phone-caller | Emergency Alert Platform</title>
+    <meta name="description" content="py-phone-caller is a production-ready emergency alert and notification platform built with Python, Asterisk PBX, and cloud-native microservices.">
+    <meta property="og:title" content="py-phone-caller | Emergency Alert Platform">
+    <meta property="og:description" content="py-phone-caller is a production-ready emergency alert and notification platform built with Python, Asterisk PBX, and cloud-native microservices.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://jcfdeb.github.io/py-phone-caller/">
+    <meta property="og:image" content="https://jcfdeb.github.io/py-phone-caller/assets/hero-wave.svg">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="py-phone-caller | Emergency Alert Platform">
+    <meta name="twitter:description" content="py-phone-caller is a production-ready emergency alert and notification platform built with Python, Asterisk PBX, and cloud-native microservices.">
+    <meta name="twitter:image" content="https://jcfdeb.github.io/py-phone-caller/assets/hero-wave.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <div class="backdrop" aria-hidden="true"></div>
+    <div class="orb orb-1" aria-hidden="true"></div>
+    <div class="orb orb-2" aria-hidden="true"></div>
+    <div class="orb orb-3" aria-hidden="true"></div>
+
+    <header class="nav">
+      <div class="logo">
+        <img src="assets/logo-asterisk.svg" width="32" height="32" alt="" aria-hidden="true">
+        <span>py-phone-caller</span>
+      </div>
+      <nav class="nav-links" id="site-nav">
+        <a href="#architecture">Architecture</a>
+        <a href="#services">Services</a>
+        <a href="#capabilities">Capabilities</a>
+        <a href="#deploy">Deploy</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav">
+          <span class="menu-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h16M4 12h16M4 17h16"></path>
+            </svg>
+          </span>
+        </button>
+        <button class="theme-toggle" type="button" aria-label="Toggle day/night mode" aria-pressed="false">
+          <span class="theme-icon icon-sun" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+            </svg>
+          </span>
+          <span class="theme-icon icon-moon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.8A8 8 0 1 1 11.2 3a6 6 0 0 0 9.8 9.8Z"></path>
+            </svg>
+          </span>
+        </button>
+        <a class="btn small" href="#get-started">Get started</a>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Emergency-grade alerting and response</p>
+          <h1>Command every call, every time.</h1>
+          <p class="lead">
+            py-phone-caller is a production-ready emergency alert and notification platform that
+            orchestrates voice calls and SMS with Python microservices, Asterisk PBX, and a
+            cloud-native toolchain.
+          </p>
+          <div class="cta">
+            <a class="btn primary" href="#architecture">View architecture</a>
+            <a class="btn ghost" href="#services">Explore services</a>
+            <a class="btn ghost" href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener">View on GitHub</a>
+          </div>
+          <div class="hero-stats">
+            <div class="stat">
+              <div class="stat-value">11</div>
+              <div class="stat-label">microservices</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">5</div>
+              <div class="stat-label">TTS engines</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">8081-8087</div>
+              <div class="stat-label">service ports</div>
+            </div>
+          </div>
+        </div>
+        <div class="hero-art">
+          <img src="assets/hero-wave.svg" width="520" height="320" decoding="async" alt="Stylized waveform representing outbound calls">
+          <div class="hero-card">
+            <div class="card-title">Alert pipeline</div>
+            <div class="card-body">
+              <span class="chip">Prometheus</span>
+              <span class="chip">UI</span>
+              <span class="chip">API</span>
+              <span class="chip">Scheduler</span>
+              <span class="chip">Asterisk</span>
+            </div>
+            <div class="card-foot">
+              <span>Calls + SMS</span>
+              <span>Retry + Escalate</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="architecture" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Architecture overview</p>
+          <h2>An alert flow that never drops the signal</h2>
+          <p>
+            py-phone-caller is built as an event-driven, independently deployable microservice
+            mesh. Triggers enter through a webhook, UI, or API, then fan out to a call pipeline
+            that handles generation, playback, and escalation.
+          </p>
+          <p class="doc-link">
+            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/README.md" target="_blank" rel="noopener">Architecture details in src/README.md</a>
+          </p>
+        </div>
+        <div class="grid two">
+          <div class="panel diagram-panel">
+            <div class="diagram-frame">
+              <img id="system-map" src="assets/system-map.svg" data-dark-src="assets/system-map.svg" data-light-src="assets/system-map-light.svg" width="1600" height="900" loading="lazy" decoding="async" alt="System map diagram for the emergency alert pipeline">
+              <button class="zoom-btn" type="button" data-zoom-target="system-map" aria-label="Zoom system map">Zoom</button>
+            </div>
+          </div>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">01</div>
+              <div>
+                <h3>Trigger and schedule</h3>
+                <p>
+                  Prometheus Alertmanager, the dashboard, or a REST call pushes a notification.
+                  The scheduler and Celery worker handle future execution with Redis-backed tasks.
+                </p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">02</div>
+              <div>
+                <h3>Call orchestration</h3>
+                <p>
+                  The Asterisk caller places outbound calls, resolves on-call contacts, and plays
+                  generated audio through ARI channels.
+                </p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">03</div>
+              <div>
+                <h3>Live monitoring</h3>
+                <p>
+                  WebSocket listeners monitor call lifecycles, request text-to-speech audio on
+                  demand, and log outcomes in the call registry.
+                </p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num">04</div>
+              <div>
+                <h3>Retry and escalation</h3>
+                <p>
+                  Failed or unacknowledged calls are retried automatically, escalating to backup
+                  contacts while SMS flows keep people informed.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="services" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Microservice lineup</p>
+          <h2>11 services, one coordinated response</h2>
+          <p>
+            Each service is independently deployable, Docker-ready, and wired through REST APIs and
+            asynchronous queues.
+          </p>
+          <p class="doc-link">
+            <a href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener">View repository on GitHub</a>
+          </p>
+        </div>
+        <div class="card-grid">
+          <a class="service-card" style="--delay: 0s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/asterisk_caller/README.md">
+            <h3>asterisk_caller</h3>
+            <p>Outbound call orchestrator that queues, places, and plays audio via Asterisk ARI.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8081</span>
+            </div>
+            <div class="tag">Call path</div>
+          </a>
+          <a class="service-card" style="--delay: 0.05s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/asterisk_recaller/README.md">
+            <h3>asterisk_recaller</h3>
+            <p>Retry engine that enforces windows, backoff, and escalation to backup contacts.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Worker</span>
+            </div>
+            <div class="tag">Resilience</div>
+          </a>
+          <a class="service-card" style="--delay: 0.1s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/asterisk_ws_monitor/README.md">
+            <h3>asterisk_ws_monitor</h3>
+            <p>Real-time ARI WebSocket listener for lifecycle events and playback triggers.</p>
+            <div class="service-meta">
+              <span class="meta-chip">WebSocket client</span>
+            </div>
+            <div class="tag">Realtime</div>
+          </a>
+          <a class="service-card" style="--delay: 0.15s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_register/README.md">
+            <h3>caller_register</h3>
+            <p>Call registry that stores attempts, acknowledgements, and message payloads.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8083</span>
+            </div>
+            <div class="tag">Persistence</div>
+          </a>
+          <a class="service-card" style="--delay: 0.2s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/generate_audio/README.md">
+            <h3>generate_audio</h3>
+            <p>Text-to-speech engine supporting gTTS, MMS, Piper, AWS Polly, and Kokoro.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8082</span>
+            </div>
+            <div class="tag">TTS</div>
+          </a>
+          <a class="service-card" style="--delay: 0.25s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_scheduler/README.md">
+            <h3>caller_scheduler</h3>
+            <p>Celery-driven scheduler for future calls with Redis-backed task queues.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8086</span>
+            </div>
+            <div class="tag">Scheduling</div>
+          </a>
+          <a class="service-card" style="--delay: 0.3s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_address_book/README.md">
+            <h3>caller_address_book</h3>
+            <p>Contact and on-call rotation management, including CSV import and export.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8087</span>
+            </div>
+            <div class="tag">Contacts</div>
+          </a>
+          <a class="service-card" style="--delay: 0.35s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_sms/README.md">
+            <h3>caller_sms</h3>
+            <p>SMS gateway with Twilio support and an on-premise USB modem backend.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8085</span>
+            </div>
+            <div class="tag">Messaging</div>
+          </a>
+          <a class="service-card" style="--delay: 0.4s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_prometheus_webhook/README.md">
+            <h3>caller_prometheus_webhook</h3>
+            <p>Alertmanager-compatible webhook that fans alerts into calls and SMS flows.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8084</span>
+            </div>
+            <div class="tag">Integration</div>
+          </a>
+          <a class="service-card" style="--delay: 0.45s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/py_phone_caller_ui/README.md">
+            <h3>py_phone_caller_ui</h3>
+            <p>Flask dashboard for calls, schedules, users, and WebSocket event logs.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 5000</span>
+            </div>
+            <div class="tag">Interface</div>
+          </a>
+          <a class="service-card" style="--delay: 0.5s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/README.md">
+            <h3>celery_worker</h3>
+            <p>Background task processor that executes queued and scheduled call jobs.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Worker</span>
+            </div>
+            <div class="tag">Workers</div>
+          </a>
+          <a class="service-card" style="--delay: 0.55s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/py-phone-caller-utils/README.md">
+            <h3>py-phone-caller-utils</h3>
+            <p>Shared library with Dynaconf settings, Piccolo ORM models, and telemetry hooks.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Library</span>
+            </div>
+            <div class="tag">Shared core</div>
+          </a>
+        </div>
+      </section>
+
+      <section id="capabilities" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Capabilities</p>
+          <h2>Built for urgent moments</h2>
+          <p>
+            Every layer is tuned for delivery speed, reliability, and operational visibility.
+          </p>
+        </div>
+        <div class="grid three">
+          <div class="panel">
+            <h3>Alert-first delivery</h3>
+            <p>Call-only, SMS-only, SMS-before-call, or parallel call-and-SMS workflows.</p>
+          </div>
+          <div class="panel">
+            <h3>Multi-engine voice</h3>
+            <p>Generate audio with multiple cloud or offline TTS engines and cache outputs.</p>
+          </div>
+          <div class="panel">
+            <h3>On-call intelligence</h3>
+            <p>Contact routing, rotations, and escalation paths keep teams in the loop.</p>
+          </div>
+          <div class="panel">
+            <h3>Observability ready</h3>
+            <p>Telemetry hooks and event logging keep the full call lifecycle visible.</p>
+          </div>
+          <div class="panel">
+            <h3>Deployment choice</h3>
+            <p>Run via Docker Compose, systemd services, or full Ansible deployment.</p>
+          </div>
+          <div class="panel">
+            <h3>Secure defaults</h3>
+            <p>Dynaconf configuration and secrets management keep credentials out of Git.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="stack">
+        <div class="section-head">
+          <p class="eyebrow">Stack</p>
+          <h2>Modern infrastructure, pragmatic choices</h2>
+          <p>
+            Python 3.12, Asterisk 18/20, Redis, PostgreSQL, and Celery anchor the runtime.
+          </p>
+        </div>
+        <div class="stack-chips">
+          <span>Asterisk PBX</span>
+          <span>Python 3.12</span>
+          <span>Celery + Redis</span>
+          <span>PostgreSQL 18 (also 15)</span>
+          <span>Dynaconf</span>
+          <span>Docker</span>
+          <span>Ansible</span>
+          <span>OpenTelemetry</span>
+        </div>
+      </section>
+
+      <section class="section" id="ports">
+        <div class="section-head">
+          <p class="eyebrow">Ports</p>
+          <h2>Service endpoints at a glance</h2>
+          <p>
+            Each service exposes a focused API. Only the needed ports should be exposed in
+            production.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Port</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>asterisk_caller</td>
+                <td>8081</td>
+                <td>Place calls</td>
+              </tr>
+              <tr>
+                <td>generate_audio</td>
+                <td>8082</td>
+                <td>Generate TTS audio</td>
+              </tr>
+              <tr>
+                <td>caller_register</td>
+                <td>8083</td>
+                <td>Store call status</td>
+              </tr>
+              <tr>
+                <td>caller_prometheus_webhook</td>
+                <td>8084</td>
+                <td>Alertmanager webhook</td>
+              </tr>
+              <tr>
+                <td>caller_sms</td>
+                <td>8085</td>
+                <td>SMS gateway</td>
+              </tr>
+              <tr>
+                <td>caller_scheduler</td>
+                <td>8086</td>
+                <td>Schedule calls</td>
+              </tr>
+              <tr>
+                <td>caller_address_book</td>
+                <td>8087</td>
+                <td>Contact management</td>
+              </tr>
+              <tr>
+                <td>py_phone_caller_ui</td>
+                <td>5000</td>
+                <td>Web dashboard</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="deploy">
+        <div class="section-head">
+          <p class="eyebrow">Deploy</p>
+          <h2>From local runs to production stacks</h2>
+          <p>
+            Configure once with Dynaconf and ship in the model that fits your environment.
+          </p>
+          <p class="doc-link">
+            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/assets/ansible/deploy_all/README.md" target="_blank" rel="noopener">Ansible deployment README</a>
+          </p>
+          <p class="doc-link">
+            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/doc/fedora34-server-with-podman_though-ansible.md" target="_blank" rel="noopener">Manual Asterisk PBX setup guide (Fedora + Podman)</a>
+          </p>
+        </div>
+        <div class="grid two">
+          <div class="panel">
+            <h3>Configuration</h3>
+            <p>Set configuration directories or point to a specific settings file.</p>
+            <pre><code>export CALLER_CONFIG_DIR=src/config
+# OR
+export CALLER_CONFIG=/path/to/settings.toml</code></pre>
+            <p class="doc-link">
+              <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/README.md" target="_blank" rel="noopener">Config notes in src/README.md</a>
+            </p>
+          </div>
+          <div class="panel">
+            <h3>Docker Compose</h3>
+            <p>Bring up the full stack with containers and service definitions.</p>
+            <pre><code>cd assets/docker-compose
+docker compose up -d</code></pre>
+            <p class="doc-link">
+              <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/assets/docker-compose/README.md" target="_blank" rel="noopener">Docker Compose README</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="get-started">
+        <div class="section-head">
+          <p class="eyebrow">Get started</p>
+          <h2>Local run example</h2>
+          <p>
+            Each service can run standalone with a shared configuration and PYTHONPATH.
+          </p>
+        </div>
+        <div class="panel">
+          <pre><code>export CALLER_CONFIG_DIR=src/config
+export PYTHONPATH="src:$PYTHONPATH"
+python3 -m asterisk_caller.asterisk_caller</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <div>
+          <h3>py-phone-caller</h3>
+          <p>Emergency alerting and notification for the moments that matter most.</p>
+        </div>
+        <div>
+          <span class="footer-label">Core dependencies</span>
+          <p>Asterisk PBX, PostgreSQL, Redis, Python 3.12+</p>
+        </div>
+        <div>
+          <span class="footer-label">Deployment options</span>
+          <p>Docker Compose, systemd services, Ansible automation</p>
+        </div>
+      </div>
+    </footer>
+
+    <div class="zoom-overlay" id="diagram-zoom" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="diagram-zoom-title">
+      <div class="zoom-toolbar">
+        <div class="zoom-title" id="diagram-zoom-title">py-phone-caller system map</div>
+        <div class="zoom-controls">
+          <span class="zoom-level">100%</span>
+          <button class="zoom-control" type="button" data-zoom-action="out" aria-label="Zoom out">-</button>
+          <button class="zoom-control" type="button" data-zoom-action="in" aria-label="Zoom in">+</button>
+          <button class="zoom-control" type="button" data-zoom-action="close" aria-label="Close zoom">Close</button>
+        </div>
+      </div>
+      <div class="zoom-stage">
+        <img class="zoom-image" alt="">
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const menuToggle = document.querySelector(".menu-toggle");
+        const navLinks = document.getElementById("site-nav");
+        const nav = document.querySelector(".nav");
+        if (menuToggle && navLinks && nav) {
+          const closeMenu = () => {
+            navLinks.classList.remove("open");
+            menuToggle.setAttribute("aria-expanded", "false");
+          };
+
+          menuToggle.addEventListener("click", () => {
+            const isOpen = navLinks.classList.toggle("open");
+            menuToggle.setAttribute("aria-expanded", isOpen);
+          });
+
+          navLinks.querySelectorAll("a").forEach((link) => {
+            link.addEventListener("click", closeMenu);
+          });
+
+          document.addEventListener("click", (event) => {
+            if (!nav.contains(event.target) && navLinks.classList.contains("open")) {
+              closeMenu();
+            }
+          });
+
+          document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && navLinks.classList.contains("open")) {
+              closeMenu();
+            }
+          });
+        }
+      })();
+
+      (() => {
+        const toggle = document.querySelector(".theme-toggle");
+        if (toggle) {
+          const body = document.body;
+          const diagram = document.getElementById("system-map");
+          const zoomOverlay = document.getElementById("diagram-zoom");
+          const zoomImage = zoomOverlay ? zoomOverlay.querySelector(".zoom-image") : null;
+          const systemTheme = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+          const storage = (() => {
+            try {
+              return window.localStorage;
+            } catch (error) {
+              return null;
+            }
+          })();
+
+          const applyTheme = (theme) => {
+            if (theme === "light") {
+              body.classList.add("theme-light");
+            } else {
+              body.classList.remove("theme-light");
+            }
+            toggle.setAttribute("aria-pressed", theme === "light");
+            if (diagram) {
+              const nextSrc = theme === "light" ? diagram.dataset.lightSrc : diagram.dataset.darkSrc;
+              if (nextSrc) {
+                diagram.src = nextSrc;
+              }
+            }
+            if (zoomOverlay && zoomOverlay.classList.contains("open") && zoomImage && diagram) {
+              zoomImage.src = diagram.src;
+              zoomImage.alt = diagram.alt;
+            }
+          };
+
+          const storedTheme = storage ? storage.getItem("theme") : null;
+          const initialTheme = storedTheme || (systemTheme && systemTheme.matches ? "dark" : "light");
+          applyTheme(initialTheme);
+
+          toggle.addEventListener("click", () => {
+            const nextTheme = body.classList.contains("theme-light") ? "dark" : "light";
+            applyTheme(nextTheme);
+            if (storage) {
+              storage.setItem("theme", nextTheme);
+            }
+          });
+
+          if (systemTheme) {
+            const handleThemeChange = (event) => {
+              if (!storage || !storage.getItem("theme")) {
+                applyTheme(event.matches ? "dark" : "light");
+              }
+            };
+            if (systemTheme.addEventListener) {
+              systemTheme.addEventListener("change", handleThemeChange);
+            } else if (systemTheme.addListener) {
+              systemTheme.addListener(handleThemeChange);
+            }
+          }
+        }
+      })();
+
+      (() => {
+        const zoomButton = document.querySelector("[data-zoom-target]");
+        const overlay = document.getElementById("diagram-zoom");
+        if (!zoomButton || !overlay) {
+          return;
+        }
+
+        const zoomImage = overlay.querySelector(".zoom-image");
+        const zoomLevel = overlay.querySelector(".zoom-level");
+        const zoomOutButton = overlay.querySelector('[data-zoom-action="out"]');
+        const zoomInButton = overlay.querySelector('[data-zoom-action="in"]');
+        const closeButton = overlay.querySelector('[data-zoom-action="close"]');
+        const focusableSelector = 'button, [href], [tabindex]:not([tabindex="-1"])';
+
+        let zoom = 1;
+        let previousFocus = null;
+
+        const setZoom = (value) => {
+          zoom = Math.min(3, Math.max(1, value));
+          zoomImage.style.setProperty("--zoom", zoom.toFixed(2));
+          zoomLevel.textContent = `${Math.round(zoom * 100)}%`;
+          zoomOutButton.disabled = zoom <= 1;
+          zoomInButton.disabled = zoom >= 3;
+        };
+
+        const getFocusable = () =>
+          Array.from(overlay.querySelectorAll(focusableSelector)).filter((element) => !element.disabled);
+
+        const openZoom = () => {
+          const targetId = zoomButton.getAttribute("data-zoom-target");
+          const target = document.getElementById(targetId);
+          if (!target) {
+            return;
+          }
+          previousFocus = document.activeElement;
+          zoomImage.src = target.src;
+          zoomImage.alt = target.alt;
+          overlay.classList.add("open");
+          overlay.setAttribute("aria-hidden", "false");
+          document.body.classList.add("zoom-open");
+          setZoom(1);
+          const focusable = getFocusable();
+          if (focusable.length) {
+            focusable[0].focus();
+          }
+        };
+
+        const closeZoom = () => {
+          overlay.classList.remove("open");
+          overlay.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("zoom-open");
+          if (previousFocus && typeof previousFocus.focus === "function") {
+            previousFocus.focus();
+          }
+        };
+
+        zoomButton.addEventListener("click", openZoom);
+        closeButton.addEventListener("click", closeZoom);
+        zoomInButton.addEventListener("click", () => setZoom(zoom + 0.2));
+        zoomOutButton.addEventListener("click", () => setZoom(zoom - 0.2));
+        overlay.addEventListener("click", (event) => {
+          if (event.target === overlay) {
+            closeZoom();
+          }
+        });
+        document.addEventListener("keydown", (event) => {
+          if (!overlay.classList.contains("open")) {
+            return;
+          }
+          if (event.key === "Escape") {
+            closeZoom();
+            return;
+          }
+          if (event.key === "Tab") {
+            const focusable = getFocusable();
+            if (!focusable.length) {
+              event.preventDefault();
+              return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first.focus();
+            }
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

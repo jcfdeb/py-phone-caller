@@ -1,0 +1,125 @@
+<svg width="640" height="360" viewBox="0 0 640 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111a27" />
+      <stop offset="100%" stop-color="#0b111a" />
+    </linearGradient>
+    <linearGradient id="node" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#162235" />
+      <stop offset="100%" stop-color="#0d1522" />
+    </linearGradient>
+    <linearGradient id="nodeTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a3d55" stop-opacity="0.7" />
+      <stop offset="100%" stop-color="#2a3d55" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5cd6c7" />
+      <stop offset="100%" stop-color="#75c8ff" />
+    </linearGradient>
+    <radialGradient id="glowTeal" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(120 70) scale(140)">
+      <stop offset="0%" stop-color="#5cd6c7" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#5cd6c7" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowOrange" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(520 280) scale(160)">
+      <stop offset="0%" stop-color="#ff6f3c" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#ff6f3c" stop-opacity="0" />
+    </radialGradient>
+    <pattern id="dotGrid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#1f2a3b" opacity="0.55" />
+    </pattern>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#05080f" flood-opacity="0.5" />
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#1b2c3f" flood-opacity="0.5" />
+    </filter>
+    <marker id="arrowTeal" markerWidth="12" markerHeight="12" refX="9" refY="4.5" orient="auto">
+      <path d="M0 0L9 4.5L0 9Z" fill="#5cd6c7" />
+    </marker>
+    <marker id="arrowOrange" markerWidth="12" markerHeight="12" refX="9" refY="4.5" orient="auto">
+      <path d="M0 0L9 4.5L0 9Z" fill="#ff6f3c" />
+    </marker>
+  </defs>
+
+  <rect x="8" y="8" width="624" height="344" rx="24" fill="url(#bg)" stroke="#1c2a3b" />
+  <rect x="8" y="8" width="624" height="344" rx="24" fill="url(#dotGrid)" opacity="0.6" />
+  <circle cx="120" cy="70" r="140" fill="url(#glowTeal)" />
+  <circle cx="520" cy="280" r="160" fill="url(#glowOrange)" />
+
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M210 80 C220 80 225 80 235 80" stroke="url(#flow)" stroke-width="2.2" marker-end="url(#arrowTeal)" />
+    <path d="M405 80 C415 80 420 80 430 80" stroke="url(#flow)" stroke-width="2.2" marker-end="url(#arrowTeal)" />
+    <path d="M515 112 C515 126 515 144 515 160" stroke="url(#flow)" stroke-width="2.2" marker-end="url(#arrowTeal)" />
+    <path d="M430 192 C420 192 414 192 405 192" stroke="url(#flow)" stroke-width="2.2" marker-end="url(#arrowTeal)" />
+    <path d="M235 192 C225 192 220 192 210 192" stroke="url(#flow)" stroke-width="2.2" marker-end="url(#arrowTeal)" />
+    <path d="M320 224 C320 238 320 256 320 272" stroke="url(#flow)" stroke-width="2.2" marker-end="url(#arrowTeal)" />
+    <path d="M405 304 C480 304 560 304 608 304 C628 304 628 160 608 80 L600 80" stroke="#ff6f3c" stroke-width="2.2" stroke-dasharray="6 6" marker-end="url(#arrowOrange)" />
+  </g>
+
+  <g>
+    <circle cx="320" cy="80" r="4" fill="#ffd166" />
+    <circle cx="515" cy="136" r="4" fill="#ffd166" />
+    <circle cx="320" cy="248" r="4" fill="#ffd166" />
+  </g>
+
+  <g>
+    <rect x="40" y="48" width="170" height="64" rx="16" fill="url(#node)" stroke="#24364c" filter="url(#softShadow)" />
+    <rect x="40" y="48" width="170" height="32" rx="16" fill="url(#nodeTop)" />
+    <circle cx="62" cy="80" r="12" fill="#75c8ff" />
+    <text x="62" y="84" text-anchor="middle" fill="#0b111a" font-size="10" font-family="Space Grotesk, sans-serif" font-weight="600">T</text>
+    <text x="86" y="76" fill="#f2eee5" font-size="11" font-family="Space Grotesk, sans-serif">TRIGGERS</text>
+    <text x="86" y="94" fill="#aab4c3" font-size="9" font-family="IBM Plex Sans, sans-serif">Prometheus / UI / API</text>
+  </g>
+
+  <g>
+    <rect x="235" y="48" width="170" height="64" rx="16" fill="url(#node)" stroke="#24364c" filter="url(#softShadow)" />
+    <rect x="235" y="48" width="170" height="32" rx="16" fill="url(#nodeTop)" />
+    <circle cx="257" cy="80" r="12" fill="#ffd166" />
+    <text x="257" y="84" text-anchor="middle" fill="#3b2f0a" font-size="10" font-family="Space Grotesk, sans-serif" font-weight="600">S</text>
+    <text x="281" y="76" fill="#f2eee5" font-size="11" font-family="Space Grotesk, sans-serif">SCHEDULER</text>
+    <text x="281" y="94" fill="#aab4c3" font-size="9" font-family="IBM Plex Sans, sans-serif">Celery + Redis tasks</text>
+  </g>
+
+  <g>
+    <rect x="430" y="48" width="170" height="64" rx="16" fill="url(#node)" stroke="#24364c" filter="url(#softShadow)" />
+    <rect x="430" y="48" width="170" height="32" rx="16" fill="url(#nodeTop)" />
+    <circle cx="452" cy="80" r="12" fill="#ff6f3c" />
+    <text x="452" y="84" text-anchor="middle" fill="#2b1208" font-size="10" font-family="Space Grotesk, sans-serif" font-weight="600">A</text>
+    <text x="476" y="76" fill="#f2eee5" font-size="11" font-family="Space Grotesk, sans-serif">ASTERISK CALLER</text>
+    <text x="476" y="94" fill="#aab4c3" font-size="9" font-family="IBM Plex Sans, sans-serif">Outbound call control</text>
+  </g>
+
+  <g>
+    <rect x="40" y="160" width="170" height="64" rx="16" fill="url(#node)" stroke="#24364c" filter="url(#softShadow)" />
+    <rect x="40" y="160" width="170" height="32" rx="16" fill="url(#nodeTop)" />
+    <circle cx="62" cy="192" r="12" fill="#5cd6c7" />
+    <text x="62" y="196" text-anchor="middle" fill="#0b2a27" font-size="10" font-family="Space Grotesk, sans-serif" font-weight="600">G</text>
+    <text x="86" y="188" fill="#f2eee5" font-size="11" font-family="Space Grotesk, sans-serif">GENERATE AUDIO</text>
+    <text x="86" y="206" fill="#aab4c3" font-size="9" font-family="IBM Plex Sans, sans-serif">Multi-engine TTS</text>
+  </g>
+
+  <g>
+    <rect x="235" y="160" width="170" height="64" rx="16" fill="url(#node)" stroke="#24364c" filter="url(#softShadow)" />
+    <rect x="235" y="160" width="170" height="32" rx="16" fill="url(#nodeTop)" />
+    <circle cx="257" cy="192" r="12" fill="#8adf6c" />
+    <text x="257" y="196" text-anchor="middle" fill="#18340f" font-size="10" font-family="Space Grotesk, sans-serif" font-weight="600">C</text>
+    <text x="281" y="188" fill="#f2eee5" font-size="11" font-family="Space Grotesk, sans-serif">CALL REGISTER</text>
+    <text x="281" y="206" fill="#aab4c3" font-size="9" font-family="IBM Plex Sans, sans-serif">State + history</text>
+  </g>
+
+  <g>
+    <rect x="430" y="160" width="170" height="64" rx="16" fill="url(#node)" stroke="#24364c" filter="url(#softShadow)" />
+    <rect x="430" y="160" width="170" height="32" rx="16" fill="url(#nodeTop)" />
+    <circle cx="452" cy="192" r="12" fill="#75c8ff" />
+    <text x="452" y="196" text-anchor="middle" fill="#102536" font-size="10" font-family="Space Grotesk, sans-serif" font-weight="600">W</text>
+    <text x="476" y="188" fill="#f2eee5" font-size="11" font-family="Space Grotesk, sans-serif">WS MONITOR</text>
+    <text x="476" y="206" fill="#aab4c3" font-size="9" font-family="IBM Plex Sans, sans-serif">Lifecycle events</text>
+  </g>
+
+  <g>
+    <rect x="235" y="272" width="170" height="64" rx="16" fill="url(#node)" stroke="#24364c" filter="url(#softShadow)" />
+    <rect x="235" y="272" width="170" height="32" rx="16" fill="url(#nodeTop)" />
+    <circle cx="257" cy="304" r="12" fill="#ff6f3c" />
+    <text x="257" y="308" text-anchor="middle" fill="#2b1208" font-size="10" font-family="Space Grotesk, sans-serif" font-weight="600">R</text>
+    <text x="281" y="300" fill="#f2eee5" font-size="11" font-family="Space Grotesk, sans-serif">RECALLER</text>
+    <text x="281" y="318" fill="#aab4c3" font-size="9" font-family="IBM Plex Sans, sans-serif">Retry + escalate</text>
+  </g>
+</svg>
