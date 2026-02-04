@@ -1,5 +1,3 @@
-# Where the components run through SSH: 192.168.10.111
-
 [commons]
 asterisk_user = "py-phone-caller"
 asterisk_host = "pbx.lan"
