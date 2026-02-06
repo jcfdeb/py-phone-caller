@@ -523,6 +523,28 @@ main {
   box-shadow: var(--shadow);
 }
 
+.tour-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-color: rgba(92, 214, 199, 0.35);
+  background:
+    radial-gradient(160px circle at top right, rgba(92, 214, 199, 0.18), transparent 65%),
+    var(--surface);
+}
+
+body.theme-light .tour-panel {
+  border-color: rgba(15, 23, 35, 0.2);
+  background:
+    radial-gradient(160px circle at top right, rgba(92, 214, 199, 0.2), transparent 65%),
+    var(--surface);
+}
+
+.tour-panel .btn {
+  align-self: flex-start;
+}
+
 .diagram-panel {
   padding: 20px;
 }
