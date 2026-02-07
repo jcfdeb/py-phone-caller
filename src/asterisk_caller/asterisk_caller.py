@@ -5,6 +5,10 @@ This module exposes an aiohttp application to place outbound calls through the
 Asterisk ARI API, enqueue calls for later processing, and play audio to active
 channels. It also manages a background queue worker for immediate calling.
 
+Phone numbers are expected to be in the format '00393349246425'. If a phone
+number is provided with a '+' prefix (e.g., '+393349246425'), it will be
+automatically converted to the '00' format to meet Asterisk PBX standards.
+
 Key routes:
 - `/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}`: place a call immediately
 - `/{ASTERISK_CALL_APP_ROUTE_CALL_TO_QUEUE}`: enqueue a call to be placed later
@@ -171,6 +175,8 @@ async def get_asterisk_query_string(the_asterisk_chan_type, phone):
 
     This asynchronous function builds the endpoint, extension, context, and caller ID parameters based on the channel type and phone number.
 
+    The phone number is formatted to meet Asterisk PBX standards (replacing '+' with '00').
+
     Args:
         the_asterisk_chan_type (str): The type of Asterisk channel (e.g., "PJSIP/endpoint" or "Local/{phone}@context").
         phone (str): The phone number to call.
@@ -178,6 +184,8 @@ async def get_asterisk_query_string(the_asterisk_chan_type, phone):
     Returns:
         str: The constructed query string for the ARI API call.
     """
+
+    phone = _format_phone(phone)
 
     if "{phone}" in the_asterisk_chan_type:
         endpoint = the_asterisk_chan_type.replace("{phone}", phone)
@@ -300,16 +308,36 @@ async def get_headers():
     return await gen_headers(f"{ASTERISK_USER}:{ASTERISK_PASS}")
 
 
+def _format_phone(phone: str) -> str:
+    """
+    Formats the phone number to meet Asterisk PBX standards.
+
+    If the phone number starts with a '+' prefix, it is replaced with '00'.
+
+    Args:
+        phone (str): The phone number to format.
+
+    Returns:
+        str: The formatted phone number.
+    """
+    if isinstance(phone, str) and phone.startswith("+"):
+        return "00" + phone[1:]
+    return phone
+
+
 async def _resolve_oncall_phone(phone: str) -> str:
     """
     Resolves the "oncall" phone to the actual phone number if the input phone is 'oncall'.
     The resolution is performed by querying an external address book service. If the
     phone is not "oncall", it returns the original phone value.
 
+    All phone numbers (original or resolved) are formatted to meet Asterisk PBX
+    standards (replacing '+' with '00').
+
     :param phone: The phone identifier as a string. If set to "oncall", it will be resolved
                   to the current on-call phone number.
-    :return: The resolved phone number as a string, or the original phone if it does not
-             require resolution.
+    :return: The resolved and formatted phone number as a string, or the original
+             formatted phone if it does not require resolution.
     """
 
     if isinstance(phone, str) and phone.lower() == "oncall":
@@ -331,11 +359,11 @@ async def _resolve_oncall_phone(phone: str) -> str:
                 resolved = data.get("phone_number")
                 if not resolved:
                     raise RuntimeError("Address book returned no phone_number")
-                return resolved
+                return _format_phone(resolved)
         except Exception as err:
             logging.exception(f"Unable to resolve 'oncall' phone: {err}")
             raise
-    return phone
+    return _format_phone(phone)
 
 
 async def asterisk_call_start(phone, message, backup_callee="false"):
