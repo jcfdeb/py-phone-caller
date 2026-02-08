@@ -1,156 +1,176 @@
 # py-phone-caller
 
+Automated phone call and SMS alerting platform for Asterisk-based environments.
+
 > [!WARNING]
-> **Security Notice**: This solution is designed to be deployed in an **isolated network segment** and should not be exposed to the public internet.
->
-> The only component suitable for public exposure is the **Web UI**. For all other components, you must implement an authentication mechanism in front of them.
+> **Security Notice**: This solution is designed to run inside a trusted network segment.
+> Only the Web UI should be exposed, and it must be protected by authentication and a reverse proxy.
+> All other services should remain private.
 
+## Overview
 
-## Introduction
+py-phone-caller is a Python-based alerting platform that turns events into outbound phone calls and SMS messages _(USB GSM Modem and Twilio)_ through Asterisk PBX _(phone calls)_. It can be triggered manually (API/UI), scheduled for later delivery, or driven by Prometheus Alertmanager _(Nagios or Zabbix)_.
 
-py-phone-caller is an automated phone calling and SMS notification system built with Python. It integrates with Asterisk PBX to make automated phone calls, deliver voice messages, and send SMS notifications. The system can be triggered manually, scheduled for future execution, or automatically triggered by Prometheus alerts.
+The system is built as a set of microservices that communicate over HTTP and queue work with Celery/Redis. Text-to-speech (TTS) services generate the audio played in calls, and a web UI provides operational visibility.
 
-The project provides a modular architecture with components for call initiation, audio generation, call tracking, SMS sending, and a web-based user interface. It supports multiple text-to-speech engines and can be configured to retry failed calls.
+## Key Features
 
-**Current Status**: Works fine, but a few things need to be improved or implemented. The project isn't ready to be used without a deep knowledge of Asterisk, Linux, etc. It is ready to be used in production, but the set of updated Ansible playbooks _(to install the components)_ is work in progres _(also runs on containers, Kubernetes...)_. Have patience, maybe in a near future it will be more _usable/installable_.
+- Outbound calls via Asterisk ARI with retry and escalation logic.
+- Prometheus Alertmanager webhook integration.
+- Multi-engine TTS gTTS, AWS Polly, Facebook MMS, Piper, Kokoro.
+- SMS delivery via Twilio or an on-premise USB modem backend.
+- Scheduling and queue-backed processing with Celery/Redis.
+- Contact and on-call rotation management.
+- Web UI for call history, scheduling, users, and events.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Triggers
+        CPW[caller_prometheus_webhook]
+        API[Manual/API]
+        SCH[caller_scheduler]
+    end
+
+    UI[py_phone_caller_ui] --> SCH
+    UI --> CR
+
+    API --> AC[asterisk_caller]
+    CPW --> AC
+    CPW --> SMS[caller_sms]
+    SCH --> RQ[(Redis)]
+    RQ --> CW[celery_worker]
+    CW --> AC
+
+    AC --> AST[Asterisk PBX]
+    AST --> PSTN[Phone Network]
+
+    AST --> WSM[asterisk_ws_monitor]
+    WSM --> GA[generate_audio]
+    GA --> AC
+
+    AC --> CR[caller_register]
+    WSM --> CR
+    AR[asterisk_recaller] --> AC
+
+    CR --> DB[(PostgreSQL)]
+    AR --> DB
+
+    AC --> CAB[caller_address_book]
+```
 
 ## Components
 
-### asterisk_caller
+| Component | Purpose | Docs |
+| --- | --- | --- |
+| `asterisk_caller` | Places outbound calls via Asterisk ARI and plays audio. | [README](src/asterisk_caller/README.md) |
+| `asterisk_ws_monitor` | Consumes ARI WebSocket events and triggers playback/audio generation. | [README](src/asterisk_ws_monitor/README.md) |
+| `asterisk_recaller` | Retries failed or unacknowledged calls and escalates to backups. | [README](src/asterisk_recaller/README.md) |
+| `caller_register` | Central registry for call attempts, status, and metadata. | [README](src/caller_register/README.md) |
+| `caller_scheduler` | Schedules future calls through Celery tasks. | [README](src/caller_scheduler/README.md) |
+| `celery_worker` | Executes queued and scheduled call tasks. | [src/README.md](src/README.md) |
+| `caller_sms` | SMS notifications via Twilio or on-premise modem backend. | [README](src/caller_sms/README.md) |
+| `caller_prometheus_webhook` | Alertmanager-compatible webhook for calls and SMS. | [README](src/caller_prometheus_webhook/README.md) |
+| `caller_address_book` | Contact and on-call rotation management. | [README](src/caller_address_book/README.md) |
+| `generate_audio` | Text-to-speech audio generation for call playback. | [README](src/generate_audio/README.md) |
+| `py_phone_caller_ui` | Web UI for operations, scheduling, and users. | [README](src/py_phone_caller_ui/README.md) |
+| `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, and telemetry. | [README](src/py-phone-caller-utils/README.md) |
 
-This component is responsible for initiating and managing phone calls through Asterisk. It provides a web API for placing calls and playing audio messages. The component handles the communication with Asterisk's REST Interface (ARI) to initiate calls, control call flow, and play audio messages to the caller.
+## Deployment Options
 
-Key features:
-- Initiates outbound calls through Asterisk
-- Manages call queues
-- Plays audio messages during calls
-- Provides HTTP endpoints for call control
+- Ansible all-in-one stack: `assets/ansible/deploy_all/README.md`
+- Ansible roles: `assets/ansible/asterisk_py-phone-caller/README.md` and `assets/ansible/on-vm_py-phone-caller/README.md`
+- Docker Compose stack (Asterisk external): `assets/docker-compose/README.md`
 
-### asterisk_recaller
+## Quick Start
 
-This component handles retrying failed phone calls. It periodically checks the database for calls that need to be retried and initiates recall attempts based on configured parameters. The component uses a strategy of waiting a certain amount of time between retry attempts and has a maximum number of retry attempts.
+Pick one path.
 
-Key features:
-- Monitors for failed or unanswered calls
-- Implements configurable retry logic
-- Spaces retry attempts over time
-- Tracks retry attempts in the database
+### Option A: Docker Compose (fastest, external Asterisk required)
 
-### asterisk_ws_monitor
+1. Configure Asterisk access used by the containers:
+   - `src/config/settings.toml`: set `[commons] asterisk_host`, `asterisk_user`, and `asterisk_web_port` if different.
+   - `src/config/.secrets.toml`: set `[commons] asterisk_pass` to your ARI password.
+   - If Asterisk runs on the Docker host, use `asterisk_host = "host.containers.internal"`.
+   - Asterisk setup details: `assets/ansible/asterisk_py-phone-caller/README.md`
+2. Create the Compose environment file:
+   ```bash
+   cd assets/docker-compose
+   cat > .env <<'EOF'
+   POSTGRES_PASSWORD=change_me
+   CADDY_DOMAIN_NAME=py-phone-caller.lan
+   EOF
+   ```
+3. Build and start the stack:
+   ```bash
+   docker compose build
+   docker compose up -d
+   ```
+4. Verify services are healthy:
+   ```bash
+   docker compose ps
+   ```
+5. Open the UI and retrieve the admin password:
+   - UI: http://localhost:5000 (or the Caddy domain you set).
+   - Admin email defaults to `admin@py-phone-caller.link` (change via `ui_admin_user`).
+   - First-run password is generated and logged by `py_phone_caller_ui`:
+     ```bash
+     docker compose logs -f py_phone_caller_ui
+     ```
 
-This component monitors Asterisk events through a WebSocket connection. It handles various events from Asterisk, such as call initiation, and performs actions like generating audio files and playing them to the channel. It also logs events to a database and coordinates with other components like call_register.
+### Option B: Ansible all-in-one (installs Asterisk and the stack)
 
-Key features:
-- Connects to Asterisk via WebSockets
-- Monitors call events in real-time
-- Triggers audio generation and playback
-- Logs call events to the database
+1. Go to the playbook directory:
+   ```bash
+   cd assets/ansible/deploy_all
+   ```
+2. Install required collection:
+   ```bash
+   ansible-galaxy collection install community.general
+   ```
+3. Edit the inventory:
+   - `assets/ansible/on-vm_py-phone-caller/inventory`
+4. Edit `deploy_py-phone-caller_stack.yml` and set at least:
+   - `ari_password`
+   - `sip_username`
+   - `sip_password`
+   - `py_phone_caller_config.commons.asterisk_user` (if you do not use the default)
+   - `py_phone_caller_config.commons.asterisk_host`
+   - `py_phone_caller_config.commons.asterisk_pass`
+   - `py_phone_caller_config.database.db_password`
+   - Make sure `ari_password` and `py_phone_caller_config.commons.asterisk_pass` match.
+5. Run the deployment:
+   ```bash
+   ansible-playbook deploy_py-phone-caller_stack.yml
+   ```
+6. Open the UI and retrieve the admin password:
+   - UI: http://<host>:5000
+   - Admin email defaults to `admin@py-phone-caller.link` (change via `ui_admin_user`).
+   - First-run password is logged by the UI service:
+     ```bash
+     journalctl -u py-phone-caller-py_phone_caller_ui.service -n 200 --no-pager
+     ```
 
-### caller_prometheus_webhook
+## Configuration
 
-This component serves as a webhook endpoint for Prometheus alerts. It receives alert notifications from Prometheus AlertManager and can trigger different types of notifications: phone calls only, SMS only, SMS before call, or both call and SMS simultaneously. It uses a queue-based approach with producer-consumer pattern to process alerts.
+- Primary settings file: `src/config/settings.toml`
+- Override config location with `CALLER_CONFIG_DIR` or `CALLER_CONFIG`
+- Core dependencies: Asterisk PBX with ARI enabled, PostgreSQL, Redis
+- Optional integrations: Twilio credentials and TTS model downloads
 
-Key features:
-- Receives webhook notifications from Prometheus AlertManager
-- Supports multiple notification strategies
-- Processes alerts asynchronously using queues
-- Integrates monitoring systems with phone/SMS notifications
+## Project Status
 
-### caller_register
+- Core call and SMS flows are stable when deployed in a trusted network.
+- Deployment automation and container orchestration are still evolving.
+- Operating the stack requires Asterisk/FreePBX and Linux admin knowledge.
 
-This component manages the registration and tracking of calls in the system. It handles database operations for call records, including creating new call attempts, updating call statuses (acknowledged, heard), and managing voice messages. It also supports scheduled calls.
+## Documentation
 
-Key features:
-- Maintains a registry of all calls in the system
-- Tracks call statuses and outcomes
-- Manages voice message associations
-- Provides API for call registration and status updates
-
-### caller_scheduler
-
-This component provides functionality for scheduling calls to be made at a specific time in the future. It exposes a web API endpoint that accepts parameters for the phone number, message, and scheduled time. The component converts the local time to UTC and uses Celery to schedule the call task.
-
-Key features:
-- Schedules calls for future execution
-- Handles time zone conversions
-- Uses Celery for reliable task scheduling
-- Provides API for scheduling calls
-
-### caller_sms
-
-This component provides functionality for sending SMS messages. It exposes a web API endpoint that accepts parameters for the message content and recipient phone number. The component uses Twilio as the SMS provider and sends messages asynchronously using a thread pool executor.
-
-Key features:
-- Sends SMS notifications via Twilio
-- Processes SMS requests asynchronously
-- Provides API for sending SMS messages
-- Can be used independently or with call notifications
-
-### generate_audio
-
-This component is responsible for converting text messages to speech audio files. It supports multiple text-to-speech (TTS) engines including Google TTS, AWS Polly, Facebook MMS, and Piper TTS. The component exposes web API endpoints for creating audio files from text messages and checking if audio files are ready.
-
-Key features:
-- Converts text to speech using multiple TTS engines
-- Supports multiple languages and voices
-- Manages audio file storage and retrieval
-- Provides API for audio generation and status checking
-
-### py-phone-caller-ui
-
-This component provides a web-based user interface for the py-phone-caller system. It's built using Flask and includes several sections: login, home, calls, schedule_call, users, and ws_events. The component handles user authentication using Flask-Login and ensures that an admin user exists in the system.
-
-Key features:
-- Web-based interface for system management
-- User authentication and authorization
-- Call history and management
-- Call scheduling interface
-
-### py_phone_caller_utils
-
-This is a collection of utility modules used by other components in the system:
-
-#### checksums
-
-Provides functions for generating various types of checksums used in the system:
-- Checksums for calls based on phone number and message
-- Checksums for messages based on content
-- Unique checksums for call attempts
-
-#### login
-
-Handles user authentication for the web UI:
-- User class implementation for Flask-Login
-- User authentication status tracking
-
-#### py_phone_caller_db
-
-Handles database operations for various components of the system:
-- Database access for call registration
-- Database access for WebSocket monitoring
-- Database access for call scheduling
-- Database access for user management
-- Uses Piccolo ORM for database access
-
-#### py_phone_caller_voices
-
-Provides interfaces to various text-to-speech (TTS) engines:
-- AWS Polly integration
-- Facebook MMS integration
-- Google TTS integration
-- Piper TTS integration
-
-#### sms
-
-Provides functionality for sending SMS messages:
-- Twilio SMS integration
-
-#### tasks
-
-Handles asynchronous task processing for the system:
-- Celery task definitions
-- Task posting to caller_register
-- Task posting to caller_scheduler
+- `docs/py-phone-caller_2025.05.md` - Full architecture and call/SMS flow details.
+- `docs/web-ui-tour/README.md` - Web UI walkthrough.
+- `docs/virtualbox-setup.md` - Local lab setup guidance.
+- `LICENSE` - BSD 3-Clause license.
 
 ## Further Readings
 
@@ -171,13 +191,3 @@ Handles asynchronous task processing for the system:
 - [Ansible: py-phone-caller role](https://github.com/jcfdeb/py-phone-caller/blob/main/assets/ansible/on-vm_py-phone-caller/README.md) - Role to deploy the microservices stack on a VM or server.
 - [Docker Compose stack](https://github.com/jcfdeb/py-phone-caller/blob/main/assets/docker-compose/README.md) - Containerized full-stack deployment (requires an external Asterisk).
 - [Fedora 34 + Podman (OLD)](https://github.com/jcfdeb/py-phone-caller/blob/main/docs/fedora34-server-with-podman_though-ansible.md) - Legacy but detailed guide for FreePBX configuration and system setup.
-
-## More Information
-
-If you want to know how it's organized please read the current [version documentation](https://github.com/jcfdeb/py-phone-caller/blob/main/doc/py-phone-caller_2025.05.md) 
-
-## Good Advice
-
-* The project isn't ready to be used without a deep knowledge of Asterisk, Linux, etc.
-* Can be used in production, but is hard to configure _(if you want try please keep in mind that is not eaasy to deploy)_.
-* Have patience, maybe in a near future it will be more _usable_
