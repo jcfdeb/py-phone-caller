@@ -1,5 +1,11 @@
 # py-phone-caller
 
+> [!WARNING]
+> **Security Notice**: This solution is designed to be deployed in an **isolated network segment** and should not be exposed to the public internet.
+>
+> The only component suitable for public exposure is the **Web UI**. For all other components, you must implement an authentication mechanism in front of them.
+
+
 ## Introduction
 
 py-phone-caller is an automated phone calling and SMS notification system built with Python. It integrates with Asterisk PBX to make automated phone calls, deliver voice messages, and send SMS notifications. The system can be triggered manually, scheduled for future execution, or automatically triggered by Prometheus alerts.
