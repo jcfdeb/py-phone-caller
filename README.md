@@ -152,16 +152,32 @@ Handles asynchronous task processing for the system:
 - Task posting to caller_register
 - Task posting to caller_scheduler
 
+## Further Readings
+
+- [Source architecture overview](https://github.com/jcfdeb/py-phone-caller/tree/main/src#readme) - High-level tour of the `src/` microservices and how they fit together.
+- [Asterisk Caller](https://github.com/jcfdeb/py-phone-caller/blob/main/src/asterisk_caller/README.md) - HTTP service that places outbound calls and plays audio via Asterisk ARI.
+- [Asterisk Recaller](https://github.com/jcfdeb/py-phone-caller/blob/main/src/asterisk_recaller/README.md) - Background worker that retries failed calls and escalates to backup contacts.
+- [Asterisk WS Monitor](https://github.com/jcfdeb/py-phone-caller/blob/main/src/asterisk_ws_monitor/README.md) - WebSocket listener for ARI events that triggers audio generation and playback.
+- [Caller Address Book](https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_address_book/README.md) - Contact and on-call rotation service with CSV import/export.
+- [Caller Prometheus Webhook](https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_prometheus_webhook/README.md) - Alertmanager webhook that turns Prometheus alerts into calls and SMS.
+- [Caller Register](https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_register/README.md) - Call registry service for call attempts, statuses, and scheduled calls.
+- [Caller Scheduler](https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_scheduler/README.md) - Celery-backed scheduler for future call execution.
+- [Caller SMS](https://github.com/jcfdeb/py-phone-caller/blob/main/src/caller_sms/README.md) - SMS gateway service with Twilio and on-premise modem backends.
+- [Generate Audio](https://github.com/jcfdeb/py-phone-caller/blob/main/src/generate_audio/README.md) - Text-to-speech service for generating call audio files.
+- [py-phone-caller-utils](https://github.com/jcfdeb/py-phone-caller/blob/main/src/py-phone-caller-utils/README.md) - Shared utility library for config, DB, TTS, SMS, and telemetry helpers.
+- [py_phone_caller_ui](https://github.com/jcfdeb/py-phone-caller/blob/main/src/py_phone_caller_ui/README.md) - Flask web UI for calls, schedules, users, and WS events.
+- [Ansible: deploy all](https://github.com/jcfdeb/py-phone-caller/blob/main/assets/ansible/deploy_all/README.md) - One-command Ansible playbook for the full Asterisk + py-phone-caller stack.
+- [Ansible: Asterisk role](https://github.com/jcfdeb/py-phone-caller/blob/main/assets/ansible/asterisk_py-phone-caller/README.md) - Role to install and configure Asterisk PBX for this system.
+- [Ansible: py-phone-caller role](https://github.com/jcfdeb/py-phone-caller/blob/main/assets/ansible/on-vm_py-phone-caller/README.md) - Role to deploy the microservices stack on a VM or server.
+- [Docker Compose stack](https://github.com/jcfdeb/py-phone-caller/blob/main/assets/docker-compose/README.md) - Containerized full-stack deployment (requires an external Asterisk).
+- [Fedora 34 + Podman (OLD)](https://github.com/jcfdeb/py-phone-caller/blob/main/docs/fedora34-server-with-podman_though-ansible.md) - Legacy but detailed guide for FreePBX configuration and system setup.
+
 ## More Information
 
 If you want to know how it's organized please read the current [version documentation](https://github.com/jcfdeb/py-phone-caller/blob/main/doc/py-phone-caller_2025.05.md) 
 
-For more details about the project setup and installation, you can refer to [this -OLD- documentation](https://github.com/jcfdeb/py-phone-caller/blob/main/doc/fedora34-server-with-podman_though-ansible.md).
-
-A Web Interface for the 'py-phone-caller' was added and works fine, but several things need to be improved or implemented.
-
 ## Good Advice
 
 * The project isn't ready to be used without a deep knowledge of Asterisk, Linux, etc.
-* Can be used in production, but is hard to configure _(if you want try please keep in mind that is not eaasy to deploy)_.  
+* Can be used in production, but is hard to configure _(if you want try please keep in mind that is not eaasy to deploy)_.
 * Have patience, maybe in a near future it will be more _usable_
