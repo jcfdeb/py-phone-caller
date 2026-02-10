@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.20", features = ["extension-module"] }
 pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tokio-serial = "5.4"
 log = "0.4"
 env_logger = "0.10"
