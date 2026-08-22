@@ -1,6 +1,6 @@
 [py-phone-caller]
 ; Primary Extension
-exten => {{ asterisk_extension }},1,Noop(py-phone-caller Start)
+exten => {{ asterisk_extension }},1,Noop(Py-Phone-Caller Start)
  same => n,Playback(greeting-message)
  same => n,Stasis({{ ari_app_name }})
  same => n,Set(RES=${CURL({{ callback_service_url }}/heard?asterisk_chan=${CHANNEL(uniqueid)})})

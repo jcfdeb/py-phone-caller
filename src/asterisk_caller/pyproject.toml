@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asterisk-caller"
+version = "1.0.0"
+description = "Asterisk Caller service for py-phone-caller"
+readme = "README.md"
+requires-python = ">=3.14, <3.15"
+dependencies = [
+    "py_phone_caller_utils",
+    "aiohttp>=3.9.0",
+    "requests>=2.31.0",
+]
+
+[tool.setuptools.package-dir]
+asterisk_caller = "."
+
+[tool.setuptools.package-data]
+asterisk_caller = ["*"]

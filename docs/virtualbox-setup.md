@@ -1,133 +1,138 @@
-## VirtualBox Setup for py-phone-caller
+# 💻 VirtualBox Lab Setup for py-phone-caller
 
-In this guide, we will configure the two virtual machines in VirtualBox. The virtual machines are two, the FreePBX
-server and the '**py-phone-caller**'
+This guide explains how to configure a two-virtual-machine lab environment in **VirtualBox** for testing **py-phone-caller** alongside **Asterisk / FreePBX**.
 
-> First, we need to configure the VirtualBox networking options and later, as second step, import the virtual machines through the OVA files
+---
 
-### Main screen
+## 📑 Table of Contents
 
-Once the networking options are configured in our VirtualBox instance, we need to import the two virtual machines. This
-screen *(or something like that, depending your setup)* is the result of the steps described in this guide.
+1. [Lab Topology & Network Architecture](#1-lab-topology--network-architecture)
+2. [Configuring the VirtualBox Host-Only Network](#2-configuring-the-virtualbox-host-only-network)
+3. [Configuring the VirtualBox NAT Network](#3-configuring-the-virtualbox-nat-network)
+4. [Configuring Network Adapters for py-phone-caller VM](#4-configuring-network-adapters-for-py-phone-caller-vm)
+5. [Configuring Network Adapters for FreePBX / Asterisk VM](#5-configuring-network-adapters-for-freepbx--asterisk-vm)
+6. [Connectivity Verification](#6-connectivity-verification)
 
-The virtual machines are using a **NAT Network** *(10.22.22.0/24)* in order to make possible the interaction with
-**py-phone-caller** and the **Asterisk PBX** *(FreePBX disbribution)*, and a **Host-only Adapter**
-*(192.168.56.0/24)* in order to connect from the host system where VirtualBox is running.
+---
 
-The virtual machines have the following IP addresses:
+## 1. Lab Topology & Network Architecture
 
-* **py-phone-caller**: 192.168.56.102 / 10.22.22.105
-* **freepbx**: 192.168.56.101 / 10.22.22.234
+The lab setup isolates telephony and inter-service communication inside a VirtualBox **NAT Network**, while providing management access from the virtualization host via a **Host-Only Adapter**:
 
-![main-screen](virtualbox-vms/vm-00.png)
+- **NAT Network (`10.22.22.0/24`)**: Internal communication between **py-phone-caller** and the **Asterisk PBX**.
+- **Host-Only Network (`192.168.56.0/24`)**: Access from your physical workstation to the Web UI (`http://192.168.56.102:5000`) and FreePBX admin interface (`http://192.168.56.101`).
 
-### VirtualBox Host Network Configuration
+```text
+[ Physical Workstation / Browser ]
+           |
+   (Host-Only Network: 192.168.56.0/24)
+           |
+           +---> [ py-phone-caller VM ] (192.168.56.102 / 10.22.22.105)
+           |            |
+           |    (NAT Network: 10.22.22.0/24)
+           |            |
+           +---> [ FreePBX / Asterisk VM ] (192.168.56.101 / 10.22.22.234)
+```
 
-1. Open the '**File**' menu
-2. Select the '**Host Network Manager...**'
+![Main Screen Overview](virtualbox-vms/vm-00.png)
 
-![host-network-configuration](virtualbox-vms/vm-01.png)
+---
 
-### Adding And Configuring a Host Network
+## 2. Configuring the VirtualBox Host-Only Network
 
-> If the interface '**vboxnet0**' exists and is used by other virtual
-> machines we can create a new one. Pay attention during the virtual machine
-> configuration, the name of the network interface may be different than
-> '**vboxnet0**'.
+1. Open VirtualBox, click **File** in the top menu, and select **Host Network Manager...**
 
-1. Select the '**vboxnet0**' network interface
-2. Open the '**Properties**' item
-3. Verify that the network interface has the IP address '*192.168.56.1*'
-4. Click the '**Apply**' button
+   ![Host Network Manager](virtualbox-vms/vm-01.png)
 
-> the '**freepbx**' vm is using the IP '**192.168.56.101**' and the '**py-phone-caller**'
-> is usig the IP address '**192.168.56.102**'.
+2. Select `vboxnet0` (or create a new host-only adapter by clicking **Create**).
+3. Under **Properties**, ensure the IPv4 configuration is set to:
+   - **IPv4 Address**: `192.168.56.1`
+   - **IPv4 Network Mask**: `255.255.255.0`
+4. Click **Apply**.
 
-![host-network-widget](virtualbox-vms/vm-02.png)
+   ![Host Network Properties](virtualbox-vms/vm-02.png)
 
-### The VirtualBox Preferences
+---
 
-1. Click on the '**File**'
-2. Open the '**Preferences...**' item
+## 3. Configuring the VirtualBox NAT Network
 
-![virtuabox-preferences](virtualbox-vms/vm-03.png)
+1. In the top menu, click **File** ➔ **Preferences...** (or **Tools** ➔ **Network**).
 
-### VirtualBox Networking Settings
+   ![VirtualBox Preferences](virtualbox-vms/vm-03.png)
 
-1. Select the '**Network**' item
-2. Select the '**py-phone-caller**' network
-3. Click on the icon with the gear
+2. Select **Network** in the left sidebar.
+3. If `py-phone-caller` does not exist, click the **+** button to add a new NAT Network.
+4. Click the gear icon (**Edit**) on the network.
 
-> 3-Yellow) if the network does not exist in our instance we need to create it,
-> in order to do this click on the icon with the "**+**" sign.
+   ![Networking Settings](virtualbox-vms/vm-04.png)
 
-![networking-settings](virtualbox-vms/vm-04.png)
+5. Configure:
+   - **Network Name**: `py-phone-caller`
+   - **IPv4 Prefix / CIDR**: `10.22.22.0/24`
+   - **Enable DHCP**: Checked (`Yes`)
+6. Click **OK**.
 
-### VirtualBox NAT Network Details
+   ![NAT Network Details](virtualbox-vms/vm-05.png)
 
-1. Set the name to '**py-py-phone-caller**', Configure the range '**10.22.22.0/24**', be sure that the DHCP is enabled.
-2. Click on the '**OK**' button.
+---
 
-![nat-network-details](virtualbox-vms/vm-05.png)
+## 4. Configuring Network Adapters for py-phone-caller VM
 
-### Setting of 'py-phone-caller' Virtual Machine
+1. Select the `py-phone-caller` virtual machine, right-click, and select **Settings...**
 
-1. Select the '**py-phone-caller**' virtual machine
-2. Click with the right mouse button and select '**Settings...**'
+   ![VM Settings](virtualbox-vms/vm-06.png)
 
-![py-phone-caller-settings](virtualbox-vms/vm-06.png)
+2. Click **Network** in the sidebar.
+3. Under **Adapter 1**:
+   - **Attached to**: `NAT Network`
+   - **Name**: `py-phone-caller`
+   - **Cable Connected**: Checked (`Yes`)
 
-### First Network Interface Of The 'py-phone-caller' Virtual Machine
+   ![Adapter 1 NAT Network](virtualbox-vms/vm-07.png)
 
-1. Select the '**Network**' option
-2. By sure that the '**Attached to**' is configured in with '**NAT Network**' and the '**Name**' -> '**
-   py-phone-caller**' *(the network created in the precedent steps)*
-3. Assure that the checkbox is enabled in the '**Cable Connected**' option
-4. Please wait, don't press '**OK**' We need to configure the '**Adapter 2**'
+4. Under **Adapter 2**:
+   - Check **Enable Network Adapter**
+   - **Attached to**: `Host-only Adapter`
+   - **Name**: `vboxnet0`
+   - **Cable Connected**: Checked (`Yes`)
+5. Click **OK**.
 
-![first-nic-py-phone-caller](virtualbox-vms/vm-07.png)
+   ![Adapter 2 Host Only](virtualbox-vms/vm-08.png)
 
-### Second Network Interface Of The 'py-phone-caller' Virtual Machine
+---
 
-1. Remain always on the '**Network**' section
-2. Open the '**Adapter 2**' tab
-3. By sure that the '**Attached to**' is configured in with '**Host-only Adapter**' and the '**Name**' -> '**
-   vboxnet0**' *(the network created or modified in the precedent steps)*
-4. Assure that the checkbox is enabled in the '**Cable Connected**' option
-5. Cick on the '**OK**' button
+## 5. Configuring Network Adapters for FreePBX / Asterisk VM
 
-![second-nic-py-phone-caller](virtualbox-vms/vm-08.png)
+1. Select the `freepbx` virtual machine, right-click, and select **Settings...**
 
-### The 'FreePBX' Virtual Machine
+   ![FreePBX VM Settings](virtualbox-vms/vm-09.png)
+   ![FreePBX Settings Dialog](virtualbox-vms/vm-10.png)
 
-1. Select the '**freepbx**' virtual machine
+2. Under **Adapter 1**:
+   - **Attached to**: `NAT Network`
+   - **Name**: `py-phone-caller`
+   - **Cable Connected**: Checked (`Yes`)
 
-![freepbx-vm](virtualbox-vms/vm-09.png)
+   ![FreePBX Adapter 1](virtualbox-vms/vm-11.png)
 
-### Settings of 'FreePBX' Virtual Machine
+3. Under **Adapter 2**:
+   - Check **Enable Network Adapter**
+   - **Attached to**: `Host-only Adapter`
+   - **Name**: `vboxnet0`
+   - **Cable Connected**: Checked (`Yes`)
+4. Click **OK**.
 
-1. Click with the right mouse button and select the '**Settings...**' option
+   ![FreePBX Adapter 2](virtualbox-vms/vm-12.png)
 
-![freepbx-settings](virtualbox-vms/vm-10.png)
+---
 
-### First Network Interface Of The 'FreePBX' Virtual Machine
+## 6. Connectivity Verification
 
-1. Select the '**Network**' option
-2. By sure that the '**Attached to**' is configured in with '**NAT Network**' and the '**Name**' -> '**
-   py-phone-caller**' *(the network created in the precedent steps)*
-3. Assure that the checkbox is enabled in the '**Cable Connected**' option
+Boot both virtual machines and test connectivity:
 
-![first-nic-freepbx](virtualbox-vms/vm-11.png)
-
-### Second Network Interface Of The 'FreePBX' Virtual Machine
-
-1. Remain always on the '**Network**' section
-2. Open the '**Adapter 2**' tab
-3. By sure that the '**Attached to**' is configured in with '**Host-only Adapter**' and the '**Name**' -> '**
-   vboxnet0**' *(the network created or modified in the precedent steps)*
-4. Assure that the checkbox is enabled in the '**Cable Connected**' option
-5. Cick on the '**OK**' button
-
-![first-nic-freepbx](virtualbox-vms/vm-12.png)
-
-> Important: the name of the network '**vboxnet0**' can be different according to the previous setups of VirtualBox
+1. From your host workstation:
+   - Ping FreePBX: `ping 192.168.56.101`
+   - Ping py-phone-caller: `ping 192.168.56.102`
+   - Open Web UI: `http://192.168.56.102:5000`
+2. From inside the `py-phone-caller` VM:
+   - Test Asterisk ARI: `curl -u py-phone-caller:password http://10.22.22.234:8088/ari/asterisk/info`

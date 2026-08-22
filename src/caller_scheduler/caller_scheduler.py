@@ -113,7 +113,7 @@ async def init_app():
     """
     app = web.Application()
 
-    instrument_aiohttp_app(app)
+    instrument_aiohttp_app(app, "caller_scheduler")
 
     app.router.add_route("POST", f"/{SCHEDULED_CALL_APP_ROUTE}", schedule_this_call)
     return app

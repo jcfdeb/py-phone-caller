@@ -1,15 +1,42 @@
 ---
-- name: Add local domain mappings to /etc/hosts
+- name: Remove legacy localhost service aliases from /etc/hosts
   lineinfile:
     path: /etc/hosts
-    line: "127.0.0.1 pbx.lan redis.lan postgresql.lan py-phone-caller.lan"
-    state: present
+    regexp: '^\s*127\.0\.0\.1\s+(?=.*\bpbx\.lan\b)(?=.*\bredis\.lan\b)(?=.*\bpostgresql\.lan\b)(?=.*\bpy-phone-caller\.lan\b).*$'
+    state: absent
+
+- name: Validate configured service host aliases
+  assert:
+    that:
+      - item.address is defined
+      - item.names is defined
+      - item.names | length > 0
+    fail_msg: "Each py_phone_caller_hosts_entries item must define address and a non-empty names list."
+  loop: "{{ py_phone_caller_hosts_entries }}"
+  when: py_phone_caller_hosts_entries | length > 0
+
+- name: Configure service host aliases in /etc/hosts
+  blockinfile:
+    path: /etc/hosts
     create: yes
+    marker: "# {mark} ANSIBLE MANAGED BLOCK py-phone-caller host aliases"
+    block: |-
+      {% for entry in py_phone_caller_hosts_entries %}
+      {{ entry.address }} {{ entry.names | join(' ') }}
+      {% endfor %}
+  when: py_phone_caller_hosts_entries | length > 0
+
+- name: Remove managed service host aliases when none are configured
+  blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE MANAGED BLOCK py-phone-caller host aliases"
+    state: absent
+  when: py_phone_caller_hosts_entries | length == 0
 
 - name: Update apt cache (Debian/Ubuntu)
   apt:
     update_cache: yes
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Install dependencies (Debian/Ubuntu)
   apt:
@@ -19,103 +46,117 @@
       - python3-venv
       - python3-dev
       - build-essential
+      - rustc
+      - cargo
       - git
       - rsync
       - redis-server
-      - acl
-      - libsndfile1
-      - curl
-      - python3-psycopg2
-      - ffmpeg
+      - acl # often needed for become_user
+      - libsndfile1 # dependency for soundfile
+      - curl # useful for testing
+      - python3-psycopg2 # for postgresql modules
+      - ffmpeg # required by pydub
       - postgresql-contrib
     state: present
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Set Python binary (Debian)
   set_fact:
     python_binary: python3
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Install EPEL release (RHEL/Rocky)
   dnf:
     name: epel-release
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Enable CRB repository (RHEL/Rocky)
   command: dnf config-manager --set-enabled crb
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
   changed_when: false
 
 - name: Check if ffmpeg is already installed (RHEL/Rocky)
   command: rpm -q ffmpeg
   register: ffmpeg_check
-  ignore_errors: true
+  failed_when: false
   changed_when: false
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Define base dependencies (RHEL/Rocky)
   set_fact:
     rhel_packages:
       - python3
-      - python3.12
-      - python3.12-pip
-      - python3.12-devel
+      - python3-pip
+      - python3-devel
       - python3-rpm-macros
       - gcc
+      - gcc-c++
+      - make
+      - rust
+      - cargo
       - git
       - rsync
-      - redis
+      - "{{ (ansible_facts['distribution_major_version'] | int >= 10) | ternary('valkey', 'redis') }}"
       - acl
       - libsndfile
       - curl
       - python3-psycopg2
       - postgresql-contrib
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Add ffmpeg-free to dependencies if ffmpeg is missing (RHEL/Rocky)
   set_fact:
     rhel_packages: "{{ rhel_packages + ['ffmpeg-free'] }}"
-  when: ansible_os_family == "RedHat" and ffmpeg_check.rc != 0
+  when:
+    - ansible_facts['os_family'] == "RedHat"
+    - ffmpeg_check is defined
+    - ffmpeg_check.rc != 0
 
 - name: Install dependencies (RHEL/Rocky)
   dnf:
     name: "{{ rhel_packages }}"
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Set Python binary (RedHat)
   set_fact:
-    python_binary: python3.12
-  when: ansible_os_family == "RedHat"
+    python_binary: python3
+  when: ansible_facts['os_family'] == "RedHat"
 
-- name: Enable and start Redis
+- name: Enable and start Redis or Valkey
   service:
-    name: redis
+    name: "{{ (ansible_facts['distribution_major_version'] | int >= 10 and ansible_facts['os_family'] == 'RedHat') | ternary('valkey', 'redis') }}"
     state: started
     enabled: yes
-  ignore_errors: yes
 
 - name: Install PostgreSQL (Debian/Ubuntu)
   apt:
     name: postgresql
     state: present
-  when: ansible_os_family == "Debian"
+  when:
+    - ansible_facts['os_family'] == "Debian"
+    - py_phone_caller_manage_local_postgres | bool
 
 - name: Install PostgreSQL (RHEL/Rocky)
   dnf:
     name: postgresql-server
     state: present
-  when: ansible_os_family == "RedHat"
+  when:
+    - ansible_facts['os_family'] == "RedHat"
+    - py_phone_caller_manage_local_postgres | bool
 
 - name: Initialize PostgreSQL (RHEL/Rocky)
   command: postgresql-setup --initdb
   args:
     creates: /var/lib/pgsql/data/postgresql.conf
-  when: ansible_os_family == "RedHat"
+  when:
+    - ansible_facts['os_family'] == "RedHat"
+    - py_phone_caller_manage_local_postgres | bool
 
 - name: Enable and start PostgreSQL
   service:
     name: postgresql
     state: started
     enabled: yes
+  when: py_phone_caller_manage_local_postgres | bool

@@ -1,5 +1,6 @@
-from py_phone_caller_utils.config import settings
 from multiprocessing import Queue
+
+from py_phone_caller_utils.config import settings
 
 ASTERISK_URL = f"{settings.commons.asterisk_http_scheme}://{settings.commons.asterisk_host}:{settings.commons.asterisk_web_port}"
 ASTERISK_EXTENSION = settings.asterisk_call.asterisk_extension
@@ -32,6 +33,27 @@ ASTERISK_CALL_PORT = int(settings.asterisk_call.asterisk_call_port)
 WAIT_FOR_CALL_CYCLE = settings.asterisk_call.seconds_to_forget
 CLIENT_TIMEOUT_TOTAL = settings.asterisk_call.client_timeout_total
 CALL_QUEUE = Queue()
+
+
+def close_call_queue():
+    """
+    Releases multiprocessing.Queue resources during service shutdown.
+
+    The queue is intentionally a multiprocessing.Queue. It is used from the main
+    aiohttp service and a worker thread. Running the worker in a thread avoids
+    child-process re-imports that can duplicate semaphore tracking.
+    """
+    try:
+        CALL_QUEUE.close()
+    except Exception:
+        pass
+
+    try:
+        CALL_QUEUE.join_thread()
+    except Exception:
+        pass
+
+
 ASTERISK_CALL_ERROR = settings.logs.asterisk_call_error
 LOG_FORMATTER = settings.logs.log_formatter
 LOG_LEVEL = settings.logs.log_level

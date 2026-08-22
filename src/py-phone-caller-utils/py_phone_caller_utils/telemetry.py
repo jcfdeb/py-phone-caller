@@ -92,41 +92,70 @@ def init_telemetry(service_name: str) -> Optional[TracerProvider]:
         return None
 
 
-def instrument_aiohttp_app(app):
-    """Helper to instrument a specific aiohttp web application and add /metrics route."""
+def instrument_aiohttp_app(app, service_name: Optional[str] = None):
+    """Helper to instrument a specific aiohttp web application and add /metrics and /health routes."""
     try:
+        from aiohttp import web
+
+        async def health_handler(request):
+            return web.json_response(
+                {
+                    "status": "healthy",
+                    "service": service_name or "py-phone-caller",
+                    "version": "1.0.0",
+                }
+            )
+
+        app.router.add_get("/health", health_handler)
+        app.router.add_get("/healthz", health_handler)
+        app.router.add_get("/live", health_handler)
+
+        async def metrics_handler(request):
+            data = generate_latest()
+            content_type = CONTENT_TYPE_LATEST.split(";")[0]
+            return web.Response(
+                body=data, content_type=content_type, charset="utf-8"
+            )
+
+        app.router.add_get("/metrics", metrics_handler)
+        logger.info(
+            f"Added /health and /metrics routes to aiohttp app ({service_name or 'py-phone-caller'})"
+        )
+
         if trace.get_tracer_provider():
             AioHttpServerInstrumentor().instrument()
-
-            async def metrics_handler(request):
-                from aiohttp import web
-
-                data = generate_latest()
-                content_type = CONTENT_TYPE_LATEST.split(";")[0]
-                return web.Response(
-                    body=data, content_type=content_type, charset="utf-8"
-                )
-
-            app.router.add_get("/metrics", metrics_handler)
-            logger.info("Added /metrics route to aiohttp app")
     except Exception as e:
         logger.error(f"Failed to instrument aiohttp app: {e}")
 
 
-def instrument_flask_app(app):
-    """Helper to instrument a specific flask application and add /metrics route."""
+def instrument_flask_app(app, service_name: Optional[str] = "py_phone_caller_ui"):
+    """Helper to instrument a specific flask application and add /metrics and /health routes."""
     try:
+        from flask import jsonify, Response
+
+        @app.route("/health")
+        @app.route("/healthz")
+        @app.route("/live")
+        def health_view():
+            return jsonify(
+                {
+                    "status": "healthy",
+                    "service": service_name or "py_phone_caller_ui",
+                    "version": "1.0.0",
+                }
+            )
+
+        @app.route("/metrics")
+        def metrics_view():
+            data = generate_latest()
+            return Response(data, mimetype=CONTENT_TYPE_LATEST)
+
+        logger.info(
+            f"Added /health and /metrics routes to Flask app ({service_name or 'py_phone_caller_ui'})"
+        )
+
         if trace.get_tracer_provider():
             FlaskInstrumentor().instrument_app(app)
-
-            @app.route("/metrics")
-            def metrics_view():
-                from flask import Response
-
-                data = generate_latest()
-                return Response(data, mimetype=CONTENT_TYPE_LATEST)
-
-            logger.info("Added /metrics route to Flask app")
     except Exception as e:
         logger.error(f"Failed to instrument Flask app: {e}")
 

@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: py-phone-caller-ui-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      name: http-5000
+      targetPort: 5000
+      protocol: TCP
+  selector:
+    app: py-phone-caller-ui
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: py-phone-caller-ui-deployment
+  labels:
+    app: py-phone-caller-ui
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: py-phone-caller-ui
+  template:
+    metadata:
+      labels:
+        app: py-phone-caller-ui
+    spec:
+      containers:
+        - name: py-phone-caller-ui
+          image: quay.io/py-phone-caller/py_phone_caller_ui:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+            - name: DYNACONF_DATABASE__DB_HOST
+              value: "postgresql-service"
+            - name: DYNACONF_DATABASE__DB_NAME
+              value: "py_phone_caller"
+            - name: DYNACONF_DATABASE__DB_USER
+              value: "py_phone_caller"
+            - name: DYNACONF_DATABASE__DB_PASSWORD
+              value: "use-a-secure-password"
+            - name: PICCOLO_CONF
+              value: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+            - name: DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST
+              value: "caller-scheduler-service"
+            - name: DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST
+              value: "caller-register-service"
+            - name: DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST
+              value: "caller-address-book-service"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/src/config/settings.toml
+              subPath: settings.toml
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config

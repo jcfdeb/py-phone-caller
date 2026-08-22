@@ -3,7 +3,7 @@
   dnf:
     name: firewalld
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
   become: yes
   tags: firewall
 
@@ -12,7 +12,7 @@
     name: firewalld
     state: started
     enabled: yes
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
   become: yes
   tags: firewall
 
@@ -33,7 +33,7 @@
     - 8085
     - 8086
     - 8087
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"
   become: yes
   tags: firewall
 
@@ -41,7 +41,7 @@
   apt:
     name: ufw
     state: present
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
   become: yes
   tags: firewall
 
@@ -49,7 +49,7 @@
   ufw:
     rule: allow
     name: OpenSSH
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
   become: yes
   tags: firewall
 
@@ -69,13 +69,13 @@
     - 8085
     - 8086
     - 8087
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
   become: yes
   tags: firewall
 
 - name: Enable UFW (Debian/Ubuntu)
   ufw:
     state: enabled
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
   become: yes
   tags: firewall

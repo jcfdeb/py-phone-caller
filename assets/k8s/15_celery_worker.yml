@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: celery-worker-deployment
+  labels:
+    app: celery-worker
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+    spec:
+      containers:
+        - name: celery-worker
+          image: quay.io/py-phone-caller/celery_worker:1.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+            - name: DYNACONF_DATABASE__DB_HOST
+              value: "postgresql-service"
+            - name: DYNACONF_DATABASE__DB_NAME
+              value: "py_phone_caller"
+            - name: DYNACONF_DATABASE__DB_USER
+              value: "py_phone_caller"
+            - name: DYNACONF_DATABASE__DB_PASSWORD
+              value: "use-a-secure-password"
+            - name: PICCOLO_CONF
+              value: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+            - name: DYNACONF_QUEUE__QUEUE_HOST
+              value: "redis-service"
+            - name: DYNACONF_QUEUE__QUEUE_URL
+              value: "redis://redis-service:6379/7"
+            - name: DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST
+              value: "caller-register-service"
+            - name: DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST
+              value: "asterisk-caller-service"
+            - name: DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST
+              value: "caller-scheduler-service"
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/src/config/settings.toml
+              subPath: settings.toml
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config

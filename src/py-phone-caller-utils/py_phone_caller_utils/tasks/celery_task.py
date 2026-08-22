@@ -35,5 +35,9 @@ def do_this_call(phone, message):
         int: The HTTP status code returned by the Asterisk call endpoint.
     """
     data = {"phone": phone, "message": message}
-    response = requests.post(URL, params=data)
-    return response.status_code
+    try:
+        response = requests.post(URL, params=data, timeout=30)
+        return response.status_code
+    except requests.exceptions.RequestException as err:
+        logging.exception(f"Error dispatching scheduled call to Asterisk: {err}")
+        raise

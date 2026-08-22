@@ -1,0 +1,19 @@
+[Unit]
+Description=Podman container-asterisk_recaller.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-postgres.service
+After=container-asterisk_caller.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start asterisk_recaller
+ExecStop=/usr/bin/podman stop -t 10 asterisk_recaller
+ExecStopPost=/usr/bin/podman stop -t 10 asterisk_recaller
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

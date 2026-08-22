@@ -1,0 +1,123 @@
+[commons]
+asterisk_user = "{{ asterisk_user }}"
+asterisk_pass = "{{ asterisk_pass }}"
+asterisk_host = "{{ asterisk_host }}"
+asterisk_web_port = "{{ asterisk_web_port }}"
+asterisk_http_scheme = "{{ asterisk_http_scheme }}"
+sms_db_path = "{{ sms_db_path | default('sqlite:///tmp/sms.db') }}"
+
+[asterisk_call]
+asterisk_ari_channels = "{{ asterisk_ari_channels }}"
+asterisk_ari_play = "{{ asterisk_ari_play }}"
+asterisk_context = "{{ asterisk_context }}"
+asterisk_extension = "{{ asterisk_extension }}"
+asterisk_chan_type = "{{ asterisk_chan_type }}"
+asterisk_callerid = "{{ asterisk_callerid }}"
+asterisk_call_http_scheme = "{{ asterisk_call_http_scheme }}"
+asterisk_call_host = "{{ asterisk_call_host }}"
+asterisk_call_port = "{{ asterisk_call_port }}"
+asterisk_call_app_route_place_call = "{{ asterisk_call_app_route_place_call | default('place_call') }}"
+asterisk_call_app_route_call_to_queue = "{{ asterisk_call_app_route_call_to_queue | default('call_to_queue') }}"
+asterisk_call_app_route_play = "{{ asterisk_call_app_route_play }}"
+seconds_to_forget = {{ seconds_to_forget }}
+client_timeout_total = {{ client_timeout_total }}
+
+[call_register]
+call_register_http_scheme = "{{ call_register_http_scheme }}"
+call_register_host = "{{ call_register_host }}"
+call_register_port = "{{ call_register_port }}"
+call_register_app_route_register_call = "{{ call_register_app_route_register_call }}"
+call_register_app_route_voice_message = "{{ call_register_app_route_voice_message }}"
+call_register_app_route_acknowledge = "{{ call_register_app_route_acknowledge }}"
+call_register_app_route_heard = "{{ call_register_app_route_heard }}"
+call_register_scheduled_call_app_route = "{{ call_register_scheduled_call_app_route | default('scheduled_call') }}"
+
+[asterisk_ws_monitor]
+asterisk_stasis_app = "{{ asterisk_stasis_app }}"
+
+[asterisk_recaller]
+times_to_dial = {{ times_to_dial }}
+call_backup_callee_after_seconds = {{ call_backup_callee_after_seconds | default(60) }}
+call_backup_callee_max_times = {{ call_backup_callee_max_times | default(3) }}
+
+[generate_audio]
+generate_audio_http_scheme = "{{ generate_audio_http_scheme }}"
+generate_audio_host = "{{ generate_audio_host }}"
+generate_audio_port = "{{ generate_audio_port }}"
+generate_audio_app_route = "{{ generate_audio_app_route }}"
+tts_engine = "{{ tts_engine | default('kokoro_tts') }}"
+gcloud_tts_language_code = "{{ gcloud_tts_language_code }}"
+serving_audio_folder = "{{ serving_audio_folder }}"
+num_of_cpus = {{ num_of_cpus }}
+
+[caller_prometheus_webhook]
+prometheus_webhook_port = "{{ prometheus_webhook_port }}"
+prometheus_webhook_app_route_call_only = "{{ prometheus_webhook_app_route_call_only }}"
+prometheus_webhook_app_route_sms_only = "{{ prometheus_webhook_app_route_sms_only }}"
+prometheus_webhook_app_route_sms_before_call = "{{ prometheus_webhook_app_route_sms_before_call }}"
+prometheus_webhook_app_route_call_and_sms = "{{ prometheus_webhook_app_route_call_and_sms }}"
+prometheus_webhook_receivers = {{ prometheus_webhook_receivers }}
+
+[caller_sms]
+caller_sms_http_scheme = "{{ caller_sms_http_scheme }}"
+caller_sms_host = "{{ caller_sms_host }}"
+caller_sms_port = "{{ caller_sms_port }}"
+caller_sms_app_route = "{{ caller_sms_app_route | default('send_sms') }}"
+sms_before_call_wait_seconds = {{ sms_before_call_wait_seconds }}
+caller_sms_carrier = "{{ caller_sms_carrier }}"
+twilio_account_sid = "{{ twilio_account_sid | default('') }}"
+twilio_auth_token = "{{ twilio_auth_token | default('') }}"
+twilio_sms_from = "{{ twilio_sms_from | default('') }}"
+
+[caller_address_book]
+caller_address_book_http_scheme = "{{ caller_address_book_http_scheme | default('http') }}"
+caller_address_book_host = "{{ caller_address_book_host | default(container_host) }}"
+caller_address_book_port = "{{ caller_address_book_port | default(8087) }}"
+caller_address_book_route_add_contact = "contact_add"
+caller_address_book_route_modify_contact = "contact_modify"
+caller_address_book_route_delete_contact = "contact_delete"
+caller_address_book_route_on_call_contact = "contact_on_call"
+caller_address_book_service_export = "contacts_export_csv"
+caller_address_book_service_import = "contacts_import_csv"
+
+[scheduled_calls]
+scheduled_calls_http_scheme = "{{ scheduled_calls_http_scheme | default('http') }}"
+scheduled_calls_host = "{{ scheduled_calls_host | default(container_host) }}"
+scheduled_calls_port = "{{ scheduled_calls_port | default(8086) }}"
+scheduled_call_app_route = "schedule_call"
+local_timezone = "{{ local_timezone | default('Europe/Rome') }}"
+
+[queue]
+queue_scheme = "redis"
+queue_host = "{{ redis_ip | default('172.19.0.51') }}"
+queue_port = 6379
+queue_url = "redis://{{ redis_ip | default('172.19.0.51') }}:6379/7"
+
+[database]
+db_host = "{{ db_host }}"
+db_port = 5432
+db_name = "{{ db_name }}"
+db_user = "{{ db_user }}"
+db_password = '{{ db_password }}'
+db_max_size = {{ db_max_size }}
+db_max_inactive_connection_lifetime = {{ db_max_inactive_connection_lifetime }}
+
+[py_phone_caller_ui]
+ui_session_protection = "strong"
+ui_listen_on_host = "0.0.0.0"
+ui_listen_on_port = 5000
+ui_admin_user = "{{ ui_admin_user | default('admin@py-phone-caller.link') }}"
+min_password_length = 17
+
+[logs]
+log_formatter = "{{ log_formatter }}"
+log_level = "INFO"
+acknowledge_error = "{{ acknowledge_error }}"
+heard_error = "{{ heard_error }}"
+register_call_error = "{{ registercall_error }}"
+voice_message_error = "{{ voice_message_error }}"
+asterisk_call_error = "{{ asterisk_call_error }}"
+asterisk_play_error = "{{ asterisk_play_error }}"
+generate_audio_error = "{{ generate_audio_error }}"
+caller_sms_error = "{{ caller_sms_error }}"
+lost_directory_error = "{{ lost_directory_error }}"

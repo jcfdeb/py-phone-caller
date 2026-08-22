@@ -1,9 +1,23 @@
 ---
-- name: "Load OS-specific variables for {{ ansible_os_family }}"
-  ansible.builtin.include_vars: "{{ ansible_os_family }}.yml"
+- name: "Load OS-specific variables for {{ ansible_facts['os_family'] }}"
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
 
-- name: "Install Asterisk ({{ ansible_os_family }} specific)"
-  ansible.builtin.include_tasks: "install_{{ ansible_os_family }}.yml"
+- name: "Install Asterisk ({{ ansible_facts['os_family'] }} specific)"
+  ansible.builtin.include_tasks: "install_{{ ansible_facts['os_family'] }}.yml"
+
+- name: Ensure Asterisk group exists
+  ansible.builtin.group:
+    name: "{{ asterisk_group }}"
+    state: present
+    system: yes
+
+- name: Ensure Asterisk user exists
+  ansible.builtin.user:
+    name: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    state: present
+    system: yes
+    shell: /sbin/nologin
 
 - name: "Configure Asterisk and Deploy Audio"
   ansible.builtin.include_tasks: configure.yml

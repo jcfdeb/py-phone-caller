@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: caller-address-book-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8087
+      name: http-8087
+      targetPort: 8087
+      protocol: TCP
+  selector:
+    app: caller-address-book
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: caller-address-book-deployment
+  labels:
+    app: caller-address-book
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caller-address-book
+  template:
+    metadata:
+      labels:
+        app: caller-address-book
+    spec:
+      containers:
+        - name: caller-address-book
+          image: quay.io/py-phone-caller/caller_address_book:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8087
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+            - name: DYNACONF_DATABASE__DB_HOST
+              value: "postgresql-service"
+            - name: DYNACONF_DATABASE__DB_NAME
+              value: "py_phone_caller"
+            - name: DYNACONF_DATABASE__DB_USER
+              value: "py_phone_caller"
+            - name: DYNACONF_DATABASE__DB_PASSWORD
+              value: "use-a-secure-password"
+            - name: PICCOLO_CONF
+              value: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8087
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8087
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/src/config/settings.toml
+              subPath: settings.toml
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config

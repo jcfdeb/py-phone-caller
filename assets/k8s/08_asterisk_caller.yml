@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: asterisk-caller-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8081
+      name: http-8081
+      targetPort: 8081
+      protocol: TCP
+  selector:
+    app: asterisk-caller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: asterisk-caller-deployment
+  labels:
+    app: asterisk-caller
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: asterisk-caller
+  template:
+    metadata:
+      labels:
+        app: asterisk-caller
+    spec:
+      containers:
+        - name: asterisk-caller
+          image: quay.io/py-phone-caller/asterisk_caller:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+            - name: DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST
+              value: "caller-register-service"
+            - name: DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST
+              value: "generate-audio-service"
+            - name: DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST
+              value: "caller-address-book-service"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/src/config/settings.toml
+              subPath: settings.toml
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config

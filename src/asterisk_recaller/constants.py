@@ -4,6 +4,9 @@ ASTERISK_CALL_URL = f"{settings.asterisk_call.asterisk_call_http_scheme}://{sett
 ASTERISK_CALL_APP_ROUTE_PLACE_CALL = (
     settings.asterisk_call.asterisk_call_app_route_place_call
 )
+CLIENT_TIMEOUT_TOTAL = getattr(
+    settings.asterisk_recaller, "client_timeout_total", 30
+)
 SLEEP_BEFORE_QUERYING = 10
 TIMES_TO_DIAL = settings.asterisk_recaller.times_to_dial
 CALL_BACKUP_CALLEE_MAX_TIMES = settings.asterisk_recaller.call_backup_callee_max_times

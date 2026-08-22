@@ -58,6 +58,7 @@ from generate_audio.constants import (
     KOKORO_MODELS_FOLDER,
     KOKORO_LANG,
     KOKORO_PYTHON_INTERPRETER,
+    KOKORO_MODEL_FILENAME,
 )
 
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
@@ -151,7 +152,19 @@ def generate_tts_audio(
         msg_chk_sum = output_path.split("/")[-1].replace(".wav", "")
         create_audio_file(message, msg_chk_sum)
     elif engine == TTSEngine.FACEBOOK_MMS:
-        text_to_speech_facebook_mms(message, FACEBOOK_MMS_LANGUAGE_CODE, output_path)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        model_dir = os.path.join(
+            script_dir,
+            PRE_TRAINED_MODELS_FOLDER,
+            FACEBOOK_MMS_MODELS_FOLDER,
+            f"mms-tts-{FACEBOOK_MMS_LANGUAGE_CODE}",
+        )
+        text_to_speech_facebook_mms(
+            message,
+            FACEBOOK_MMS_LANGUAGE_CODE,
+            output_path,
+            model_path=model_dir,
+        )
     elif engine == TTSEngine.PIPER:
         text_to_speech_piper_tts(message, output_path)
     elif engine == TTSEngine.AWS_POLLY:
@@ -345,6 +358,11 @@ def text_to_speech_kokoro_tts(message, output_path):
         "z": "zf_xiaobei",  # Mandarin Chinese
     }
     voice_name = voice_name_map.get(KOKORO_LANG, "af_heart")
+    local_model_dir = os.path.join(
+        current_file_dir,
+        PRE_TRAINED_MODELS_FOLDER,
+        KOKORO_MODELS_FOLDER,
+    )
 
     cmd = [
         python_interpreter,
@@ -357,6 +375,8 @@ def text_to_speech_kokoro_tts(message, output_path):
         "--output",
         output_path,
     ]
+    if os.path.exists(local_model_dir):
+        cmd.extend(["--model", local_model_dir])
 
     logging.info(f"Running Kokoro TTS with command: {' '.join(cmd)}")
 
@@ -476,14 +496,8 @@ async def create_audio(request):
         )
         return web.json_response({"status": 200, "cached": True})
 
-    inner_loop = asyncio.get_running_loop()
-    executor = ThreadPoolExecutor(max_workers=NUM_OF_CPUS)
-
     try:
-        futures = inner_loop.run_in_executor(
-            executor, generate_tts_audio, message, output_path
-        )
-        await asyncio.ensure_future(futures)
+        await asyncio.to_thread(generate_tts_audio, message, output_path)
         status_code = 200
     except Exception as err:
         status_code = 500
@@ -526,7 +540,7 @@ async def ensure_models_present():
                 )
             else:
                 logging.info(
-                    f"Facebook MMS model for '{FACEBOOK_MMS_LANGUAGE_CODE}' is present."
+                    f"Facebook MMS model for '{FACEBOOK_MMS_LANGUAGE_CODE}' is present at {model_dir}"
                 )
 
         elif TTS_ENGINE == TTSEngine.PIPER:
@@ -553,14 +567,23 @@ async def ensure_models_present():
                 )
 
         elif TTS_ENGINE == TTSEngine.KOKORO:
-            logging.info("Ensuring Kokoro TTS model is present (checking HF cache)...")
-            from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
-                download_kokoro_model_async,
-            )
+            model_dir = os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER)
+            model_path = os.path.join(model_dir, KOKORO_MODEL_FILENAME)
+            config_path = os.path.join(model_dir, "config.json")
 
-            await download_kokoro_model_async(
-                os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER)
-            )
+            if not os.path.exists(model_path) or not os.path.exists(config_path):
+                logging.info(
+                    f"Kokoro TTS model not found in {model_dir}. Downloading..."
+                )
+                from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
+                    download_kokoro_model_async,
+                )
+
+                await download_kokoro_model_async(model_dir)
+            else:
+                logging.info(
+                    f"Kokoro TTS model is present at {model_dir}"
+                )
             logging.info("Kokoro TTS model check completed.")
     except Exception as e:
         logging.error(f"Failed to ensure models are present: {e}")
@@ -581,7 +604,7 @@ async def init_app():
     """
     app = web.Application()
 
-    instrument_aiohttp_app(app)
+    instrument_aiohttp_app(app, "generate_audio")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     abs_serving_audio = os.path.join(script_dir, SERVING_AUDIO_FOLDER)

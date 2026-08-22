@@ -3,7 +3,10 @@ Description=Podman container-asterisk_ws_monitor.service
 Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
-After=container-postgres_13.service
+After=container-postgres.service
+After=container-caller_register.service
+After=container-generate_audio.service
+After=container-asterisk_caller.service
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n

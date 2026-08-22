@@ -1,0 +1,18 @@
+[Unit]
+Description=Podman container-caller_scheduler.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-redis.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start caller_scheduler
+ExecStop=/usr/bin/podman stop -t 10 caller_scheduler
+ExecStopPost=/usr/bin/podman stop -t 10 caller_scheduler
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

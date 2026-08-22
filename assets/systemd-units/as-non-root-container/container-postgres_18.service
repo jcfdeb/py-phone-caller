@@ -1,0 +1,18 @@
+[Unit]
+Description=Podman container-postgres_18.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+Before=container-asterisk_recaller.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start postgres_18
+ExecStop=/usr/bin/podman stop -t 10 postgres_18
+ExecStopPost=/usr/bin/podman stop -t 10 postgres_18
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

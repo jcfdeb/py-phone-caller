@@ -29,6 +29,7 @@ from py_phone_caller_ui.schedule_call import schedule_call_blueprint
 from py_phone_caller_ui.users import users_blueprint
 from py_phone_caller_ui.ws_events import ws_events_blueprint
 from py_phone_caller_ui.address_book import address_book_blueprint
+from py_phone_caller_ui.sms import sms_blueprint
 
 from py_phone_caller_utils.login.user import User
 from py_phone_caller_utils.py_phone_caller_db.db_user import (
@@ -126,12 +127,14 @@ app.register_blueprint(schedule_call_blueprint)
 app.register_blueprint(users_blueprint)
 app.register_blueprint(ws_events_blueprint)
 app.register_blueprint(address_book_blueprint)
+app.register_blueprint(sms_blueprint)
 
 
 async def _setup_admin_user_async():
     """Internal async function to handle admin user setup."""
-    await ensure_admin_user_exists(UI_ADMIN_USER)
-    await reset_admin_password_if_needed(UI_ADMIN_USER)
+    created_admin_password = await ensure_admin_user_exists(UI_ADMIN_USER)
+    if created_admin_password is None:
+        await reset_admin_password_if_needed(UI_ADMIN_USER)
 
 
 def setup_admin_user():

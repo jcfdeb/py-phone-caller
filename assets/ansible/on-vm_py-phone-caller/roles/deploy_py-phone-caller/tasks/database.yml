@@ -5,23 +5,142 @@
     regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+ident'
     replace: 'host    all             all             127.0.0.1/32            md5'
   become: yes
-  when: ansible_os_family == "RedHat"
+  when:
+    - ansible_facts['os_family'] == "RedHat"
+    - py_phone_caller_manage_local_postgres | bool
   notify: Reload PostgreSQL
 
 - name: Flush handlers to ensure PostgreSQL is reloaded
   meta: flush_handlers
+  when: py_phone_caller_manage_local_postgres | bool
 
-- name: Create PostgreSQL user
-  postgresql_user:
+# ------------------------------------------------------------------------------
+# 1. Unattended / Authenticated Provisioning (when admin credentials provided)
+# ------------------------------------------------------------------------------
+- name: Create PostgreSQL user (authenticated admin)
+  community.postgresql.postgresql_user:
+    name: "{{ py_phone_caller_final_config.database.db_user }}"
+    password: "{{ py_phone_caller_final_config.database.db_password }}"
+    role_attr_flags: NOSUPERUSER,CREATEDB,LOGIN
+    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
+    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
+    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
+    login_password: "{{ py_phone_caller_db_admin_password }}"
+  when:
+    - py_phone_caller_manage_database | bool
+    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+
+- name: Create PostgreSQL database (authenticated admin)
+  community.postgresql.postgresql_db:
+    name: "{{ py_phone_caller_final_config.database.db_name }}"
+    owner: "{{ py_phone_caller_final_config.database.db_user }}"
+    encoding: UTF8
+    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
+    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
+    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
+    login_password: "{{ py_phone_caller_db_admin_password }}"
+  when:
+    - py_phone_caller_manage_database | bool
+    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+
+- name: Grant schema public privileges (authenticated admin)
+  community.postgresql.postgresql_privs:
+    database: "{{ py_phone_caller_final_config.database.db_name }}"
+    role: "{{ py_phone_caller_final_config.database.db_user }}"
+    type: schema
+    objs: public
+    privs: ALL
+    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
+    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
+    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
+    login_password: "{{ py_phone_caller_db_admin_password }}"
+  when:
+    - py_phone_caller_manage_database | bool
+    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+
+- name: Ensure uuid-ossp extension is enabled (authenticated admin)
+  community.postgresql.postgresql_ext:
+    name: "uuid-ossp"
+    db: "{{ py_phone_caller_final_config.database.db_name }}"
+    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
+    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
+    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
+    login_password: "{{ py_phone_caller_db_admin_password }}"
+  when:
+    - py_phone_caller_manage_database | bool
+    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+
+- name: Ensure pgcrypto extension is enabled (authenticated admin)
+  community.postgresql.postgresql_ext:
+    name: "pgcrypto"
+    db: "{{ py_phone_caller_final_config.database.db_name }}"
+    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
+    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
+    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
+    login_password: "{{ py_phone_caller_db_admin_password }}"
+  when:
+    - py_phone_caller_manage_database | bool
+    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+
+# ------------------------------------------------------------------------------
+# 2. Local Peer Authentication Provisioning (local PostgreSQL with become postgres)
+# ------------------------------------------------------------------------------
+- name: Create PostgreSQL user (local peer auth)
+  community.postgresql.postgresql_user:
     name: "{{ py_phone_caller_final_config.database.db_user }}"
     password: "{{ py_phone_caller_final_config.database.db_password }}"
     role_attr_flags: NOSUPERUSER,CREATEDB,LOGIN
   become: yes
   become_user: postgres
+  when:
+    - py_phone_caller_manage_database | bool
+    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
+    - py_phone_caller_manage_local_postgres | bool
 
-- name: Create PostgreSQL database
-  postgresql_db:
+- name: Create PostgreSQL database (local peer auth)
+  community.postgresql.postgresql_db:
     name: "{{ py_phone_caller_final_config.database.db_name }}"
     owner: "{{ py_phone_caller_final_config.database.db_user }}"
+    encoding: UTF8
   become: yes
   become_user: postgres
+  when:
+    - py_phone_caller_manage_database | bool
+    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
+    - py_phone_caller_manage_local_postgres | bool
+
+- name: Grant schema public privileges (local peer auth)
+  community.postgresql.postgresql_privs:
+    database: "{{ py_phone_caller_final_config.database.db_name }}"
+    role: "{{ py_phone_caller_final_config.database.db_user }}"
+    type: schema
+    objs: public
+    privs: ALL
+  become: yes
+  become_user: postgres
+  when:
+    - py_phone_caller_manage_database | bool
+    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
+    - py_phone_caller_manage_local_postgres | bool
+
+- name: Ensure uuid-ossp extension is enabled (local peer auth)
+  community.postgresql.postgresql_ext:
+    name: "uuid-ossp"
+    db: "{{ py_phone_caller_final_config.database.db_name }}"
+  become: yes
+  become_user: postgres
+  when:
+    - py_phone_caller_manage_database | bool
+    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
+    - py_phone_caller_manage_local_postgres | bool
+
+- name: Ensure pgcrypto extension is enabled (local peer auth)
+  community.postgresql.postgresql_ext:
+    name: "pgcrypto"
+    db: "{{ py_phone_caller_final_config.database.db_name }}"
+  become: yes
+  become_user: postgres
+  when:
+    - py_phone_caller_manage_database | bool
+    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
+    - py_phone_caller_manage_local_postgres | bool

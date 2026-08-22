@@ -4,14 +4,26 @@ metadata:
   namespace: py-phone-caller
   name: generate-audio-service
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
-  - port: 8082
-    name: http-8082
-    targetPort: 8082
-    protocol: TCP
+    - port: 8082
+      name: http-8082
+      targetPort: 8082
+      protocol: TCP
   selector:
     app: generate-audio
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: py-phone-caller
+  name: audio-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,22 +44,39 @@ spec:
       labels:
         app: generate-audio
     spec:
-      securityContext:
-        runAsUser: 2
       containers:
-      - name: generate-audio
-        image: quay.io/py-phone-caller/generate_audio:0.0.2
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8082
-        env:
-        - name: TZ
-          value: "Europe/Rome"
-        volumeMounts:
-          - name: caller-config
-            mountPath: /opt/py-phone-caller/config/caller_config.toml
-            subPath: caller_config.toml
+        - name: generate-audio
+          image: quay.io/py-phone-caller/generate_audio:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/src/config/settings.toml
+              subPath: settings.toml
+            - name: audio-storage
+              mountPath: /app/audio
       volumes:
         - name: caller-config
           configMap:
             name: py-phone-caller-config
+        - name: audio-storage
+          persistentVolumeClaim:
+            claimName: audio-pvc

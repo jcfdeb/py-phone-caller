@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import functools
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -15,7 +16,11 @@ logging.basicConfig(
 )
 
 FACEBOOK_MMS_LANGUAGE_CODE = settings.generate_audio.facebook_mms_language_code
-MMS_MODEL_INSTALL_DIR = "pre_trained_models/facebook"
+PRE_TRAINED_MODELS_FOLDER = settings.generate_audio.pre_trained_models_folder
+FACEBOOK_MMS_MODELS_FOLDER = settings.generate_audio.facebook_mms_models_folder
+MMS_MODEL_INSTALL_DIR = os.path.join(
+    PRE_TRAINED_MODELS_FOLDER, FACEBOOK_MMS_MODELS_FOLDER
+)
 
 logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor()
@@ -61,7 +66,7 @@ async def download_mms_model_async(language, model_dir):
 
     tokenizer = await run_in_executor(AutoTokenizer.from_pretrained, model_id)
 
-    save_path = f"./{model_dir}/{model_name}"
+    save_path = os.path.join(model_dir, model_name)
     logger.info(f"Saving model to {save_path}...")
 
     Path(save_path).mkdir(parents=True, exist_ok=True)

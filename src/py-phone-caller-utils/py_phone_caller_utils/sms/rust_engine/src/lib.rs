@@ -106,13 +106,14 @@ fn enqueue_sms(py: Python<'_>, db_path: String, number: String, msg: String) -> 
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
 
-        // Deduplication logic
+        // Deduplication logic: only ignore if an identical message is actively queued (0) or processing (1) within the last 5 minutes
         let result = sqlx::query(
             "INSERT INTO sms_queue (phone_number, message, status, retries)
              SELECT ?, ?, 0, 0
              WHERE NOT EXISTS (
                  SELECT 1 FROM sms_queue 
-                 WHERE phone_number = ? AND message = ? AND status IN (0, 1, 3)
+                 WHERE phone_number = ? AND message = ? AND status IN (0, 1)
+                 AND created_at > datetime('now', '-5 minutes')
              )",
         )
         .bind(&number)
@@ -124,8 +125,10 @@ fn enqueue_sms(py: Python<'_>, db_path: String, number: String, msg: String) -> 
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         if result.rows_affected() == 0 {
+            info!("Ignored duplicate active SMS to {} (message: '{}')", number, msg);
             Ok("DUPLICATE_IGNORED".to_string())
         } else {
+            info!("Enqueued SMS to {} (message: '{}')", number, msg);
             Ok("QUEUED".to_string())
         }
     })
@@ -207,7 +210,7 @@ async fn pick_next_message(pool: &SqlitePool, retry_limit: i32) -> Result<Option
                      )
                      AND (last_attempt_at IS NULL OR last_attempt_at < datetime('now', '-5 minutes'))
                  )
-                 ORDER BY created_at LIMIT 1
+                 ORDER BY status ASC, created_at ASC LIMIT 1
              )
              RETURNING id, phone_number, message, retries",
         )
@@ -221,7 +224,7 @@ async fn pick_next_message(pool: &SqlitePool, retry_limit: i32) -> Result<Option
              WHERE id = (
                  SELECT id FROM sms_queue 
                  WHERE status = 0 
-                 ORDER BY created_at LIMIT 1
+                 ORDER BY created_at ASC LIMIT 1
              )
              RETURNING id, phone_number, message, retries",
         )
@@ -248,15 +251,63 @@ async fn drain_serial_to_string(port: &mut SerialStream) -> String {
     response
 }
 
-fn is_gsm7_compatible(message: &str) -> bool {
-    let gsm7_basic = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-    let gsm7_ext = "^{}\\[~]|€";
-    for c in message.chars() {
-        if !gsm7_basic.contains(c) && !gsm7_ext.contains(c) {
-            return false;
+async fn wait_for_prompt(port: &mut SerialStream, timeout_millis: u64) -> bool {
+    let mut response = String::new();
+    let mut buffer = [0u8; 256];
+    let start = tokio::time::Instant::now();
+    let max_duration = Duration::from_millis(timeout_millis);
+
+    while start.elapsed() < max_duration {
+        match tokio::time::timeout(Duration::from_millis(100), port.read(&mut buffer)).await {
+            Ok(Ok(n)) if n > 0 => {
+                response.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                if response.contains('>') {
+                    return true;
+                }
+                if response.contains("ERROR") {
+                    return false;
+                }
+            }
+            _ => {}
         }
     }
-    true
+    response.contains('>')
+}
+
+async fn wait_for_cmgs_response(port: &mut SerialStream, timeout_secs: u64) -> Result<String, String> {
+    let mut response = String::new();
+    let mut buffer = [0u8; 1024];
+    let start = tokio::time::Instant::now();
+    let max_duration = Duration::from_secs(timeout_secs);
+
+    while start.elapsed() < max_duration {
+        match tokio::time::timeout(Duration::from_millis(300), port.read(&mut buffer)).await {
+            Ok(Ok(n)) if n > 0 => {
+                response.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                if response.contains("OK") {
+                    return Ok(response);
+                }
+                if response.contains("ERROR") || response.contains("+CMS ERROR") || response.contains("+CME ERROR") {
+                    return Err(format!("Modem returned error: {}", response.trim()));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if response.contains("OK") {
+        Ok(response)
+    } else if response.contains("ERROR") || response.contains("+CMS ERROR") || response.contains("+CME ERROR") {
+        Err(format!("Modem returned error: {}", response.trim()))
+    } else if response.is_empty() {
+        Ok(response)
+    } else {
+        Ok(response)
+    }
+}
+
+fn is_pure_ascii(message: &str) -> bool {
+    message.chars().all(|c| c.is_ascii() && (c == '\r' || c == '\n' || (c >= ' ' && c <= '~')))
 }
 
 fn to_ucs2_hex(s: &str) -> String {
@@ -328,7 +379,7 @@ async fn send_single_modem(modem: &ModemConfig, number: &str, message: &str, id:
                 return Err(format!("Modem {} not registered to network.", modem.id));
             }
 
-            let use_unicode = !is_gsm7_compatible(message);
+            let use_unicode = !is_pure_ascii(message);
             
             if use_unicode {
                 let _ = port.write_all(b"AT+CSCS=\"UCS2\"\r").await.map_err(|e| e.to_string())?;
@@ -362,10 +413,8 @@ async fn send_single_modem(modem: &ModemConfig, number: &str, message: &str, id:
             let _ = port.write_all(cmd.as_bytes()).await.map_err(|e| e.to_string())?;
             let _ = port.flush().await.map_err(|e| e.to_string())?;
             
-            sleep(Duration::from_millis(1500)).await;
-            let resp = drain_serial_to_string(&mut port).await;
-            if !resp.contains('>') {
-                warn!("[ID:{}] Carrier {}: No '>' prompt seen, proceeding anyway...", id, modem.id);
+            if !wait_for_prompt(&mut port, 3000).await {
+                warn!("[ID:{}] Carrier {}: No '>' prompt seen within timeout, proceeding anyway...", id, modem.id);
             }
             
             let content = if use_unicode { to_ucs2_hex(message) } else { message.to_string() };
@@ -373,21 +422,14 @@ async fn send_single_modem(modem: &ModemConfig, number: &str, message: &str, id:
             let _ = port.write_all(&[0x1a]).await.map_err(|e| e.to_string())?;
             let _ = port.flush().await.map_err(|e| e.to_string())?;
             
-            sleep(Duration::from_secs(5)).await;
-            let resp = drain_serial_to_string(&mut port).await;
-            
-            if resp.contains("OK") {
-                Ok(())
-            } else if resp.contains("ERROR") {
-                Err(format!("Modem {} returned ERROR: {}", modem.id, resp.trim()))
-            } else {
-                if resp.is_empty() {
-                    warn!("[ID:{}] Carrier {}: No final response, assuming sent.", id, modem.id);
-                    Ok(())
-                } else {
-                    info!("[ID:{}] Carrier {}: response: {}", id, modem.id, resp.trim());
+            match wait_for_cmgs_response(&mut port, 12).await {
+                Ok(resp) => {
+                    if !resp.is_empty() {
+                        info!("[ID:{}] Carrier {}: response: {}", id, modem.id, resp.trim());
+                    }
                     Ok(())
                 }
+                Err(e) => Err(format!("Modem {} returned error: {}", modem.id, e)),
             }
         }
         Err(e) => Err(format!("Failed to open serial port {} ({}): {}", modem.port, modem.id, e)),
@@ -515,4 +557,28 @@ fn rust_engine(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(enqueue_sms, m)?)?;
     m.add_function(wrap_pyfunction!(start_engine, m)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_pure_ascii() {
+        assert!(is_pure_ascii("Hello World 123"));
+        assert!(is_pure_ascii("Alert: Database is DOWN!\r\nCheck immediately."));
+        assert!(!is_pure_ascii("Non funziona più il database, controllare il cluster TimescaleDB"));
+        assert!(!is_pure_ascii("Caffè, città, però, così, naïve"));
+        assert!(!is_pure_ascii("Price: €50"));
+        assert!(!is_pure_ascii("Warning: ⚠️"));
+    }
+
+    #[test]
+    fn test_to_ucs2_hex() {
+        assert_eq!(to_ucs2_hex("AB"), "00410042");
+        assert_eq!(to_ucs2_hex("+39"), "002B00330039");
+        assert_eq!(to_ucs2_hex("più"), "0070006900F9");
+        let hex = to_ucs2_hex("Non funziona più il database, controllare il cluster TimescaleDB");
+        assert!(hex.contains("00F9"));
+    }
 }

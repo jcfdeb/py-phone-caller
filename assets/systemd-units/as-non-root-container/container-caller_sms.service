@@ -3,6 +3,7 @@ Description=Podman container-caller_sms.service
 Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
+After=container-postgres.service
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n

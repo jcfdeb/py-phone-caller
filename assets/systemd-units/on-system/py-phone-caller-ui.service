@@ -1,0 +1,25 @@
+[Unit]
+Description=Py Phone Caller - Web UI Service
+After=network.target
+After=postgresql.service
+After=caller-register.service
+After=caller-address-book.service
+After=caller-scheduler.service
+
+[Service]
+EnvironmentFile=-/opt/py-phone-caller/src/config/py-phone-caller.env
+Environment=PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
+Type=simple
+User=py-phone-caller
+Group=py-phone-caller
+WorkingDirectory=/opt/py-phone-caller
+ExecStart=/opt/py-phone-caller/venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 py_phone_caller_ui.app:app
+StandardOutput=journal
+StandardError=journal
+Restart=always
+RestartSec=10s
+TimeoutStopSec=15
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -28,5 +28,5 @@ def enqueue_the_call(phone, message, scheduled_at):
         int: The HTTP status code returned by the caller scheduler service.
     """
     data = {"phone": phone, "message": message, "scheduled_at": scheduled_at}
-    response = requests.post(URL, params=data)
+    response = requests.post(URL, params=data, timeout=30)
     return response.status_code

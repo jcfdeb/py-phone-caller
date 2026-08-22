@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "celery-worker"
+version = "1.0.0"
+description = "Celery Worker service for py-phone-caller"
+readme = "README.md"
+requires-python = ">=3.14, <3.15"
+dependencies = [
+    "py_phone_caller_utils",
+    "celery[redis]>=5.4.0",
+]
+
+[tool.setuptools.package-dir]
+celery_worker = "."
+
+[tool.setuptools.package-data]
+celery_worker = ["*"]

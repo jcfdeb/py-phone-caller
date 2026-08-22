@@ -1,57 +1,68 @@
 ---
-- name: Create virtual environment
-  command: "{{ python_binary }} -m venv {{ py_phone_caller_venv_dir }}"
-  args:
-    creates: "{{ py_phone_caller_venv_dir }}/bin/python"
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
-
-- name: Install requirements
-  pip:
-    requirements: "{{ py_phone_caller_install_dir }}/src/requirements.txt"
-    virtualenv: "{{ py_phone_caller_venv_dir }}"
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
-
-- name: Install uv
-  pip:
-    name: uv
-    virtualenv: "{{ py_phone_caller_venv_dir }}"
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
-
-- name: Ensure venv ownership
+- name: Ensure uv installation directory exists
   file:
-    path: "{{ py_phone_caller_venv_dir }}"
+    path: "{{ py_phone_caller_uv_bin | dirname }}"
     state: directory
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
-    recurse: yes
+    mode: '0755'
   become: yes
 
-- name: Install audio requirements
-  command: "{{ py_phone_caller_venv_dir }}/bin/uv pip install -r {{ py_phone_caller_install_dir }}/src/requirements-audio.txt --python {{ py_phone_caller_venv_dir }} --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple --index-strategy unsafe-best-match"
+- name: Install uv
+  shell: "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR={{ py_phone_caller_uv_bin | dirname }} sh"
+  args:
+    creates: "{{ py_phone_caller_uv_bin }}"
   become: yes
   become_user: "{{ py_phone_caller_user }}"
 
-- name: Check for pre-built wheels (local deployment)
-  find:
-    paths: "{{ py_phone_caller_install_dir }}/src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/wheels"
-    patterns: "*.whl"
-  register: found_wheels
+- name: Check if virtual environment already exists
+  stat:
+    path: "{{ py_phone_caller_venv_dir }}/bin/python"
+  register: venv_python_stat
+
+- name: Sync uv workspace with production dependencies (offline first)
+  command: "{{ py_phone_caller_uv_bin }} sync --frozen --all-packages --no-dev --python 3.14 --offline"
+  args:
+    chdir: "{{ py_phone_caller_install_dir }}"
+  environment:
+    UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
+    UV_PYTHON_INSTALL_DIR: "{{ py_phone_caller_uv_python_install_dir }}"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
   failed_when: false
+  register: uv_sync_offline
+  when: not venv_python_stat.stat.exists
 
-- name: Install py-phone-caller-utils from wheel
-  command: "{{ py_phone_caller_venv_dir }}/bin/uv pip install {{ found_wheels.files[0].path }} --python {{ py_phone_caller_venv_dir }}"
+- name: Sync uv workspace with production dependencies (online fallback)
+  command: "{{ py_phone_caller_uv_bin }} sync --frozen --all-packages --no-dev --python 3.14"
+  args:
+    chdir: "{{ py_phone_caller_install_dir }}"
+  environment:
+    UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
+    UV_PYTHON_INSTALL_DIR: "{{ py_phone_caller_uv_python_install_dir }}"
+    UV_EXTRA_INDEX_URL: "http://artifacts.py-phone-caller.lan:8080/simple"
+    UV_INSECURE_HOST: "artifacts.py-phone-caller.lan"
   become: yes
   become_user: "{{ py_phone_caller_user }}"
-  when: found_wheels.matched > 0
+  when: not venv_python_stat.stat.exists and uv_sync_offline.rc != 0
+  ignore_errors: yes
 
-- name: Install py-phone-caller-utils from source (ensure that the tools are installed)
-  command: "{{ py_phone_caller_venv_dir }}/bin/uv pip install -e {{ py_phone_caller_install_dir }}/src/py-phone-caller-utils --python {{ py_phone_caller_venv_dir }}"
+- name: Build Rust SMS engine for on-premise deployments
+  command: "{{ py_phone_caller_uv_bin }} run --with maturin maturin develop --manifest-path app/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/Cargo.toml"
+  args:
+    chdir: "{{ py_phone_caller_install_dir }}"
+  environment:
+    UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
+    UV_PYTHON_INSTALL_DIR: "{{ py_phone_caller_uv_python_install_dir }}"
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
   become: yes
   become_user: "{{ py_phone_caller_user }}"
-  when: found_wheels.matched == 0
+  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+
+- name: Ensure venv ownership
+  command: chown -R {{ py_phone_caller_user }}:{{ py_phone_caller_group }} {{ py_phone_caller_venv_dir }}
+  become: yes
+  changed_when: false
 
 - name: Ensure log directory exists
   file:

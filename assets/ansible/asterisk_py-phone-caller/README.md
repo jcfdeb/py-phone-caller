@@ -1,6 +1,6 @@
-# 📘 Ansible Role: Asterisk for py-phone-caller
+# 📘 Ansible Role: Asterisk for Py-Phone-Caller
 
-This role installs and configures **Asterisk PBX** (v18/20+) specifically for the **py-phone-caller** emergency alert system.
+This role installs and configures **Asterisk PBX** (v18/20+) specifically for the **Py-Phone-Caller** emergency alert system.
 
 It is designed to be **OS-Agnostic** (supporting Ubuntu/Debian and RHEL/Rocky Linux) and **Non-Destructive** (it uses `#include` statements to inject configurations without overwriting system defaults).
 
@@ -9,13 +9,13 @@ It is designed to be **OS-Agnostic** (supporting Ubuntu/Debian and RHEL/Rocky Li
 * **Ansible:** 2.12 or higher.
 * **Ansible Collections:** `community.general` (Required for `.ini` configuration).
 * **Target OS:**
-    * Ubuntu 22.04 LTS / 24.04 LTS (**Recommended** / Fully Supported)
-    * Red Hat Enterprise Linux (RHEL) 9 / Rocky Linux 9 (**Recommended** / Fully Supported)
+    * Ubuntu 22.04 LTS / 24.04 LTS / 26.04 LTS (**Recommended** / Fully Supported)
+    * Red Hat Enterprise Linux (RHEL) 9 / Rocky Linux 9 / AlmaLinux 9 (**Recommended** / Fully Supported)
+    * RHEL 10 / Rocky Linux 10 / AlmaLinux 10 (**Fully Supported**: Automated DNF installation via `lucamagrone/epel-10-extra` COPR repository)
     * RHEL/Rocky 8 (Legacy / Supported)
-    * RHEL/Rocky 10 (**Experimental**: Requires manual addition of Asterisk repositories as they are not yet available in EPEL 10)
 
 > [!TIP]
-> **Why Rocky 9?** As of early 2026, Asterisk packages are readily available in the official EPEL 9 repositories. EPEL 10 is still being populated, and automated installation on Rocky 10 will fail until the packages are added by the community.
+> **Enterprise Linux 10 (Rocky/Alma/RHEL 10):** The role automatically enables the `lucamagrone/epel-10-extra` COPR repository via DNF to install Asterisk packages and modules seamlessly.
 * **Access:** SSH with `sudo` privileges on the target machine.
 
 ---
@@ -86,13 +86,13 @@ These variables can be overridden in your `playbook`, `inventory`, or `group_var
 | **SIP Trunking** | | |
 | `sip_provider_host` | `"sip.messagenet.it"` | Hostname or IP of the SIP Provider or Gateway. |
 | `sip_provider_port` | `5061` | Port of the SIP Provider or Gateway. |
-| `sip_username` | `"5318393"` | SIP Username (Authentication ID). |
+| `sip_username` | `"CHANGE_ME"` | SIP Username (Authentication ID). |
 | `sip_password` | `"CHANGE_ME"` | **SECURE:** SIP Password. |
-| `sip_contact_user` | `"0719256355"` | The number/user presented in the Contact header. |
+| `sip_contact_user` | `"CHANGE_ME"` | The number/user presented in the Contact header. |
 | `asterisk_sip_bindaddr` | `"0.0.0.0:5060"` | Local address and port for PJSIP to listen on. |
 | **Integration** | | |
 | `callback_service_url` | `"http://127.0.0.1:8083"` | URL of the Rust/Python service to receive CURL events. |
-| `asterisk_extension` | `"3216"` | The extension number to trigger the py-phone-caller logic. |
+| `asterisk_extension` | `"3216"` | The extension number to trigger the Py-Phone-Caller logic. |
 
 ---
 
@@ -110,7 +110,7 @@ Use this configuration when connecting to a VoIP provider like Messagenet over t
     - asterisk_py_phone_caller
   vars:
     sip_provider_host: "sip.messagenet.it"
-    sip_username: "5318393"
+    sip_username: "{{ vault_sip_username }}"
     sip_password: "{{ vault_messagenet_password }}" # Encrypted via Ansible Vault
     ari_password: "{{ vault_ari_password }}"
 ```
@@ -211,4 +211,4 @@ If you see a `403 Forbidden` error during SIP registration:
 3. **Wait it Out:** The role now configures `forbidden_retry_interval=600`, which means Asterisk will wait 10 minutes before retrying after a 403 error. This prevents your IP from being blacklisted by the provider. You can trigger a manual retry by reloading PJSIP: `asterisk -x "pjsip reload"`.
 
 ---
-**Maintained by:** py-phone-caller team
+**Maintained by:** Py-Phone-Caller Team

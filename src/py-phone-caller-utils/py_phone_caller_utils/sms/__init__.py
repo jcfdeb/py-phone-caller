@@ -13,7 +13,7 @@ import logging
 from py_phone_caller_utils.config import settings
 
 try:
-    from .rust_engine import enqueue_sms, start_engine
+    from rust_engine import enqueue_sms, start_engine
 except ImportError:
     logging.warning(
         "Rust SMS engine not found. 'on_premise' backend will not work correctly."
@@ -69,6 +69,7 @@ class RustBackend:
         try:
             logging.debug(f"Enqueuing SMS to {to} using DB: {self.db_path}")
             result = await enqueue_sms(self.db_path, to, body)
+            logging.info(f"Enqueued SMS to {to}: status={result}")
             return result in ["QUEUED", "DUPLICATE_IGNORED"]
         except Exception as e:
             logging.exception(f"Rust Error: {e}")

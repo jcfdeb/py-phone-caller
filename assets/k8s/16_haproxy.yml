@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: haproxy-service
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      name: http-8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: haproxy
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: py-phone-caller
+  name: haproxy-config
+data:
+  haproxy.cfg: |
+    global
+      log stdout format raw local0
+      user haproxy
+      group haproxy
+
+    defaults
+      mode              http
+      option            dontlognull
+      retries           3
+      maxconn           2000
+      timeout connect   5s
+      timeout client    30s
+      timeout server    30s
+      option httplog
+      default-server init-addr last,libc,none
+      log               global
+
+    frontend http_front
+       bind *:8080
+       stats uri /haproxy?stats
+       default_backend py_phone_caller_ui
+
+       acl acl_asterisk_caller path_beg -i /place_call /call_to_queue /play
+       acl acl_generate_audio path_beg -i /make_audio /is_audio_ready /audio
+       acl acl_caller_register path_beg -i /register_call /msg /ack /heard /scheduled_call /get_sms
+       acl acl_caller_prometheus_webhook path_beg -i /call_only /sms_only /sms_before_call /call_and_sms
+       acl acl_caller_sms path_beg -i /send_sms
+       acl acl_caller_scheduler path_beg -i /schedule_call
+       acl acl_caller_address_book path_beg -i /contact_add /contact_modify /contact_delete /contact_on_call /contacts_export_csv /contacts_import_csv
+
+       use_backend asterisk_caller if acl_asterisk_caller
+       use_backend generate_audio if acl_generate_audio
+       use_backend caller_register if acl_caller_register
+       use_backend caller_prometheus_webhook if acl_caller_prometheus_webhook
+       use_backend caller_sms if acl_caller_sms
+       use_backend caller_scheduler if acl_caller_scheduler
+       use_backend caller_address_book if acl_caller_address_book
+
+    backend py_phone_caller_ui
+       balance roundrobin
+       server py_phone_caller_ui py-phone-caller-ui-service:5000 check
+
+    backend asterisk_caller
+       balance roundrobin
+       server asterisk_caller asterisk-caller-service:8081 check
+
+    backend generate_audio
+       balance roundrobin
+       server generate_audio generate-audio-service:8082 check
+
+    backend caller_register
+       balance roundrobin
+       server caller_register caller-register-service:8083 check
+
+    backend caller_prometheus_webhook
+       balance roundrobin
+       server caller_prometheus_webhook caller-prometheus-webhook-service:8084 check
+
+    backend caller_sms
+       balance roundrobin
+       server caller_sms caller-sms-service:8085 check
+
+    backend caller_scheduler
+       balance roundrobin
+       server caller_scheduler caller-scheduler-service:8086 check
+
+    backend caller_address_book
+       balance roundrobin
+       server caller_address_book caller-address-book-service:8087 check
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: haproxy-deployment
+  labels:
+    app: haproxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: haproxy
+  template:
+    metadata:
+      labels:
+        app: haproxy
+    spec:
+      containers:
+        - name: haproxy
+          image: docker.io/library/haproxy:2.8-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /usr/local/etc/haproxy/haproxy.cfg
+              subPath: haproxy.cfg
+      volumes:
+        - name: config-volume
+          configMap:
+            name: haproxy-config

@@ -14,8 +14,7 @@ integrations used across services.
 
 ## Install (Python only)
 ```bash
-cd src/py-phone-caller-utils
-pip install -e .
+uv sync --package py-phone-caller-utils
 ```
 
 ## Build with Rust engine
@@ -23,13 +22,13 @@ The SMS modem backend ships as a Rust extension built with Maturin.
 
 ```bash
 cd src/py-phone-caller-utils
-maturin develop
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
 
 ## Configuration
-- `CALLER_CONFIG_DIR=src/config`
-- `CALLER_CONFIG=/path/to/settings.toml`
+- Local development can use `CALLER_CONFIG=src/config/settings.toml`.
+- Container and systemd deployments should inject generated `DYNACONF_*` environment files instead of copying config into images.
 
 ## Notes
 - The module name is `py_phone_caller_utils`.
-- Python 3.12+ is required.
+- Python 3.14.x is required.

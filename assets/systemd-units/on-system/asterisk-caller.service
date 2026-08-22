@@ -1,0 +1,23 @@
+[Unit]
+Description=Py Phone Caller - Asterisk Caller Service
+After=network.target
+After=caller-register.service
+After=generate-audio.service
+After=caller-address-book.service
+
+[Service]
+EnvironmentFile=-/opt/py-phone-caller/src/config/py-phone-caller.env
+Type=simple
+User=py-phone-caller
+Group=py-phone-caller
+WorkingDirectory=/opt/py-phone-caller
+ExecStart=/opt/py-phone-caller/venv/bin/python -m asterisk_caller.asterisk_caller
+StandardOutput=journal
+StandardError=journal
+Restart=always
+RestartSec=10s
+TimeoutStopSec=15
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

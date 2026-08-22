@@ -1,21 +1,19 @@
 [Unit]
-Description=Python Asterisk Caller - Generate Audio
-Before=asterisk-call.service
+Description=Py Phone Caller - Generate Audio Service
 After=network.target
 
 [Service]
-Environment=CALLER_CONFIG="/opt/py-phone-caller/config/caller_config.toml"
+EnvironmentFile=-/opt/py-phone-caller/src/config/py-phone-caller.env
 Type=simple
-User=daemon
-Group=daemon
-WorkingDirectory=/opt/py-phone-caller/
-ExecStart=/bin/bash -c 'source venv/bin/activate && python generate_audio.py'
+User=py-phone-caller
+Group=py-phone-caller
+WorkingDirectory=/opt/py-phone-caller
+ExecStart=/opt/py-phone-caller/venv/bin/python -m generate_audio.generate_audio
 StandardOutput=journal
+StandardError=journal
 Restart=always
-RestartSec=15s
-TimeoutStopSec=5
-ExecReload=/bin/kill -s HUP $MAINPID
-KillMode=mixed
+RestartSec=10s
+TimeoutStopSec=15
 PrivateTmp=true
 
 [Install]

@@ -1,62 +1,89 @@
 ---
+- name: Remove assets directory
+  file:
+    path: "{{ py_phone_caller_install_dir }}/assets"
+    state: absent
+  become: yes
+
+- name: Remove test and tmp directories if present
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ py_phone_caller_install_dir }}/test"
+    - "{{ py_phone_caller_install_dir }}/tmp"
+  become: yes
+
+- name: Remove temporary src symlink
+  file:
+    path: "{{ py_phone_caller_install_dir }}/src"
+    state: absent
+  become: yes
+
 - name: Remove unnecessary files
   file:
     path: "{{ item }}"
     state: absent
   loop:
     - "{{ py_phone_caller_install_dir }}/pytest.ini"
+    - "{{ py_phone_caller_install_dir }}/app/build_all_images.sh"
     - "{{ py_phone_caller_install_dir }}/src/build_all_images.sh"
-    - "{{ py_phone_caller_install_dir }}/src/requirements-audio.in"
-    - "{{ py_phone_caller_install_dir }}/src/requirements-dev.txt"
-    - "{{ py_phone_caller_install_dir }}/src/requirements.in"
   become: yes
-  become_user: "{{ py_phone_caller_user }}"
 
 - name: Find Dockerfiles
   find:
-    paths: "{{ py_phone_caller_install_dir }}/src"
+    paths: "{{ py_phone_caller_install_dir }}/app"
     patterns: "Dockerfile"
     recurse: yes
   register: dockerfiles_to_delete
   become: yes
-  become_user: "{{ py_phone_caller_user }}"
 
 - name: Remove Dockerfiles
   file:
     path: "{{ item.path }}"
     state: absent
-  loop: "{{ dockerfiles_to_delete.files }}"
+  loop: "{{ dockerfiles_to_delete.files | default([]) }}"
   become: yes
-  become_user: "{{ py_phone_caller_user }}"
 
-- name: Remove Rust build environment directories
+- name: Remove development and cache artifacts
   file:
     path: "{{ item }}"
     state: absent
   loop:
     - "{{ py_phone_caller_install_dir }}/.rustup"
     - "{{ py_phone_caller_install_dir }}/.cargo"
-    - "{{ py_phone_caller_install_dir }}/.cache/uv"
+    - "{{ py_phone_caller_install_dir }}/.cache"
+    - "{{ py_phone_caller_install_dir }}/.pytest_cache"
+    - "{{ py_phone_caller_install_dir }}/.ruff_cache"
+    - "{{ py_phone_caller_install_dir }}/.sonarlint"
+    - "{{ py_phone_caller_install_dir }}/.idea"
+    - "{{ py_phone_caller_install_dir }}/.junie"
+    - "{{ py_phone_caller_install_dir }}/.output.txt"
   become: yes
-  become_user: "{{ py_phone_caller_user }}"
 
 - name: Remove build packages (Debian/Ubuntu)
   apt:
     name:
       - build-essential
       - python3-dev
+      - rustc
+      - cargo
     state: absent
     autoremove: yes
   become: yes
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Remove build packages (RHEL/Rocky)
   dnf:
     name:
       - gcc
-      - python3.12-devel
+      - gcc-c++
+      - make
+      - python3-devel
       - python3-rpm-macros
+      - rust
+      - cargo
     state: absent
     autoremove: yes
   become: yes
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts['os_family'] == "RedHat"

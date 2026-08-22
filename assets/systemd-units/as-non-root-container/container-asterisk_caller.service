@@ -1,0 +1,20 @@
+[Unit]
+Description=Podman container-asterisk_caller.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-caller_register.service
+After=container-generate_audio.service
+After=container-caller_address_book.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start asterisk_caller
+ExecStop=/usr/bin/podman stop -t 10 asterisk_caller
+ExecStopPost=/usr/bin/podman stop -t 10 asterisk_caller
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

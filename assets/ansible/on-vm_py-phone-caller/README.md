@@ -82,6 +82,12 @@ These variables control the basic installation and runtime behavior. Override th
 | **Web Interface** | | |
 | `caddy_domain_name` | `"py-phone-caller.lan"` | Domain name for the web UI and API services. |
 | `caddy_email` | `""` | Email for Let's Encrypt (leave empty for local/self-signed). |
+| **Networking** | | |
+| `py_phone_caller_service_host` | `{{ caddy_domain_name }}` | Default hostname used by services to call each other. |
+| `py_phone_caller_pbx_host` | `"pbx.lan"` | Default Asterisk PBX hostname. |
+| `py_phone_caller_database_host` | `"postgresql.lan"` | Default PostgreSQL hostname. |
+| `py_phone_caller_queue_host` | `"redis.lan"` | Default Redis hostname. |
+| `py_phone_caller_hosts_entries` | `[]` | Optional managed `/etc/hosts` entries for lab or air-gapped environments without DNS. |
 
 ### 2. Service Configuration
 The role configures multiple microservices. Key configuration options:
@@ -97,6 +103,24 @@ The role configures multiple microservices. Key configuration options:
 
 > [!NOTE]
 > All configuration options have sensible defaults defined in `defaults/main.yml`. For production deployments, you should override at minimum: database credentials, SMS settings, and domain names.
+
+### Optional `/etc/hosts` aliases
+
+The role does not force infrastructure names to `127.0.0.1`. Use DNS whenever possible. If the deployment target needs local host aliases, define them explicitly:
+
+```yaml
+py_phone_caller_hosts_entries:
+  - address: "<INFRA_SERVICES_IP>"
+    names:
+      - postgresql.lan
+      - pbx.lan
+      - redis.lan
+  - address: "<REVERSE_PROXY_IP>"
+    names:
+      - nginx.lab.local
+```
+
+Keep `py_phone_caller_hosts_entries: []` when hostnames are already resolved by DNS or by externally managed `/etc/hosts` content.
 
 ### 3. Deployed Services
 The role deploys the following systemd services:
@@ -303,7 +327,8 @@ curl http://localhost:8087/health
 ### 6. Verify Configuration
 Check the deployed configuration:
 ```bash
-cat /opt/py-phone-caller/src/config/settings.toml
+sudo -u py-phone-caller cat /opt/py-phone-caller/app/config/settings.source.toml
+sudo -u py-phone-caller sed -n '1,80p' /opt/py-phone-caller/app/config/py-phone-caller.env
 ```
 
 ---
@@ -329,7 +354,8 @@ systemctl status py-phone-caller-asterisk_caller
 journalctl -u py-phone-caller-asterisk_caller -n 100
 
 # Verify configuration
-cat /opt/py-phone-caller/src/config/settings.toml
+sudo -u py-phone-caller cat /opt/py-phone-caller/app/config/settings.source.toml
+sudo -u py-phone-caller sed -n '1,80p' /opt/py-phone-caller/app/config/py-phone-caller.env
 
 # Check file permissions
 ls -la /opt/py-phone-caller/
@@ -337,7 +363,7 @@ ls -la /opt/py-phone-caller/
 
 ### Database Connection Errors
 If services can't connect to the database:
-1. **Verify Credentials:** Check `settings.toml` for correct database credentials
+1. **Verify Credentials:** Check `/opt/py-phone-caller/app/config/settings.source.toml` and `/opt/py-phone-caller/app/config/py-phone-caller.env` for correct database credentials
 2. **Test Connection:** Use `psql` to manually test the connection:
    ```bash
    psql -h localhost -U py_phone_caller -d py_phone_caller

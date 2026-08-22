@@ -1,23 +1,24 @@
 [Unit]
-Description=Python Asterisk Caller - WebSocket Monitor
-Before=asterisk-call.service
-After=call-register.service
+Description=Py Phone Caller - Asterisk WebSocket Monitor Service
 After=network.target
-
+After=postgresql.service
+After=caller-register.service
+After=generate-audio.service
+After=asterisk-caller.service
 
 [Service]
-Environment=CALLER_CONFIG="/opt/py-phone-caller/config/caller_config.toml"
+EnvironmentFile=-/opt/py-phone-caller/src/config/py-phone-caller.env
+Environment=PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
 Type=simple
-User=daemon
-Group=daemon
-WorkingDirectory=/opt/py-phone-caller/
-ExecStart=/bin/bash -c 'source venv/bin/activate && python asterisk_ws_monitor.py'
+User=py-phone-caller
+Group=py-phone-caller
+WorkingDirectory=/opt/py-phone-caller
+ExecStart=/opt/py-phone-caller/venv/bin/python -m asterisk_ws_monitor.asterisk_ws_monitor
 StandardOutput=journal
+StandardError=journal
 Restart=always
-RestartSec=15s
-TimeoutStopSec=5
-ExecReload=/bin/kill -s HUP $MAINPID
-KillMode=mixed
+RestartSec=10s
+TimeoutStopSec=15
 PrivateTmp=true
 
 [Install]

@@ -92,6 +92,12 @@ sip_username: "YOUR_SIP_USERNAME"
 sip_password: "YOUR_SIP_PASSWORD"
 
 # py-phone-caller configuration
+py_phone_caller_pbx_host: "pbx.lan"
+py_phone_caller_database_host: "postgresql.lan"
+py_phone_caller_queue_host: "redis.lan"
+py_phone_caller_hosts_entries: []  # Optional; use only when DNS is unavailable
+py_phone_caller_db_admin_user: "postgres"
+py_phone_caller_db_admin_password: "YOUR_POSTGRES_ADMIN_PASSWORD"  # For unattended DB provisioning
 py_phone_caller_config:
   database:
     db_password: "YOUR_DB_PASSWORD"
@@ -385,7 +391,7 @@ Open your browser and navigate to:
 **Symptoms:** Deployment stops during microservices setup
 
 **Solutions:**
-1. Verify Python 3.9+ is available
+1. Verify Python 3.14 is available through `uv`
 2. Check disk space (need 5GB+ for models)
 3. Verify PostgreSQL and Redis are accessible
 4. Check source path is correct: `{{ playbook_dir }}/../../../src`
@@ -402,7 +408,8 @@ systemctl status 'py-phone-caller-*' | grep failed
 journalctl -u py-phone-caller-SERVICE_NAME -n 100
 
 # Check configuration
-cat /opt/py-phone-caller/src/config/settings.toml
+sudo -u py-phone-caller cat /opt/py-phone-caller/app/config/settings.source.toml
+sudo -u py-phone-caller sed -n '1,80p' /opt/py-phone-caller/app/config/py-phone-caller.env
 
 # Verify file permissions
 ls -la /opt/py-phone-caller/
@@ -414,8 +421,8 @@ ls -la /opt/py-phone-caller/
 **Solutions:**
 1. Check firewall rules: `sudo firewall-cmd --list-all` or `sudo ufw status`
 2. Test connectivity: `telnet localhost 8088` (Asterisk ARI)
-3. Verify DNS/hostname resolution: `ping pbx.lan`
-4. Check credentials in `/opt/py-phone-caller/src/config/settings.toml`
+3. Verify DNS/hostname resolution for the configured PBX, PostgreSQL, and Redis hostnames.
+4. Check credentials in `/opt/py-phone-caller/app/config/settings.source.toml` and `/opt/py-phone-caller/app/config/py-phone-caller.env`
 
 ---
 
@@ -496,7 +503,7 @@ Before major updates, back up:
 pg_dump -h localhost -U py_phone_caller py_phone_caller > backup.sql
 
 # Configuration
-tar -czf config-backup.tar.gz /opt/py-phone-caller/src/config/
+tar -czf config-backup.tar.gz /opt/py-phone-caller/app/config/
 
 # Asterisk configuration
 tar -czf asterisk-backup.tar.gz /etc/asterisk/

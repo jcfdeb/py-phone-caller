@@ -1,18 +1,27 @@
-# py-phone-caller Documentation
+# py-phone-caller Documentation (2025 Architecture Archive)
+
+> [!TIP]
+> **Looking for the modern 1.0.0 Architecture & API reference?**
+> - For current end-to-end call flows, state machines, and sequence diagrams: see **[Architecture & Call Flows Guide](architecture-and-call-flows.md)**.
+> - For full REST API endpoint specifications: see **[Services and Endpoints Reference](services-and-endpoints.md)**.
+> - For deployment instructions: see **[Operator Installation Guide (A to Z)](OPERATOR_INSTALLATION_GUIDE.md)**.
+>
+> *This document is preserved for historical reference.*
 
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [System Architecture](#system-architecture)
 3. [Components](#components)
    - [asterisk_caller](#asterisk_caller)
-   - [asterisk_recaller](#asterisk_recaller)
+   - [asterisk_recallerer](#asterisk_recallerer)
    - [asterisk_ws_monitor](#asterisk_ws_monitor)
+   - [caller_address_book](#caller_address_book)
    - [caller_prometheus_webhook](#caller_prometheus_webhook)
    - [caller_register](#caller_register)
    - [caller_scheduler](#caller_scheduler)
    - [caller_sms](#caller_sms)
    - [generate_audio](#generate_audio)
-   - [py-phone-caller-ui](#py-phone-caller-ui)
+   - [py_phone_caller_ui](#py_phone_caller_ui)
    - [py_phone_caller_utils](#py_phone_caller_utils)
 4. [Configuration](#configuration)
 5. [Call Flows](#call-flows)
@@ -31,7 +40,8 @@ The py-phone-caller system consists of several interconnected components that wo
 
 ```mermaid
 graph TD
-    UI[py-phone-caller-ui] --> CS[caller_scheduler]
+    UI[py_phone_caller_ui] --> CS[caller_scheduler]
+    UI --> CAB[caller_address_book]
     AC[asterisk_caller] -.logs.-> UI
     WSM[asterisk_ws_monitor] -.logs.-> UI
 
@@ -43,11 +53,12 @@ graph TD
 
     AC --> GA[generate_audio]
     AC --> WSM
+    AC --> CAB
 
     WSM --> GA
     WSM --> CR
 
-    AR[asterisk_recaller] --> AC
+    AR[asterisk_recallerer] --> AC
 
     subgraph Database
         DB[(PostgreSQL)]
@@ -56,6 +67,7 @@ graph TD
     CR --> DB
     WSM --> DB
     AR --> DB
+    CAB --> DB
 
     subgraph Queue
         RQ[(Redis)]
@@ -76,6 +88,7 @@ graph TD
     SMS --> PCU
     GA --> PCU
     UI --> PCU
+    CAB --> PCU
 ```
 
 ## Components
@@ -99,6 +112,9 @@ The asterisk_caller component is responsible for initiating and managing phone c
 - `init_app()`: Initializes the application
 
 #### Component Interactions
+
+The following sequence diagram illustrates how `asterisk_caller` interacts with the PBX and other microservices to initiate a call and manage its early lifecycle:
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -115,16 +131,55 @@ sequenceDiagram
     GA-->>WSM: Audio file ready
     WSM->>Asterisk: Play audio
     Asterisk-->>WSM: Audio played
+    WSM->>CR: Update call status
     WSM-->>AC: Call status updated
     AC-->>Client: Call status
 
     Note right of WSM: asterisk_ws_monitor is always needed when placing calls
 ```
 
-### asterisk_recaller
+### caller_address_book
 
 #### Overview
-The asterisk_recaller component handles retrying failed phone calls. It periodically checks the database for calls that need to be retried and initiates recall attempts based on configured parameters. The component uses a strategy of waiting a certain amount of time between retry attempts and has a maximum number of retry attempts.
+The caller_address_book component manages a data source for contacts and their on-call availability. It allows the system to resolve the reserved word "oncall" to a real phone number based on prioritized on-call rotations. It provides a REST API for managing contacts and querying the current on-call responder.
+
+#### Key Features
+- Centralized contact management
+- Prioritized on-call availability windows
+- Support for multiple on-call periods per contact
+- CSV Import/Export functionality
+- Integration with `asterisk_caller` for automatic responder routing
+
+#### Main Functions
+- `get_contact_on_call()`: Retrieves the phone number of the currently active on-call contact
+- `post_contact_add()`: Adds a new contact to the address book
+- `post_contacts_import_csv()`: Bulk imports contacts from CSV
+- `get_contacts_export_csv()`: Exports all contacts to CSV
+
+#### Component Interactions
+
+The `caller_address_book` service acts as a centralized data provider for contact resolution, as shown in the diagram below:
+
+```mermaid
+sequenceDiagram
+    participant UI as py_phone_caller_ui
+    participant CAB as caller_address_book
+    participant DB as Database
+    participant AC as asterisk_caller
+
+    UI->>CAB: Manage contacts (Add/Edit/Delete)
+    CAB->>DB: Persist contact data
+    
+    AC->>CAB: GET /contact_on_call
+    CAB->>DB: Query active responder
+    DB-->>CAB: Responder data
+    CAB-->>AC: Phone number
+```
+
+### asterisk_recallerer
+
+#### Overview
+The asterisk_recallerer component handles retrying failed phone calls. It periodically checks the database for calls that need to be retried and initiates recall attempts based on configured parameters. The component uses a strategy of waiting a certain amount of time between retry attempts and has a maximum number of retry attempts.
 
 #### Key Features
 - Monitors for failed or unanswered calls
@@ -133,13 +188,16 @@ The asterisk_recaller component handles retrying failed phone calls. It periodic
 - Tracks retry attempts in the database
 
 #### Main Functions
-- `asterisk_recall()`: Periodically checks for calls that need to be retried
+- `asterisk_recaller()`: Periodically checks for calls that need to be retried
 - `recall_post()`: Sends a POST request to the Asterisk call service to initiate a recall
 
 #### Component Interactions
+
+The `asterisk_recallerer` continuously monitors the database for calls that require attention, following the retry cycle illustrated here:
+
 ```mermaid
 sequenceDiagram
-    participant AR as asterisk_recaller
+    participant AR as asterisk_recallerer
     participant DB as Database
     participant AC as asterisk_caller
 
@@ -174,6 +232,9 @@ The asterisk_ws_monitor component monitors Asterisk events through a WebSocket c
 - `querying_call_register()`: Queries the call register for call information
 
 #### Component Interactions
+
+This component is the primary event listener for Asterisk, coordinating multiple services in response to real-time events:
+
 ```mermaid
 sequenceDiagram
     participant Asterisk
@@ -211,6 +272,9 @@ The caller_prometheus_webhook component serves as a webhook endpoint for Prometh
 - `init_app()`: Initializes the application with HTTP endpoints for different notification types
 
 #### Component Interactions
+
+The webhook component supports several notification strategies, as detailed in the following decision flow:
+
 ```mermaid
 sequenceDiagram
     participant Prometheus
@@ -262,6 +326,9 @@ The caller_register component manages the registration and tracking of calls in 
 - `init_app()`: Initializes the application with HTTP endpoints
 
 #### Component Interactions
+
+The following diagram illustrates how the `caller_register` service manages the persistence and retrieval of call records for external clients:
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -295,6 +362,9 @@ The caller_scheduler component provides functionality for scheduling calls to be
 - `init_app()`: Initializes and configures the aiohttp web application for scheduling calls
 
 #### Component Interactions
+
+The scheduler leverages Celery for asynchronous execution, as shown in the lifecycle diagram below:
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -329,6 +399,9 @@ The caller_sms component provides functionality for sending SMS messages. It exp
 - `init_app()`: Initializes and configures the aiohttp web application for sending SMS messages
 
 #### Component Interactions
+
+The following diagram shows the asynchronous SMS delivery process through the Twilio gateway:
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -345,22 +418,29 @@ sequenceDiagram
 ### generate_audio
 
 #### Overview
-The generate_audio component is responsible for converting text messages to speech audio files. It supports multiple text-to-speech (TTS) engines including Google TTS, AWS Polly, Facebook MMS, and Piper TTS. The component exposes web API endpoints for creating audio files from text messages and checking if audio files are ready.
+The generate_audio component is responsible for converting text messages to speech audio files. It supports multiple text-to-speech (TTS) engines including Google TTS, AWS Polly, Facebook MMS, and Piper TTS. The component is highly optimized for containerized environments and ensures offline readiness by managing its own models.
 
 #### Key Features
 - Converts text to speech using multiple TTS engines
 - Supports multiple languages and voices
+- **Offline Readiness**: Automatically downloads and bakes in configured TTS models (Facebook MMS / Piper) at build time or startup.
+- **Optimized for CPU**: Uses CPU-only versions of PyTorch and Transformers to significantly reduce image size (from 15GB to ~3.2GB).
+- **Multi-stage Build**: Efficient containerization using multi-stage Docker builds on `rockylinux:9-minimal`.
 - Manages audio file storage and retrieval
 - Provides API for audio generation and status checking
 
 #### Main Functions
 - `generate_tts_audio()`: Generates audio files using the selected TTS engine
 - `text_to_speech_piper_tts()`: Implements the Piper TTS engine
+- `ensure_models_present()`: Asynchronous function that checks for and downloads missing TTS models at startup.
 - `is_audio_ready()`: HTTP endpoint to check if an audio file is ready
 - `create_audio()`: HTTP endpoint to create an audio file from a text message
 - `init_app()`: Initializes the application with HTTP endpoints
 
 #### Component Interactions
+
+This service handles both audio generation and readiness checks, supporting a variety of TTS engines:
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -378,27 +458,33 @@ sequenceDiagram
     GA-->>Client: Audio ready status
 ```
 
-### py-phone-caller-ui
+### py_phone_caller_ui
 
 #### Overview
-The py-phone-caller-ui component provides a web-based user interface for the py-phone-caller system. It's built using Flask and includes several sections: login, home, calls, schedule_call, users, and ws_events. The component handles user authentication using Flask-Login and ensures that an admin user exists in the system.
+The py_phone_caller_ui component provides a web-based user interface for the py-phone-caller system. It's built using Flask and includes several sections: login, home, calls, schedule_call, users, address_book, and ws_events. The component handles user authentication using Flask-Login and ensures that an admin user exists in the system.
 
 #### Key Features
 - Web-based interface for system management
 - User authentication and authorization
+- Visual feedback for login failures (Bootstrap alerts)
 - Call history and management
 - Call scheduling interface
+- Integrated Address Book and On-Call rotation management
+- Real-time event log viewing
 
 #### Main Functions
-- Flask application setup with several blueprints for different sections (login, home, calls, schedule_call, users, ws_events)
+- Flask application setup with blueprints for different sections (login, home, calls, schedule_call, users, address_book, ws_events)
 - `load_user()`: Loads a user for Flask-Login based on the provided user ID
-- `setup_admin_user()`: Ensures that an admin user exists and resets the admin password if required
+- `setup_admin_user()`: Ensures that an admin user exists and resets the admin password if required (controlled by `UI_USER_RESET_PASSWORD`)
 
 #### Component Interactions
+
+The UI interacts with several backend services to provide log viewing and call scheduling functionality:
+
 ```mermaid
 sequenceDiagram
     participant User
-    participant UI as py-phone-caller-ui
+    participant UI as py_phone_caller_ui
     participant CS as caller_scheduler
     participant AC as asterisk_caller
     participant WSM as asterisk_ws_monitor
@@ -422,40 +508,44 @@ sequenceDiagram
 ### py_phone_caller_utils
 
 #### Overview
-The py_phone_caller_utils package is a collection of utility modules used by other components in the system. It provides functionality for configuration management, database access, text-to-speech interfaces, SMS sending, and more.
+The py_phone_caller_utils package is a collection of shared utility modules. In the Release Candidate, it has been transformed into a standard Python package that can be installed into `site-packages`, improving architectural robustness and removing reliance on `PYTHONPATH` hacks for common code.
 
 #### Key Features
-- Configuration management
-- Database access
-- Text-to-speech interfaces
-- SMS functionality
-- Asynchronous task processing
-- User authentication
+- Centralized configuration management via DynaConf
+- Database schema management and migrations using Piccolo ORM
+- Specialized Text-to-Speech interfaces (Piper, Facebook MMS, AWS Polly, gTTS)
+- SMS sending utilities (Twilio)
+- Asynchronous Celery task definitions
+- Shared user model and authentication logic
+- Automatic TTS model management utilities
 
 #### Subpackages and Modules
-- **caller_configuration.py**: Handles loading and accessing configuration settings
-- **checksums**: Provides functions for generating checksums
-- **login**: Handles user authentication
-- **py_phone_caller_db**: Handles database operations
-- **py_phone_caller_voices**: Provides interfaces to text-to-speech engines
-- **sms**: Handles SMS functionality
-- **tasks**: Handles asynchronous task processing
+- **config.py**: Dynamic configuration loader with environment override support.
+- **checksums**: Standardized hash generation for messages and calls.
+- **login**: Flask-Login user model and session management.
+- **py_phone_caller_db**: Piccolo ORM tables, configuration, and migrations.
+- **py_phone_caller_voices**: Core TTS engine implementations and model downloaders.
+- **sms**: Twilio SMS client wrapper.
+- **tasks**: Celery task definitions for background execution.
 
 #### Component Interactions
+
+The utility package provides shared logic and models across the entire ecosystem, as shown in the following architectural overview:
+
 ```mermaid
 graph TD
     AC[asterisk_caller] --> PCU[py_phone_caller_utils]
-    AR[asterisk_recaller] --> PCU
+    AR[asterisk_recallerer] --> PCU
     WSM[asterisk_ws_monitor] --> PCU
     PW[caller_prometheus_webhook] --> PCU
     CR[caller_register] --> PCU
     CS[caller_scheduler] --> PCU
     SMS[caller_sms] --> PCU
     GA[generate_audio] --> PCU
-    UI[py-phone-caller-ui] --> PCU
+    UI[py_phone_caller_ui] --> PCU
 
     subgraph py_phone_caller_utils
-        CC[caller_configuration]
+        CFG[config]
         CHK[checksums]
         LGN[login]
         DB[py_phone_caller_db]
@@ -467,146 +557,148 @@ graph TD
 
 ## Configuration
 
-The py-phone-caller system is configured using a TOML configuration file located at `src/config/caller_config.toml`. This file contains settings for all components of the system, organized into sections:
+The py-phone-caller system is configured using DynaConf, which loads settings from `settings.toml` and sensitive information from `.secrets.toml`. By default, these files are expected in `src/config/`, but the configuration directory can be explicitly set using the `CALLER_CONFIG_DIR` environment variable. This allows for flexible configuration management, including environment variable overrides. In the Release Candidate, all port settings are strictly typed as integers to ensure reliability.
+
+The configuration is organized into sections:
 
 - **[commons]**: Common settings like Asterisk credentials
 - **[asterisk_call]**: Settings for the asterisk_caller component
 - **[call_register]**: Settings for the caller_register component
 - **[asterisk_ws_monitor]**: Settings for the asterisk_ws_monitor component
-- **[asterisk_recall]**: Settings for the asterisk_recaller component
-- **[generate_audio]**: Settings for the generate_audio component
+- **[asterisk_recaller]**: Settings for the asterisk_recallerer component
+- **[generate_audio]**: Settings for the generate_audio component (TTS engine, language codes, model paths)
 - **[caller_prometheus_webhook]**: Settings for the caller_prometheus_webhook component
 - **[caller_sms]**: Settings for the caller_sms component
 - **[scheduled_calls]**: Settings for the caller_scheduler component
-- **[queue]**: Settings for the message queue (Redis)
-- **[database]**: Database connection settings
-- **[py_phone_caller_ui]**: Settings for the web UI
-- **[logger]**: Logging configuration
+- **[caller_address_book]**: Settings for the caller_address_book component
+- **[queue]**: Settings for the message queue (Redis URL and scheme)
+- **[database]**: Database connection settings (PostgreSQL)
+- **[py_phone_caller_ui]**: Settings for the web UI (Admin user, session protection)
+- **[logs]**: Logging configuration (Formatter, Level, and specialized error messages)
 
-Configuration settings can be accessed in code using the functions provided by the `py_phone_caller_utils.caller_configuration` module.
+Configuration settings can be accessed in code by importing `settings` from the `py_phone_caller_utils.config` module.
+
+### Environment Variables
+
+The system relies on several environment variables for setup, operation, and diagnostics:
+
+#### Mandatory / Core
+- **`CALLER_CONFIG_DIR`**: Path to the directory containing `settings.toml` and `.secrets.toml`.
+- **`PICCOLO_CONF`**: The module path for Piccolo ORM configuration (e.g., `py_phone_caller_utils.py_phone_caller_db.piccolo_conf`).
+- **`PYTHONPATH`**: Should include the `src` directory.
+- **`UI_USER_RESET_PASSWORD`**: Set to `true` to trigger an admin password reset on UI startup (password is printed to logs).
+
+#### Docker / Optimization
+- **`PYTHONWARNINGS=ignore::SyntaxWarning`**: Suppresses noisy Python 3.12 syntax warnings from third-party libraries like `pydub`.
+- **`NNPACK_VERBOSE=0`**: Suppresses hardware-related initialization warnings from the `generate_audio` component.
+- **`TORCH_CPP_LOG_LEVEL=ERROR`**: Minimizes PyTorch internal logging.
+- **`PYTHONUNBUFFERED=1`**: Ensures real-time log output in containerized environments.
+
+#### Deployment
+- **`DYNACONF_...`**: Any configuration setting can be overridden using the `DYNACONF_` prefix followed by the section and key in uppercase (e.g., `DYNACONF_DATABASE__DB_HOST=db`).
 
 ## Call Flows
 
 The py-phone-caller system supports several call flows, depending on how the call is initiated. **Note that the asterisk_ws_monitor package is always needed when placing calls**, as it handles the real-time monitoring of call events and coordinates audio playback. The following diagrams illustrate the main call flows:
 
-### Manual Call Flow
+### Manual / Scheduled Call Flow
+
+This flow covers call initiation from the Web UI, including immediately or at a specific future date:
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant UI as py-phone-caller-ui
-    participant CS as caller_scheduler
-    participant CR as caller_register
-    participant AC as asterisk_caller
-    participant WSM as asterisk_ws_monitor
-    participant GA as generate_audio
-    participant Asterisk
-
-    User->>UI: Initiate call
-    UI->>CS: Schedule call
-    CS->>CR: Register call
-    CR->>AC: Place call
-    AC->>Asterisk: Initiate call
-    Asterisk->>WSM: Call initiated event
-    WSM->>CR: Query call information
-    CR-->>WSM: Call information
-    WSM->>GA: Generate audio
-    GA-->>WSM: Audio file ready
-    WSM->>Asterisk: Play audio
-    Asterisk->>User: Audio played
-    WSM->>CR: Update call status
-
-    Note over WSM,UI: UI displays logs from asterisk_caller and asterisk_ws_monitor
-```
-
-### Scheduled Call Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI as py-phone-caller-ui
+    participant UI as py_phone_caller_ui
     participant CS as caller_scheduler
     participant Celery
-    participant CR as caller_register
     participant AC as asterisk_caller
+    participant CAB as caller_address_book
+    participant CR as caller_register
     participant WSM as asterisk_ws_monitor
     participant GA as generate_audio
     participant Asterisk
 
-    User->>UI: Schedule call
-    UI->>CS: Schedule call
-    CS->>Celery: Schedule task
-    Celery-->>CS: Task scheduled
-    CS-->>UI: Call scheduled
-    UI-->>User: Scheduling confirmation
-
-    Note over Celery,CR: At scheduled time
-    Celery->>CR: Execute scheduled call
-    CR->>AC: Place call
-    AC->>Asterisk: Initiate call
-    Asterisk->>WSM: Call initiated event
-    WSM->>CR: Query call information
-    CR-->>WSM: Call information
-    WSM->>GA: Generate audio
-    GA-->>WSM: Audio file ready
-    WSM->>Asterisk: Play audio
-    Asterisk->>User: Audio played
-    WSM->>CR: Update call status
-
-    Note over WSM,UI: UI displays logs from asterisk_caller and asterisk_ws_monitor
+    User->>UI: Schedule call (Now or Future)
+    UI->>CS: POST /schedule_call
+    UI->>CR: POST /scheduled_call (Record)
+    CS->>Celery: Enqueue task
+    
+    Note over Celery,AC: At execution time
+    Celery->>AC: POST /place_call
+    AC->>CAB: Resolve "oncall" (if needed)
+    AC->>Asterisk: ARI: Create Channel
+    AC->>CR: POST /register_call (Attempt)
+    
+    Asterisk->>WSM: WebSocket: StasisStart
+    WSM->>CR: POST /msg (Get message info)
+    CR-->>WSM: Message data
+    WSM->>GA: POST /make_audio
+    GA-->>WSM: Audio ready
+    WSM->>Asterisk: ARI: Play audio
+    Asterisk->>User: Voice message delivered
+    
+    User->>Asterisk: DTMF / Hangup (optional)
+    Asterisk->>WSM: WebSocket: DTMF/StasisEnd
+    WSM->>CR: POST /ack or /heard
 ```
 
 ### Prometheus Alert Call Flow
+
+When an alert is received from Prometheus, the system automatically triggers the following automated calling sequence:
 
 ```mermaid
 sequenceDiagram
     participant Prometheus
     participant PW as caller_prometheus_webhook
     participant AC as asterisk_caller
-    participant WSM as asterisk_ws_monitor
+    participant CAB as caller_address_book
     participant CR as caller_register
+    participant WSM as asterisk_ws_monitor
     participant GA as generate_audio
     participant Asterisk
     participant User
 
-    Prometheus->>PW: Alert notification
+    Prometheus->>PW: Alert notification (Webhook)
     PW->>AC: Initiate call
-    AC->>Asterisk: Initiate call
-    Asterisk->>WSM: Call initiated event
-    WSM->>CR: Query call information
-    CR-->>WSM: Call information
-    WSM->>GA: Generate audio
-    GA-->>WSM: Audio file ready
-    WSM->>Asterisk: Play audio
-    Asterisk->>User: Audio played
-    WSM->>CR: Update call status
+    AC->>CAB: Resolve "oncall" (if needed)
+    AC->>Asterisk: ARI: Create Channel
+    AC->>CR: POST /register_call (Attempt)
+    
+    Asterisk->>WSM: WebSocket: StasisStart
+    WSM->>CR: POST /msg
+    CR-->>WSM: Message data
+    WSM->>GA: POST /make_audio
+    GA-->>WSM: Audio ready
+    WSM->>Asterisk: ARI: Play audio
+    Asterisk->>User: Voice message delivered
 ```
 
 ### Failed Call Retry Flow
 
+The system ensures alert delivery through a robust retry mechanism, which follows the logic shown in the diagram below:
+
 ```mermaid
 sequenceDiagram
-    participant AR as asterisk_recaller
+    participant AR as asterisk_recallerer
     participant DB as Database
     participant AC as asterisk_caller
-    participant WSM as asterisk_ws_monitor
+    participant CAB as caller_address_book
     participant CR as caller_register
-    participant GA as generate_audio
+    participant WSM as asterisk_ws_monitor
     participant Asterisk
     participant User
 
     AR->>DB: Query for calls to retry
     DB-->>AR: Return eligible calls
-    AR->>AC: Initiate recall
-    AC->>Asterisk: Initiate call
-    Asterisk->>WSM: Call initiated event
-    WSM->>CR: Query call information
-    CR-->>WSM: Call information
-    WSM->>GA: Generate audio
-    GA-->>WSM: Audio file ready
-    WSM->>Asterisk: Play audio
-    Asterisk->>User: Audio played
-    WSM->>CR: Update call status
+    AR->>AC: POST /place_call
+    AC->>CAB: Resolve "oncall" (if needed)
+    AC->>Asterisk: ARI: Create Channel
+    AC->>CR: POST /register_call (Attempt)
+    
+    Asterisk->>WSM: WebSocket events
+    WSM->>Asterisk: Handle call flow
+    Asterisk->>User: Call delivered
+    WSM->>CR: Update status
 ```
 
 ## SMS Flows
@@ -614,6 +706,8 @@ sequenceDiagram
 The py-phone-caller system supports sending SMS messages independently or in conjunction with phone calls. The following diagrams illustrate the main SMS flows:
 
 ### Manual SMS Flow
+
+SMS notifications can be sent directly via the API, as illustrated in the following sequence:
 
 ```mermaid
 sequenceDiagram
@@ -630,10 +724,12 @@ sequenceDiagram
     SMS-->>Client: SMS status
     Client-->>User: SMS status
 
-    Note right of Client: py-phone-caller-ui does not directly interact with caller_sms
+    Note right of Client: py_phone_caller_ui does not directly interact with caller_sms
 ```
 
 ### Prometheus Alert SMS Flow
+
+This flow shows how Prometheus alerts are bridged to the Twilio gateway for SMS delivery:
 
 ```mermaid
 sequenceDiagram
@@ -657,26 +753,32 @@ The py-phone-caller system can be triggered by Prometheus alerts through the cal
 
 ### Call Only Alert Flow
 
+When configured for voice-only alerts, the system executes the following interaction with the PBX:
+
 ```mermaid
 sequenceDiagram
     participant Prometheus
     participant PW as caller_prometheus_webhook
     participant AC as asterisk_caller
+    participant CAB as caller_address_book
+    participant CR as caller_register
     participant WSM as asterisk_ws_monitor
     participant Asterisk
     participant User
 
     Prometheus->>PW: Alert notification
     PW->>AC: Initiate call
-    AC->>Asterisk: Initiate call
-    Asterisk->>WSM: Call initiated event
+    AC->>CAB: Resolve "oncall" (if needed)
+    AC->>Asterisk: ARI: Create Channel
+    AC->>CR: POST /register_call
+    Asterisk->>WSM: WebSocket: StasisStart
     WSM->>Asterisk: Handle call flow
     Asterisk->>User: Call delivered
-
-    Note right of WSM: asterisk_ws_monitor is always needed when placing calls
 ```
 
 ### SMS Only Alert Flow
+
+For low-priority or out-of-band alerts, the system can be configured to send only an SMS message:
 
 ```mermaid
 sequenceDiagram
@@ -692,12 +794,16 @@ sequenceDiagram
 
 ### SMS Before Call Alert Flow
 
+This multi-step flow attempts to notify the responder via SMS first, followed by a phone call if no action is taken within the configured grace period:
+
 ```mermaid
 sequenceDiagram
     participant Prometheus
     participant PW as caller_prometheus_webhook
     participant SMS as caller_sms
     participant AC as asterisk_caller
+    participant CAB as caller_address_book
+    participant CR as caller_register
     participant WSM as asterisk_ws_monitor
     participant Asterisk
     participant User
@@ -707,15 +813,17 @@ sequenceDiagram
     SMS->>User: SMS delivered
     PW->>PW: Wait configured time
     PW->>AC: Initiate call
-    AC->>Asterisk: Initiate call
-    Asterisk->>WSM: Call initiated event
+    AC->>CAB: Resolve "oncall" (if needed)
+    AC->>Asterisk: ARI: Create Channel
+    AC->>CR: POST /register_call
+    Asterisk->>WSM: WebSocket events
     WSM->>Asterisk: Handle call flow
     Asterisk->>User: Call delivered
-
-    Note right of WSM: asterisk_ws_monitor is always needed when placing calls
 ```
 
 ### Call and SMS Alert Flow
+
+The most comprehensive alert strategy initiates both a phone call and an SMS message in parallel, ensuring maximum visibility:
 
 ```mermaid
 sequenceDiagram
@@ -723,11 +831,23 @@ sequenceDiagram
     participant PW as caller_prometheus_webhook
     participant AC as asterisk_caller
     participant SMS as caller_sms
+    participant CAB as caller_address_book
+    participant CR as caller_register
+    participant WSM as asterisk_ws_monitor
+    participant Asterisk
     participant User
 
     Prometheus->>PW: Alert notification
-    PW->>AC: Initiate call
-    PW->>SMS: Send SMS
-    AC->>User: Call delivered
-    SMS->>User: SMS delivered
+    par Initiate Call
+        PW->>AC: Initiate call
+        AC->>CAB: Resolve "oncall" (if needed)
+        AC->>Asterisk: ARI: Create Channel
+        AC->>CR: POST /register_call
+        Asterisk->>WSM: WebSocket events
+        WSM->>Asterisk: Handle call flow
+        Asterisk->>User: Call delivered
+    and Send SMS
+        PW->>SMS: Send SMS
+        SMS->>User: SMS delivered
+    end
 ```

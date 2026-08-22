@@ -1,10 +1,12 @@
+import hashlib
+import hmac
 import logging
 import os
 import secrets
 import string
 
 import asyncpg
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from py_phone_caller_utils.config import settings
 from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import (
@@ -15,6 +17,60 @@ from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables
 logging.basicConfig(
     format=settings.logs.log_formatter, level=settings.logs.log_level, force=True
 )
+
+LEGACY_PASSWORD_HASH_METHODS = {"sha512"}
+UI_USER_RESET_PASSWORD_ENV_VAR = "UI_USER_RESET_PASSWORD"
+
+
+def _split_password_hash(password_hash):
+    try:
+        method, salt, hashval = password_hash.split("$", 2)
+    except (AttributeError, ValueError):
+        return None, None, None
+    return method, salt, hashval
+
+
+def is_legacy_password_hash(password_hash):
+    method, _, _ = _split_password_hash(password_hash)
+    return method in LEGACY_PASSWORD_HASH_METHODS
+
+
+def _check_legacy_password_hash(password_hash, password):
+    method, salt, hashval = _split_password_hash(password_hash)
+    if method not in LEGACY_PASSWORD_HASH_METHODS or not salt or not hashval:
+        return False
+
+    try:
+        hashlib.new(method)
+    except ValueError:
+        logging.warning("Unsupported legacy password hash method: %s", method)
+        return False
+
+    candidate_hash = hmac.new(
+        salt.encode("utf-8"), password.encode("utf-8"), method
+    ).hexdigest()
+    return hmac.compare_digest(candidate_hash, hashval)
+
+
+def check_user_password(password_hash, password):
+    if not password_hash or password is None:
+        return False
+
+    try:
+        return check_password_hash(password_hash, password)
+    except ValueError as exc:
+        if _check_legacy_password_hash(password_hash, password):
+            logging.warning(
+                "Authenticated using a legacy password hash. The password should be rehashed."
+            )
+            return True
+
+        logging.warning("Rejected unsupported password hash: %s", exc)
+        return False
+
+
+def is_admin_password_setup_requested():
+    return os.environ.get(UI_USER_RESET_PASSWORD_ENV_VAR, "").lower() == "true"
 
 
 async def hashed_password(password):
@@ -159,11 +215,25 @@ def is_users_table_empty():
     return count == 0
 
 
+async def is_users_table_empty_async():
+    """
+    Checks asynchronously if the Users table in the database is empty.
+
+    Returns:
+        bool: True if the Users table is empty, False otherwise.
+    """
+    count = await Users.count()
+    return count == 0
+
+
 async def ensure_admin_user_exists(admin_email, given_name="Admin"):
     """
-    Ensures that an admin user exists in the Users table, creating one if necessary.
+    Ensures that an admin user exists during initial database bootstrap.
 
-    This asynchronous function checks for the admin user by email, creates the user with a generated password if not found, and returns the password if created.
+    This asynchronous function checks for the admin user by email. If the admin
+    user is missing, it only creates one when the Users table is empty and
+    explicit password setup was requested, avoiding silent admin recreation in
+    existing installations.
 
     Args:
         admin_email (str): The email address of the admin user.
@@ -174,9 +244,28 @@ async def ensure_admin_user_exists(admin_email, given_name="Admin"):
     """
     user = await select_user(admin_email)
     if not user:
+        if not await is_users_table_empty_async():
+            logging.warning(
+                "Admin user '%s' is missing, but existing users are present. "
+                "Skipping automatic admin recreation.",
+                admin_email,
+            )
+            return None
+
+        if not is_admin_password_setup_requested():
+            logging.warning(
+                "Admin user '%s' is missing and the Users table is empty, but "
+                "%s is not set to true. Skipping automatic admin creation.",
+                admin_email,
+                UI_USER_RESET_PASSWORD_ENV_VAR,
+            )
+            return None
+
         password = generate_complex_password()
         await insert_user(given_name, admin_email, password)
-        logging.info(f"Created admin user '{admin_email}' with password: {password}")
+        logging.info(
+            f"Created initial admin user '{admin_email}' with password: {password}"
+        )
         return password
     else:
         logging.debug(f"Admin user '{admin_email}' already exists.")
@@ -195,13 +284,22 @@ async def reset_admin_password_if_needed(admin_email):
     Returns:
         str or None: The new password if the reset was performed, or None otherwise.
     """
-    reset_env_val = os.environ.get("UI_USER_RESET_PASSWORD", "")
-    reset_password = reset_env_val.lower() == "true"
+    reset_env_val = os.environ.get(UI_USER_RESET_PASSWORD_ENV_VAR, "")
+    reset_password = is_admin_password_setup_requested()
 
     if reset_password:
         logging.info(
             f"Checking if password reset is needed. UI_USER_RESET_PASSWORD='{reset_env_val}' -> {reset_password}"
         )
+        user = await select_user(admin_email)
+        if not user:
+            logging.warning(
+                "Admin user '%s' is missing. Skipping password reset because no "
+                "admin account was found.",
+                admin_email,
+            )
+            return None
+
         password = generate_complex_password()
         logging.info(f"Attempting to reset password for user '{admin_email}'...")
         await update_password(admin_email, password)
