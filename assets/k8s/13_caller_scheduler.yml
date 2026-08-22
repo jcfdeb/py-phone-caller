@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: caller-scheduler-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8086
+      name: http-8086
+      targetPort: 8086
+      protocol: TCP
+  selector:
+    app: caller-scheduler
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: caller-scheduler-deployment
+  labels:
+    app: caller-scheduler
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caller-scheduler
+  template:
+    metadata:
+      labels:
+        app: caller-scheduler
+    spec:
+      containers:
+        - name: caller-scheduler
+          image: quay.io/py-phone-caller/caller_scheduler:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8086
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+            - name: DYNACONF_QUEUE__QUEUE_HOST
+              value: "redis-service"
+            - name: DYNACONF_QUEUE__QUEUE_URL
+              value: "redis://redis-service:6379/7"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/src/config/settings.toml
+              subPath: settings.toml
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config

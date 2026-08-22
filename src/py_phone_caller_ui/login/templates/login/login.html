@@ -7,64 +7,54 @@
     <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
     <title>Login - py-phone-caller</title>
-    <style>
-        body {
-            background-color: #f8f9fa;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .login-card {
-            width: 100%;
-            max-width: 400px;
-            border: none;
-            border-radius: 1rem;
-        }
-        .login-logo {
-            font-size: 3rem;
-            color: #0d6efd;
-        }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <div class="card login-card shadow-lg mx-auto">
-            <div class="card-body p-5">
-                <div class="text-center mb-4">
-                    <div class="login-logo mb-2">
-                        <i class="bi bi-telephone-outbound-fill"></i>
+<body class="login-page">
+<div class="login-backdrop" aria-hidden="true"></div>
+<div class="container login-container">
+    <div class="row justify-content-center">
+        <div class="col-sm-10 col-md-8 col-lg-5 col-xl-4">
+            <div class="card login-card shadow-lg mx-auto">
+                <div class="card-body p-4 p-md-5">
+                    <div class="text-center mb-4">
+                        <div class="login-logo mb-3">
+                            <i class="bi bi-telephone-outbound-fill"></i>
+                        </div>
+                        <span class="eyebrow justify-content-center">Offline control panel</span>
+                        <h3 class="fw-bold mt-2 mb-2">Welcome back</h3>
+                        <p class="text-muted mb-0">Sign in to manage py-phone-caller operations</p>
                     </div>
-                    <h3 class="fw-bold">py-phone-caller</h3>
-                    <p class="text-muted">Sign in to manage your calls</p>
+
+                    <form action="{{ url_for('login_blueprint.login') }}" method="post">
+                        <div class="form-floating mb-3">
+                            <input type="email" class="form-control" id="email" name="email"
+                                   placeholder="name@example.com" required>
+                            <label for="email">Email address</label>
+                        </div>
+                        <div class="form-floating mb-4">
+                            <input type="password" class="form-control" id="password" name="password"
+                                   placeholder="Password" required>
+                            <label for="password">Password</label>
+                        </div>
+
+                        {% if error %}
+                        <div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <div>{{ error }}</div>
+                        </div>
+                        {% endif %}
+
+                        <button class="btn btn-primary w-100 btn-lg rounded-pill shadow-sm" type="submit">
+                            Sign In <i class="bi bi-arrow-right ms-2"></i>
+                        </button>
+                    </form>
                 </div>
-                
-                <form action="{{ url_for('login_blueprint.login') }}" method="post">
-                    <div class="form-floating mb-3">
-                        <input type="email" class="form-control" id="email" name="email" placeholder="name@example.com" required>
-                        <label for="email">Email address</label>
-                    </div>
-                    <div class="form-floating mb-4">
-                        <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
-                        <label for="password">Password</label>
-                    </div>
-                    
-                    {% if error %}
-                    <div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        <div>{{ error }}</div>
-                    </div>
-                    {% endif %}
-                    
-                    <button class="btn btn-primary w-100 btn-lg rounded-pill shadow-sm" type="submit">
-                        Sign In <i class="bi bi-arrow-right ms-2"></i>
-                    </button>
-                </form>
-            </div>
-            <div class="card-footer bg-transparent border-0 text-center pb-4">
-                <small class="text-muted">&copy; 2026 py-phone-caller</small>
+                <div class="card-footer bg-transparent border-0 text-center pb-4">
+                    <small class="text-muted"><i class="bi bi-hdd-network me-1"></i>Local assets only · &copy; 2026
+                        py-phone-caller</small>
+                </div>
             </div>
         </div>
     </div>
+</div>
 </body>
 </html>

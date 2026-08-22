@@ -21,6 +21,10 @@ KOKORO_LANG = settings.generate_audio.kokoro_lang
 KOKORO_PYTHON_INTERPRETER = settings.generate_audio.kokoro_python_interpreter
 KOKORO_MODEL_URL = settings.generate_audio.kokoro_model_url
 KOKORO_VOICES_BASE_URL = settings.generate_audio.kokoro_voices_base_url
+KOKORO_REPO_ID = getattr(settings.generate_audio, "kokoro_repo_id", "hexgrad/Kokoro-82M")
+KOKORO_MODEL_FILENAME = getattr(
+    settings.generate_audio, "kokoro_model_filename", "kokoro-v1_0.pth"
+)
 
 if KOKORO_PYTHON_INTERPRETER in ["python", "python3"]:
     KOKORO_PYTHON_INTERPRETER = sys.executable

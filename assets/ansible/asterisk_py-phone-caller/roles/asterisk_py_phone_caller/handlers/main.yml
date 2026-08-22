@@ -5,9 +5,11 @@
     state: restarted
     enabled: yes
   when: not ansible_check_mode
+  ignore_errors: yes
 
 - name: reload asterisk
   ansible.builtin.service:
     name: "{{ asterisk_service }}"
     state: reloaded
   when: not ansible_check_mode
+  ignore_errors: yes

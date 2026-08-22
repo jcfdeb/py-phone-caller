@@ -1,6 +1,6 @@
--- This file should by used before 'db-schema.sql'
--- Please change the password with another of your choice (it should be strong).
--- Later this password is required in the 'caller_config.toml' file
+-- PostgreSQL database and role creation for py_phone_caller.
+-- Tables, schema, and migrations are automatically managed by Piccolo ORM via caller_register.
+-- Please change the password with a strong password of your choice.
 
 CREATE
 DATABASE py_phone_caller;

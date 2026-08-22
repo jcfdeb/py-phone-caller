@@ -6,16 +6,19 @@ After=network.target postgresql.service redis.service
 Type=simple
 User={{ py_phone_caller_user }}
 Group={{ py_phone_caller_group }}
-WorkingDirectory={{ py_phone_caller_install_dir }}/src
-Environment="PYTHONPATH={{ py_phone_caller_install_dir }}/src"
-Environment="CALLER_CONFIG_DIR={{ py_phone_caller_config_dir }}"
+WorkingDirectory={{ py_phone_caller_install_dir }}
+Environment="PYTHONPATH={{ py_phone_caller_install_dir }}/app:{{ py_phone_caller_install_dir }}/app/py-phone-caller-utils"
+EnvironmentFile={{ py_phone_caller_env_file }}
 Environment="PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+{% if item.name == 'py_phone_caller_ui' %}
+Environment="UI_USER_RESET_PASSWORD={{ (py_phone_caller_ui_reset_password | bool) | ternary('true', 'false') }}"
+{% endif %}
 {% if item.type is defined and item.type == 'celery' %}
 ExecStart={{ py_phone_caller_venv_dir }}/bin/celery {{ item.cmd }}
 {% elif item.type is defined and item.type == 'gunicorn' %}
 ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn {{ item.cmd }}
 {% else %}
-ExecStart={{ py_phone_caller_venv_dir }}/bin/python3 {{ item.cmd }}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/python {{ item.cmd }}
 {% endif %}
 Restart=always
 RestartSec=5

@@ -1,0 +1,21 @@
+[Unit]
+Description=Podman container-py_phone_caller_ui.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-postgres.service
+After=container-caller_register.service
+After=container-caller_address_book.service
+After=container-caller_scheduler.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start py_phone_caller_ui
+ExecStop=/usr/bin/podman stop -t 10 py_phone_caller_ui
+ExecStopPost=/usr/bin/podman stop -t 10 py_phone_caller_ui
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

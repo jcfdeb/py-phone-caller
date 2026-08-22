@@ -3,7 +3,7 @@ Description=Podman container-caller_prometheus_webhook.service
 Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
-After=container-asterisk_call.service 
+After=container-asterisk_caller.service
 After=container-caller_sms.service
 
 [Service]

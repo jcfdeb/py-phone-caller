@@ -1,0 +1,18 @@
+[Unit]
+Description=Podman container-caller_address_book.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-postgres.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start caller_address_book
+ExecStop=/usr/bin/podman stop -t 10 caller_address_book
+ExecStopPost=/usr/bin/podman stop -t 10 caller_address_book
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

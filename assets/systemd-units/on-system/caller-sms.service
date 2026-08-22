@@ -1,0 +1,22 @@
+[Unit]
+Description=Py Phone Caller - Caller SMS Service
+After=network.target
+After=postgresql.service
+
+[Service]
+EnvironmentFile=-/opt/py-phone-caller/src/config/py-phone-caller.env
+Environment=PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
+Type=simple
+User=py-phone-caller
+Group=py-phone-caller
+WorkingDirectory=/opt/py-phone-caller
+ExecStart=/opt/py-phone-caller/venv/bin/python -m caller_sms.caller_sms
+StandardOutput=journal
+StandardError=journal
+Restart=always
+RestartSec=10s
+TimeoutStopSec=15
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

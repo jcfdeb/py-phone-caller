@@ -266,19 +266,34 @@ Shared Python library providing configuration, database access, telemetry, TTS h
 
 ## 🔧 Configuration
 
-All services use a unified configuration system powered by **Dynaconf**. Configuration files are stored in `config/`:
+All services use a unified configuration system powered by **Dynaconf**. Local development can still read configuration files from `config/`:
 
 - **`settings.toml`**: Main configuration file
 - **`.secrets.toml`**: Sensitive credentials (not committed to Git)
 
 ### Environment Variables
-Services use these environment variables to locate configuration:
+For local development, services can use these environment variables to locate configuration:
 
 ```bash
 export CALLER_CONFIG_DIR=src/config
 # OR
 export CALLER_CONFIG=/path/to/settings.toml
 ```
+
+For container deployments, prefer generated Dynaconf env files instead of copying configuration into images:
+
+```bash
+uv run python assets/scripts/config/toml_to_dynaconf_env.py \
+  --input src/config/settings.toml \
+  --output assets/docker-compose/env/py-phone-caller.env
+
+uv run python assets/scripts/config/toml_to_dynaconf_env.py \
+  --ignore-missing \
+  --input src/config/.secrets.toml \
+  --output assets/docker-compose/env/py-phone-caller.secrets.env
+```
+
+The generated files contain `DYNACONF_SECTION__KEY` variables and are consumed by Docker Compose through `env_file`.
 
 ---
 
@@ -291,14 +306,13 @@ See [`assets/docker-compose/README.md`](../assets/docker-compose/README.md) for 
 Each service can be run locally with:
 
 ```bash
-export CALLER_CONFIG_DIR=src/config
-export PYTHONPATH="src:$PYTHONPATH"
-python3 -m <service_name>.<service_name>
+export CALLER_CONFIG=src/config/settings.toml
+uv run python -m <service_name>.<service_name>
 ```
 
 **Example:**
 ```bash
-python3 -m asterisk_caller.asterisk_caller
+uv run python -m asterisk_caller.asterisk_caller
 ```
 
 ### Option 3: Ansible Deployment
@@ -311,14 +325,13 @@ See [`assets/ansible/deploy_all/README.md`](../assets/ansible/deploy_all/README.
 Build all images at once:
 
 ```bash
-cd src
-./build_all_images.sh
+./src/build_all_images.sh
 ```
 
 Or build individual services:
 
 ```bash
-docker build -t asterisk-caller -f asterisk_caller/Dockerfile .
+podman build -t localhost/asterisk_caller:latest -f src/asterisk_caller/Dockerfile .
 ```
 
 ---
@@ -326,7 +339,7 @@ docker build -t asterisk-caller -f asterisk_caller/Dockerfile .
 ## 📊 Service Ports Reference
 
 | Service | Port | Protocol | Description |
-|---------|------|----------|-------------|
+| --- | --- | --- | --- |
 | `asterisk_caller` | 8081 | HTTP | Place calls |
 | `generate_audio` | 8082 | HTTP | TTS audio generation |
 | `caller_register` | 8083 | HTTP | Call registry |
@@ -355,29 +368,26 @@ docker build -t asterisk-caller -f asterisk_caller/Dockerfile .
 ## 🛠️ Development Setup
 
 ### Prerequisites
-- **Python**: 3.12+
-- **pip-tools**: For dependency management
+- **Python**: 3.14.x, managed by `uv`
+- **uv**: For workspace dependency management and lockfile-based installs
 - **Rust**: 1.70+ (for SMS modem engine)
 - **Maturin**: For building Rust extensions
 
 ### Install Dependencies
 
 ```bash
-# Base dependencies
-pip install -r requirements.txt
+# From the repository root, install all workspace packages and dev tools
+uv sync --all-packages --group dev
 
-# Audio/TTS dependencies (large download)
-pip install -r requirements-audio.txt
-
-# Development tools
-pip install -r requirements-dev.txt
+# Production-only install without test/lint tooling
+uv sync --all-packages --no-dev
 ```
 
 ### Build Rust Extensions
 
 ```bash
-cd py-phone-caller-utils
-maturin develop
+cd src/py-phone-caller-utils
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
 
 ---
@@ -467,5 +477,5 @@ Contributions are welcome! Each service is independently maintained and can be i
 
 **Maintained by:** py-phone-caller team
 **License:** Check main project repository
-**Python Version:** 3.12+
+**Python Version:** 3.14.x
 **Architecture:** Cloud-Native Microservices

@@ -4,46 +4,47 @@ FROM rockylinux:9-minimal AS builder
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_INSTALL_DIR=/opt/uv-python \
     UV_HTTP_TIMEOUT=300
 
-RUN microdnf install -y shadow-utils ca-certificates libsndfile python3.12 gcc python3.12-devel && \
+RUN microdnf install -y shadow-utils ca-certificates libsndfile gcc gcc-c++ make && \
     microdnf clean all
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-RUN uv venv /opt/venv --python python3.12
+RUN uv python install 3.14 && \
+    uv venv /opt/venv --python 3.14 --python-preference only-managed
 
-COPY requirements.txt .
-RUN VIRTUAL_ENV=/opt/venv uv pip install --no-cache -r requirements.txt
+COPY pyproject.toml uv.lock ./
+COPY src ./src
+RUN uv sync --frozen --no-dev --package asterisk-caller
 
 FROM rockylinux:9-minimal
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH=/app \
-    CALLER_CONFIG_DIR=/app/config
+    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils
 
-RUN microdnf install -y shadow-utils ca-certificates libsndfile python3.12 && \
+RUN microdnf install -y shadow-utils ca-certificates libsndfile && \
     useradd -r -s /sbin/nologin appuser && \
     microdnf clean all
 
 WORKDIR /app
 
+COPY --from=builder /opt/uv-python /opt/uv-python
 COPY --from=builder /opt/venv /opt/venv
-
-COPY config /app/config
-COPY asterisk_caller /app/asterisk_caller
-COPY py-phone-caller-utils/py_phone_caller_utils /app/py_phone_caller_utils
+COPY --from=builder /app/src/asterisk_caller /app/src/asterisk_caller
+COPY --from=builder /app/src/py-phone-caller-utils /app/src/py-phone-caller-utils
 
 RUN chown -R appuser:appuser /app
 
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(2); s.connect(('127.0.0.1', 8081)); s.close()" || exit 1
+  CMD /opt/venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3)" || exit 1
 
-ENTRYPOINT ["python3"]
+ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "asterisk_caller.asterisk_caller"]

@@ -2,26 +2,47 @@
 py_phone_caller_user: py-phone-caller
 py_phone_caller_group: py-phone-caller
 py_phone_caller_install_dir: /opt/py-phone-caller
-py_phone_caller_config_dir: "{{ py_phone_caller_install_dir }}/src/config"
+py_phone_caller_config_dir: "{{ py_phone_caller_install_dir }}/app/config"
+py_phone_caller_config_source_file: "{{ py_phone_caller_config_dir }}/settings.source.toml"
+py_phone_caller_env_file: "{{ py_phone_caller_config_dir }}/py-phone-caller.env"
+py_phone_caller_ui_reset_password: false
 py_phone_caller_venv_dir: "{{ py_phone_caller_install_dir }}/venv"
+py_phone_caller_uv_bin: "{{ py_phone_caller_install_dir }}/bin/uv"
+py_phone_caller_uv_python_install_dir: "{{ py_phone_caller_install_dir }}/.uv/python"
 py_phone_caller_log_dir: /var/log/py-phone-caller
 caddy_domain_name: "py-phone-caller.lan"
 caddy_email: ""
+py_phone_caller_service_host: "127.0.0.1"
+py_phone_caller_pbx_host: "127.0.0.1"
+py_phone_caller_database_host: "127.0.0.1"
+py_phone_caller_queue_host: "127.0.0.1"
+py_phone_caller_queue_port: 6379
+py_phone_caller_queue_db: 7
+py_phone_caller_hosts_entries: []
+
+# PostgreSQL management and unattended provisioning settings
+py_phone_caller_manage_database: true
+py_phone_caller_manage_local_postgres: "{{ py_phone_caller_database_host in ['127.0.0.1', 'localhost'] }}"
+py_phone_caller_db_admin_user: "postgres"
+py_phone_caller_db_admin_password: ""
+py_phone_caller_db_admin_port: 5432
 
 # Git configuration (optional if source is copied)
 py_phone_caller_git_repo: "" # If empty, it assumes source is copied or available locally
 py_phone_caller_git_version: main
 
-# Local source path (for development/testing)
+# Local repository root path (for development/testing)
 # If set, and source is missing on target, it will be copied from here.
-py_phone_caller_local_src_path: "" 
+py_phone_caller_local_src_path: ""
 
 # Configuration for settings.toml
 # These defaults mirror the provided settings.toml
 py_phone_caller_config_defaults:
   commons:
     asterisk_user: "py-phone-caller"
-    asterisk_host: "pbx.lan"
+    asterisk_pass: "change_me"
+    asterisk_ami_secret: "secret"
+    asterisk_host: "{{ py_phone_caller_pbx_host }}"
     asterisk_web_port: "8088"
     sms_db_path: "sqlite:///tmp/sms.db"
     asterisk_ami_user: "admin"
@@ -34,9 +55,9 @@ py_phone_caller_config_defaults:
     asterisk_context: "py-phone-caller"
     asterisk_extension: "3216"
     asterisk_chan_type: "PJSIP/py-phone-caller"
-    asterisk_caller_id: "py-phone-caller"
+    asterisk_caller_id: "Py-Phone-Caller"
     asterisk_call_http_scheme: "http"
-    asterisk_call_host: "py-phone-caller.lan"
+    asterisk_call_host: "{{ py_phone_caller_service_host }}"
     asterisk_call_port: "8081"
     asterisk_call_app_route_place_call: "place_call"
     asterisk_call_app_route_call_to_queue: "call_to_queue"
@@ -46,7 +67,7 @@ py_phone_caller_config_defaults:
 
   call_register:
     call_register_http_scheme: "http"
-    call_register_host: "py-phone-caller.lan"
+    call_register_host: "{{ py_phone_caller_service_host }}"
     call_register_port: "8083"
     call_register_app_route_register_call: "register_call"
     call_register_app_route_voice_message: "msg"
@@ -64,7 +85,7 @@ py_phone_caller_config_defaults:
 
   generate_audio:
     generate_audio_http_scheme: "http"
-    generate_audio_host: "py-phone-caller.lan"
+    generate_audio_host: "{{ py_phone_caller_service_host }}"
     generate_audio_port: 8082
     generate_audio_app_route: "make_audio"
     tts_engine: "kokoro_tts"
@@ -97,16 +118,18 @@ py_phone_caller_config_defaults:
     prometheus_webhook_app_route_sms_only: "sms_only"
     prometheus_webhook_app_route_sms_before_call: "sms_before_call"
     prometheus_webhook_app_route_call_and_sms: "call_and_sms"
-    prometheus_webhook_receivers: ["+1234567890"]
+    prometheus_webhook_receivers: ["+39123456789"]
 
   caller_sms:
     caller_sms_http_scheme: "http"
-    caller_sms_host: "py-phone-caller.lan"
+    caller_sms_host: "{{ py_phone_caller_service_host }}"
     caller_sms_port: "8085"
     caller_sms_app_route: "send_sms"
     sms_before_call_wait_seconds: 120
-    caller_sms_carrier: "on_premise"
+    caller_sms_carrier: "twilio"
     twilio_sms_from: "+1234567890"
+    twilio_account_sid: "ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    twilio_auth_token: "your_auth_token"
     on_premise_sms_db: "/tmp/sms.db"
     on_premise_sms_db_retry_records: 5
     sms_strategy: "round_robin"
@@ -122,23 +145,23 @@ py_phone_caller_config_defaults:
 
   scheduled_calls:
     scheduled_calls_http_scheme: "http"
-    scheduled_calls_host: "py-phone-caller.lan"
+    scheduled_calls_host: "{{ py_phone_caller_service_host }}"
     scheduled_calls_port: "8086"
     scheduled_call_app_route: "schedule_call"
     local_timezone: "Europe/Rome"
 
   queue:
     queue_scheme: "redis"
-    queue_host: "redis.lan"
-    queue_port: 6379
-    queue_url: "redis://redis.lan:6379/7"
+    queue_host: "{{ py_phone_caller_queue_host }}"
+    queue_port: "{{ py_phone_caller_queue_port }}"
+    queue_url: "redis://{{ py_phone_caller_queue_host }}:{{ py_phone_caller_queue_port }}/{{ py_phone_caller_queue_db }}"
 
   database:
-    db_host: "postgresql.lan"
+    db_host: "{{ py_phone_caller_database_host }}"
     db_port: 5432
     db_name: "py_phone_caller"
     db_user: "py_phone_caller"
-    db_password: "CHANGE_ME"
+    db_password: "py_phone_caller_password"
     db_max_size: 50
     db_max_inactive_connection_lifetime: 30.0
 
@@ -147,6 +170,7 @@ py_phone_caller_config_defaults:
     ui_listen_on_host: "0.0.0.0"
     ui_listen_on_port: 5000
     ui_admin_user: "admin@py-phone-caller.link"
+    ui_secret_key: "change_me_in_production_ui_secret_key"
     min_password_length: 17
 
   logs:
@@ -165,7 +189,7 @@ py_phone_caller_config_defaults:
 
   caller_address_book:
     caller_address_book_http_scheme: "http"
-    caller_address_book_host: "py-phone-caller.lan"
+    caller_address_book_host: "{{ py_phone_caller_service_host }}"
     caller_address_book_port: 8087
     caller_address_book_route_add_contact: "contact_add"
     caller_address_book_route_modify_contact: "contact_modify"

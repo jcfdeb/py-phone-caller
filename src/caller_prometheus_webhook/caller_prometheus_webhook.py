@@ -261,15 +261,19 @@ async def start_the_asterisk_call(phone, message):
         None
     """
     asterisk_call_url = f"{ASTERISK_CALL_URL}/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}"
-    session_start_the_asterisk_call = ClientSession(
-        timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
-    )
-    await session_start_the_asterisk_call.post(
-        url=asterisk_call_url + f"?phone={phone.replace('+', '00')}&message={message}",
-        data=None,
-        headers=None,
-    )
-    await session_start_the_asterisk_call.close()
+    formatted_phone = phone.replace("+", "00") if isinstance(phone, str) else str(phone)
+    try:
+        async with ClientSession(
+            timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+        ) as session_start_the_asterisk_call:
+            await session_start_the_asterisk_call.post(
+                url=asterisk_call_url,
+                params={"phone": formatted_phone, "message": message},
+                data=None,
+                headers=None,
+            )
+    except Exception as e:
+        logging.error(f"Error calling Asterisk call service: {e}")
 
 
 async def send_message_to_caller_sms(phone, message):
@@ -286,16 +290,18 @@ async def send_message_to_caller_sms(phone, message):
         None
     """
     caller_sms_url = f"{CALLER_SMS_URL}/{CALLER_SMS_APP_ROUTE}"
-    session_send_message_to_caller_sms = ClientSession(
-        timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
-    )
-    await session_send_message_to_caller_sms.post(
-        url=f"{caller_sms_url}?phone={phone.replace('+', '%2B')}&message={message}",
-        data=None,
-        headers=None,
-    )
-
-    await session_send_message_to_caller_sms.close()
+    try:
+        async with ClientSession(
+            timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+        ) as session_send_message_to_caller_sms:
+            await session_send_message_to_caller_sms.post(
+                url=caller_sms_url,
+                params={"phone": phone, "message": message},
+                data=None,
+                headers=None,
+            )
+    except Exception as e:
+        logging.error(f"Error calling Caller SMS service: {e}")
 
 
 async def the_alert_description(request_payload):
@@ -308,11 +314,12 @@ async def the_alert_description(request_payload):
         request_payload (dict): The payload containing alert information.
 
     Returns:
-        list: A list containing the description string of the first firing alert, or "No data" if not present.
+        list: A list containing the description string of the first firing alert, or [] if not present.
     """
-    for alert_number, alert_payload in enumerate(request_payload["alerts"]):
-        if alert_payload["status"] == "firing":
-            return [alert_payload["annotations"].get("description", "No data")]
+    for alert_number, alert_payload in enumerate(request_payload.get("alerts", [])):
+        if alert_payload.get("status") == "firing":
+            return [alert_payload.get("annotations", {}).get("description", "No data")]
+    return []
 
 
 async def data_from_alert_manager(request, caller_func):
@@ -334,8 +341,9 @@ async def data_from_alert_manager(request, caller_func):
 
     payload = await request.json()
     some_messages = await the_alert_description(payload)
-    for the_message in some_messages:
-        await process_the_queue(the_message, PROMETHEUS_WEBHOOK_RECEIVERS, caller_func)
+    if some_messages:
+        for the_message in some_messages:
+            await process_the_queue(the_message, PROMETHEUS_WEBHOOK_RECEIVERS, caller_func)
 
 
 async def response_for_alert_manager():
@@ -425,7 +433,7 @@ async def init_app():
     """
     app = web.Application()
 
-    instrument_aiohttp_app(app)
+    instrument_aiohttp_app(app, "caller_prometheus_webhook")
 
     app.router.add_route(
         "POST", f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}", call_only

@@ -49,6 +49,8 @@ from py_phone_caller_utils.py_phone_caller_db.piccolo_conf import DB
 from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.piccolo_app import (
     APP_CONFIG,
 )
+from piccolo.apps.migrations.tables import Migration
+from piccolo.querystring import QueryString
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
 
 from caller_register.constants import (
@@ -142,6 +144,8 @@ async def _execute_migrations():
         await DB.run_ddl('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
         logging.info("Ensured uuid-ossp extension is enabled")
 
+        await _reconcile_existing_migration_history()
+
         from piccolo.apps.migrations.commands.forwards import forwards
 
         await forwards(app_name=APP_CONFIG.app_name)
@@ -149,6 +153,126 @@ async def _execute_migrations():
         return True
     except Exception as e:
         logging.error(f"Error running migrations: {e}")
+        return False
+
+
+async def _table_exists(table_name):
+    result = await DB.run_querystring(
+        QueryString(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = {}
+            ) AS exists;
+            """,
+            table_name,
+        )
+    )
+    return bool(result and result[0]["exists"])
+
+
+async def _migration_record_exists(migration_name):
+    result = await Migration.select(Migration.name).where(
+        (Migration.app_name == APP_CONFIG.app_name) & (Migration.name == migration_name)
+    )
+    return bool(result)
+
+
+async def _record_migration_if_missing(migration_name):
+    if await _migration_record_exists(migration_name):
+        return False
+
+    await Migration.insert(
+        Migration(name=migration_name, app_name=APP_CONFIG.app_name)
+    )
+    return True
+
+
+async def _reconcile_existing_migration_history():
+    """
+    Marks baseline Piccolo migrations as applied when their tables already exist.
+
+    This handles legacy databases created before migration tracking was reliable, avoiding repeated failures like
+    "relation \"calls\" already exists" while still allowing fresh databases to run migrations normally.
+    """
+    await Migration.create_table(if_not_exists=True)
+
+    legacy_baselines = (
+        (
+            "2024-04-14T21:26:37:661173",
+            ("calls",),
+        ),
+        (
+            "2024-04-14T21:50:55:271426",
+            ("users", "asterisk_ws_events", "scheduled_calls"),
+        ),
+        (
+            "2025-10-15T10:42:38:439829",
+            ("address_book",),
+        ),
+    )
+
+    reconciled_migrations = []
+
+    for migration_name, required_tables in legacy_baselines:
+        tables_exist = [await _table_exists(table_name) for table_name in required_tables]
+
+        if all(tables_exist) and await _record_migration_if_missing(migration_name):
+            reconciled_migrations.append(migration_name)
+
+    if reconciled_migrations:
+        logging.info(
+            "Marked existing legacy migration(s) as applied: %s",
+            ", ".join(reconciled_migrations),
+        )
+
+
+async def _repair_existing_schema():
+    """
+    Applies idempotent schema repairs for databases created before all Piccolo migrations were tracked.
+
+    Returns:
+        bool: True if the repair statements were applied successfully, False otherwise.
+    """
+    try:
+        await DB.run_ddl(
+            """
+            ALTER TABLE calls
+                ADD COLUMN IF NOT EXISTS call_backup_callee_number_calls smallint DEFAULT 0 NOT NULL,
+                ADD COLUMN IF NOT EXISTS oncall boolean DEFAULT false NOT NULL,
+                ADD COLUMN IF NOT EXISTS backup_callee boolean DEFAULT false NOT NULL;
+            """
+        )
+        logging.info("Ensured legacy Calls table contains all required backup call columns")
+
+        await DB.run_ddl(
+            """
+            ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS annotations varchar(2048) DEFAULT '' NOT NULL;
+            """
+        )
+        logging.info("Ensured legacy Users table contains the annotations column")
+
+        await DB.run_ddl(
+            """
+            CREATE TABLE IF NOT EXISTS sms (
+                id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+                phone varchar(64) DEFAULT '' NOT NULL,
+                message varchar(1024) DEFAULT '' NOT NULL,
+                carrier varchar(64) DEFAULT '' NOT NULL,
+                status varchar(64) DEFAULT '' NOT NULL,
+                created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                error varchar(1024) DEFAULT '' NOT NULL
+            );
+            """
+        )
+        logging.info("Ensured SMS table exists")
+        return True
+    except Exception as e:
+        logging.error(f"Error repairing existing database schema: {e}")
+        logging.error(traceback.format_exc())
         return False
 
 
@@ -210,6 +334,12 @@ async def init_database():
                     logging.error(f"Error creating table {table_class.__name__}: {e}")
         except Exception as e:
             logging.error(f"Error in fallback table creation: {e}")
+
+    schema_repair_success = await _repair_existing_schema()
+    if schema_repair_success:
+        await _verify_tables()
+    else:
+        logging.error("Database initialization completed with schema repair errors")
 
     logging.info("Database initialization completed")
 
@@ -620,7 +750,7 @@ async def voice_message(request):
         logging.info(
             "No data retrieved from the database for the 'message' or 'msg_chk_sum'"
         )
-        return {"message": "", "msg_chk_sum": ""}
+        return web.json_response({"message": "", "msg_chk_sum": ""})
 
 
 async def scheduled_call(request):
@@ -694,7 +824,7 @@ async def init_app():
     """
     app = web.Application()
 
-    instrument_aiohttp_app(app)
+    instrument_aiohttp_app(app, "caller_register")
 
     app.router.add_route(
         "POST", f"/{CALL_REGISTER_APP_ROUTE_REGISTER_CALL}", register_call

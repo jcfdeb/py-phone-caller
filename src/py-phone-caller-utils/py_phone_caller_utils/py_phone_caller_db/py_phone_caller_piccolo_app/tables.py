@@ -94,3 +94,20 @@ class AddressBook(Table):
     created_time = Timestamp(default=TimestampNow())
     enabled = Boolean(default=False)
     annotations = Varchar(length=1024, default="")
+
+
+class Sms(Table, tablename="sms"):
+    """
+    Represents an SMS record in the system.
+
+    This Piccolo ORM table stores details about each SMS, including recipient phone number,
+    message content, carrier backend, delivery status, creation timestamp, and error or notes.
+    """
+
+    id = UUID(primary_key=True, default=UUID4())
+    phone = Varchar(length=64, default="")
+    message = Varchar(length=1024, default="")
+    carrier = Varchar(length=64, default="")
+    status = Varchar(length=64, default="")
+    created_at = Timestamp(default=TimestampNow())
+    error = Varchar(length=1024, default="")

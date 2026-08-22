@@ -4,12 +4,12 @@ metadata:
   namespace: py-phone-caller
   name: caller-prometheus-webhook-service
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
-  - port: 8084
-    name: http-8084
-    targetPort: 8084
-    protocol: TCP
+    - port: 8084
+      name: http-8084
+      targetPort: 8084
+      protocol: TCP
   selector:
     app: caller-prometheus-webhook
 ---
@@ -32,21 +32,37 @@ spec:
       labels:
         app: caller-prometheus-webhook
     spec:
-      securityContext:
-        runAsUser: 2
       containers:
-      - name: caller-prometheus-webhook
-        image: quay.io/py-phone-caller/caller_prometheus_webhook:0.0.2
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8084
-        env:
-        - name: TZ
-          value: "Europe/Rome"
-        volumeMounts:
-          - name: caller-config
-            mountPath: /opt/py-phone-caller/config/caller_config.toml
-            subPath: caller_config.toml
+        - name: caller-prometheus-webhook
+          image: quay.io/py-phone-caller/caller_prometheus_webhook:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8084
+          env:
+            - name: TZ
+              value: "Europe/Rome"
+            - name: DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST
+              value: "asterisk-caller-service"
+            - name: DYNACONF_CALLER_SMS__CALLER_SMS_HOST
+              value: "caller-sms-service"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/src/config/settings.toml
+              subPath: settings.toml
       volumes:
         - name: caller-config
           configMap:

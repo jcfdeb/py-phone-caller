@@ -1,9 +1,31 @@
-version: "3.9"
-  
+#  user: 'admin@py-phone-caller.link'
+#  password: 'use-a-secure-password'
+
 x-common-env: &common-env
-  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
-  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL}
-  ENABLE_TELEMETRY: ${ENABLE_TELEMETRY}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+  ENABLE_TELEMETRY: ${ENABLE_TELEMETRY:-false}
+  DYNACONF_COMMONS__ASTERISK_HOST: ${ASTERISK_HOST:-host.containers.internal}
+  DYNACONF_QUEUE__QUEUE_HOST: redis
+  DYNACONF_QUEUE__QUEUE_URL: redis://redis:6379/7
+  DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: caller_register
+  DYNACONF_CALL_REGISTER__CALL_REGISTER_PORT: 8083
+  DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST: generate_audio
+  DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_PORT: 8082
+  DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST: caller_address_book
+  DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_PORT: 8087
+  DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: asterisk_caller
+  DYNACONF_ASTERISK_CALL__ASTERISK_CALL_PORT: 8081
+  DYNACONF_CALLER_SMS__CALLER_SMS_HOST: caller_sms
+  DYNACONF_CALLER_SMS__CALLER_SMS_PORT: 8085
+  DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: caller_scheduler
+  DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_PORT: 8086
+
+x-app-env-files: &app-env-files
+  - path: ./env/py-phone-caller.env
+    required: false
+  - path: ./env/py-phone-caller.secrets.env
+    required: false
 
 x-db-common-env: &db-common-env
   <<: *common-env
@@ -16,7 +38,7 @@ x-db-common-env: &db-common-env
 services:
   # --- Infrastructure ---
   db:
-    image: postgres:18-alpine
+    image: docker.io/library/postgres:17-alpine
     container_name: py-phone-caller-db
     ports:
       - "5432:5432"
@@ -34,7 +56,7 @@ services:
     restart: always
 
   redis:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     container_name: py-phone-caller-redis
     ports:
       - "6379:6379"
@@ -46,7 +68,7 @@ services:
     restart: always
 
   caddy:
-    image: caddy:2-alpine
+    image: docker.io/library/caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
     ports:
@@ -62,10 +84,11 @@ services:
   # --- Microservices ---
   caller_register:
     build:
-      context: ../../src
-      dockerfile: caller_register/Dockerfile
+      context: ../..
+      dockerfile: src/caller_register/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/caller_register:${VERSION:-latest}
     container_name: caller-register
+    env_file: *app-env-files
     depends_on:
       db:
         condition: service_healthy
@@ -80,10 +103,11 @@ services:
 
   generate_audio:
     build:
-      context: ../../src
-      dockerfile: generate_audio/Dockerfile
+      context: ../..
+      dockerfile: src/generate_audio/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/generate_audio:${VERSION:-latest}
     container_name: generate-audio
+    env_file: *app-env-files
     ports:
       - "8082:8082"
     volumes:
@@ -97,10 +121,11 @@ services:
 
   caller_address_book:
     build:
-      context: ../../src
-      dockerfile: caller_address_book/Dockerfile
+      context: ../..
+      dockerfile: src/caller_address_book/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/caller_address_book:${VERSION:-latest}
     container_name: caller-address-book
+    env_file: *app-env-files
     depends_on:
       db:
         condition: service_healthy
@@ -115,10 +140,11 @@ services:
 
   asterisk_caller:
     build:
-      context: ../../src
-      dockerfile: asterisk_caller/Dockerfile
+      context: ../..
+      dockerfile: src/asterisk_caller/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_caller:${VERSION:-latest}
     container_name: asterisk-caller
+    env_file: *app-env-files
     depends_on:
       caller_register:
         condition: service_healthy
@@ -140,10 +166,11 @@ services:
 
   asterisk_ws_monitor:
     build:
-      context: ../../src
-      dockerfile: asterisk_ws_monitor/Dockerfile
+      context: ../..
+      dockerfile: src/asterisk_ws_monitor/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_ws_monitor:${VERSION:-latest}
     container_name: asterisk-ws-monitor
+    env_file: *app-env-files
     depends_on:
       db:
         condition: service_healthy
@@ -165,10 +192,11 @@ services:
 
   asterisk_recaller:
     build:
-      context: ../../src
-      dockerfile: asterisk_recaller/Dockerfile
+      context: ../..
+      dockerfile: src/asterisk_recaller/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_recaller:${VERSION:-latest}
     container_name: asterisk-recaller
+    env_file: *app-env-files
     depends_on:
       db:
         condition: service_healthy
@@ -184,16 +212,20 @@ services:
 
   caller_sms:
     build:
-      context: ../../src
-      dockerfile: caller_sms/Dockerfile
+      context: ../..
+      dockerfile: src/caller_sms/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/caller_sms:${VERSION:-latest}
     container_name: caller-sms
+    env_file: *app-env-files
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8085:8085"
     extra_hosts:
       - "host.containers.internal:host-gateway"
     environment:
-      <<: *common-env
+      <<: *db-common-env
       OTEL_SERVICE_NAME: caller-sms
     # devices:
     #   - "/dev/ttyUSB2:/dev/ttyUSB2"
@@ -201,10 +233,11 @@ services:
 
   caller_prometheus_webhook:
     build:
-      context: ../../src
-      dockerfile: caller_prometheus_webhook/Dockerfile
+      context: ../..
+      dockerfile: src/caller_prometheus_webhook/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/caller_prometheus_webhook:${VERSION:-latest}
     container_name: caller-prometheus-webhook
+    env_file: *app-env-files
     depends_on:
       asterisk_caller:
         condition: service_healthy
@@ -223,10 +256,11 @@ services:
 
   caller_scheduler:
     build:
-      context: ../../src
-      dockerfile: caller_scheduler/Dockerfile
+      context: ../..
+      dockerfile: src/caller_scheduler/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/caller_scheduler:${VERSION:-latest}
     container_name: caller-scheduler
+    env_file: *app-env-files
     depends_on:
       redis:
         condition: service_healthy
@@ -243,10 +277,11 @@ services:
 
   py_phone_caller_ui:
     build:
-      context: ../../src
-      dockerfile: py_phone_caller_ui/Dockerfile
+      context: ../..
+      dockerfile: src/py_phone_caller_ui/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/py_phone_caller_ui:${VERSION:-latest}
     container_name: py-phone-caller-ui
+    env_file: *app-env-files
     depends_on:
       db:
         condition: service_healthy
@@ -264,15 +299,16 @@ services:
       DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: caller_scheduler
       DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: caller_register
       DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST: caller_address_book
-      UI_USER_RESET_PASSWORD: false
+      UI_USER_RESET_PASSWORD: ${UI_USER_RESET_PASSWORD:-false}
     restart: always
 
   celery_worker:
     build:
-      context: ../../src
-      dockerfile: celery_worker/Dockerfile
+      context: ../..
+      dockerfile: src/celery_worker/Dockerfile
     image: ${MY_DOCKER_REGISTRY:-localhost}/celery_worker:${VERSION:-latest}
     container_name: celery-worker
+    env_file: *app-env-files
     depends_on:
       redis:
         condition: service_healthy

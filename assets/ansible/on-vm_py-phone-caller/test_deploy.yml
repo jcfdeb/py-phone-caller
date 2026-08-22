@@ -1,0 +1,14 @@
+---
+- hosts: all
+  become: yes
+  roles:
+    - role: deploy_py-phone-caller
+      vars:
+        py_phone_caller_local_src_path: "{{ playbook_dir }}/../../.."
+        py_phone_caller_pbx_host: "{{ lookup('env', 'PY_PHONE_CALLER_PBX_HOST') | default('pbx.lan', true) }}"
+        py_phone_caller_config:
+          commons:
+            asterisk_user: "{{ lookup('env', 'PY_PHONE_CALLER_ASTERISK_USER') | default('py-phone-caller', true) }}"
+            asterisk_pass: "{{ lookup('env', 'PY_PHONE_CALLER_ASTERISK_PASS') | default('change_me', true) }}"
+          database:
+            db_password: "{{ lookup('env', 'PY_PHONE_CALLER_DB_PASSWORD') | default('change_me', true) }}"

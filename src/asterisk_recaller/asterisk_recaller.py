@@ -26,7 +26,7 @@ if src_dir not in sys.path:
     sys.path.append(src_dir)
 
 
-from aiohttp import ClientSession, client_exceptions, web_exceptions
+from aiohttp import ClientSession, ClientTimeout, client_exceptions, web_exceptions
 
 from py_phone_caller_utils.py_phone_caller_db.db_asterisk_recaller import (
     select_to_recall,
@@ -41,6 +41,7 @@ from py_phone_caller_utils.telemetry import init_telemetry
 from asterisk_recaller.constants import (
     ASTERISK_CALL_URL,
     ASTERISK_CALL_APP_ROUTE_PLACE_CALL,
+    CLIENT_TIMEOUT_TOTAL,
     LOG_FORMATTER,
     LOG_LEVEL,
     TIMES_TO_DIAL,
@@ -69,20 +70,23 @@ async def recall_post(phone, message, backup_callee="false"):
     Returns:
         None
     """
-    asterisk_call_url = ASTERISK_CALL_URL
-    session_recall_post = ClientSession()
+    asterisk_call_url = f"{ASTERISK_CALL_URL}/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}"
     try:
-        call_register_resp = await session_recall_post.post(
-            url=asterisk_call_url
-            + f"/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}"
-            + f"?phone={phone}&message={message}&backup_callee={backup_callee}",
-            data=None,
-        )
-        message = await call_register_resp.text()
+        async with ClientSession(
+            timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+        ) as session_recall_post:
+            call_register_resp = await session_recall_post.post(
+                url=asterisk_call_url,
+                params={
+                    "phone": phone,
+                    "message": message,
+                    "backup_callee": backup_callee,
+                },
+                data=None,
+            )
+            _ = await call_register_resp.text()
     except client_exceptions.ClientConnectorError as err:
         logging.exception(f"Unable to connect to the Asterisk Call service: '{err}'")
-    finally:
-        await session_recall_post.close()
 
 
 async def asterisk_recaller():

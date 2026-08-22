@@ -4,7 +4,7 @@ Documentation=man:podman-generate-systemd(1)
 Wants=network.target
 After=network-online.target
 After=container-asterisk_ws_monitor.service
-After=container-postgres_13.service
+After=container-postgres_18.service
 Before=container-asterisk_call.service
 
 [Service]

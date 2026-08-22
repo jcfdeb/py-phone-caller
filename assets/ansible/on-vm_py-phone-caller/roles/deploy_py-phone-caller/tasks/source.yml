@@ -1,7 +1,7 @@
 ---
 - name: Check if source code exists
   stat:
-    path: "{{ py_phone_caller_install_dir }}/src"
+    path: "{{ py_phone_caller_install_dir }}/pyproject.toml"
   register: src_dir
 
 - name: Clone source code from Git
@@ -16,22 +16,103 @@
     - not src_dir.stat.exists
     - py_phone_caller_git_repo | length > 0
 
-- name: Synchronize source code from local path
-  synchronize:
-    src: "{{ py_phone_caller_local_src_path }}/"
-    dest: "{{ py_phone_caller_install_dir }}/src/"
-    recursive: yes
-    rsync_opts:
-      - "--include=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/wheels/***"
-      - "--exclude=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/***"
-  when: 
+- name: Move cloned src directory to app if needed
+  command: mv "{{ py_phone_caller_install_dir }}/src" "{{ py_phone_caller_install_dir }}/app"
+  args:
+    removes: "{{ py_phone_caller_install_dir }}/src"
+    creates: "{{ py_phone_caller_install_dir }}/app"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+  when: py_phone_caller_git_repo | length > 0
+
+- name: Determine local source paths
+  set_fact:
+    _py_phone_caller_local_src: "{{ py_phone_caller_local_src_path if py_phone_caller_local_src_path.endswith('/src') or py_phone_caller_local_src_path.endswith('/src/') else py_phone_caller_local_src_path ~ '/src' }}"
+    _py_phone_caller_local_root: "{{ py_phone_caller_local_src_path | regex_replace('/src/?$', '') }}"
+  when:
     - py_phone_caller_git_repo | length == 0
     - py_phone_caller_local_src_path | length > 0
 
-- name: Ensure correct permissions on install directory
+- name: Synchronize application source code to app directory
+  synchronize:
+    src: "{{ _py_phone_caller_local_src }}/"
+    dest: "{{ py_phone_caller_install_dir }}/app/"
+    recursive: yes
+    delete: yes
+    rsync_opts:
+      - "--exclude=__pycache__/***"
+      - "--exclude=*.pyc"
+      - "--include=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/wheels/***"
+      - "--exclude=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/***"
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Synchronize project root files and metadata
+  synchronize:
+    src: "{{ _py_phone_caller_local_root }}/"
+    dest: "{{ py_phone_caller_install_dir }}/"
+    recursive: yes
+    rsync_opts:
+      - "--exclude=.git/***"
+      - "--exclude=.venv/***"
+      - "--exclude=.idea/***"
+      - "--exclude=.junie/***"
+      - "--exclude=.pytest_cache/***"
+      - "--exclude=.ruff_cache/***"
+      - "--exclude=.sonarlint/***"
+      - "--exclude=test/***"
+      - "--exclude=tmp/***"
+      - "--exclude=src/***"
+      - "--exclude=app/***"
+      - "--exclude=__pycache__/***"
+      - "--exclude=*.pyc"
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Check if legacy src directory exists
+  stat:
+    path: "{{ py_phone_caller_install_dir }}/src"
+  register: legacy_src_stat
+
+- name: Remove legacy src directory if it is not a symlink
   file:
-    path: "{{ py_phone_caller_install_dir }}"
+    path: "{{ py_phone_caller_install_dir }}/src"
+    state: absent
+  when: legacy_src_stat.stat.exists and not legacy_src_stat.stat.islnk
+  become: yes
+
+- name: Create temporary src symlink pointing to app for uv workspace build
+  file:
+    src: "app"
+    dest: "{{ py_phone_caller_install_dir }}/src"
+    state: link
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+  become: yes
+
+- name: Ensure test and tmp directories are absent
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ py_phone_caller_install_dir }}/test"
+    - "{{ py_phone_caller_install_dir }}/tmp"
+  become: yes
+
+- name: Ensure correct permissions on install and app directories
+  file:
+    path: "{{ item }}"
     state: directory
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
-    recurse: yes
+  loop:
+    - "{{ py_phone_caller_install_dir }}"
+    - "{{ py_phone_caller_install_dir }}/app"
+  become: yes
+
+- name: Ensure correct ownership on app files
+  command: chown -R {{ py_phone_caller_user }}:{{ py_phone_caller_group }} {{ py_phone_caller_install_dir }}/app
+  become: yes
+  changed_when: false

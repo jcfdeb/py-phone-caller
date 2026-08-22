@@ -1,3 +1,5 @@
+# Where the components run through SSH: 127.0.0.1
+
 [commons]
 asterisk_user = "py-phone-caller"
 asterisk_host = "pbx.lan"
@@ -13,11 +15,11 @@ asterisk_ari_play = "play?media=sound"
 asterisk_context = "py-phone-caller"
 asterisk_extension = "3216"
 #asterisk_chan_type = "SIP/sip-provider"
-#asterisk_chan_type = "PJSIP/py-phone-caller"
-asterisk_chan_type = "Local/{phone}@py-phone-caller"
+asterisk_chan_type = "PJSIP/py-phone-caller"
+#asterisk_chan_type = "Local/{phone}@py-phone-caller"
 asterisk_caller_id = "Py-Phone-Caller"
 asterisk_call_http_scheme = "http"
-asterisk_call_host = "192.168.10.111"
+asterisk_call_host = "127.0.0.1"
 asterisk_call_port = "8081"
 asterisk_call_app_route_place_call = "place_call"
 asterisk_call_app_route_call_to_queue = "call_to_queue"
@@ -27,8 +29,7 @@ client_timeout_total = 5 # For 'ClientTimeout(total=5)'
 
 [call_register]
 call_register_http_scheme = "http"
-call_register_host = "192.168.10.111"
-#call_register_host = "127.0.0.1" # Development
+call_register_host = "127.0.0.1"
 call_register_port = "8083"
 call_register_app_route_register_call = "register_call"
 call_register_app_route_voice_message = "msg"
@@ -46,10 +47,15 @@ call_backup_callee_max_times = 3
 
 [generate_audio]
 generate_audio_http_scheme = "http"
-generate_audio_host = "192.168.10.111"
+generate_audio_host = "127.0.0.1"
 generate_audio_port = 8082
 generate_audio_app_route = "make_audio"
-tts_engine = "kokoro_tts"
+### GOOGLE_GTTS = "google_gtts"
+### FACEBOOK_MMS = "facebook_mms"
+### PIPER = "piper_tts" -> ffmpeg or avconv (install ffmpeg!!!)
+### AWS_POLLY = "aws_polly"
+### KOKORO = "kokoro_tts"
+tts_engine = "facebook_mms"
 gcloud_tts_language_code = "en"
 aws_polly_region_name = 'eu-north-1'
 aws_polly_voice = "Enrique"
@@ -79,23 +85,23 @@ prometheus_webhook_app_route_call_only = "call_only"
 prometheus_webhook_app_route_sms_only = "sms_only"
 prometheus_webhook_app_route_sms_before_call = "sms_before_call"
 prometheus_webhook_app_route_call_and_sms = "call_and_sms"
-prometheus_webhook_receivers = ["+393341212123"]
+prometheus_webhook_receivers = ["+39123456789"]
 
 # -------------------------------------------------------------------------
 # UPDATED SMS CONFIGURATION FOR HIGH AVAILABILITY (HA)
 # -------------------------------------------------------------------------
 [caller_sms]
 caller_sms_http_scheme = "http"
-caller_sms_host = "192.168.10.111"
+caller_sms_host = "127.0.0.1"
 caller_sms_port = "8085"
 caller_sms_app_route = "send_sms"
 sms_before_call_wait_seconds = 120
 
 # The carrier to use. Options: "twilio", "on_premise"
-caller_sms_carrier = "on_premise"
+caller_sms_carrier = "twilio"
 
-# Twilio configuration (Cloud option)
-twilio_sms_from = "+15512235678"
+# Twilio configuration (Legacy/Cloud fallback)
+twilio_sms_from = "+1234567890"
 
 # --- On-premise Configuration (Rust Engine HA) ---
 on_premise_sms_db = "/tmp/sms.db"
@@ -107,14 +113,14 @@ sms_strategy = "round_robin" # Options: "failover", "round_robin", "single_carri
 # to avoid device swapping on reboot.
 [[caller_sms.modems]]
 id = "primary_carrier"
-port = "/dev/ttyUSB2"   # Recommended: "/dev/modem_primary"
+port = "/dev/ttyUSB3"   # Recommended: "/dev/modem_primary"
 baud_rate = 115200
 priority = 1            # Lower number = Higher priority
 
 # MODEM 2: Backup Carrier (e.g., Vodafone/AT&T)
 [[caller_sms.modems]]
 id = "backup_carrier"
-port = "/dev/ttyUSB3"   # Recommended: "/dev/modem_backup"
+port = "/dev/ttyUSB2"   # Recommended: "/dev/modem_backup"
 baud_rate = 115200
 priority = 2            # Only used if Primary fails
 
@@ -122,7 +128,7 @@ priority = 2            # Only used if Primary fails
 
 [scheduled_calls]
 scheduled_calls_http_scheme = "http"
-scheduled_calls_host = "192.168.10.111"
+scheduled_calls_host = "127.0.0.1"
 scheduled_calls_port = "8086"
 scheduled_call_app_route = "schedule_call"
 local_timezone = "Europe/Rome"
@@ -164,7 +170,7 @@ lost_directory_error = "The folder to serve the audio files was not found."
 
 [caller_address_book]
 caller_address_book_http_scheme = "http"
-caller_address_book_host = "192.168.10.111"
+caller_address_book_host = "127.0.0.1"
 caller_address_book_port = 8087
 caller_address_book_route_add_contact = "contact_add"
 caller_address_book_route_modify_contact = "contact_modify"

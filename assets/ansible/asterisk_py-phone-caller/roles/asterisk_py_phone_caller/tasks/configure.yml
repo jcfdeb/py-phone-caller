@@ -1,4 +1,5 @@
 ---
+# --- 1. Prepare Directories ---
 - name: Ensure Asterisk data directories exist
   ansible.builtin.file:
     path: "{{ item }}"
@@ -7,11 +8,13 @@
     group: "{{ asterisk_group }}"
     mode: '0755'
   loop:
+    - "{{ asterisk_conf_dir }}"
     - "{{ asterisk_data_dir }}"
     - "{{ asterisk_data_dir }}/tmp"
     - "{{ asterisk_cache_dir }}"
     - "{{ asterisk_cache_dir }}/tmp"
 
+# --- 2. Deploy Custom Audio ---
 - name: Create custom sounds directory
   ansible.builtin.file:
     path: "{{ asterisk_sounds_dir }}"
@@ -20,25 +23,25 @@
     group: "{{ asterisk_group }}"
     mode: '0755'
 
-- name: Check for standard sounds (RedHat specific)
+- name: Check for standard sounds
   ansible.builtin.stat:
-    path: "{{ asterisk_sounds_dir }}/beep.wav"
+    path: "{{ asterisk_data_dir }}/sounds/en"
   register: standard_sounds_check
-  when: ansible_os_family == "RedHat"
 
 - name: Check if sounds directory exists
   ansible.builtin.stat:
-    path: "{{ asterisk_sounds_dir }}"
+    path: "{{ asterisk_data_dir }}/sounds"
   register: sounds_dir_stat
 
 - name: Download and install Asterisk Core Sounds (RedHat)
   ansible.builtin.unarchive:
     src: http://downloads.asterisk.org/pub/telephony/sounds/asterisk-core-sounds-en-wav-current.tar.gz
-    dest: "{{ asterisk_sounds_dir }}"
+    dest: "{{ asterisk_data_dir }}/sounds"
     remote_src: yes
     owner: "{{ asterisk_user }}"
     group: "{{ asterisk_group }}"
-  when: ansible_os_family == "RedHat" and not standard_sounds_check.stat.exists and sounds_dir_stat.stat.exists
+  when: ansible_facts['os_family'] == "RedHat" and not standard_sounds_check.stat.exists and sounds_dir_stat.stat.exists
+  ignore_errors: yes
 
 - name: Check if custom audio files exist
   ansible.builtin.stat:
@@ -64,7 +67,8 @@
   loop: "{{ audio_files_stat.results }}"
   when: not item.stat.exists
 
-- name: Deploy py-phone-caller partial configurations
+# --- 3. Deploy Config Templates ---
+- name: Deploy Py-Phone-Caller partial configurations
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ asterisk_conf_dir }}/{{ item.dest }}"
@@ -78,6 +82,7 @@
     - { src: 'iax.conf.j2', dest: 'iax_py_phone_caller.conf' }
   notify: reload asterisk
 
+# --- 4. Inject Includes (Non-Destructive) ---
 - name: Inject Includes into main configuration files
   ansible.builtin.lineinfile:
     path: "{{ asterisk_conf_dir }}/{{ item.file }}"
@@ -95,6 +100,7 @@
     - { file: 'iax.conf', include: 'iax_py_phone_caller.conf' }
   notify: reload asterisk
 
+# --- 5. Disable Conflicting Modules ---
 - name: Check if modules.conf exists
   ansible.builtin.stat:
     path: "{{ asterisk_conf_dir }}/modules.conf"
@@ -109,6 +115,7 @@
   when: modules_conf_stat.stat.exists
   notify: restart asterisk
 
+# --- 6. Configure HTTP & ARI Server ---
 - name: Configure HTTP Server settings
   community.general.ini_file:
     path: "{{ asterisk_conf_dir }}/http.conf"
@@ -122,6 +129,20 @@
     - { option: 'bindport', value: "{{ asterisk_http_bindport | string }}" }
   notify: restart asterisk
 
+- name: Ensure ARI general configuration is enabled
+  community.general.ini_file:
+    path: "{{ asterisk_conf_dir }}/ari.conf"
+    section: general
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    no_extra_spaces: yes
+  loop:
+    - { option: 'enabled', value: 'yes' }
+    - { option: 'pretty', value: 'yes' }
+    - { option: 'allowed_origins', value: '*' }
+  notify: restart asterisk
+
+# --- 7. SELinux Configuration ---
 - name: Allow Asterisk to connect to custom HTTP ports (SELinux)
   vars:
     ansible_python_interpreter: /usr/bin/python3
@@ -133,7 +154,7 @@
   loop:
     - 8082
     - 8083
-  when: ansible_os_family == "RedHat" and ansible_selinux.status == "enabled"
+  when: ansible_facts['os_family'] == "RedHat" and ansible_facts['selinux'].status == "enabled"
   notify: restart asterisk
 
 - name: Ensure Asterisk service is started and enabled
@@ -142,3 +163,4 @@
     state: started
     enabled: yes
   when: not ansible_check_mode
+  ignore_errors: yes

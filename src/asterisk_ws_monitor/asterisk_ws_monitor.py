@@ -25,7 +25,7 @@ if src_dir not in sys.path:
     sys.path.append(src_dir)
 
 
-from aiohttp import ClientSession, client_exceptions, web, web_exceptions
+from aiohttp import ClientSession, ClientTimeout, client_exceptions, web, web_exceptions
 from py_phone_caller_utils.py_phone_caller_db.db_asterisk_ws_monitor import (
     insert_ws_event,
 )
@@ -45,6 +45,7 @@ from asterisk_ws_monitor.constants import (
     ASTERISK_CALL_URL,
     ASTERISK_CALL_APP_ROUTE_PLAY,
     ASTERISK_STASIS_APP,
+    CLIENT_TIMEOUT_TOTAL,
     WS_URL,
     LOG_FORMATTER,
     LOG_LEVEL,
@@ -88,22 +89,21 @@ async def querying_call_register(asterisk_chan):
     Raises:
         web.HTTPBadRequest: If there is a connection error with the Asterisk system.
     """
-    call_register_session = ClientSession()
     try:
-        call_register_resp = await call_register_session.post(
-            url=CALL_REGISTER_URL
-            + f"/{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}"
-            + f"?asterisk_chan={asterisk_chan}",
-            data=None,
-        )
-        return json.loads(await call_register_resp.text())
+        async with ClientSession(
+            timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+        ) as call_register_session:
+            call_register_resp = await call_register_session.post(
+                url=f"{CALL_REGISTER_URL}/{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}",
+                params={"asterisk_chan": asterisk_chan},
+                data=None,
+            )
+            return json.loads(await call_register_resp.text())
     except client_exceptions.ClientConnectorError as err:
         logging.exception(f"Unable to connect to the Asterisk system: '{err}'")
         raise web.HTTPBadRequest(
             reason=str(err), body=None, text=None, content_type=None
         ) from err
-    finally:
-        await call_register_session.close()
 
 
 async def generate_the_audio_file(response_data):
@@ -123,62 +123,61 @@ async def generate_the_audio_file(response_data):
         web.HTTPBadRequest: If there is a connection error with the audio generation process.
     """
     try:
-        generate_audio_session = ClientSession()
+        async with ClientSession(
+            timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+        ) as generate_audio_session:
+            generate_audio_resp = await generate_audio_session.post(
+                url=f"{GENERATE_AUDIO_URL}/{GENERATE_AUDIO_APP_ROUTE}",
+                params={
+                    "message": response_data.get("message"),
+                    "msg_chk_sum": response_data.get("msg_chk_sum"),
+                },
+            )
+            generate_audio_resp_json = await generate_audio_resp.json()
 
-        generate_audio_resp = await generate_audio_session.post(
-            url=GENERATE_AUDIO_URL
-            + f"/{GENERATE_AUDIO_APP_ROUTE}"
-            + f"?message={response_data.get('message')}"
-            + f"&msg_chk_sum={response_data.get('msg_chk_sum')}"
-        )
-        generate_audio_resp_json = await generate_audio_resp.json()
+            msg_chk_sum = response_data.get("msg_chk_sum")
+            audio_ready = False
+            max_retries = 12
+            retry_count = 0
 
-        msg_chk_sum = response_data.get("msg_chk_sum")
-        audio_ready = False
-        max_retries = 12
-        retry_count = 0
-
-        while not audio_ready and retry_count < max_retries:
-            try:
-                audio_ready_resp = await generate_audio_session.get(
-                    url=GENERATE_AUDIO_URL
-                    + f"/{IS_AUDIO_READY_ENDPOINT}"
-                    + f"?msg_chk_sum={msg_chk_sum}"
-                )
-                audio_ready_json = await audio_ready_resp.json()
-
-                if audio_ready_json.get("exists", False):
-                    audio_ready = True
-                    logging.info(
-                        f"Audio file for message checksum {msg_chk_sum} is ready"
+            while not audio_ready and retry_count < max_retries:
+                try:
+                    audio_ready_resp = await generate_audio_session.get(
+                        url=f"{GENERATE_AUDIO_URL}/{IS_AUDIO_READY_ENDPOINT}",
+                        params={"msg_chk_sum": msg_chk_sum},
                     )
-                else:
-                    logging.info(
-                        f"Audio file for message checksum {msg_chk_sum} is not ready yet. Retrying in 5 seconds..."
+                    audio_ready_json = await audio_ready_resp.json()
+
+                    if audio_ready_json.get("exists", False):
+                        audio_ready = True
+                        logging.info(
+                            f"Audio file for message checksum {msg_chk_sum} is ready"
+                        )
+                    else:
+                        logging.info(
+                            f"Audio file for message checksum {msg_chk_sum} is not ready yet. Retrying in 5 seconds..."
+                        )
+                        await asyncio.sleep(5)
+                        retry_count += 1
+                except client_exceptions.ClientConnectorError as err:
+                    logging.warning(
+                        f"Error checking audio readiness: {err}. Retrying in 5 seconds..."
                     )
                     await asyncio.sleep(5)
                     retry_count += 1
-            except client_exceptions.ClientConnectorError as err:
-                logging.warning(
-                    f"Error checking audio readiness: {err}. Retrying in 5 seconds..."
+
+            if not audio_ready:
+                logging.error(
+                    f"Audio file for message checksum {msg_chk_sum} is not ready after maximum retries"
                 )
-                await asyncio.sleep(5)
-                retry_count += 1
 
-        if not audio_ready:
-            logging.error(
-                f"Audio file for message checksum {msg_chk_sum} is not ready after maximum retries"
-            )
-
-        return generate_audio_resp_json
+            return generate_audio_resp_json
     except client_exceptions.ClientConnectorError as err:
         logging.exception(f"Unable to connect to the GenerateAudio Process: '{err}'")
         # Send the 'continue' here to the websocket to _hangup_ the call
         raise web.HTTPBadRequest(
             reason=str(err), body=None, text=None, content_type=None
         ) from err
-    finally:
-        await generate_audio_session.close()
 
 
 async def audio_play_status_log(response_data, asterisk_chan, audio_play_resp_message):
@@ -216,25 +215,26 @@ async def play_audio_to_channel(asterisk_chan, response_data):
     Returns:
         None
     """
-    asterisk_call_session = ClientSession()
     try:
-        audio_play_resp = await asterisk_call_session.post(
-            url=ASTERISK_CALL_URL
-            + f"/{ASTERISK_CALL_APP_ROUTE_PLAY}"
-            + f"?asterisk_chan={asterisk_chan}"
-            + f"&msg_chk_sum={response_data.get('msg_chk_sum')}",
-            data=None,
-        )
-        audio_play_resp_message = await audio_play_resp.text()
+        async with ClientSession(
+            timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+        ) as asterisk_call_session:
+            audio_play_resp = await asterisk_call_session.post(
+                url=f"{ASTERISK_CALL_URL}/{ASTERISK_CALL_APP_ROUTE_PLAY}",
+                params={
+                    "asterisk_chan": asterisk_chan,
+                    "msg_chk_sum": response_data.get("msg_chk_sum"),
+                },
+                data=None,
+            )
+            audio_play_resp_message = await audio_play_resp.text()
 
-        await audio_play_status_log(
-            response_data, asterisk_chan, audio_play_resp_message
-        )
+            await audio_play_status_log(
+                response_data, asterisk_chan, audio_play_resp_message
+            )
 
     except client_exceptions.ClientConnectorError as err:
         logging.exception(f"Unable to connect to the Asterisk system: '{err}'")
-    finally:
-        await asterisk_call_session.close()
 
 
 async def audio_operations(generate_audio_resp_json, asterisk_chan, response_data):

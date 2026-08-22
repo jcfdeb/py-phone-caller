@@ -26,6 +26,9 @@ ASTERISK_WEB_PORT = int(settings.commons.asterisk_web_port)
 ASTERISK_USER = settings.commons.asterisk_user
 ASTERISK_PASS = settings.commons.asterisk_pass
 ASTERISK_STASIS_APP = settings.asterisk_ws_monitor.asterisk_stasis_app
+CLIENT_TIMEOUT_TOTAL = getattr(
+    settings.asterisk_ws_monitor, "client_timeout_total", 30
+)
 WS_URL = (
     f"ws://{ASTERISK_HOST}:{ASTERISK_WEB_PORT}/ari/events"
     + f"?api_key={ASTERISK_USER}:{ASTERISK_PASS}&app={ASTERISK_STASIS_APP}"

@@ -1,14 +1,21 @@
 ---
+- name: Check if Asterisk binary is already installed
+  ansible.builtin.stat:
+    path: /usr/sbin/asterisk
+  register: asterisk_bin_stat
+
 - name: Install DNF plugins core
   ansible.builtin.dnf:
     name: dnf-plugins-core
     state: present
+  when: not asterisk_bin_stat.stat.exists
   check_mode: no
 
 - name: Enable CRB or PowerTools repository
-  ansible.builtin.command: "dnf config-manager --set-enabled {{ (ansible_distribution_major_version | int >= 9) | ternary('crb', 'powertools') }}"
+  ansible.builtin.command: "dnf config-manager --set-enabled {{ (ansible_facts['distribution_major_version'] | int >= 9) | ternary('crb', 'powertools') }}"
   register: repo_enable
   changed_when: "'already enabled' not in repo_enable.stdout"
+  when: not asterisk_bin_stat.stat.exists
   ignore_errors: true
   check_mode: no
 
@@ -16,6 +23,14 @@
   ansible.builtin.dnf:
     name: epel-release
     state: present
+  when: not asterisk_bin_stat.stat.exists
+  check_mode: no
+
+- name: Enable Asterisk COPR repository on Enterprise Linux 10+ (lucamagrone/epel-10-extra)
+  ansible.builtin.command: dnf copr enable -y lucamagrone/epel-10-extra
+  register: copr_result
+  changed_when: "'Enabled copr' in copr_result.stdout or 'Repository successfully enabled' in copr_result.stdout"
+  when: not asterisk_bin_stat.stat.exists and (ansible_facts['distribution_major_version'] | int >= 10)
   check_mode: no
 
 - name: Install Asterisk Packages
@@ -23,4 +38,5 @@
     name: "{{ asterisk_packages + system_dependencies }}"
     state: present
     update_cache: yes
+  when: not asterisk_bin_stat.stat.exists
   notify: restart asterisk

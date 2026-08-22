@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caller-scheduler"
+version = "1.0.0"
+description = "Caller Scheduler service for py-phone-caller"
+readme = "README.md"
+requires-python = ">=3.14, <3.15"
+dependencies = [
+    "py_phone_caller_utils",
+    "aiohttp>=3.9.0",
+    "pytz>=2024.1",
+]
+
+[tool.setuptools.package-dir]
+caller_scheduler = "."
+
+[tool.setuptools.package-data]
+caller_scheduler = ["*"]

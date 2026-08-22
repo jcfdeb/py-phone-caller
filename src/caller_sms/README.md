@@ -7,6 +7,7 @@ USB modem backend powered by a Rust engine.
 - Expose a simple SMS API for other services.
 - Send SMS via Twilio or the on-premise modem backend.
 - Handle async dispatch and retries on the backend.
+- Persist and trace all sent and failed SMS transactions in the `sms` database table.
 
 ## Backends
 - Twilio: uses account credentials from `settings.toml`.
@@ -19,13 +20,15 @@ with Maturin.
 ### Local development build
 ```bash
 cd src/py-phone-caller-utils
-maturin develop
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 \
+uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
 
 ### Production wheel
 ```bash
 cd src/py-phone-caller-utils
-maturin build --release
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 \
+uv run maturin build --release --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
 
 The wheel is written to

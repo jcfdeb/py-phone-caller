@@ -1,245 +1,105 @@
-### Kubernetes Deployment - draft
+### Kubernetes Deployment Guide (py-phone-caller 1.0.0)
 
-After applying the '03_postgresql_13.yml' manifest, some operations inside the POD are needed.
+This directory contains production-ready Kubernetes manifests for deploying the complete `py-phone-caller` stack:
+- **Infrastructure**: PostgreSQL 17, Redis 7, HAProxy reverse proxy & Ingress.
+- **Microservices**: `caller_register`, `caller_address_book`, `generate_audio`, `asterisk_caller`, `asterisk_ws_monitor`, `asterisk_recaller`, `caller_sms`, `caller_prometheus_webhook`, `caller_scheduler`, `py_phone_caller_ui`, and `celery_worker`.
 
-* The role and DB creation
-* Restore of the DB schema
+---
 
-> For the SQL files please check the '**assets/DB**' folder
+### Manifest Index
 
-* Get the complete POD name
+| Manifest | Component | Purpose |
+| :--- | :--- | :--- |
+| `00_py_phone_caller_namespace.yml` | Namespace | Creates the `py-phone-caller` namespace |
+| `01_asterisk_endpoint.yml` | Service & Endpoints | Connects cluster to external Asterisk PBX (ARI/WebSocket) |
+| `02_ingress.yml` | Ingress | Exposes HTTP routes through Ingress Controller |
+| `03_postgresql.yml` | PostgreSQL 17 | Relational database deployment, service, and PVC |
+| `03_redis.yml` | Redis 7 | Task queue broker for Celery and scheduled calls |
+| `04_caller_config.yml` | ConfigMap | Central `settings.toml` configuration |
+| `05_asterisk_ws_monitor.yml` | `asterisk_ws_monitor` | Listens to Asterisk Stasis events |
+| `06_asterisk_recaller.yml` | `asterisk_recaller` | Manages unacknowledged call retries |
+| `07_caller_register.yml` | `caller_register` | Central call/event registry & DB initializer (Port 8083) |
+| `08_asterisk_caller.yml` | `asterisk_caller` | Outbound call initiator & queue worker (Port 8081) |
+| `09_caller_prometheus_webhook.yml` | `caller_prometheus_webhook` | Prometheus Alertmanager webhook adapter (Port 8084) |
+| `10_caller_sms.yml` | `caller_sms` | SMS dispatch service (Port 8085) |
+| `11_generate_audio.yml` | `generate_audio` | TTS synthesis engine & audio storage (Port 8082) |
+| `12_caller_address_book.yml` | `caller_address_book` | Contact & on-call availability manager (Port 8087) |
+| `13_caller_scheduler.yml` | `caller_scheduler` | Celery task scheduler for future calls (Port 8086) |
+| `14_py_phone_caller_ui.yml` | `py_phone_caller_ui` | Web management interface (Port 5000) |
+| `15_celery_worker.yml` | `celery_worker` | Background Celery worker for scheduled jobs |
+| `16_haproxy.yml` | HAProxy | Reverse proxy aggregating all APIs and Web UI (Port 8080) |
 
-```bash
-[fedora@fedora k8s]$ kubectl -n py-phone-caller get pods | grep postgresql
-NAME                                     READY   STATUS    RESTARTS   AGE
-postgresql-deployment-6d98db6844-8fnrb   1/1     Running   0          63s
+---
+
+### Deployment Steps
+
+#### 1. Configure External Asterisk PBX
+Update the IP address of your Asterisk PBX in `01_asterisk_endpoint.yml`:
+```yaml
+subsets:
+  - addresses:
+      - ip: <ASTERISK_PBX_IP>
+    ports:
+      - port: 8088
 ```
 
-* Open a shell inside the POD
-
-> If you can't install '**nano**' you can also use '**vi**', yet installed inside the container image.
-
+#### 2. Apply Namespace and Configuration
 ```bash
-[fedora@fedora k8s]$ kubectl -n py-phone-caller exec -it postgresql-deployment-6d98db6844-8fnrb -- bash
-
-bash-5.1# apk add nano
-fetch https://dl-cdn.alpinelinux.org/alpine/v3.14/main/x86_64/APKINDEX.tar.gz
-fetch https://dl-cdn.alpinelinux.org/alpine/v3.14/community/x86_64/APKINDEX.tar.gz
-(1/2) Installing libmagic (5.40-r1)
-(2/2) Installing nano (5.7-r2)
-Executing busybox-1.33.1-r3.trigger
-OK: 146 MiB in 35 packages
-bash-5.1# su - postgres
+kubectl apply -f 00_py_phone_caller_namespace.yml
+kubectl apply -f 01_asterisk_endpoint.yml
+kubectl apply -f 04_caller_config.yml
 ```
 
-* Crete the role and the DB
-
+#### 3. Deploy Data Infrastructure
 ```bash
-postgresql-deployment-6d98db6844-8fnrb:~$ nano /tmp/db-role.sql
--- This file should by used before 'db-schema.sql'
--- Please change the password with another of your choice (it should be strong).
--- Later this password is requiered in the 'caller_config.toml' file
-
-CREATE DATABASE py_phone_caller;
-CREATE ROLE py_phone_caller with LOGIN ENCRYPTED PASSWORD 'use-a-secure-password';
-GRANT ALL PRIVILEGES ON DATABASE py_phone_caller TO py_phone_caller;
+kubectl apply -f 03_postgresql.yml
+kubectl apply -f 03_redis.yml
 ```
 
+#### 4. Deploy Core Services & Workers
 ```bash
-postgresql-deployment-6d98db6844-8fnrb:~$ psql -f /tmp/db-role.sql
-CREATE DATABASE
-CREATE ROLE
-GRANT
+# Core database and audio services first
+kubectl apply -f 07_caller_register.yml
+kubectl apply -f 11_generate_audio.yml
+kubectl apply -f 12_caller_address_book.yml
+
+# Calling, monitoring, and SMS services
+kubectl apply -f 08_asterisk_caller.yml
+kubectl apply -f 05_asterisk_ws_monitor.yml
+kubectl apply -f 06_asterisk_recaller.yml
+kubectl apply -f 09_caller_prometheus_webhook.yml
+kubectl apply -f 10_caller_sms.yml
+
+# Scheduling and UI
+kubectl apply -f 13_caller_scheduler.yml
+kubectl apply -f 14_py_phone_caller_ui.yml
+kubectl apply -f 15_celery_worker.yml
 ```
 
-* Import the DB schema
-
+#### 5. Deploy Gateway & Ingress
 ```bash
-postgresql-deployment-6d98db6844-8fnrb:~$ nano /tmp/db-schema.sql
---
--- PostgreSQL database dump
---
-
-SET statement_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SET check_function_bodies = false;
-SET client_min_messages = warning;
-
---
--- Name: plpgsql; Type: EXTENSION; Schema: -; Owner:
---
-
-CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
-
-
---
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner:
---
-
-COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
-
-
-SET search_path = public, pg_catalog;
-
-SET default_tablespace = '';
-
-SET default_with_oids = false;
-
---
--- Name: asterisk_ws_events; Type: TABLE; Schema: public; Owner: py_phone_caller; Tablespace:
---
-
-CREATE TABLE asterisk_ws_events (
-    id integer NOT NULL,
-    asterisk_chan character varying(64),
-    event_type character varying(64),
-    json_data json
-);
-
-
-ALTER TABLE public.asterisk_ws_events OWNER TO py_phone_caller;
-
---
--- Name: asterisk_ws_events_id_seq; Type: SEQUENCE; Schema: public; Owner: py_phone_caller
---
-
-CREATE SEQUENCE asterisk_ws_events_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE public.asterisk_ws_events_id_seq OWNER TO py_phone_caller;
-
---
--- Name: asterisk_ws_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: py_phone_caller
---
-
-ALTER SEQUENCE asterisk_ws_events_id_seq OWNED BY asterisk_ws_events.id;
-
-
---
--- Name: calls; Type: TABLE; Schema: public; Owner: py_phone_caller; Tablespace:
---
-
-CREATE TABLE calls (
-    id integer NOT NULL,
-    phone character varying(64),
-    message character varying(1024),
-    asterisk_chan character varying(64),
-    msg_chk_sum character varying(64),
-    call_chk_sum character varying(64),
-    unique_chk_sum character varying(64),
-    times_to_dial smallint,
-    dialed_times smallint,
-    seconds_to_forget integer,
-    first_dial timestamp without time zone,
-    last_dial timestamp without time zone,
-    heard_at timestamp without time zone,
-    acknowledge_at timestamp without time zone,
-    cycle_done boolean DEFAULT false
-);
-
-
-ALTER TABLE public.calls OWNER TO py_phone_caller;
-
---
--- Name: calls_id_seq; Type: SEQUENCE; Schema: public; Owner: py_phone_caller
---
-
-CREATE SEQUENCE calls_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE public.calls_id_seq OWNER TO py_phone_caller;
-
---
--- Name: calls_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: py_phone_caller
---
-
-ALTER SEQUENCE calls_id_seq OWNED BY calls.id;
-
-
---
--- Name: id; Type: DEFAULT; Schema: public; Owner: py_phone_caller
---
-
-ALTER TABLE ONLY asterisk_ws_events ALTER COLUMN id SET DEFAULT nextval('asterisk_ws_events_id_seq'::regclass);
-
-
---
--- Name: id; Type: DEFAULT; Schema: public; Owner: py_phone_caller
---
-
-ALTER TABLE ONLY calls ALTER COLUMN id SET DEFAULT nextval('calls_id_seq'::regclass);
-
-
---
--- Name: asterisk_ws_events_pkey; Type: CONSTRAINT; Schema: public; Owner: py_phone_caller; Tablespace:
---
-
-ALTER TABLE ONLY asterisk_ws_events
-    ADD CONSTRAINT asterisk_ws_events_pkey PRIMARY KEY (id);
-
-
---
--- Name: calls_pkey; Type: CONSTRAINT; Schema: public; Owner: py_phone_caller; Tablespace:
---
-
-ALTER TABLE ONLY calls
-    ADD CONSTRAINT calls_pkey PRIMARY KEY (id);
-
-
---
--- Name: public; Type: ACL; Schema: -; Owner: py_phone_caller
---
-
-REVOKE ALL ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA public FROM py_phone_caller;
-GRANT ALL ON SCHEMA public TO py_phone_caller;
-GRANT ALL ON SCHEMA public TO PUBLIC;
-
-
---
--- PostgreSQL database dump complete
---
+kubectl apply -f 16_haproxy.yml
+kubectl apply -f 02_ingress.yml
 ```
 
+---
+
+### Verification and Health Checks
+
+All HTTP-enabled microservices are equipped with Kubernetes `livenessProbe` and `readinessProbe` checking `/health`.
+
+Verify pod status:
 ```bash
-postgresql-deployment-6d98db6844-8fnrb:~$ psql -f /tmp/db-schema.sql -d py_phone_caller
-SET
-SET
-SET
-SET
-SET
-CREATE EXTENSION
-COMMENT
-SET
-SET
-SET
-CREATE TABLE
-ALTER TABLE
-CREATE SEQUENCE
-ALTER TABLE
-ALTER SEQUENCE
-CREATE TABLE
-ALTER TABLE
-CREATE SEQUENCE
-ALTER TABLE
-ALTER SEQUENCE
-ALTER TABLE
-ALTER TABLE
-ALTER TABLE
-ALTER TABLE
-REVOKE
-REVOKE
-GRANT
-GRANT
+kubectl get pods -n py-phone-caller
+```
+
+Verify service endpoints and readiness:
+```bash
+kubectl get svc -n py-phone-caller
+```
+
+Check logs of any component (e.g. `caller_register` or `py_phone_caller_ui`):
+```bash
+kubectl logs -n py-phone-caller -l app=caller-register -f
+kubectl logs -n py-phone-caller -l app=py-phone-caller-ui -f
 ```

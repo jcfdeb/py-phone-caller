@@ -1,17 +1,17 @@
 # Py Phone Caller UI
 
-Flask web UI for managing calls, schedules, users, WS events, and the address
+Flask web UI for managing calls, SMS records, schedules, users, WS events, and the address
 book.
 
 ## Responsibilities
-- Provide login-protected pages for call history and scheduling.
+- Provide login-protected pages for call history, SMS logs, and scheduling.
 - Manage users and on-call contacts.
-- Expose WS event and call status views.
+- Expose WS event, SMS, and call status views.
 
 ## Structure
 - `app.py`: Flask app and blueprint wiring.
 - `templates/` and `static/`: HTML and assets.
-- Feature blueprints: `calls`, `schedule_call`, `users`, `ws_events`, `address_book`.
+- Feature blueprints: `calls`, `sms`, `schedule_call`, `users`, `ws_events`, `address_book`.
 
 ## Configuration
 - Uses `py_phone_caller_utils.config` to load `settings.toml`.

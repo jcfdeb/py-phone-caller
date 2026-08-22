@@ -6,10 +6,44 @@
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
 
-- name: Template settings.toml
+- name: Template configuration source TOML
   template:
     src: settings.toml.j2
-    dest: "{{ py_phone_caller_config_dir }}/settings.toml"
+    dest: "{{ py_phone_caller_config_source_file }}"
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
+    mode: '0600'
+  notify: Restart py-phone-caller services
+
+- name: Copy Dynaconf environment generator tool
+  copy:
+    src: toml_to_dynaconf_env.py
+    dest: "{{ py_phone_caller_install_dir }}/.toml_to_dynaconf_env.py"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: '0700'
+  become: yes
+
+- name: Generate Dynaconf environment file
+  command: >-
+    {{ py_phone_caller_venv_dir }}/bin/python
+    {{ py_phone_caller_install_dir }}/.toml_to_dynaconf_env.py
+    --input {{ py_phone_caller_config_source_file }}
+    --output {{ py_phone_caller_env_file }}
+  args:
+    chdir: "{{ py_phone_caller_install_dir }}"
+  become: yes
+  become_user: "{{ py_phone_caller_user }}"
+  notify: Restart py-phone-caller services
+
+- name: Remove temporary Dynaconf environment generator tool
+  file:
+    path: "{{ py_phone_caller_install_dir }}/.toml_to_dynaconf_env.py"
+    state: absent
+  become: yes
+
+- name: Remove legacy runtime settings.toml
+  file:
+    path: "{{ py_phone_caller_config_dir }}/settings.toml"
+    state: absent
   notify: Restart py-phone-caller services

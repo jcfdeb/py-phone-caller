@@ -7,11 +7,11 @@ changing passwords.
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required, current_user
-from werkzeug.security import check_password_hash
 
 from .constants import UI_ADMIN_USER, MIN_PASSWORD_LENGTH
 
 from py_phone_caller_utils.py_phone_caller_db.db_user import (
+    check_user_password,
     update_password,
     insert_user,
     generate_complex_password,
@@ -229,7 +229,7 @@ async def change_password():
             {"success": False, "message": "You can only change your own password"}
         ), 403
 
-    if not check_password_hash(user["password"], old_password):
+    if not check_user_password(user["password"], old_password):
         return (
             jsonify({"success": False, "message": "Current password is incorrect"}),
             400,

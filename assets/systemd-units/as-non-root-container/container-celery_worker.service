@@ -1,0 +1,22 @@
+[Unit]
+Description=Podman container-celery_worker.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+After=container-postgres.service
+After=container-redis.service
+After=container-caller_register.service
+After=container-asterisk_caller.service
+After=container-caller_scheduler.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start celery_worker
+ExecStop=/usr/bin/podman stop -t 10 celery_worker
+ExecStopPost=/usr/bin/podman stop -t 10 celery_worker
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

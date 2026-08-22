@@ -1,0 +1,354 @@
+---
+# Ansible playbook for deploying py-phone-caller on Red Hat / Fedora via Podman
+# Run with: ansible-playbook --connection=local --inventory=127.0.0.1, py-phone-caller-podman.yml
+
+- name: "Configuring py-phone-caller with Podman"
+  hosts: localhost
+  connection: local
+  vars_files:
+    - py_phone_caller_vars_file.yml
+
+  tasks:
+    - name: "Creating the py-phone-caller directory tree at '{{ installation_folder }}/{{ installation_folder_name }}'"
+      ansible.builtin.file:
+        path: "{{ installation_folder }}/{{ installation_folder_name }}/config"
+        state: directory
+        owner: "{{ installation_user }}"
+        group: "{{ installation_user }}"
+        mode: "0755"
+        recurse: yes
+
+    - name: "Creating the configuration file 'caller_config.toml' from local template"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/caller_config.toml.jinja2"
+        dest: "{{ py_phone_caller_config_path }}"
+        owner: "{{ installation_user }}"
+        group: "{{ installation_user }}"
+        mode: "0644"
+
+    - name: "Creating the py-phone-caller container network"
+      containers.podman.podman_network:
+        name: "{{ py_phone_caller_network }}"
+        internal: false
+        disable_dns: false
+        subnet: "{{ py_phone_caller_subnet }}"
+
+    - name: "PostgreSQL pgdata volume management"
+      containers.podman.podman_volume:
+        name: pgdata
+        state: present
+
+    - name: "Audio data volume management"
+      containers.podman.podman_volume:
+        name: audio_data
+        state: present
+
+    - name: "Creating the 'postgres_17' container"
+      containers.podman.podman_container:
+        name: postgres_17
+        image: "{{ postgresql_container_image }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - pgdata:/var/lib/postgresql/data:Z
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ postgres_ip }}"
+        ports:
+          - "5432:5432"
+        env:
+          POSTGRES_USER: "{{ db_user }}"
+          POSTGRES_DB: "{{ db_name }}"
+          POSTGRES_PASSWORD: "{{ db_password }}"
+          PGDATA: /var/lib/postgresql/data/pgdata
+
+    - name: "Creating the 'redis' container"
+      containers.podman.podman_container:
+        name: redis
+        image: "{{ redis_container_image }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ redis_ip }}"
+        ports:
+          - "6379:6379"
+
+    - name: "Creating the 'caller_register' container"
+      containers.podman.podman_container:
+        name: caller_register
+        image: "{{ container_registry_url }}/caller_register:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ caller_register_ip }}"
+        ports:
+          - "{{ call_register_port }}:8083"
+        env:
+          DYNACONF_DATABASE__DB_HOST: "{{ postgres_ip }}"
+          DYNACONF_DATABASE__DB_USER: "{{ db_user }}"
+          DYNACONF_DATABASE__DB_PASSWORD: "{{ db_password }}"
+          DYNACONF_DATABASE__DB_NAME: "{{ db_name }}"
+          PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+
+    - name: "Creating the 'caller_address_book' container"
+      containers.podman.podman_container:
+        name: caller_address_book
+        image: "{{ container_registry_url }}/caller_address_book:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ caller_address_book_ip }}"
+        ports:
+          - "{{ caller_address_book_port }}:8087"
+        env:
+          DYNACONF_DATABASE__DB_HOST: "{{ postgres_ip }}"
+          DYNACONF_DATABASE__DB_USER: "{{ db_user }}"
+          DYNACONF_DATABASE__DB_PASSWORD: "{{ db_password }}"
+          DYNACONF_DATABASE__DB_NAME: "{{ db_name }}"
+          PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+
+    - name: "Creating the 'generate_audio' container"
+      containers.podman.podman_container:
+        name: generate_audio
+        image: "{{ container_registry_url }}/generate_audio:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+          - audio_data:/app/audio:Z
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ generate_audio_ip }}"
+        ports:
+          - "{{ generate_audio_port }}:8082"
+
+    - name: "Creating the 'asterisk_caller' container"
+      containers.podman.podman_container:
+        name: asterisk_caller
+        image: "{{ container_registry_url }}/asterisk_caller:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ asterisk_caller_ip }}"
+        ports:
+          - "{{ asterisk_call_port }}:8081"
+        env:
+          DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: "{{ caller_register_ip }}"
+          DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST: "{{ generate_audio_ip }}"
+          DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST: "{{ caller_address_book_ip }}"
+
+    - name: "Creating the 'asterisk_ws_monitor' container"
+      containers.podman.podman_container:
+        name: asterisk_ws_monitor
+        image: "{{ container_registry_url }}/asterisk_ws_monitor:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ asterisk_ws_monitor_ip }}"
+        env:
+          DYNACONF_DATABASE__DB_HOST: "{{ postgres_ip }}"
+          DYNACONF_DATABASE__DB_USER: "{{ db_user }}"
+          DYNACONF_DATABASE__DB_PASSWORD: "{{ db_password }}"
+          DYNACONF_DATABASE__DB_NAME: "{{ db_name }}"
+          PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+          DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: "{{ asterisk_caller_ip }}"
+          DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST: "{{ generate_audio_ip }}"
+          DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: "{{ caller_register_ip }}"
+
+    - name: "Creating the 'asterisk_recaller' container"
+      containers.podman.podman_container:
+        name: asterisk_recaller
+        image: "{{ container_registry_url }}/asterisk_recaller:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ asterisk_recaller_ip }}"
+        env:
+          DYNACONF_DATABASE__DB_HOST: "{{ postgres_ip }}"
+          DYNACONF_DATABASE__DB_USER: "{{ db_user }}"
+          DYNACONF_DATABASE__DB_PASSWORD: "{{ db_password }}"
+          DYNACONF_DATABASE__DB_NAME: "{{ db_name }}"
+          PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+          DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: "{{ asterisk_caller_ip }}"
+
+    - name: "Creating the 'caller_sms' container"
+      containers.podman.podman_container:
+        name: caller_sms
+        image: "{{ container_registry_url }}/caller_sms:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ caller_sms_ip }}"
+        ports:
+          - "{{ caller_sms_port }}:8085"
+        env:
+          DYNACONF_DATABASE__DB_HOST: "{{ postgres_ip }}"
+          DYNACONF_DATABASE__DB_USER: "{{ db_user }}"
+          DYNACONF_DATABASE__DB_PASSWORD: "{{ db_password }}"
+          DYNACONF_DATABASE__DB_NAME: "{{ db_name }}"
+          PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+
+    - name: "Creating the 'caller_prometheus_webhook' container"
+      containers.podman.podman_container:
+        name: caller_prometheus_webhook
+        image: "{{ container_registry_url }}/caller_prometheus_webhook:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ caller_prometheus_webhook_ip }}"
+        ports:
+          - "{{ prometheus_webhook_port }}:8084"
+        env:
+          DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: "{{ asterisk_caller_ip }}"
+          DYNACONF_CALLER_SMS__CALLER_SMS_HOST: "{{ caller_sms_ip }}"
+
+    - name: "Creating the 'caller_scheduler' container"
+      containers.podman.podman_container:
+        name: caller_scheduler
+        image: "{{ container_registry_url }}/caller_scheduler:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ caller_scheduler_ip }}"
+        ports:
+          - "{{ caller_scheduler_port }}:8086"
+        env:
+          DYNACONF_QUEUE__QUEUE_HOST: "{{ redis_ip }}"
+          DYNACONF_QUEUE__QUEUE_URL: "redis://{{ redis_ip }}:6379"
+
+    - name: "Creating the 'py_phone_caller_ui' container"
+      containers.podman.podman_container:
+        name: py_phone_caller_ui
+        image: "{{ container_registry_url }}/py_phone_caller_ui:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ py_phone_caller_ui_ip }}"
+        ports:
+          - "{{ py_phone_caller_ui_port }}:5000"
+        env:
+          DYNACONF_DATABASE__DB_HOST: "{{ postgres_ip }}"
+          DYNACONF_DATABASE__DB_USER: "{{ db_user }}"
+          DYNACONF_DATABASE__DB_PASSWORD: "{{ db_password }}"
+          DYNACONF_DATABASE__DB_NAME: "{{ db_name }}"
+          PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+          DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: "{{ caller_scheduler_ip }}"
+          DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: "{{ caller_register_ip }}"
+          DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST: "{{ caller_address_book_ip }}"
+
+    - name: "Creating the 'celery_worker' container"
+      containers.podman.podman_container:
+        name: celery_worker
+        image: "{{ container_registry_url }}/celery_worker:{{ py_phone_caller_version }}"
+        state: started
+        restart: no
+        restart_policy: "always"
+        volume:
+          - "{{ py_phone_caller_config_path }}:{{ config_mounted_in_container }}"
+        network:
+          - "{{ py_phone_caller_network }}"
+        ip: "{{ celery_worker_ip }}"
+        env:
+          DYNACONF_DATABASE__DB_HOST: "{{ postgres_ip }}"
+          DYNACONF_DATABASE__DB_USER: "{{ db_user }}"
+          DYNACONF_DATABASE__DB_PASSWORD: "{{ db_password }}"
+          DYNACONF_DATABASE__DB_NAME: "{{ db_name }}"
+          PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+          DYNACONF_QUEUE__QUEUE_HOST: "{{ redis_ip }}"
+          DYNACONF_QUEUE__QUEUE_URL: "redis://{{ redis_ip }}:6379"
+          DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST: "{{ caller_register_ip }}"
+          DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: "{{ asterisk_caller_ip }}"
+          DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: "{{ caller_scheduler_ip }}"
+
+    - name: "Creating the Systemd user folder"
+      ansible.builtin.file:
+        path: "{{ systemd_user_path }}"
+        state: directory
+        owner: "{{ installation_user }}"
+        group: "{{ installation_user }}"
+        mode: "0750"
+        recurse: yes
+
+    - name: "Installing local Systemd unit files for Podman containers"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../systemd-units/as-non-root-container/{{ item }}"
+        dest: "{{ systemd_user_path }}/{{ item }}"
+        owner: "{{ installation_user }}"
+        group: "{{ installation_user }}"
+        mode: "0640"
+      with_items:
+        - container-postgres.service
+        - container-redis.service
+        - container-caller_register.service
+        - container-caller_address_book.service
+        - container-generate_audio.service
+        - container-asterisk_caller.service
+        - container-asterisk_ws_monitor.service
+        - container-asterisk_recaller.service
+        - container-caller_sms.service
+        - container-caller_prometheus_webhook.service
+        - container-caller_scheduler.service
+        - container-py_phone_caller_ui.service
+        - container-celery_worker.service
+
+    - name: "Enable user SystemD services for py-phone-caller"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: yes
+        daemon_reload: yes
+        state: started
+        scope: user
+      with_items:
+        - container-postgres.service
+        - container-redis.service
+        - container-caller_register.service
+        - container-caller_address_book.service
+        - container-generate_audio.service
+        - container-asterisk_caller.service
+        - container-asterisk_ws_monitor.service
+        - container-asterisk_recaller.service
+        - container-caller_sms.service
+        - container-caller_prometheus_webhook.service
+        - container-caller_scheduler.service
+        - container-py_phone_caller_ui.service
+        - container-celery_worker.service

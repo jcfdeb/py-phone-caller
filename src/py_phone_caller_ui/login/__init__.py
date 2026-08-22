@@ -5,14 +5,18 @@ Handles user authentication.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import login_user
-from werkzeug.security import check_password_hash
 
 from py_phone_caller_utils.login.user import User
-from py_phone_caller_utils.py_phone_caller_db.db_user import select_user
+from py_phone_caller_utils.py_phone_caller_db.db_user import (
+    check_user_password,
+    is_legacy_password_hash,
+    select_user,
+    update_password,
+)
 from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import (
     Users,
 )
@@ -41,8 +45,16 @@ async def login():
     """
 
     if request.method == "POST":
-        form_email = request.form.get("email")
-        form_password = request.form.get("password")
+        form_email = request.form.get("email") or ""
+        form_password = request.form.get("password") or ""
+
+        if not form_email or not form_password:
+            logging.info("Login attempt failed: Missing email or password.")
+            return render_template(
+                LOGIN_TEMPLATE,
+                home_url=url_for(HOME_TEMPLATE),
+                error="Invalid username or password",
+            )
 
         user_from_db = await select_user(form_email)
 
@@ -65,11 +77,13 @@ async def login():
         current_user = User(username=user_from_db.get("email"))
         stored_password_hash = user_from_db.get("password")
 
-        if check_password_hash(stored_password_hash, form_password):
+        if check_user_password(stored_password_hash, form_password):
+            if is_legacy_password_hash(stored_password_hash):
+                await update_password(form_email, form_password)
             login_user(current_user)
-            await Users.update({Users.last_login: datetime.utcnow()}).where(
-                Users.email == form_email
-            )
+            await Users.update(
+                {Users.last_login: datetime.now(UTC).replace(tzinfo=None)}
+            ).where(Users.email == form_email)
             return redirect(url_for("home_blueprint.home"))
         else:
             logging.info(f"Invalid password attempt for user '{form_email}'.")

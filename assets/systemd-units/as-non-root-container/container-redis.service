@@ -1,0 +1,17 @@
+[Unit]
+Description=Podman container-redis.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network.target
+After=network-online.target
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=always
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start redis
+ExecStop=/usr/bin/podman stop -t 10 redis
+ExecStopPost=/usr/bin/podman stop -t 10 redis
+Type=forking
+
+[Install]
+WantedBy=multi-user.target default.target

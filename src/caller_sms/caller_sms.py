@@ -22,6 +22,8 @@ if src_dir not in sys.path:
 from aiohttp import web
 
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.py_phone_caller_db.piccolo_conf import DB
+from py_phone_caller_utils.py_phone_caller_db.db_sms import insert_sms, select_sms
 import caller_sms.backend.twilio as twilio_backend
 import caller_sms.backend.rust_on_premise as rust_on_premise
 
@@ -39,11 +41,22 @@ logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 init_telemetry("caller_sms")
 
 
+async def _ensure_db_pool():
+    """
+    Ensures the database connection pool is established for caller_sms.
+    """
+    if DB.pool is None:
+        await DB.start_connection_pool()
+        logging.info("Connected to database for caller_sms")
+
+
 async def send_the_sms(request):
     """
     Handles incoming requests to send an SMS message to a specified phone number.
 
-    This asynchronous function extracts the message and phone number from the request, sends the SMS asynchronously, and returns a JSON response indicating the status.
+    This asynchronous function extracts the message and phone number from the request,
+    sends the SMS asynchronously, records the transaction in the database, and returns
+    a JSON response indicating the status.
 
     Args:
         request: The incoming HTTP request containing 'message' and 'phone' parameters.
@@ -68,46 +81,118 @@ async def send_the_sms(request):
             reason=CALLER_SMS_ERROR, body=None, text=None, content_type=None
         ) from err
 
-    match CALLER_SMS_CARRIER:
+    carrier = CALLER_SMS_CARRIER
+    status_code = 200
+    status = "sent"
+    error_msg = ""
+
+    match carrier:
         case "twilio":
             futures = await twilio_backend.sms_sender_async(message, phone)
         case "on_premise":
             futures = await rust_on_premise.sms_sender_async(message, phone)
         case _:
-            logging.error(f"Carrier '{CALLER_SMS_CARRIER}' not supported.")
-            return web.json_response({"status": 500, "error": "Carrier not supported"})
+            error_msg = f"Carrier '{carrier}' not supported."
+            logging.error(error_msg)
+            try:
+                await insert_sms(
+                    phone=phone,
+                    message=message,
+                    carrier=carrier,
+                    status="failed",
+                    error=error_msg,
+                )
+            except Exception as db_err:
+                logging.error(f"Error recording SMS in database: {db_err}")
+            return web.json_response({"status": 500, "error": error_msg}, status=500)
 
     try:
         await asyncio.ensure_future(futures)
         status_code = 200
+        status = "sent"
     except Exception as err:
         status_code = 500
+        status = "failed"
+        error_msg = str(err)
         logging.exception(f"Unable to send the SMS: '{err}'")
 
-    return web.json_response({"status": status_code})
+    try:
+        await insert_sms(
+            phone=phone,
+            message=message,
+            carrier=carrier,
+            status=status,
+            error=error_msg,
+        )
+    except Exception as db_err:
+        logging.error(f"Error recording SMS in database: {db_err}")
+
+    response_data = {"status": status_code}
+    if error_msg:
+        response_data["error"] = error_msg
+
+    return web.json_response(response_data, status=status_code)
+
+
+async def get_sms_records(request):
+    """
+    Handles incoming requests to retrieve SMS records from the database.
+
+    Query parameters:
+        limit (int, optional): Max records to return.
+        phone (str, optional): Filter by phone.
+        status (str, optional): Filter by status.
+    """
+    limit_param = request.rel_url.query.get("limit")
+    limit = int(limit_param) if limit_param and limit_param.isdigit() else None
+    phone = request.rel_url.query.get("phone")
+    status = request.rel_url.query.get("status")
+
+    records = await select_sms(limit=limit, phone=phone, status=status)
+    formatted = []
+    for r in records:
+        if isinstance(r, dict):
+            item = dict(r)
+            if "id" in item:
+                item["id"] = str(item["id"])
+            if "created_at" in item and item["created_at"]:
+                item["created_at"] = str(item["created_at"])
+            formatted.append(item)
+        else:
+            formatted.append(r)
+    return web.json_response({"status": 200, "records": formatted})
 
 
 async def init_app():
     """
     Initializes and configures the aiohttp web application for sending SMS messages.
 
-    This asynchronous function sets up the web application and registers the route for handling SMS sending requests.
+    This asynchronous function sets up the web application, ensures the DB connection pool,
+    and registers routes for handling SMS sending requests.
 
     Returns:
         aiohttp.web.Application: The configured aiohttp web application instance.
     """
+    await _ensure_db_pool()
+
     app = web.Application()
 
-    instrument_aiohttp_app(app)
+    instrument_aiohttp_app(app, "caller_sms")
 
     if CALLER_SMS_CARRIER == "on_premise":
         await rust_on_premise.init_backend()
 
+    async def cleanup_db(app):
+        if DB.pool is not None:
+            await DB.pool.close()
+            logging.info("Database connection pool closed for caller_sms")
+
+    app.on_cleanup.append(cleanup_db)
+
     app.router.add_route("POST", f"/{CALLER_SMS_APP_ROUTE}", send_the_sms)
+    app.router.add_route("GET", "/get_sms", get_sms_records)
     return app
 
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    app = loop.run_until_complete(init_app())
-    web.run_app(app, port=int(CALLER_SMS_PORT))
+    web.run_app(init_app(), port=int(CALLER_SMS_PORT))

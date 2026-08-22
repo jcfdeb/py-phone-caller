@@ -1,17 +1,18 @@
 #!/bin/bash
 
 # Script to build all py-phone-caller microservice images correctly.
-# This script must be run from the 'src' directory.
+# It can be run from any directory and uses the repository root as build context
+# so every Dockerfile can access pyproject.toml and uv.lock.
 
 export SUPPRESS_BOLTDB_WARNING="true"
 
 set -e
 
-# Check if we are in the 'src' directory
-if [[ "$(basename "$(pwd)")" != "src" ]]; then
-    echo "Error: This script must be run from the 'src' directory."
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+IMAGE_REGISTRY="${IMAGE_REGISTRY:-localhost}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+CONTAINER_ENGINE="${CONTAINER_ENGINE:-podman}"
 
 SERVICES=(
     "asterisk_caller"
@@ -32,9 +33,11 @@ for SERVICE in "${SERVICES[@]}"; do
     echo "Building image for: ${SERVICE}"
     echo "--------------------------------------------------------"
     
-    podman build --format docker -f "${SERVICE}/Dockerfile" . -t "${SERVICE}"
-    
-    if [ $? -eq 0 ]; then
+    if "${CONTAINER_ENGINE}" build --format docker \
+        -f "${PROJECT_ROOT}/src/${SERVICE}/Dockerfile" \
+        "${PROJECT_ROOT}" \
+        -t "${IMAGE_REGISTRY}/${SERVICE}:${IMAGE_TAG}" \
+        -t "${SERVICE}:${IMAGE_TAG}"; then
         echo "Successfully built ${SERVICE}"
     else
         echo "Failed to build ${SERVICE}"

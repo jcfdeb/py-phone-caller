@@ -528,7 +528,14 @@ async def init_app():
 
     app = web.Application()
 
-    instrument_aiohttp_app(app)
+    instrument_aiohttp_app(app, "caller_address_book")
+
+    async def cleanup_db(app):
+        if DB.pool is not None:
+            await DB.pool.close()
+            logging.info("Database connection pool closed for caller_address_book")
+
+    app.on_cleanup.append(cleanup_db)
 
     app.router.add_route(
         "POST", f"/{CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT}", post_contact_add
