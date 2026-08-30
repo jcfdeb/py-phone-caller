@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAlert: Nostr & Multi-Protocol Alerting Bridge</title>
+    <style>
+        :root {
+            --bg-color: #15181e; 
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --accent-cyan: #22d3ee; 
+            --accent-cyan-glow: rgba(34, 211, 238, 0.15);
+            --card-bg: #1e222a;
+            --border-color: #2d333b;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .logo {
+            max-width: 280px;
+            margin: 0 auto 15px auto;
+            display: block;
+            mix-blend-mode: lighten; 
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .hrf-grant {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--accent-cyan);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 4px 20px var(--accent-cyan-glow);
+        }
+
+        .hrf-grant a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .hrf-grant a:hover {
+            text-decoration: underline;
+        }
+
+        h2 {
+            color: var(--accent-cyan);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-top: 50px;
+            font-size: 1.5rem;
+        }
+
+        h3 {
+            color: #f8fafc;
+            margin-top: 30px;
+            font-size: 1.2rem;
+        }
+
+        p {
+            margin-bottom: 20px;
+        }
+
+        ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        ul li {
+            position: relative;
+            padding-left: 25px;
+            margin-bottom: 15px;
+            background-color: var(--card-bg);
+            padding: 20px 20px 20px 45px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        ul li::before {
+            content: "▹";
+            position: absolute;
+            left: 20px;
+            top: 20px;
+            color: var(--accent-cyan);
+            font-weight: bold;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+
+        strong {
+            color: #f8fafc;
+        }
+
+        @media (max-width: 600px) {
+            .logo { max-width: 220px; }
+            .container { padding: 20px 15px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <img src="openalert-logo.png" alt="OpenAlert Logo" class="logo">
+            <div class="subtitle">Nostr & Multi-Protocol Alerting Bridge</div>
+        </header>
+
+        <div class="hrf-grant">
+            <div>
+                Development of OpenAlert is supported by a grant from the 
+                <strong>Human Rights Foundation (HRF) Bitcoin Development Fund</strong>.<br>
+                <a href="https://x.com/gladstein/status/2092304843037884677" target="_blank" rel="noopener noreferrer">View the Announcement →</a>
+            </div>
+        </div>
+
+        <p>OpenAlert is a decentralized alerting gateway designed to route critical system events across diverse transport layers. Originally conceived as a module for the <code>py-phone-caller</code> ecosystem, OpenAlert is architected as a standalone component that operates independently and integrates universally via standard alerting protocols.</p>
+
+        <h2>1. Core Architecture</h2>
+        <p>OpenAlert operates as a multi-protocol gateway, abstracting the transport layer of notifications to allow messages to flow fluidly between traditional IT infrastructure APIs and decentralized edge networks.</p>
+        
+        <ul>
+            <li><strong>Universal Downstream Compatibility:</strong> OpenAlert formats its outbound digital payloads using the industry-standard Prometheus Alertmanager JSON schema. This enables it to trigger <code>py-phone-caller</code> (which natively ingests Alertmanager webhooks) or seamlessly integrate with any other enterprise alerting and incident management system (e.g., Grafana, PagerDuty, or custom internal dashboards).</li>
+            <li><strong>Standalone Capable:</strong> OpenAlert's core daemon (<code>openalertd</code>) runs entirely on its own as a protocol translator—bridging local monitoring stacks to global networks—without requiring local telephony hardware.</li>
+        </ul>
+
+        <h2>2. Supported Protocols & Data Flow</h2>
+        <p>OpenAlert is fundamentally bidirectional, acting as both a listener and a broadcaster across three primary transport layers:</p>
+
+        <h3>REST, Nostr, and Alertmanager Interfaces</h3>
+        <ul>
+            <li><strong>Inbound (Receive):</strong> The gateway listens for incoming JSON payloads via standard REST webhooks (compatible with existing IT watchdogs). Simultaneously, it monitors the Nostr network via persistent WebSocket connections to a configured relay pool.</li>
+            <li><strong>Outbound (Send):</strong> Upon processing an incoming decentralized event (from Nostr or BitChat), the system standardizes the payload into a Prometheus Alertmanager webhook and POSTs it to a configured local or remote endpoint. Alternatively, when ingesting a local IT alert, it can cryptographically sign and broadcast the alert globally as a Nostr event.</li>
+        </ul>
+
+        <h3>BitChat Mesh Implementation</h3>
+        <p>To guarantee event delivery when standard internet routing (TCP/IP) fails, OpenAlert natively implements the BitChat protocol.</p>
+        <ul>
+            <li>BitChat is a peer-to-peer messaging architecture utilizing Bluetooth Low Energy (BLE) mesh networks for local, offline communication.</li>
+            <li>By running the BitChat integration, OpenAlert nodes send and receive critical alerts over an ad-hoc local Bluetooth mesh network, bypassing centralized servers, ISPs, and cellular data networks.</li>
+            <li>Messages transmitted over the BitChat mesh use the Noise Protocol Framework for end-to-end encryption, ensuring alerts remain secure while routing across peer devices.</li>
+        </ul>
+
+        <h2>3. Deployment Use Cases</h2>
+        <ul>
+            <li><strong>Universal Protocol Translator (Standalone):</strong> Ingesting Nostr/BitChat events and translating them into standard Alertmanager webhooks to trigger existing enterprise incident response stacks, or converting local REST monitoring alerts into Nostr broadcast events.</li>
+            <li><strong>Off-Grid Telephony Bridge:</strong> Catching offline BitChat mesh packets or Nostr events, securely decrypting the target recipient, and routing the Alertmanager payload into <code>py-phone-caller</code> to dial a physical Voice/SMS payload via a GSM modem.</li>
+        </ul>
+
+    </div>
+
+</body>
+</html>
