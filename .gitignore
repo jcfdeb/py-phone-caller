@@ -110,6 +110,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Other
+docs/**/dist/
+
 # Spyder project settings
 .spyderproject
 .spyproject

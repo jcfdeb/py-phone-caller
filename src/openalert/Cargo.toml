@@ -1,0 +1,68 @@
+[package]
+name = "openalertd"
+version = "0.1.0"
+edition = "2024"
+authors = ["OpenAlert Contributors"]
+description = "Mission-critical decentralized alert router, Nostr pub/sub bus, and telephony bridge"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Async Runtime & Networking
+tokio = { version = "1.43", features = ["full"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = [
+    "connect",
+    "handshake",
+    "rustls-tls-webpki-roots",
+] }
+futures-util = "0.3"
+
+# Web REST Ingress
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+
+# HTTP Client (Egress to py-phone-caller)
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+
+# Template Engine (Template-driven payload rendering)
+tera = "1.20"
+
+# Serialization & Configuration
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Cryptography (BIP-340 Schnorr / Nostr / DAL-EK)
+secp256k1 = { version = "0.30", features = [
+    "global-context",
+    "rand",
+    "serde",
+] }
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.9"
+ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+flate2 = "1.0"
+
+# Observability & Error Handling
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "fmt",
+    "json",
+] }
+thiserror = "2.0"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+# BitChat Native BLE & Mesh Cryptography
+bluer = { version = "0.17.4", features = ["bluetoothd", "l2cap"] }
+bitchat-qudag = "0.1.0"
+snow = "0.9"
