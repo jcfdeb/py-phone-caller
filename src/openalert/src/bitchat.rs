@@ -455,11 +455,24 @@ impl BitChatService {
                     if verifying_key.verify(&canonical_preimage, &signature).is_ok() {
                         sig_valid = true;
                     } else {
-                        let mut fallback = data[..payload_end_offset].to_vec();
-                        if fallback.len() > 2 {
-                            fallback[2] = 0x00;
+                        // Fallback 1: Unpadded with TTL=0 and flags stripped
+                        let mut unpadded_stripped = data[..payload_end_offset].to_vec();
+                        if unpadded_stripped.len() > 2 {
+                            unpadded_stripped[2] = 0x00;
                         }
-                        sig_valid = verifying_key.verify(&fallback, &signature).is_ok();
+                        if unpadded_stripped.len() > 11 {
+                            unpadded_stripped[11] &= !(FLAG_HAS_SIGNATURE | FLAG_IS_RSR);
+                        }
+                        if verifying_key.verify(&unpadded_stripped, &signature).is_ok() {
+                            sig_valid = true;
+                        } else {
+                            // Fallback 2: Raw data_before_sig with TTL=0
+                            let mut fallback = data[..payload_end_offset].to_vec();
+                            if fallback.len() > 2 {
+                                fallback[2] = 0x00;
+                            }
+                            sig_valid = verifying_key.verify(&fallback, &signature).is_ok();
+                        }
                     }
                 }
             } else {
@@ -689,6 +702,20 @@ impl BitChatService {
             eng.bitchat_egress.attach_broadcast_sender(bcast_tx.clone()).await;
             info!("🔗 Connected BitChat core egress channel to live GATT notification broadcast pipeline");
         }
+
+        // Periodic 30-second mesh announce beacon to ensure continuous visibility in peer tables
+        let bcast_ann = bcast_tx.clone();
+        let name_ann = node_name.clone();
+        let sk_ann = Arc::new(signing_key.clone());
+        let np_ann = Arc::new(noise_pubkey);
+        let running_ann = self.running.clone();
+        tokio::spawn(async move {
+            while running_ann.load(Ordering::Relaxed) {
+                sleep(Duration::from_secs(30)).await;
+                let ann_pkt = BitChatService::build_announce_packet(&name_ann, &sk_ann, &np_ann);
+                let _ = bcast_ann.send(ann_pkt);
+            }
+        });
 
         let name_sub = node_name.clone();
         let sk_sub = Arc::new(signing_key);
@@ -933,6 +960,7 @@ impl BitChatService {
                                                             };
                                                             let eng_clone = eng.clone();
                                                             tokio::spawn(async move {
+                                                                sleep(Duration::from_millis(250)).await;
                                                                 if let Err(err) = eng_clone.route_alert(alert).await {
                                                                     warn!("Failed to route BitChat private ingress alert: {}", err);
                                                                 }
@@ -1005,6 +1033,7 @@ impl BitChatService {
                                                 };
                                                 let eng_clone = eng.clone();
                                                 tokio::spawn(async move {
+                                                    sleep(Duration::from_millis(250)).await;
                                                     if let Err(err) = eng_clone.route_alert(alert).await {
                                                         warn!("Failed to route BitChat direct ingress alert: {}", err);
                                                     }
@@ -1078,6 +1107,7 @@ impl BitChatService {
                                             );
                                             break;
                                         }
+                                        sleep(Duration::from_millis(150)).await;
                                     }
                                 }
                                 .boxed()
@@ -1130,6 +1160,18 @@ mod tests {
         assert_eq!(p.packet_type, PACKET_TYPE_ANNOUNCE);
         assert_eq!(p.sender_id, sender_id);
         assert!(p.signature_valid);
+
+        // Verify that external BitChat mobile clients (Android / iOS) verify the standard canonical preimage
+        let payload_len = u16::from_be_bytes([announce_pkt[12], announce_pkt[13]]) as usize;
+        let payload_end = 14 + 8 + payload_len;
+        let canonical_preimage = BitChatService::canonical_signing_preimage(
+            &announce_pkt[..payload_end],
+            BITCHAT_BUCKET_SIZE_256,
+        );
+        let sig_bytes = &announce_pkt[payload_end..payload_end + 64];
+        let sig = ed25519_dalek::Signature::from_slice(sig_bytes).unwrap();
+        assert!(signing_key.verifying_key().verify(&canonical_preimage, &sig).is_ok(),
+            "BitChat mobile app canonical verification MUST succeed for peer table discovery!");
 
         let chat_pkt = BitChatService::build_chat_message_packet(
             &sender_id,
@@ -1295,6 +1337,25 @@ mod tests {
 
         let final_text = BitChatService::extract_bitchat_private_message(&dec_buf);
         assert_eq!(final_text, "FIRE IN SERVER ROOM");
+    }
+
+    #[test]
+    fn test_live_phone_announce_verification_jorge_and_xiaomi() {
+        let jorge_hex = "010107000001a089d694e90200552a7bc99a8dbe975f01054a6f72676502209554bb078bb7a96ee66eb5fdc7cc423057c6a6c9dd4e45d4fc67c431e0f34b4c0320bdbf6af05707831e372e703a1081ea1f5a984469ad2ec2cf1451dac94d6477d70408753e419cac15081df1d595522aec069f66e8d2c29b0ab2969f63df5f571a347ab332b93871ade4d531a882731eabba6ac8f4ef72daa153aec381b807f51551d0a36162e0d7486a0c55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555";
+        let jorge_bytes = hex::decode(jorge_hex).expect("valid hex");
+        let parsed_jorge = BitChatService::parse_incoming_packet(&jorge_bytes).expect("parsed jorge");
+        assert_eq!(parsed_jorge.packet_type, PACKET_TYPE_ANNOUNCE);
+        assert_eq!(hex::encode(parsed_jorge.sender_id), "2a7bc99a8dbe975f");
+        assert!(parsed_jorge.signature_valid, "Jorge announce signature MUST be valid!");
+        assert_eq!(String::from_utf8_lossy(&parsed_jorge.payload.unwrap()), "Jorge");
+
+        let xiaomi_hex = "010106000001a089d6c064020058753e419cac15081d01087869616f6d6931310220d927fb0c88f863b5873001f518f22ba24fcc17ce0be5e033576ec9c028d7052e0320ccd4dd5ac871f381a618d10ea3eb176f5269d0817286195fcb79c625f7476e2a04082a7bc99a8dbe975f467876363e1484d0508a36d913880004d64f66de14fb57256ab88cd9e5ca375b5a8253afc7949807365f90028c3dcc86524a2654fe95527ac2d39aa450b73a0d52525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252";
+        let xiaomi_bytes = hex::decode(xiaomi_hex).expect("valid hex");
+        let parsed_xiaomi = BitChatService::parse_incoming_packet(&xiaomi_bytes).expect("parsed xiaomi");
+        assert_eq!(parsed_xiaomi.packet_type, PACKET_TYPE_ANNOUNCE);
+        assert_eq!(hex::encode(parsed_xiaomi.sender_id), "753e419cac15081d");
+        assert!(parsed_xiaomi.signature_valid, "Xiaomi announce signature MUST be valid!");
+        assert_eq!(String::from_utf8_lossy(&parsed_xiaomi.payload.unwrap()), "xiaomi11");
     }
 
     #[test]

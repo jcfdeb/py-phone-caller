@@ -9,7 +9,9 @@ use crate::error::Result;
 use crate::models::Alert;
 use ed25519_dalek::SigningKey;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, Mutex};
+use tokio::time::sleep;
 use tracing::info;
 
 /// Egress handler for broadcasting alerts to BitChat mesh peers.
@@ -44,12 +46,20 @@ impl BitChatEgress {
             return Ok(());
         }
 
-        let formatted_text = format!(
-            "🚨 [{}] {}: {}",
-            format!("{:?}", alert.severity).to_uppercase(),
-            alert.alert_id,
-            alert.summary
-        );
+        let formatted_text = if alert.alert_id.starts_with("bitchat-dm-") {
+            format!(
+                "🚨 [{}] BLE Mesh Alert: {}",
+                format!("{:?}", alert.severity).to_uppercase(),
+                alert.summary
+            )
+        } else {
+            format!(
+                "🚨 [{}] {}: {}",
+                format!("{:?}", alert.severity).to_uppercase(),
+                alert.alert_id,
+                alert.summary
+            )
+        };
 
         info!(
             "📡 [BitChat BLE Egress] Broadcasting alert to Bluetooth mesh: \"{}\"",
@@ -64,7 +74,15 @@ impl BitChatEgress {
                 &formatted_text,
                 &self.signing_key,
             );
-            let _ = tx.send(packet);
+            // Send initial broadcast notification
+            let _ = tx.send(packet.clone());
+
+            // In lossy BLE radio environments, send a redundant follow-up after pacing to guarantee mesh delivery
+            let tx_followup = tx.clone();
+            tokio::spawn(async move {
+                sleep(Duration::from_millis(300)).await;
+                let _ = tx_followup.send(packet);
+            });
         }
 
         Ok(())
