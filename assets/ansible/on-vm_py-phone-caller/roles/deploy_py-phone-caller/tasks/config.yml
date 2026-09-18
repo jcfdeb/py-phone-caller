@@ -1,49 +1,48 @@
 ---
-- name: Ensure config directory exists
-  file:
+# Dynaconf reads settings.toml and then .secrets.toml from CALLER_CONFIG_DIR,
+# merging the second over the first (see py_phone_caller_utils/config.py). The
+# split exists so the credentials file can be 0600 while the rest of the
+# configuration stays readable for troubleshooting.
+#
+# Both files are validated with tomllib before they are moved into place, so a
+# templating mistake fails the play instead of every systemd unit.
+
+- name: Create the configuration directory
+  ansible.builtin.file:
     path: "{{ py_phone_caller_config_dir }}"
     state: directory
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
+    mode: "0750"
 
-- name: Template configuration source TOML
-  template:
+- name: Render settings.toml
+  ansible.builtin.template:
     src: settings.toml.j2
-    dest: "{{ py_phone_caller_config_source_file }}"
+    dest: "{{ py_phone_caller_settings_file }}"
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
-    mode: '0600'
+    mode: "0640"
+    validate: "{{ _ppc_toml_validate }}"
+  vars:
+    _ppc_render_secrets: false
   notify: Restart py-phone-caller services
 
-- name: Copy Dynaconf environment generator tool
-  copy:
-    src: toml_to_dynaconf_env.py
-    dest: "{{ py_phone_caller_install_dir }}/.toml_to_dynaconf_env.py"
+- name: Render .secrets.toml
+  ansible.builtin.template:
+    src: settings.toml.j2
+    dest: "{{ py_phone_caller_secrets_file }}"
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
-    mode: '0700'
-  become: yes
-
-- name: Generate Dynaconf environment file
-  command: >-
-    {{ py_phone_caller_venv_dir }}/bin/python
-    {{ py_phone_caller_install_dir }}/.toml_to_dynaconf_env.py
-    --input {{ py_phone_caller_config_source_file }}
-    --output {{ py_phone_caller_env_file }}
-  args:
-    chdir: "{{ py_phone_caller_install_dir }}"
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
+    mode: "0600"
+    validate: "{{ _ppc_toml_validate }}"
+  vars:
+    _ppc_render_secrets: true
   notify: Restart py-phone-caller services
 
-- name: Remove temporary Dynaconf environment generator tool
-  file:
-    path: "{{ py_phone_caller_install_dir }}/.toml_to_dynaconf_env.py"
+- name: Remove the runtime files written by earlier releases
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_config_dir }}/{{ item }}"
     state: absent
-  become: yes
-
-- name: Remove legacy runtime settings.toml
-  file:
-    path: "{{ py_phone_caller_config_dir }}/settings.toml"
-    state: absent
-  notify: Restart py-phone-caller services
+  loop:
+    - "py-phone-caller.env"
+    - "settings.source.toml"

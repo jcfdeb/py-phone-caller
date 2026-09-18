@@ -1,27 +1,57 @@
+{#
+    One unit per microservice.
+
+    CALLER_CONFIG_DIR is set explicitly so py_phone_caller_utils.config does
+    not have to guess the configuration directory from __file__ or the cwd.
+
+    PYTHONPATH is deliberately absent: uv installs every workspace member into
+    the virtualenv as an editable install pointing at {{ py_phone_caller_src_dir }}.
+#}
 [Unit]
 Description={{ item.description }}
-After=network.target postgresql.service redis.service
+Documentation=https://github.com/jcfdeb/py-phone-caller
+After=network-online.target {{ py_phone_caller_queue_service }}.service
+Wants=network-online.target
+{% if py_phone_caller_manage_local_postgres | bool %}
+After={{ py_phone_caller_postgres_service }}.service
+Requires={{ py_phone_caller_postgres_service }}.service
+{% endif %}
+{% if not (item.first | default(false)) %}
+{# caller_register applies the Piccolo migrations, so let it go first. #}
+After={{ py_phone_caller_service_prefix }}caller-register.service
+{% endif %}
 
 [Service]
 Type=simple
 User={{ py_phone_caller_user }}
 Group={{ py_phone_caller_group }}
 WorkingDirectory={{ py_phone_caller_install_dir }}
-Environment="PYTHONPATH={{ py_phone_caller_install_dir }}/app:{{ py_phone_caller_install_dir }}/app/py-phone-caller-utils"
-EnvironmentFile={{ py_phone_caller_env_file }}
-Environment="PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+Environment=PYTHONUNBUFFERED=1
+Environment=CALLER_CONFIG_DIR={{ py_phone_caller_config_dir }}
+Environment=PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
 {% if item.name == 'py_phone_caller_ui' %}
-Environment="UI_USER_RESET_PASSWORD={{ (py_phone_caller_ui_reset_password | bool) | ternary('true', 'false') }}"
+Environment=UI_USER_RESET_PASSWORD={{ (py_phone_caller_ui_reset_password | bool) | ternary('true', 'false') }}
 {% endif %}
-{% if item.type is defined and item.type == 'celery' %}
-ExecStart={{ py_phone_caller_venv_dir }}/bin/celery {{ item.cmd }}
-{% elif item.type is defined and item.type == 'gunicorn' %}
-ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn {{ item.cmd }}
+{% if item.type | default('module') == 'gunicorn' %}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn --workers {{ item.workers | default(4) }} --bind {{ _ppc_ui_host }}:{{ _ppc_ui_port }} py_phone_caller_ui.app:app
+{% elif item.type | default('module') == 'celery' %}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/celery --app {{ item.celery_app }} worker --loglevel={{ py_phone_caller_final_config.logs.log_level | default('INFO') | lower }}
 {% else %}
-ExecStart={{ py_phone_caller_venv_dir }}/bin/python {{ item.cmd }}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/python -m {{ item.module }}
 {% endif %}
 Restart=always
 RestartSec=5
+
+# The services are long-lived network daemons owned by an unprivileged
+# account. PrivateTmp is off on purpose: caller_sms and celery_worker share
+# the on-premise SMS SQLite database under /tmp.
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+RestrictSUIDSGID=yes
+ReadWritePaths={{ py_phone_caller_install_dir }} {{ py_phone_caller_log_dir }}
 
 [Install]
 WantedBy=multi-user.target

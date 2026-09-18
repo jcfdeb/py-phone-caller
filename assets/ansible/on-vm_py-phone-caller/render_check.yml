@@ -1,0 +1,137 @@
+---
+# Renders the role's templates on the control node and checks the result,
+# without contacting any target host. Useful after editing settings.toml,
+# group_vars or the templates themselves.
+#
+#   ansible-playbook -i localhost, -c local render_check.yml
+#
+# The rendered files are left in /tmp/py-phone-caller-render for inspection.
+
+- name: Render the deploy_py-phone-caller templates locally
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  become: false
+
+  vars_files:
+    - "roles/deploy_py-phone-caller/defaults/main.yml"
+    - "roles/deploy_py-phone-caller/vars/{{ render_check_os_family }}.yml"
+    - "roles/deploy_py-phone-caller/vars/main.yml"
+    - "group_vars/all.yml"
+
+  vars:
+    # The OS-family vars decide the queue/PostgreSQL unit names in the
+    # rendered units. Override with -e render_check_os_family=RedHat.
+    # Anything keyed on the distribution version (redis vs valkey, crb vs
+    # powertools) is resolved from the control node's own facts here, so only
+    # the target's real run settles those.
+    render_check_os_family: Debian
+    render_check_out: /tmp/py-phone-caller-render
+
+  tasks:
+    # Same directory Ansible reads for the app_servers group.
+    - name: Load the generated configuration
+      ansible.builtin.include_vars:
+        dir: group_vars/app_servers
+
+    - name: Fail when the generated vars are missing
+      ansible.builtin.assert:
+        that:
+          - py_phone_caller_config | default({}) | length > 0
+          - py_phone_caller_config_secrets | default({}) | length > 0
+        fail_msg: >-
+          group_vars/app_servers/ is missing or empty. Run
+          ../tools/toml_to_ansible_vars.py first.
+        quiet: true
+
+    - name: Build the effective configuration
+      ansible.builtin.set_fact:
+        py_phone_caller_final_config: >-
+          {{ py_phone_caller_config_defaults
+             | combine(py_phone_caller_config, recursive=True)
+             | combine(py_phone_caller_config_secrets, recursive=True)
+             | combine(py_phone_caller_config_overrides, recursive=True) }}
+
+    - name: Create the output directory
+      ansible.builtin.file:
+        path: "{{ render_check_out }}"
+        state: directory
+        mode: "0700"
+
+    - name: Render settings.toml
+      ansible.builtin.template:
+        src: roles/deploy_py-phone-caller/templates/settings.toml.j2
+        dest: "{{ render_check_out }}/settings.toml"
+        mode: "0600"
+      vars:
+        _ppc_render_secrets: false
+
+    - name: Render .secrets.toml
+      ansible.builtin.template:
+        src: roles/deploy_py-phone-caller/templates/settings.toml.j2
+        dest: "{{ render_check_out }}/secrets.toml"
+        mode: "0600"
+      vars:
+        _ppc_render_secrets: true
+
+    - name: Render the Caddyfile
+      ansible.builtin.template:
+        src: roles/deploy_py-phone-caller/templates/Caddyfile.j2
+        dest: "{{ render_check_out }}/Caddyfile"
+        mode: "0600"
+
+    - name: Render the systemd units
+      ansible.builtin.template:
+        src: roles/deploy_py-phone-caller/templates/service.j2
+        dest: "{{ render_check_out }}/{{ py_phone_caller_service_prefix }}{{ item.name | replace('_', '-') }}.service"
+        mode: "0600"
+      loop: "{{ py_phone_caller_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # The rendered TOML must parse, and every value from the merged
+    # configuration must survive the trip through the template.
+    - name: Check that the rendered TOML matches the effective configuration
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "-c"
+          - |
+            import json, sys, tomllib
+
+            expected = json.loads(sys.argv[1])
+            got = {}
+            for path in sys.argv[2:]:
+                with open(path, "rb") as handle:
+                    for section, values in tomllib.load(handle).items():
+                        got.setdefault(section, {}).update(values)
+
+            diff = {
+                f"{section}.{key}": {"expected": value, "rendered": got.get(section, {}).get(key, "<missing>")}
+                for section, values in expected.items()
+                for key, value in values.items()
+                if got.get(section, {}).get(key, "<missing>") != value
+            }
+            if diff:
+                print(json.dumps(diff, indent=2, default=str))
+                sys.exit(1)
+
+            print(f"{len(got)} sections, {sum(len(v) for v in got.values())} keys match")
+          - "{{ py_phone_caller_final_config | to_json }}"
+          - "{{ render_check_out }}/settings.toml"
+          - "{{ render_check_out }}/secrets.toml"
+      register: _render_parse
+      changed_when: false
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "output: {{ render_check_out }}"
+          - "toml: {{ _render_parse.stdout }}"
+          - "os family assumed: {{ render_check_os_family }}"
+          - "local postgres: {{ py_phone_caller_manage_local_postgres }}"
+          - "db host: {{ py_phone_caller_final_config.database.db_host }}"
+          - "queue: {{ py_phone_caller_final_config.queue.queue_url }}"
+          - "asterisk: {{ py_phone_caller_final_config.commons.asterisk_host }}"
+          - "caddy upstream: {{ _ppc_ui_upstream_host }}:{{ _ppc_ui_port }}"
+          - "units: {{ py_phone_caller_services | length }}"

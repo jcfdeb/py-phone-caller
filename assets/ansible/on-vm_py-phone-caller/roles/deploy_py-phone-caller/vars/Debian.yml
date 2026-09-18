@@ -1,0 +1,38 @@
+---
+py_phone_caller_runtime_packages:
+  - python3
+  - python3-venv
+  - acl
+  - ca-certificates
+  - curl
+  - git
+  - libsndfile1
+  - python3-psycopg2
+  - rsync
+
+# Required by pydub for the TTS pipeline.
+py_phone_caller_ffmpeg_packages:
+  - ffmpeg
+
+py_phone_caller_build_packages:
+  - build-essential
+  - python3-dev
+
+py_phone_caller_queue_packages:
+  - redis-server
+py_phone_caller_queue_service: redis-server
+
+# No postgresql-contrib here: Debian and Ubuntu ship the contrib extensions
+# (uuid-ossp, pgcrypto) inside postgresql-N, which "Provides:
+# postgresql-contrib-N". The transitional metapackage was dropped entirely in
+# Ubuntu 26.04, so asking for it fails the install.
+py_phone_caller_postgres_packages:
+  - postgresql
+py_phone_caller_postgres_service: postgresql
+
+py_phone_caller_rust_packages:
+  - rustc
+  - cargo
+
+# Serial device group, needed by caller_sms when caller_sms_carrier is on_premise.
+py_phone_caller_modem_group: dialout

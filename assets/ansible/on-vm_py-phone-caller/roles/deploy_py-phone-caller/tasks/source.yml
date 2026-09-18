@@ -1,118 +1,131 @@
 ---
-- name: Check if source code exists
-  stat:
-    path: "{{ py_phone_caller_install_dir }}/pyproject.toml"
-  register: src_dir
+# The repository layout is reproduced verbatim under py_phone_caller_install_dir:
+#
+#   /opt/py-phone-caller/pyproject.toml   uv workspace root
+#   /opt/py-phone-caller/uv.lock
+#   /opt/py-phone-caller/src/<member>/    workspace members, installed editable
+#   /opt/py-phone-caller/venv/            created by uv, never synced
+#
+# uv records the editable paths of the workspace members inside the venv, so
+# "src" must keep its name and must not be a symlink.
 
-- name: Clone source code from Git
-  git:
+- name: Clone the repository
+  ansible.builtin.git:
     repo: "{{ py_phone_caller_git_repo }}"
     dest: "{{ py_phone_caller_install_dir }}"
     version: "{{ py_phone_caller_git_version }}"
-    force: yes
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
-  when: 
-    - not src_dir.stat.exists
-    - py_phone_caller_git_repo | length > 0
-
-- name: Move cloned src directory to app if needed
-  command: mv "{{ py_phone_caller_install_dir }}/src" "{{ py_phone_caller_install_dir }}/app"
-  args:
-    removes: "{{ py_phone_caller_install_dir }}/src"
-    creates: "{{ py_phone_caller_install_dir }}/app"
-  become: yes
+    force: true
+  become: true
   become_user: "{{ py_phone_caller_user }}"
   when: py_phone_caller_git_repo | length > 0
+  notify: Restart py-phone-caller services
 
-- name: Determine local source paths
-  set_fact:
-    _py_phone_caller_local_src: "{{ py_phone_caller_local_src_path if py_phone_caller_local_src_path.endswith('/src') or py_phone_caller_local_src_path.endswith('/src/') else py_phone_caller_local_src_path ~ '/src' }}"
-    _py_phone_caller_local_root: "{{ py_phone_caller_local_src_path | regex_replace('/src/?$', '') }}"
+- name: Drop openalertd from the checkout
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_src_dir }}/openalert"
+    state: absent
+  when: py_phone_caller_git_repo | length > 0
+
+- name: Check the local checkout
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_local_src_path }}/pyproject.toml"
+  delegate_to: localhost
+  become: false
+  register: _ppc_local_root
   when:
     - py_phone_caller_git_repo | length == 0
     - py_phone_caller_local_src_path | length > 0
 
-- name: Synchronize application source code to app directory
-  synchronize:
-    src: "{{ _py_phone_caller_local_src }}/"
-    dest: "{{ py_phone_caller_install_dir }}/app/"
-    recursive: yes
-    delete: yes
-    rsync_opts:
-      - "--exclude=__pycache__/***"
-      - "--exclude=*.pyc"
-      - "--include=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/wheels/***"
-      - "--exclude=py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/***"
+- name: Assert that the local checkout is a repository root
+  ansible.builtin.assert:
+    that:
+      - _ppc_local_root.stat.exists | default(false)
+    fail_msg: >-
+      py_phone_caller_local_src_path must point at the repository root (the
+      directory holding pyproject.toml and uv.lock), not at its src/
+      subdirectory. Got: {{ py_phone_caller_local_src_path }}
+    quiet: true
   when:
     - py_phone_caller_git_repo | length == 0
     - py_phone_caller_local_src_path | length > 0
 
-- name: Synchronize project root files and metadata
-  synchronize:
-    src: "{{ _py_phone_caller_local_root }}/"
+# rsync protects excluded paths from --delete, so the two lists together both
+# keep server-only state (venv, models, rendered config) and skip development
+# noise.
+#
+# --chown sets the service account during the transfer rather than afterwards:
+# the control node's uids mean nothing here, and a recursive chown of the tree
+# would also walk the ~50k files torch installs into the virtualenv.
+- name: Synchronise the local checkout
+  ansible.posix.synchronize:
+    src: "{{ py_phone_caller_local_src_path }}/"
     dest: "{{ py_phone_caller_install_dir }}/"
-    recursive: yes
-    rsync_opts:
-      - "--exclude=.git/***"
-      - "--exclude=.venv/***"
-      - "--exclude=.idea/***"
-      - "--exclude=.junie/***"
-      - "--exclude=.pytest_cache/***"
-      - "--exclude=.ruff_cache/***"
-      - "--exclude=.sonarlint/***"
-      - "--exclude=test/***"
-      - "--exclude=tmp/***"
-      - "--exclude=src/***"
-      - "--exclude=app/***"
-      - "--exclude=__pycache__/***"
-      - "--exclude=*.pyc"
+    archive: true
+    owner: false
+    group: false
+    delete: true
+    compress: true
+    use_ssh_args: true
+    rsync_opts: "{{ _ppc_rsync_filters }}"
+  vars:
+    # --omit-dir-times: the installation directory holds venv/, bin/ and .uv/
+    # that the checkout does not, so its mtime never matches and rsync would
+    # report a change on every single run.
+    _ppc_rsync_filters: >-
+      {{ ['--chown=' ~ py_phone_caller_user ~ ':' ~ py_phone_caller_group, '--omit-dir-times']
+         + (py_phone_caller_sync_protected + py_phone_caller_sync_excludes)
+           | map('regex_replace', '^', '--exclude=') | list }}
+  become: "{{ py_phone_caller_sync_become | bool }}"
   when:
     - py_phone_caller_git_repo | length == 0
     - py_phone_caller_local_src_path | length > 0
+  notify: Restart py-phone-caller services
 
-- name: Check if legacy src directory exists
-  stat:
-    path: "{{ py_phone_caller_install_dir }}/src"
-  register: legacy_src_stat
-
-- name: Remove legacy src directory if it is not a symlink
-  file:
-    path: "{{ py_phone_caller_install_dir }}/src"
-    state: absent
-  when: legacy_src_stat.stat.exists and not legacy_src_stat.stat.islnk
-  become: yes
-
-- name: Create temporary src symlink pointing to app for uv workspace build
-  file:
-    src: "app"
-    dest: "{{ py_phone_caller_install_dir }}/src"
-    state: link
-    owner: "{{ py_phone_caller_user }}"
-    group: "{{ py_phone_caller_group }}"
-  become: yes
-
-- name: Ensure test and tmp directories are absent
-  file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - "{{ py_phone_caller_install_dir }}/test"
-    - "{{ py_phone_caller_install_dir }}/tmp"
-  become: yes
-
-- name: Ensure correct permissions on install and app directories
-  file:
+- name: Ensure the writable runtime directories exist
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
+    mode: "0755"
   loop:
-    - "{{ py_phone_caller_install_dir }}"
-    - "{{ py_phone_caller_install_dir }}/app"
-  become: yes
+    # py_phone_caller_config_dir is deliberately absent: config.yml owns it
+    # and gives it mode 0750. Creating it here as 0755 too made the two tasks
+    # fight, and both reported "changed" on every run.
+    - "{{ py_phone_caller_src_dir }}/generate_audio/audio"
+    - "{{ py_phone_caller_src_dir }}/generate_audio/pre_trained_models"
 
-- name: Ensure correct ownership on app files
-  command: chown -R {{ py_phone_caller_user }}:{{ py_phone_caller_group }} {{ py_phone_caller_install_dir }}/app
-  become: yes
-  changed_when: false
+- name: Own the installation directory
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0755"
+
+# Repair pass for trees laid down by an older role version, which rsynced as
+# root. Off by default because it walks the whole virtualenv.
+- name: Take ownership of the whole tree
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    recurse: true
+  when: py_phone_caller_force_chown | bool
+
+# Older releases of this role installed the tree as "app/" with a "src"
+# symlink pointing at it, which broke the editable installs recorded in the
+# virtualenv. Clear that layout out on upgrade.
+- name: Detect the legacy app/ layout
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_install_dir }}/app"
+  register: _ppc_legacy_app
+
+- name: Remove the legacy app/ layout
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}/app"
+    state: absent
+  when:
+    - _ppc_legacy_app.stat.exists | default(false)
+    - not (_ppc_legacy_app.stat.islnk | default(false))

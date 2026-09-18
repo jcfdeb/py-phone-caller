@@ -1,81 +1,60 @@
 ---
-- name: Ensure firewalld is installed (RHEL/Rocky)
-  dnf:
-    name: firewalld
-    state: present
+# The microservices listen on loopback and are reached through Caddy, so only
+# the proxy ports are opened. Add py_phone_caller_firewall_extra_ports to
+# expose a service directly (for example 8084 for a remote Alertmanager).
+
+- name: Ensure firewalld is installed and running (RHEL/Rocky)
   when: ansible_facts['os_family'] == "RedHat"
-  become: yes
-  tags: firewall
+  block:
+    - name: Install firewalld
+      ansible.builtin.package:
+        name:
+          - firewalld
+          - python3-firewall
+        state: present
 
-- name: Ensure firewalld is started and enabled (RHEL/Rocky)
-  service:
-    name: firewalld
-    state: started
-    enabled: yes
-  when: ansible_facts['os_family'] == "RedHat"
-  become: yes
-  tags: firewall
+    - name: Enable and start firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: true
 
-- name: Open application ports in firewalld (RHEL/Rocky)
-  firewalld:
-    port: "{{ item }}/tcp"
-    permanent: yes
-    state: enabled
-    immediate: yes
-  loop:
-    - 80
-    - 443
-    - 5000
-    - 8081
-    - 8082
-    - 8083
-    - 8084
-    - 8085
-    - 8086
-    - 8087
-  when: ansible_facts['os_family'] == "RedHat"
-  become: yes
-  tags: firewall
+    - name: Keep SSH reachable
+      ansible.posix.firewalld:
+        service: ssh
+        permanent: true
+        immediate: true
+        state: enabled
 
-- name: Ensure UFW is installed (Debian/Ubuntu)
-  apt:
-    name: ufw
-    state: present
+    - name: Open the application ports
+      ansible.posix.firewalld:
+        port: "{{ item }}/tcp"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ py_phone_caller_firewall_ports + py_phone_caller_firewall_extra_ports }}"
+
+- name: Configure UFW (Debian/Ubuntu)
   when: ansible_facts['os_family'] == "Debian"
-  become: yes
-  tags: firewall
+  block:
+    - name: Install UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
 
-- name: Allow SSH in UFW (Debian/Ubuntu)
-  ufw:
-    rule: allow
-    name: OpenSSH
-  when: ansible_facts['os_family'] == "Debian"
-  become: yes
-  tags: firewall
+    # Done before enabling the firewall: the play is running over this port.
+    - name: Keep SSH reachable
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
 
-- name: Open application ports in UFW (Debian/Ubuntu)
-  ufw:
-    rule: allow
-    port: "{{ item }}"
-    proto: tcp
-  loop:
-    - 80
-    - 443
-    - 5000
-    - 8081
-    - 8082
-    - 8083
-    - 8084
-    - 8085
-    - 8086
-    - 8087
-  when: ansible_facts['os_family'] == "Debian"
-  become: yes
-  tags: firewall
+    - name: Open the application ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: "{{ py_phone_caller_firewall_ports + py_phone_caller_firewall_extra_ports }}"
 
-- name: Enable UFW (Debian/Ubuntu)
-  ufw:
-    state: enabled
-  when: ansible_facts['os_family'] == "Debian"
-  become: yes
-  tags: firewall
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled

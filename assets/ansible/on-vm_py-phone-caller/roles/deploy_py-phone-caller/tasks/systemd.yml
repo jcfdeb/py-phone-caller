@@ -1,15 +1,49 @@
 ---
-- name: Create systemd service files
-  template:
+- name: Find the units installed by a previous run
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: "{{ py_phone_caller_service_prefix }}*.service"
+  register: _ppc_present_units
+
+- name: Install the systemd units
+  ansible.builtin.template:
     src: service.j2
-    dest: "/etc/systemd/system/py-phone-caller-{{ item.name | replace('_', '-') }}.service"
+    dest: "/etc/systemd/system/{{ py_phone_caller_service_prefix }}{{ item.name | replace('_', '-') }}.service"
+    owner: root
+    group: root
+    mode: "0644"
   loop: "{{ py_phone_caller_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _ppc_units
   notify: Restart py-phone-caller services
 
-- name: Enable and start services
-  systemd:
-    name: "py-phone-caller-{{ item.name | replace('_', '-') }}"
+# A service dropped from py_phone_caller_services would otherwise keep running
+# from its leftover unit file.
+- name: Stop and disable units that are no longer declared
+  ansible.builtin.systemd_service:
+    name: "{{ item | basename }}"
+    state: stopped
+    enabled: false
+  loop: "{{ _ppc_stale_units }}"
+
+- name: Remove units that are no longer declared
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ _ppc_stale_units }}"
+  register: _ppc_removed_units
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _ppc_units is changed or _ppc_removed_units is changed
+
+- name: Enable and start the services
+  ansible.builtin.systemd_service:
+    name: "{{ py_phone_caller_service_prefix }}{{ item.name | replace('_', '-') }}.service"
     state: started
-    enabled: yes
-    daemon_reload: yes
+    enabled: true
   loop: "{{ py_phone_caller_services }}"
+  loop_control:
+    label: "{{ item.name }}"

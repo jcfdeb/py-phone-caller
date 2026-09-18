@@ -1,0 +1,43 @@
+---
+py_phone_caller_runtime_packages:
+  - python3
+  - acl
+  - ca-certificates
+  - curl
+  - git
+  - libsndfile
+  - python3-psycopg2
+  - rsync
+
+py_phone_caller_build_packages:
+  - gcc
+  - gcc-c++
+  - make
+  - python3-devel
+
+# RHEL 10 and derivatives replaced Redis with Valkey.
+py_phone_caller_queue_packages: >-
+  {{ ['valkey'] if ansible_facts['distribution_major_version'] | int >= 10 else ['redis'] }}
+py_phone_caller_queue_service: >-
+  {{ 'valkey' if ansible_facts['distribution_major_version'] | int >= 10 else 'redis' }}
+
+py_phone_caller_postgres_packages:
+  - postgresql-server
+  - postgresql-contrib
+py_phone_caller_postgres_service: postgresql
+
+# CRB (CodeReady Builder) was called PowerTools on RHEL/Rocky 8.
+py_phone_caller_crb_repo: >-
+  {{ 'powertools' if ansible_facts['distribution_major_version'] | int <= 8 else 'crb' }}
+
+# ffmpeg proper is not in RHEL; ffmpeg-free (EPEL/AppStream) provides the
+# encoders pydub needs.
+py_phone_caller_ffmpeg_packages:
+  - ffmpeg-free
+
+py_phone_caller_rust_packages:
+  - rust
+  - cargo
+
+# Serial device group, needed by caller_sms when caller_sms_carrier is on_premise.
+py_phone_caller_modem_group: dialout

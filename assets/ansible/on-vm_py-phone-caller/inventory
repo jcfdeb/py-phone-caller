@@ -1,10 +1,16 @@
-[ubuntu]
-ubuntu-server ansible_user=ubuntu ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
+; Target hosts for the py-phone-caller systemd deployment.
+;
+; The connection user must be root or have passwordless sudo: the role uses
+; ansible.posix.synchronize, which runs rsync over SSH as that user.
+;
+; Group vars live in the group_vars/app_servers/ directory, generated from
+; src/config/*.toml by assets/ansible/tools/toml_to_ansible_vars.py. It has to
+; be a directory: Ansible auto-loads group_vars/<group>.yml only when the stem
+; is exactly the group name, so "app_servers.secrets.yml" would be ignored.
 
-[rocky]
-rocky-server ansible_user=rocky ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
+[app_servers]
+openalert ansible_host=openalert ansible_user=root
 
-[all:vars]
-ansible_become=yes
-ansible_become_method=sudo
+[app_servers:vars]
 ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_extra_args='-o StrictHostKeyChecking=no'

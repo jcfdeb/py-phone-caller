@@ -163,4 +163,3 @@
     state: started
     enabled: yes
   when: not ansible_check_mode
-  ignore_errors: yes

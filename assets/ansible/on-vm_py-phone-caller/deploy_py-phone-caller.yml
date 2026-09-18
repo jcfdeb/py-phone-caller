@@ -1,0 +1,40 @@
+---
+# Deploy the py-phone-caller microservice stack onto the hosts in
+# [app_servers] as systemd units behind Caddy.
+#
+#   ansible-galaxy collection install -r requirements.yml
+#   ../tools/toml_to_ansible_vars.py          # src/config/*.toml -> group_vars
+#   ansible-playbook deploy_py-phone-caller.yml
+#
+# The configuration comes from the group_vars/app_servers/ directory;
+# everything else has a default in roles/deploy_py-phone-caller/defaults/main.yml.
+
+- name: Deploy the py-phone-caller stack
+  hosts: app_servers
+  gather_facts: true
+
+  vars:
+    # Repository root on the control node: assets/ansible/on-vm_py-phone-caller
+    # is three levels down from it.
+    py_phone_caller_local_src_path: "{{ playbook_dir | dirname | dirname | dirname }}"
+
+  pre_tasks:
+    # Both files live in the group_vars/app_servers/ *directory*: Ansible
+    # reads every file in such a directory, but auto-loads a plain file only
+    # when its stem is exactly the group name. A stray
+    # "group_vars/app_servers.secrets.yml" is ignored without a word, so
+    # check that the variables actually arrived rather than trusting the path.
+    - name: Check that the generated group_vars are loaded
+      ansible.builtin.assert:
+        that:
+          - py_phone_caller_config | default({}) | length > 0
+          - py_phone_caller_config_secrets | default({}) | length > 0
+        fail_msg: >-
+          py_phone_caller_config / py_phone_caller_config_secrets are empty.
+          Generate them with assets/ansible/tools/toml_to_ansible_vars.py, and
+          make sure they land in group_vars/app_servers/ (a directory).
+        quiet: true
+      tags: always
+
+  roles:
+    - role: deploy_py-phone-caller

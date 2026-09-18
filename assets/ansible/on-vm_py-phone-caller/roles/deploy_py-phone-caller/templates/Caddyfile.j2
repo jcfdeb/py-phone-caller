@@ -1,12 +1,15 @@
+# Managed by Ansible (role: deploy_py-phone-caller).
+{% if caddy_email %}
 {
-    {% if caddy_email %}
-    email {{ caddy_email }}
-    {% endif %}
+	email {{ caddy_email }}
 }
+{% endif %}
 
-{{ caddy_domain_name | default(':80') }} {
-    reverse_proxy localhost:{{ py_phone_caller_config_defaults.py_phone_caller_ui.ui_listen_on_port }}
-    {% if caddy_domain_name.endswith('.lan') %}
-    tls internal
-    {% endif %}
+{{ caddy_domain_name | default(':80', true) }} {
+	encode gzip
+	reverse_proxy {{ _ppc_ui_upstream_host }}:{{ _ppc_ui_port }}
+{% if caddy_domain_name is search('\.(lan|local|internal|test)$') %}
+	# Non-public suffix: ACME cannot issue for it, so use Caddy's local CA.
+	tls internal
+{% endif %}
 }

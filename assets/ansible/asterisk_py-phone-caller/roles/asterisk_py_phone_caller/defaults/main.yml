@@ -24,6 +24,9 @@ callback_service_url: "http://127.0.0.1:8083"
 asterisk_sip_bindaddr: "0.0.0.0:5060"
 
 # --- Asterisk Dialplan ---
+# Must match asterisk_call.asterisk_context / asterisk_extension in
+# src/config/settings.toml.
+asterisk_context: "py-phone-caller"
 asterisk_extension: "3216"
 
 # --- Custom Audio ---

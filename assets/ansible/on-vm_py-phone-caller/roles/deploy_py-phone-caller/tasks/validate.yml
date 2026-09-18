@@ -1,0 +1,101 @@
+---
+# Catch configuration mistakes here rather than in a crash-looping unit.
+
+- name: Assert that every configuration section is present
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config[item] is mapping
+    fail_msg: >-
+      Configuration section '{{ item }}' is missing or is not a mapping.
+      Regenerate the vars with assets/ansible/tools/toml_to_ansible_vars.py.
+    quiet: true
+  loop:
+    - commons
+    - asterisk_call
+    - call_register
+    - asterisk_ws_monitor
+    - asterisk_recaller
+    - generate_audio
+    - caller_prometheus_webhook
+    - caller_sms
+    - scheduled_calls
+    - queue
+    - database
+    - py_phone_caller_ui
+    - logs
+    - caller_address_book
+
+- name: Assert that mandatory database settings are set
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config.database.db_host | default('', true) | length > 0
+      - py_phone_caller_final_config.database.db_name | default('', true) | length > 0
+      - py_phone_caller_final_config.database.db_user | default('', true) | length > 0
+      - py_phone_caller_final_config.database.db_password | default('', true) | length > 0
+    fail_msg: "database.db_host, db_name, db_user and db_password must all be set."
+    quiet: true
+
+- name: Assert that placeholder secrets were replaced
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config.database.db_password not in _ppc_placeholders
+      - py_phone_caller_final_config.py_phone_caller_ui.ui_secret_key not in _ppc_placeholders
+      - py_phone_caller_final_config.commons.asterisk_pass not in _ppc_placeholders
+    fail_msg: >-
+      Placeholder credentials are still in place. Set real values in
+      src/config/.secrets.toml and regenerate group_vars with
+      assets/ansible/tools/toml_to_ansible_vars.py, or pass
+      py_phone_caller_config_secrets from an ansible-vault file.
+    quiet: true
+  vars:
+    _ppc_placeholders:
+      - "change_me"
+      - "super_secure_password"
+
+- name: Assert that a remote database has admin credentials for provisioning
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_db_admin_password | default('', true) | length > 0
+    fail_msg: >-
+      database.db_host is {{ py_phone_caller_final_config.database.db_host }}, which is
+      not local, so the role cannot use peer authentication. Provide
+      py_phone_caller_db_admin_password, or set py_phone_caller_manage_database=false
+      and create the role/database yourself.
+    quiet: true
+  when:
+    - py_phone_caller_manage_database | bool
+    - not (py_phone_caller_manage_local_postgres | bool)
+
+- name: Assert that on-premise SMS declares at least one modem
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config.caller_sms.modems | default([]) | length > 0
+      - py_phone_caller_final_config.caller_sms.modems
+        | selectattr('port', 'defined') | list | length
+        == py_phone_caller_final_config.caller_sms.modems | length
+    fail_msg: >-
+      caller_sms_carrier is 'on_premise' but caller_sms.modems is empty or has
+      entries without a 'port'.
+    quiet: true
+  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+
+- name: Assert that /etc/hosts entries are well formed
+  ansible.builtin.assert:
+    that:
+      - item.address is defined
+      - item.names is defined
+      - item.names | length > 0
+    fail_msg: "Each py_phone_caller_hosts_entries item needs 'address' and a non-empty 'names' list."
+    quiet: true
+  loop: "{{ py_phone_caller_hosts_entries }}"
+  loop_control:
+    label: "{{ item.address | default('<no address>') }}"
+
+- name: Assert that a source of truth for the code was given
+  ansible.builtin.assert:
+    that:
+      - (py_phone_caller_git_repo | length > 0) or (py_phone_caller_local_src_path | length > 0)
+    fail_msg: >-
+      Set either py_phone_caller_git_repo or py_phone_caller_local_src_path so the
+      role knows where to take the application code from.
+    quiet: true
