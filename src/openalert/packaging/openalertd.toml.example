@@ -1,0 +1,121 @@
+[daemon]
+name = "openalertd-hub"
+log_level = "info"
+# Logging format: "default" (terminal with ISO-8601 timestamps) or "systemd" (without timestamps for journald)
+logging = "default"
+
+[rest]
+listen_host = "0.0.0.0"
+listen_port = 8090
+enable_cors = true
+
+[templates]
+template_dir = "templates"
+default_template = "prometheus_alertmanager.json.tera"
+
+[storage]
+# Embedded SQLite persistence layer
+enabled = true
+# Database file path on disk, or ":memory:" for RAM-only
+path = "data/openalert.db"
+# Sliding window retention in seconds (900s = 15 minutes)
+retention_seconds = 900
+# Re-route pending / unacknowledged alerts found in storage on startup
+recover_pending_on_startup = true
+# Background pruning interval in seconds
+prune_interval_seconds = 60
+
+[nostr]
+# Full Mesh Relays + Single Node
+relays = [
+    "ws://127.0.0.1:8080",
+    "ws://127.0.0.1:8081",
+    "ws://127.0.0.1:8082",
+    "ws://127.0.0.1:8083",
+    "ws://127.0.0.1:8084",
+    "ws://127.0.0.1:8085"
+]
+# Kind 30000 (Alerts / Ephemeral Replaceable)
+kind = 30000
+# Subscribe to incoming alerts from the mesh
+enable_subscriber = true
+subscription_filter_kinds = [30000, 1]
+# Alert validity / time-to-live in seconds (NIP-40 expiration tag & stale alert filtering)
+alert_ttl_seconds = 3600
+# Historical catch-up lookback in seconds on startup (0 = only live events, 300 = past 5 minutes)
+subscription_lookback_seconds = 300
+
+[bitchat]
+# Native Bluetooth Low Energy (BlueZ D-Bus GATT peripheral & advertising)
+enabled = true
+device = "hci0"
+node_name = "OpenAlert-Mesh"
+service_uuid = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c"
+
+[routing]
+# Routing destinations: "nostr", "webhook", "bitchat", "peering"
+default_destinations = ["nostr", "webhook", "bitchat"]
+# Emergency failover destinations when primary egress channels collapse
+failover_destinations = ["peering"]
+dedup_cache_size = 10000
+dedup_ttl_seconds = 3600
+
+[py_phone_caller]
+# Balancing strategy: "cascade" (failover), "roundrobin", "random", or "broadcast"
+strategy = "cascade"
+circuit_breaker_enabled = true
+circuit_breaker_failure_threshold = 3
+circuit_breaker_cooldown_seconds = 60
+
+# Primary webhook instance (Priority 00)
+[[py_phone_caller.webhooks]]
+url = "http://127.0.0.1:9099/alerts"
+timeout_seconds = 5.0
+max_retries = 3
+delay = 30
+priority = 0
+
+# Secondary backup webhook instance (Priority 10)
+[[py_phone_caller.webhooks]]
+url = "http://127.0.0.1:9097/alerts"
+timeout_seconds = 5.0
+max_retries = 3
+delay = 30
+priority = 10
+
+[peering]
+# Decentralized UDP peering, radio backhaul, and emergency failover subsystem
+enabled = false
+listen_addr = "0.0.0.0:19876"
+# 256-bit Pre-Shared Key (hex-encoded 32 bytes) for AEAD (XChaCha20-Poly1305)
+shared_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+clock_skew_tolerance_secs = 300
+dedup_ttl_seconds = 3600
+
+[peering.circuit_breaker]
+failure_threshold = 3
+base_cooldown_secs = 60
+max_cooldown_secs = 1800
+canary_timeout_ms = 3500
+
+[peering.retry]
+max_ip_retries = 4
+base_timeout_ms = 250
+max_timeout_ms = 8000
+
+# Example Node: LoRa Edge Stub
+# [[peering.nodes]]
+# name = "lora-node-01"
+# addr = "10.0.0.2:19876"
+# link_type = "lora"
+# burst_retries = 3
+# burst_interval_ms = 500
+# burst_jitter_ms = 150
+
+# Example Node: VPN / LAN Gateway
+# [[peering.nodes]]
+# name = "vpn-hub"
+# addr = "192.168.1.10:19876"
+# link_type = "lan"
+# max_ip_retries = 3
+# base_timeout_ms = 200

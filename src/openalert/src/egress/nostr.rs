@@ -2,11 +2,12 @@
 //!
 //! Generates NIP-01 compliant Nostr alert events, cryptographically signs them using BIP-340
 //! Schnorr signatures over secp256k1, and broadcasts them to configured relays.
+//! Supports NIP-40 (Expiration Timestamp) to allow relays to purge expired alerts.
 
-use crate::error::{OpenAlertError, Result};
+use crate::error::Result;
 use crate::models::{Alert, NostrEvent};
 use chrono::Utc;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::SinkExt;
 use secp256k1::rand::rngs::OsRng;
 use secp256k1::{Keypair, Secp256k1};
 use serde_json::json;
@@ -23,11 +24,12 @@ pub struct NostrPublisher {
     pubkey_hex: String,
     relays: Vec<String>,
     kind: u64,
+    alert_ttl_seconds: u64,
 }
 
 impl NostrPublisher {
     /// Generates an ephemeral cryptographic keypair and initializes the publisher.
-    pub fn new(relays: Vec<String>, kind: u64) -> Self {
+    pub fn new(relays: Vec<String>, kind: u64, alert_ttl_seconds: u64) -> Self {
         let secp = Secp256k1::new();
         let (secret_key, _) = secp.generate_keypair(&mut OsRng);
         let keypair = Keypair::from_secret_key(&secp, &secret_key);
@@ -39,6 +41,7 @@ impl NostrPublisher {
             pubkey_hex,
             relays,
             kind,
+            alert_ttl_seconds,
         }
     }
 
@@ -47,11 +50,13 @@ impl NostrPublisher {
         &self.pubkey_hex
     }
 
-    /// Constructs and signs a canonical NIP-01 event from an [`Alert`].
+    /// Constructs and signs a canonical NIP-01 event from an [`Alert`], applying NIP-40 expiration tags.
     pub fn sign_alert(&self, alert: &Alert) -> Result<NostrEvent> {
         let secp = Secp256k1::new();
-        let created_at = Utc::now().timestamp();
-        let tags = vec![
+        let created_at_i64 = Utc::now().timestamp();
+        let created_at = created_at_i64.max(0) as u64;
+
+        let mut tags = vec![
             vec!["d".to_string(), alert.alert_id.clone()],
             vec![
                 "severity".to_string(),
@@ -63,6 +68,12 @@ impl NostrPublisher {
             ],
             vec!["t".to_string(), "alert".to_string()],
         ];
+
+        // NIP-40: Expiration Timestamp
+        if self.alert_ttl_seconds > 0 {
+            let expiration = created_at_i64 + self.alert_ttl_seconds as i64;
+            tags.push(vec!["expiration".to_string(), expiration.to_string()]);
+        }
 
         let serialized = serde_json::to_string(&json!([
             0,
@@ -105,50 +116,31 @@ impl NostrPublisher {
 
         let mut successful_relays = 0;
 
-        for relay_url in &self.relays {
-            match self.send_to_single_relay(relay_url, &event_json).await {
-                Ok(true) => {
-                    info!(
-                        "✅ Nostr relay [{}] accepted event [{}]",
-                        relay_url,
-                        &event.id[..8]
-                    );
-                    successful_relays += 1;
+        for relay in &self.relays {
+            match timeout(Duration::from_secs(5), connect_async(relay)).await {
+                Ok(Ok((mut ws_stream, _))) => {
+                    let msg = WsMessage::Text(event_json.clone().into());
+                    if let Ok(Ok(())) = timeout(Duration::from_secs(3), ws_stream.send(msg)).await {
+                        info!(
+                            "✅ Broadcast alert [{}] to Nostr relay [{}]",
+                            event.id[..8.min(event.id.len())].to_string(),
+                            relay
+                        );
+                        successful_relays += 1;
+                    } else {
+                        warn!("Timed out sending event to Nostr relay [{}]", relay);
+                    }
+                    let _ = ws_stream.close(None).await;
                 }
-                Ok(false) => {
-                    warn!(
-                        "⚠️ Nostr relay [{}] rejected event [{}]",
-                        relay_url,
-                        &event.id[..8]
-                    );
+                Ok(Err(err)) => {
+                    warn!("Failed to connect to Nostr relay [{}]: {}", relay, err);
                 }
-                Err(err) => {
-                    warn!("❌ Could not send to Nostr relay [{}]: {}", relay_url, err);
+                Err(_) => {
+                    warn!("Connection to Nostr relay [{}] timed out", relay);
                 }
             }
         }
 
         successful_relays
-    }
-
-    /// Connects to a single relay and awaits the `["OK", <event_id>, true/false]` acknowledgment.
-    async fn send_to_single_relay(&self, relay_url: &str, event_json: &str) -> Result<bool> {
-        let (mut ws_stream, _) = timeout(Duration::from_secs(2), connect_async(relay_url))
-            .await
-            .map_err(|_| OpenAlertError::Config(format!("Timeout connecting to {}", relay_url)))?
-            .map_err(OpenAlertError::from)?;
-
-        ws_stream
-            .send(WsMessage::Text(event_json.to_string().into()))
-            .await?;
-
-        if let Some(Ok(WsMessage::Text(text))) = ws_stream.next().await {
-            let ack: serde_json::Value = serde_json::from_str(&text)?;
-            if let Some(arr) = ack.as_array().filter(|a| a.len() >= 3 && a[0] == "OK") {
-                return Ok(arr[2].as_bool().unwrap_or(false));
-            }
-        }
-
-        Ok(false)
     }
 }

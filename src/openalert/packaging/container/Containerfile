@@ -1,0 +1,97 @@
+# syntax=docker/dockerfile:1
+# ==============================================================================
+# OpenAlert Daemon - Multi-Stage Vendor-Neutral Containerfile
+# Compatible with: Podman, Docker, Buildah, Nerdctl
+# Target architecture: x86_64, aarch64, armv7
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Stage 1: Build & Compilation (Alpine Musl)
+# ------------------------------------------------------------------------------
+FROM docker.io/library/rust:alpine3.20 AS builder
+
+# Install build-time dependencies
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    dbus-dev \
+    eudev-dev \
+    sqlite-dev \
+    make \
+    binutils \
+    clang-dev \
+    clang \
+    cmake
+
+ENV LIBCLANG_PATH=/usr/lib
+
+WORKDIR /usr/src/openalertd
+
+# Cache dependencies layer
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src tests templates config && \
+    echo "pub fn main() {}" > src/lib.rs && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release --locked || true
+
+# Copy real project sources
+COPY src/ ./src/
+COPY templates/ ./templates/
+COPY config/ ./config/
+
+# Build final release binary and strip symbols
+RUN touch src/main.rs src/lib.rs && \
+    cargo build --release --locked && \
+    strip /usr/src/openalertd/target/release/openalertd
+
+# ------------------------------------------------------------------------------
+# Stage 2: Minimal Distroless Runtime (< 25MB total image size)
+# ------------------------------------------------------------------------------
+FROM docker.io/library/alpine:3.20
+
+LABEL org.opencontainers.image.title="OpenAlert Daemon" \
+      org.opencontainers.image.description="Resilient Edge Alert Router (BLE Mesh, Nostr, Prometheus Webhook)" \
+      org.opencontainers.image.authors="Jorge <https://github.com/jcfdeb>" \
+      org.opencontainers.image.source="https://github.com/jcfdeb/py-phone-caller" \
+      org.opencontainers.image.licenses="BSD-3-Clause"
+
+# Install runtime shared libraries only
+RUN apk add --no-cache \
+    ca-certificates \
+    dbus-libs \
+    eudev-libs \
+    sqlite-libs \
+    tzdata \
+    bluez
+
+# Create unprivileged non-root user and group
+RUN addgroup -g 10001 -S openalert && \
+    adduser -u 10001 -S -D -G openalert -h /var/lib/openalertd openalert
+
+# Prepare directory tree
+RUN mkdir -p /etc/openalertd /var/lib/openalertd /templates /var/log/openalertd
+
+# Copy compiled binary from builder
+COPY --from=builder /usr/src/openalertd/target/release/openalertd /usr/local/bin/openalertd
+
+# Copy default configuration and templates
+COPY --chown=openalert:openalert config/openalertd.toml /etc/openalertd/openalertd.toml
+COPY --chown=openalert:openalert templates/ /templates/
+
+# Enforce secure permissions
+RUN chown -R openalert:openalert /etc/openalertd /var/lib/openalertd /templates /var/log/openalertd && \
+    chmod 750 /var/lib/openalertd /etc/openalertd
+
+# Health check probe against Axum HTTP REST listener
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:8090/health || exit 1
+
+# Expose REST / Prometheus metrics HTTP server (8090)
+EXPOSE 8090
+
+# Run under unprivileged user
+USER openalert:openalert
+WORKDIR /var/lib/openalertd
+
+ENTRYPOINT ["/usr/local/bin/openalertd"]
+CMD ["/etc/openalertd/openalertd.toml"]

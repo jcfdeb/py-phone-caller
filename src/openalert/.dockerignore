@@ -1,0 +1,12 @@
+# Exclude cargo build artifacts except the release binary
+target/**
+!target/release/openalertd
+
+# Exclude local SQLite and runtime state
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Exclude git repository metadata
+.git/

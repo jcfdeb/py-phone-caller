@@ -64,10 +64,39 @@ impl RestServer {
 
         let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_signal())
             .await
             .map_err(crate::error::OpenAlertError::Io)?;
 
         Ok(())
+    }
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => {
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
     }
 }
 
@@ -98,6 +127,8 @@ async fn ingest_alert(
         node: payload.node,
         starts_at: Utc::now(),
         destinations: payload.destinations,
+        origin_peer: None,
+        hop: 3,
     };
 
     let fingerprint = alert.fingerprint();

@@ -22,9 +22,9 @@
 //!                                           |
 //!                                           v
 //!                               +-----------------------+
-//!                               | Alert Routing Engine  | <---> Deduplication Cache &
-//!                               |                       |       Template Engine (Tera)
-//!                               +-----------+-----------+
+//!                               | Alert Routing Engine  | <---> Deduplication Cache,
+//!                               |                       |       Storage (SQLite/RAM), &
+//!                               +-----------+-----------+       Template Engine (Tera)
 //!                                           |
 //!                            +--------------+--------------+
 //!                            |                             |
@@ -43,7 +43,9 @@
 //! - [`error`]: Unified error types and result aliases.
 //! - [`ingress`]: Inbound alert listeners (HTTP REST API, Prometheus Alertmanager webhook, Nostr subscribers).
 //! - [`egress`]: Outbound alert dispatchers (Prometheus webhook, Nostr broadcast, BitChat mesh).
+//! - [`metrics`]: Prometheus and OpenTelemetry-aligned metrics exposition.
 //! - [`models`]: Canonical internal alert schema and network serialization models.
+//! - [`storage`]: Embedded SQLite storage with sliding-window retention, RAM fallback, and crash recovery.
 //! - [`templates`]: Jinja2/Tera template engine for dynamic HTTP webhook payload generation.
 
 pub mod bitchat;
@@ -52,10 +54,14 @@ pub mod egress;
 pub mod engine;
 pub mod error;
 pub mod ingress;
+pub mod metrics;
 pub mod models;
+pub mod storage;
+pub mod peering;
 pub mod templates;
 
 pub use bitchat::BitChatService;
 pub use config::AppConfig;
 pub use engine::AlertEngine;
-pub use error::{OpenAlertError, Result};
+pub use metrics::OpenAlertMetrics;
+pub use storage::Storage;

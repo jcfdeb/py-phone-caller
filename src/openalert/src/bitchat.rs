@@ -957,6 +957,8 @@ impl BitChatService {
                                                                 node: Some(name_w.to_string()),
                                                                 starts_at: Utc::now(),
                                                                 destinations: vec!["webhook".to_string(), "nostr".to_string(), "bitchat".to_string()],
+                                                                origin_peer: None,
+                                                                hop: 3,
                                                             };
                                                             let eng_clone = eng.clone();
                                                             tokio::spawn(async move {
@@ -1030,6 +1032,8 @@ impl BitChatService {
                                                     node: Some(name_w.to_string()),
                                                     starts_at: Utc::now(),
                                                     destinations: vec!["webhook".to_string(), "nostr".to_string(), "bitchat".to_string()],
+                                                    origin_peer: None,
+                                                    hop: 3,
                                                 };
                                                 let eng_clone = eng.clone();
                                                 tokio::spawn(async move {

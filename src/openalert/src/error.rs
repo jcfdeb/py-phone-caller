@@ -12,6 +12,10 @@ pub enum OpenAlertError {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    /// TOML parsing or deserialization error.
+    #[error("TOML decode error: {0}")]
+    Toml(#[from] toml::de::Error),
+
     /// Tera template compilation or rendering failure.
     #[error("Template rendering error: {0}")]
     Template(#[from] tera::Error),
@@ -39,13 +43,21 @@ pub enum OpenAlertError {
     /// Alert routing or dispatch failure.
     #[error("Dispatch routing error: {0}")]
     Routing(String),
+
+    /// Embedded storage / SQLite database failure.
+    #[error("Storage error: {0}")]
+    Storage(#[from] rusqlite::Error),
+
+    /// Federated peering transport, wire decoding, or protocol error.
+    #[error("Peering protocol error: {0}")]
+    Peering(String),
 }
 
 impl From<tokio_tungstenite::tungstenite::Error> for OpenAlertError {
     fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::WebSocket(Box::new(err))
+        OpenAlertError::WebSocket(Box::new(err))
     }
 }
 
-/// Specialized [`Result`] alias for `openalertd` operations.
+/// Convenience type alias for standard library `Result` using [`OpenAlertError`].
 pub type Result<T> = std::result::Result<T, OpenAlertError>;

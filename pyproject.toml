@@ -6,6 +6,15 @@ readme = "README.md"
 requires-python = ">=3.14, <3.15"
 dependencies = []
 
+[tool.uv]
+# curated-tokenizers 0.0.9 ships only an sdist, and its Cython sources crash
+# the Cython 3.1 compiler on Python 3.14 ("TypeError: 'NoneType' object is
+# unsliceable" while cythonising curated_tokenizers/_bbpe.pyx). It reaches us
+# through generate-audio -> kokoro -> misaki[en] -> spacy-curated-transformers.
+# Build dependencies are not part of the resolution, so this only pins the
+# compiler used to build sdists; uv.lock is unaffected.
+build-constraint-dependencies = ["cython<3.1"]
+
 [tool.uv.workspace]
 members = [
     "src/py-phone-caller-utils",

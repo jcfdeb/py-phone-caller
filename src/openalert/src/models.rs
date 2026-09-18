@@ -1,125 +1,153 @@
-//! # Data Models
+//! # Internal Data Models & Wire Formats
 //!
-//! Defines canonical alert representations, network request/response DTOs, and protocol-specific
-//! event structures used throughout the daemon.
+//! Defines the canonical [`Alert`] struct used within the routing engine alongside
+//! serializable wire formats for Nostr events (NIP-01), Prometheus Alertmanager webhooks,
+//! HTTP REST requests, and federated peer datagrams.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
-/// Severity classifications for routed alerts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// Severity levels for incoming and routed alerts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertSeverity {
-    /// Informational notice; non-urgent status update.
+    /// Informational notifications without operational urgency.
     Info,
-    /// Warning condition that may require operator attention.
+    /// Non-critical anomalies or early warning thresholds.
     Warning,
-    /// Critical failure requiring immediate operational response.
-    #[default]
+    /// Urgent operational failures requiring prompt intervention.
     Critical,
-    /// Emergency situation demanding immediate voice call dispatch.
+    /// Highest urgency catastrophe or safety threat.
     Emergency,
 }
 
 impl AlertSeverity {
-    /// Parses a string representation into an [`AlertSeverity`] variant.
+    /// Parses a string slice into an [`AlertSeverity`], defaulting to `Critical` if unrecognized.
     pub fn parse_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "info" => Self::Info,
+            "info" | "informational" => Self::Info,
             "warning" | "warn" => Self::Warning,
             "critical" | "crit" => Self::Critical,
-            "emergency" | "fatal" => Self::Emergency,
+            "emergency" | "emerg" => Self::Emergency,
             _ => Self::Critical,
         }
     }
 }
 
-/// Identifies the originating network or protocol source of an alert.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
+/// Identifies the protocol or channel where an alert originated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AlertSource {
-    /// Ingested via local or remote HTTP REST API endpoint.
-    #[default]
+    /// Ingested via direct HTTP REST call (`/api/v1/alerts`).
     Rest,
-    /// Received from a decentralized Nostr relay subscription.
-    Nostr,
-    /// Received over Bluetooth Low Energy BitChat mesh.
-    BitChat,
-    /// Native Prometheus or Alertmanager webhook ingestion.
+    /// Ingested via Prometheus Alertmanager webhook (`/api/v1/webhook/prometheus`).
     Prometheus,
-    /// Custom integration source with identifier.
-    Custom(String),
+    /// Received from a Nostr relay subscriber (NIP-01 / Kind 30000).
+    Nostr,
+    /// Decoded from a local Bluetooth Low Energy mesh packet.
+    BitChat,
+    /// Ingested from a federated peer node via encrypted UDP datagram.
+    Peering,
 }
 
-/// Canonical internal alert model routed across `openalertd` components.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Alert {
-    /// Unique identifier for this alert instance or correlation key.
-    pub alert_id: String,
-    /// Severity classification determining dispatch urgency.
-    pub severity: AlertSeverity,
-    /// Short summary describing the incident.
-    pub summary: String,
-    /// Detailed incident description, context, or remediation instructions.
-    pub description: Option<String>,
-    /// Protocol source where the alert originated.
-    pub source: AlertSource,
-    /// Identity, pubkey, or nickname of the originating entity.
-    pub sender: Option<String>,
-    /// Hostname or mesh node identifier that dispatched the alert.
-    pub node: Option<String>,
-    /// Timestamp when the alert event was initiated.
-    #[serde(default = "Utc::now")]
-    pub starts_at: DateTime<Utc>,
-    /// Target dispatch destinations (e.g. "webhook", "nostr", "bitchat").
-    #[serde(default)]
-    pub destinations: Vec<String>,
-}
-
-impl Alert {
-    /// Computes a deterministic SHA-256 hexadecimal fingerprint for deduplication.
-    pub fn fingerprint(&self) -> String {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(self.alert_id.as_bytes());
-        hasher.update(self.summary.as_bytes());
-        if let Some(ref desc) = self.description {
-            hasher.update(desc.as_bytes());
+impl std::fmt::Display for AlertSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rest => write!(f, "rest"),
+            Self::Prometheus => write!(f, "prometheus"),
+            Self::Nostr => write!(f, "nostr"),
+            Self::BitChat => write!(f, "bitchat"),
+            Self::Peering => write!(f, "peering"),
         }
-        format!("{:x}", hasher.finalize())
     }
 }
 
-/// Ingest request payload submitted to the generic HTTP REST endpoint.
+fn default_hop_count() -> u8 {
+    3
+}
+
+/// Canonical internal representation of an alert routed through OpenAlert.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Alert {
+    /// Unique identifier for this alert instance.
+    pub alert_id: String,
+    /// Urgency level of the alert.
+    pub severity: AlertSeverity,
+    /// Short summary of the alerting condition.
+    pub summary: String,
+    /// Extended technical description or diagnostic details.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Source interface where the alert was ingested.
+    pub source: AlertSource,
+    /// Identifier of the originator (e.g. pubkey, peer ID, or job name).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    /// Node or host where the alert was generated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+    /// UTC timestamp marking when the alert condition began.
+    pub starts_at: DateTime<Utc>,
+    /// List of target egress channels (e.g., `"nostr"`, `"webhook"`, `"bitchat"`, `"peering"`).
+    #[serde(default)]
+    pub destinations: Vec<String>,
+    /// Originating peer identifier if received via peering (used for split-horizon suppression).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub origin_peer: Option<String>,
+    /// Remaining mesh hop count (decremented on forwarding, dropped when 0).
+    #[serde(default = "default_hop_count")]
+    pub hop: u8,
+}
+
+impl Alert {
+    /// Computes a stable SHA-256 fingerprint from the alert ID and summary.
+    pub fn fingerprint(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.alert_id.as_bytes());
+        hasher.update(self.summary.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    /// Computes a 64-bit integer fingerprint for high-density peering datagrams.
+    pub fn fingerprint_u64(&self) -> u64 {
+        let mut hasher = Sha256::new();
+        hasher.update(self.alert_id.as_bytes());
+        hasher.update(self.summary.as_bytes());
+        let hash = hasher.finalize();
+        u64::from_be_bytes(hash[0..8].try_into().unwrap_or([0u8; 8]))
+    }
+}
+
+/// Incoming JSON payload structure for the `/api/v1/alerts` REST endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestAlertRequest {
-    /// Unique identifier or alert key.
+    /// Unique alert identifier.
     pub alert_id: String,
-    /// Optional severity; defaults to Critical if omitted.
-    #[serde(default)]
+    /// Alert urgency level.
     pub severity: AlertSeverity,
-    /// Short incident summary.
+    /// Brief synopsis of the alert.
     pub summary: String,
-    /// Detailed description or log snippet.
+    /// Optional expanded details.
     pub description: Option<String>,
     /// Originating sender name or identifier.
     pub sender: Option<String>,
-    /// Originating node or machine name.
+    /// Host or cluster node name.
     pub node: Option<String>,
-    /// Specific egress destinations to route this alert to.
+    /// Explicit destination channels for this alert.
     #[serde(default)]
     pub destinations: Vec<String>,
 }
 
-/// Response returned by the HTTP REST ingress endpoint upon alert ingestion.
+/// Response returned to clients after successful alert ingestion via REST.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestAlertResponse {
-    /// Processing status string (e.g., "accepted").
+    /// Processing status string (`"accepted"`).
     pub status: String,
-    /// Ingested alert identifier.
+    /// Echo of the submitted alert identifier.
     pub alert_id: String,
-    /// Computed deduplication fingerprint hash.
+    /// Computed fingerprint used for deduplication tracking.
     pub fingerprint: String,
     /// Ingestion timestamp.
     pub timestamp: DateTime<Utc>,
@@ -149,6 +177,17 @@ pub struct PrometheusAlertmanagerPayload {
     /// External URL backlink to the Alertmanager web UI.
     #[serde(default)]
     pub external_url: Option<String>,
+}
+
+impl PrometheusAlertmanagerPayload {
+    /// Converts all firing alert items into canonical [`Alert`] structures.
+    pub fn into_canonical_alerts(self) -> Vec<Alert> {
+        self.alerts
+            .into_iter()
+            .filter(|item| item.status == "firing")
+            .map(|item| item.into_canonical_alert())
+            .collect()
+    }
 }
 
 /// Individual alert item within a Prometheus Alertmanager notification batch.
@@ -219,6 +258,8 @@ impl PrometheusAlertItem {
             node,
             starts_at: self.starts_at,
             destinations: Vec::new(),
+            origin_peer: None,
+            hop: default_hop_count(),
         }
     }
 }
@@ -239,40 +280,18 @@ pub struct PrometheusWebhookResponse {
 /// Canonical Nostr event structure following NIP-01 specifications.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrEvent {
-    /// SHA-256 hexadecimal event hash.
+    /// Unique 32-byte hex event ID derived from SHA-256 hash of serialized event data.
     pub id: String,
-    /// Hex-encoded Schnorr public key of the author.
+    /// 32-byte hex public key of the event creator.
     pub pubkey: String,
-    /// Unix timestamp in seconds.
-    pub created_at: i64,
-    /// Event kind number (e.g., Kind 1 for text, custom kind for alerts).
+    /// Unix timestamp in seconds marking event creation.
+    pub created_at: u64,
+    /// Event kind integer defining semantic type (e.g., 30000 for parameter-replaceable alerts).
     pub kind: u64,
-    /// Array of NIP-01 tags (e.g., `["d", "<alert_id>"]`, `["severity", "critical"]`).
+    /// Arbitrary structured tag arrays (e.g. `["d", "identifier"]`, `["severity", "critical"]`).
     pub tags: Vec<Vec<String>>,
-    /// Serialized event payload or message text.
+    /// Stringified payload content, typically JSON-serialized alert data.
     pub content: String,
-    /// BIP-340 Schnorr signature over the event ID.
+    /// 64-byte hex Schnorr signature over the event ID.
     pub sig: String,
-}
-
-/// BitChat mesh packet representation for peer exchange.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BitChatPacket {
-    /// Optional associated alert identifier.
-    #[serde(default)]
-    pub alert_id: Option<String>,
-    /// Optional alert severity level.
-    #[serde(default)]
-    pub severity: Option<AlertSeverity>,
-    /// Message text content.
-    pub content: String,
-    /// Sender nickname or identifier.
-    #[serde(default)]
-    pub sender: Option<String>,
-    /// Mesh node name.
-    #[serde(default)]
-    pub node: Option<String>,
-    /// Unix timestamp in milliseconds.
-    #[serde(default)]
-    pub timestamp: Option<i64>,
 }
