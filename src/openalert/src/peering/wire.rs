@@ -48,6 +48,21 @@ pub struct AckPacket {
     pub ts: u32,
 }
 
+/// Compact routing distance-vector advertisement datagram (~16–22 bytes plaintext).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RouteAdvPacket {
+    /// Originating node advertising routes.
+    pub src: String,
+    /// Unix Epoch timestamp of route advertisement.
+    pub ts: u32,
+    /// Destination node reached by this route.
+    pub dst: String,
+    /// Accumulated metric / composite link cost.
+    pub metric: u32,
+    /// Mesh hops to target destination.
+    pub hops: u8,
+}
+
 /// Top-level peering packet discriminant enum.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PeeringPacket {
@@ -55,6 +70,8 @@ pub enum PeeringPacket {
     Alert(AlertPacket),
     /// Transport-level confirmation datagram.
     Ack(AckPacket),
+    /// Dynamic multi-hop distance-vector route advertisement.
+    RouteAdv(RouteAdvPacket),
 }
 
 impl PeeringPacket {

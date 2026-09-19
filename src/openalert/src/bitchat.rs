@@ -647,25 +647,38 @@ impl BitChatService {
             service_uuid
         );
 
-        let session = match Session::new().await {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("⚠️ BlueZ session initialization failed (Bluetooth disabled or unavailable): {}", e);
+        let (_session, adapter) = loop {
+            if !self.running.load(Ordering::Relaxed) {
                 return Ok(());
             }
-        };
 
-        let adapter = match session.default_adapter().await {
-            Ok(a) => a,
-            Err(e) => {
-                warn!("⚠️ Bluetooth default adapter unavailable: {}", e);
-                return Ok(());
+            let sess = match Session::new().await {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("⚠️ BlueZ session initialization failed (Bluetooth disabled or unavailable): {}. Retrying in 5s...", e);
+                    sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+
+            let adapt = match sess.adapter(&self.config.device) {
+                Ok(a) => a,
+                Err(_) => match sess.default_adapter().await {
+                    Ok(a) => a,
+                    Err(e) => {
+                        warn!("⚠️ Bluetooth adapter unavailable: {}. Waiting for adapter...", e);
+                        sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                },
+            };
+
+            if let Err(e) = adapt.set_powered(true).await {
+                warn!("⚠️ Could not power on Bluetooth adapter: {}", e);
             }
-        };
 
-        if let Err(e) = adapter.set_powered(true).await {
-            warn!("⚠️ Could not power on Bluetooth adapter: {}", e);
-        }
+            break (sess, adapt);
+        };
 
         let adv_name = node_name.clone();
         let adv_uuid = service_uuid;
@@ -681,7 +694,7 @@ impl BitChatService {
             };
 
             match adv_adapter.advertise(le_advertisement).await {
-                Ok(_handle) => {
+                Ok(handle) => {
                     info!(
                         "📡 BitChat BLE peripheral advertising active [Name: '{}', UUID: {}]",
                         adv_name, adv_uuid
@@ -689,6 +702,7 @@ impl BitChatService {
                     while running_adv.load(Ordering::Relaxed) {
                         sleep(Duration::from_secs(1)).await;
                     }
+                    drop(handle);
                 }
                 Err(e) => {
                     warn!("⚠️ Failed to register BLE advertisement: {}", e);

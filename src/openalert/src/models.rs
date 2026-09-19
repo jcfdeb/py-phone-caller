@@ -118,6 +118,22 @@ impl Alert {
         let hash = hasher.finalize();
         u64::from_be_bytes(hash[0..8].try_into().unwrap_or([0u8; 8]))
     }
+
+    /// Computes a normalized content key for deduplication across slight ID changes.
+    pub fn content_key(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.summary.trim().to_lowercase().as_bytes());
+        hasher.update(format!("{:?}", self.severity).as_bytes());
+        if let Some(ref s) = self.sender {
+            hasher.update(s.trim().as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+
+    /// Checks if a given destination is active for this alert.
+    pub fn has_destination(&self, dest: &str) -> bool {
+        self.destinations.iter().any(|d| d.eq_ignore_ascii_case(dest))
+    }
 }
 
 /// Incoming JSON payload structure for the `/api/v1/alerts` REST endpoint.
@@ -130,10 +146,13 @@ pub struct RestAlertRequest {
     /// Brief synopsis of the alert.
     pub summary: String,
     /// Optional expanded details.
+    #[serde(default)]
     pub description: Option<String>,
     /// Originating sender name or identifier.
+    #[serde(default)]
     pub sender: Option<String>,
     /// Host or cluster node name.
+    #[serde(default)]
     pub node: Option<String>,
     /// Explicit destination channels for this alert.
     #[serde(default)]
@@ -294,4 +313,84 @@ pub struct NostrEvent {
     pub content: String,
     /// 64-byte hex Schnorr signature over the event ID.
     pub sig: String,
+}
+
+/// Lightweight liveness health response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub uptime_seconds: u64,
+    pub version: String,
+}
+
+/// Comprehensive daemon status diagnostics response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeStatusResponse {
+    pub status: String,
+    pub node_name: String,
+    pub version: String,
+    pub pubkey: String,
+    pub uptime_seconds: u64,
+    pub storage: StorageStatusReport,
+    pub peering: Option<PeeringStatusReport>,
+    pub webhook: WebhookStatusReport,
+    pub nostr: NostrStatusReport,
+    pub bitchat: BitChatStatusReport,
+}
+
+/// Storage status and spool backlog report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageStatusReport {
+    pub enabled: bool,
+    pub is_in_memory: bool,
+    pub spool: Option<SpoolStats>,
+}
+
+/// Peering spool metrics summary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpoolStats {
+    pub spooled: usize,
+    pub delivered: usize,
+    pub total: usize,
+}
+
+/// Peering subsystem diagnostics report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeeringStatusReport {
+    pub enabled: bool,
+    pub listen_addr: String,
+    pub peers: Vec<PeerDiagnostics>,
+}
+
+/// Diagnostics for an individual peer node.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerDiagnostics {
+    pub name: String,
+    pub addr: String,
+    pub link_type: String,
+    pub circuit_state: crate::peering::circuit_breaker::CircuitState,
+    pub consecutive_failures: u32,
+    pub spooled_count: usize,
+}
+
+/// Webhook egress status report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookStatusReport {
+    pub strategy: String,
+    pub targets_count: usize,
+}
+
+/// Nostr transport status report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrStatusReport {
+    pub enabled: bool,
+    pub relays_count: usize,
+    pub pubkey: String,
+}
+
+/// BitChat BLE mesh status report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BitChatStatusReport {
+    pub enabled: bool,
+    pub node_name: String,
 }

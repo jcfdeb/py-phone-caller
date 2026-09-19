@@ -1,0 +1,111 @@
+# ==============================================================================
+# OpenAlert Profile: Central Gateway (VPN + Asterisk Telephony + Nostr + Web UI)
+# Use Case: Data center NOC, municipal dispatch office, command bunker
+# ==============================================================================
+
+[daemon]
+name = "openalertd-central-gateway"
+log_level = "info"
+logging = "default"
+
+[rest]
+listen_host = "0.0.0.0"
+listen_port = 8090
+enable_cors = true
+
+[dashboard.auth]
+# Dashboard administrative authentication
+# SHA-256 hash below corresponds to password: "admin"
+# Use `openalertd hash-password "<password>"` to generate a new hash.
+enabled = true
+username = "admin"
+password_hash = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+
+[templates]
+template_dir = "templates"
+default_template = "prometheus_alertmanager.json.tera"
+
+[storage]
+enabled = true
+path = "data/openalert.db"
+retention_seconds = 86400
+recover_pending_on_startup = true
+prune_interval_seconds = 60
+
+[nostr]
+relays = [
+    "ws://127.0.0.1:8080",
+    "ws://127.0.0.1:8081",
+    "ws://127.0.0.1:8082",
+    "ws://127.0.0.1:8083",
+    "ws://127.0.0.1:8084",
+    "ws://127.0.0.1:8085"
+]
+kind = 30000
+enable_subscriber = true
+subscription_filter_kinds = [30000, 1]
+alert_ttl_seconds = 86400
+subscription_lookback_seconds = 300
+
+[bitchat]
+enabled = true
+device = "hci0"
+node_name = "CentralGateway-Mesh"
+service_uuid = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c"
+
+[routing]
+default_destinations = ["webhook", "nostr", "peering", "bitchat"]
+failover_destinations = ["peering"]
+dedup_cache_size = 20000
+dedup_ttl_seconds = 86400
+
+[py_phone_caller]
+strategy = "cascade"
+circuit_breaker_enabled = true
+circuit_breaker_failure_threshold = 3
+circuit_breaker_cooldown_seconds = 60
+
+[[py_phone_caller.webhooks]]
+url = "http://127.0.0.1:9099/alerts"
+timeout_seconds = 5.0
+max_retries = 3
+delay = 30
+priority = 0
+
+[[py_phone_caller.webhooks]]
+url = "http://127.0.0.1:9097/alerts"
+timeout_seconds = 5.0
+max_retries = 3
+delay = 30
+priority = 10
+
+[peering]
+enabled = true
+listen_addr = "0.0.0.0:19876"
+shared_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+clock_skew_tolerance_secs = 300
+dedup_ttl_seconds = 86400
+
+[peering.circuit_breaker]
+failure_threshold = 3
+base_cooldown_secs = 60
+max_cooldown_secs = 1800
+canary_timeout_ms = 3500
+
+[[peering.nodes]]
+name = "repeater-01"
+addr = "10.8.0.2:19876"
+link_type = "vpn"
+max_ip_retries = 3
+base_timeout_ms = 200
+failure_threshold = 3
+base_cooldown_secs = 60
+
+[[peering.nodes]]
+name = "repeater-02"
+addr = "10.8.0.3:19876"
+link_type = "vpn"
+max_ip_retries = 3
+base_timeout_ms = 200
+failure_threshold = 3
+base_cooldown_secs = 60

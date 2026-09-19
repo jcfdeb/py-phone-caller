@@ -32,6 +32,9 @@ pub struct AppConfig {
     /// Decentralized UDP peering, emergency escape valve, and radio backhaul settings.
     #[serde(default)]
     pub peering: PeeringConfig,
+    /// Optional embedded web dashboard and authentication settings.
+    #[serde(default)]
+    pub dashboard: DashboardConfig,
 }
 
 impl AppConfig {
@@ -78,6 +81,21 @@ fn default_logging_mode() -> String {
     "default".to_string()
 }
 
+/// Optional TLS / mTLS configuration for HTTPS server.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TlsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub cert_path: Option<String>,
+    #[serde(default)]
+    pub key_path: Option<String>,
+    #[serde(default)]
+    pub client_ca_path: Option<String>,
+    #[serde(default)]
+    pub require_client_cert: bool,
+}
+
 /// Configuration for the HTTP REST and Prometheus webhook ingress server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestConfig {
@@ -87,6 +105,51 @@ pub struct RestConfig {
     pub listen_port: u16,
     /// Whether to permit cross-origin requests.
     pub enable_cors: bool,
+    /// Optional bearer token for authenticating HTTP REST / API requests.
+    #[serde(default)]
+    pub auth_token: Option<String>,
+    /// Optional shared secret for verifying HMAC-SHA256 signatures on inbound webhooks.
+    #[serde(default)]
+    pub webhook_secret: Option<String>,
+    /// Maximum allowed clock skew in seconds for webhook timestamps (default: 60s).
+    #[serde(default = "default_webhook_max_skew_seconds")]
+    pub webhook_max_skew_seconds: u64,
+    /// Optional TLS and client certificate mutual authentication settings.
+    #[serde(default)]
+    pub tls: TlsConfig,
+}
+
+fn default_webhook_max_skew_seconds() -> u64 {
+    60
+}
+
+/// Optional dashboard authentication settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DashboardConfig {
+    /// Dashboard authentication configuration.
+    #[serde(default)]
+    pub auth: DashboardAuthConfig,
+}
+
+/// Dashboard user authentication configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DashboardAuthConfig {
+    /// Whether user authentication is required for the dashboard.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Administrator username.
+    #[serde(default)]
+    pub username: String,
+    /// SHA-256 hash of the admin password (in hex).
+    #[serde(default)]
+    pub password_hash: String,
+}
+
+impl DashboardAuthConfig {
+    /// Returns true if authentication is active (enabled and password_hash non-empty).
+    pub fn is_active(&self) -> bool {
+        self.enabled && !self.password_hash.trim().is_empty()
+    }
 }
 
 /// Nostr relay mesh and subscription parameters.
@@ -107,6 +170,20 @@ pub struct NostrConfig {
     /// Historical catch-up window in seconds when subscribing on startup.
     #[serde(default = "default_subscription_lookback_seconds")]
     pub subscription_lookback_seconds: u64,
+    /// Minimum positive NIP-20 relay confirmations required to achieve delivery quorum.
+    #[serde(default = "default_quorum_min_relays")]
+    pub quorum_min_relays: usize,
+    /// Timeout in seconds to wait for NIP-20 command results from each relay.
+    #[serde(default = "default_nip20_timeout_secs")]
+    pub nip20_timeout_secs: u64,
+}
+
+fn default_quorum_min_relays() -> usize {
+    1
+}
+
+fn default_nip20_timeout_secs() -> u64 {
+    5
 }
 
 fn default_alert_ttl_seconds() -> u64 {
@@ -434,8 +511,11 @@ pub enum PeeringLinkType {
     Lan,
     /// Encrypted WireGuard or site-to-site IP tunnel.
     Vpn,
-    /// Duty-cycle-constrained 868 MHz / 915 MHz LoRa radio interface (via TUN driver).
+    /// Duty-cycle-constrained 868 MHz / 915 MHz LoRa radio interface (via UDP simulation).
     Lora,
+    /// Hardware Serial / UART LoRa interface (/dev/ttyUSB*, /dev/ttyS*).
+    #[serde(rename = "lora_serial")]
+    LoraSerial,
 }
 
 /// Global retry configuration for peering nodes.
@@ -518,13 +598,33 @@ fn default_cb_canary_timeout_ms() -> u64 {
     3500
 }
 
+fn default_peering_addr() -> String {
+    "127.0.0.1:0".to_string()
+}
+
 /// Definition and connection parameters for an individual federated peer node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeeringNodeConfig {
     /// Alphanumeric identifier of the remote peer (e.g. "hub-core-lan").
     pub name: String,
     /// Remote UDP socket address (e.g. "192.168.1.10:9876" or "10.10.0.2:9876").
+    #[serde(default = "default_peering_addr")]
     pub addr: String,
+    /// Hardware serial device path (e.g. "/dev/ttyUSB0") when link_type is lora_serial.
+    #[serde(default)]
+    pub serial_device: Option<String>,
+    /// Serial baud rate (default: 115200).
+    #[serde(default)]
+    pub baud_rate: Option<u32>,
+    /// LoRa spreading factor (7..=12, default: 9).
+    #[serde(default)]
+    pub spreading_factor: Option<u8>,
+    /// LoRa bandwidth in kHz (default: 125).
+    #[serde(default)]
+    pub bandwidth_khz: Option<u32>,
+    /// LoRa duty cycle limit percent (e.g. 1.0 for 1%, default: 1.0).
+    #[serde(default)]
+    pub duty_cycle_percent: Option<f64>,
     /// Physical link classification (LAN, VPN, or LoRa radio).
     #[serde(default)]
     pub link_type: PeeringLinkType,
@@ -610,6 +710,29 @@ impl Default for PeeringConfig {
             retry: PeeringRetryConfig::default(),
             circuit_breaker: PeeringCircuitBreakerConfig::default(),
             nodes: Vec::new(),
+        }
+    }
+}
+
+impl Default for PeeringNodeConfig {
+    fn default() -> Self {
+        Self {
+            name: "peer".to_string(),
+            addr: default_peering_addr(),
+            serial_device: None,
+            baud_rate: None,
+            spreading_factor: None,
+            bandwidth_khz: None,
+            duty_cycle_percent: None,
+            link_type: PeeringLinkType::default(),
+            burst_retries: None,
+            burst_interval_ms: None,
+            burst_jitter_ms: None,
+            max_ip_retries: None,
+            base_timeout_ms: None,
+            failure_threshold: None,
+            base_cooldown_secs: None,
+            shared_key: None,
         }
     }
 }

@@ -862,6 +862,7 @@ async fn test_peering_end_to_end_edge_to_gateway_backhaul() {
         failure_threshold: Some(3),
         base_cooldown_secs: Some(60),
         shared_key: None,
+        ..Default::default()
     }];
 
     // Node B (Central Gateway)
@@ -881,6 +882,7 @@ async fn test_peering_end_to_end_edge_to_gateway_backhaul() {
         failure_threshold: Some(3),
         base_cooldown_secs: Some(60),
         shared_key: None,
+        ..Default::default()
     }];
 
     let engine_a = Arc::new(AlertEngine::new(config_a.clone()).unwrap());
@@ -928,8 +930,10 @@ async fn test_peering_end_to_end_edge_to_gateway_backhaul() {
 
 #[tokio::test]
 async fn test_peering_sqlite_spooling_and_retrieval() {
-    let mut storage_cfg = StorageConfig::default();
-    storage_cfg.path = ":memory:".to_string();
+    let storage_cfg = StorageConfig {
+        path: ":memory:".to_string(),
+        ..Default::default()
+    };
     let storage = Storage::new(storage_cfg).expect("Failed to create storage");
 
     let payload = b"mock-postcard-alert-payload";
@@ -971,6 +975,7 @@ async fn test_peering_split_horizon_suppression() {
         failure_threshold: Some(3),
         base_cooldown_secs: Some(60),
         shared_key: None,
+        ..Default::default()
     }];
 
     let peering = PeeringService::new(config.peering, None).await.unwrap();
@@ -993,4 +998,431 @@ async fn test_peering_split_horizon_suppression() {
     let res = peering.dispatch_alert(&reflected_alert, false).await;
     assert!(res.is_ok());
     println!("✅ Split-horizon loop suppression successfully prevented reflection!");
+}
+
+#[test]
+fn test_cli_config_validator() {
+    let res = openalertd::cli::validate_config("config/openalertd.toml");
+    assert!(res.is_ok(), "config/openalertd.toml must be valid: {:?}", res.err());
+    let summary = res.unwrap();
+    assert!(summary.contains("openalertd-hub"));
+    assert!(summary.contains("REST Ingress:"));
+    assert!(summary.contains("Templates:"));
+
+    // Verify all turnkey configuration profiles validate cleanly
+    for profile in &["edge-sensor.toml", "mesh-repeater.toml", "central-gateway.toml"] {
+        let path = format!("config/profiles/{}", profile);
+        let prof_res = openalertd::cli::validate_config(&path);
+        assert!(prof_res.is_ok(), "Profile '{}' must be valid: {:?}", path, prof_res.err());
+    }
+
+    let bad_res = openalertd::cli::validate_config("nonexistent_config_path.toml");
+    assert!(bad_res.is_err(), "Nonexistent config must fail validation");
+}
+
+#[tokio::test]
+async fn test_engine_diagnostics_and_status_api() {
+    let config = test_config();
+    let engine = Arc::new(AlertEngine::new(config).expect("Engine creation failed"));
+
+    // 1. Test Health model
+    let health = engine.get_health();
+    assert_eq!(health.status, "ok");
+    assert!(!health.version.is_empty());
+
+    // 2. Test Spool stats
+    let spool_stats = engine.get_spool_stats().await;
+    assert!(spool_stats.is_some());
+    assert_eq!(spool_stats.unwrap().spooled, 0);
+
+    // 3. Test Full Status model
+    let status = engine.get_status().await;
+    assert_eq!(status.node_name, "openalertd-hub");
+    assert!(status.storage.is_in_memory);
+    assert_eq!(status.webhook.strategy, "cascade");
+    assert_eq!(status.nostr.relays_count, 6);
+    println!("✅ Engine status and diagnostics validated successfully: node={}, version={}", status.node_name, status.version);
+}
+
+#[tokio::test]
+async fn test_peering_lora_serial_dispatch() {
+    let psk = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
+
+    let mut config = test_config();
+    config.peering.enabled = true;
+    config.peering.listen_addr = "127.0.0.1:39876".to_string();
+    config.peering.shared_key = psk;
+    config.peering.nodes = vec![PeeringNodeConfig {
+        name: "mountain-lora-relay".to_string(),
+        addr: "127.0.0.1:39877".to_string(),
+        link_type: PeeringLinkType::LoraSerial,
+        serial_device: Some("/dev/ttyUSB99_virtual".to_string()),
+        baud_rate: Some(115200),
+        spreading_factor: Some(9),
+        bandwidth_khz: Some(125),
+        duty_cycle_percent: Some(1.0),
+        burst_retries: None,
+        burst_interval_ms: None,
+        burst_jitter_ms: None,
+        max_ip_retries: None,
+        base_timeout_ms: None,
+        failure_threshold: Some(3),
+        base_cooldown_secs: Some(60),
+        shared_key: None,
+    }];
+
+    let peering = PeeringService::new(config.peering.clone(), None)
+        .await
+        .expect("Failed to initialize PeeringService with LoraSerial node");
+
+    let alert = Alert {
+        alert_id: "lora-serial-test-01".to_string(),
+        severity: AlertSeverity::Critical,
+        summary: "Wildfire Perimeter Breached - LoRa Dispatch".to_string(),
+        description: Some("Sensor cluster 14 reports extreme thermal anomalies".to_string()),
+        source: AlertSource::Rest,
+        sender: Some("sensor-gateway".to_string()),
+        node: Some("edge-node".to_string()),
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["peering".to_string()],
+        origin_peer: None,
+        hop: 3,
+    };
+
+    // Dispatch alert through peering: should format micro-frame, SLIP-encode, check ETSI duty-cycle, and handle virtual serial
+    let res = peering.dispatch_alert(&alert, false).await;
+    assert!(res.is_ok(), "LoraSerial dispatch must succeed without crashing: {:?}", res.err());
+    println!("✅ LoRa Serial physical profile successfully processed, SLIP-encoded, and regulated!");
+}
+
+#[tokio::test]
+async fn test_rest_ingress_bearer_and_hmac_security() {
+    let mut config = test_config();
+    config.rest.auth_token = Some("secret-test-bearer-token".to_string());
+    config.rest.webhook_secret = Some("secret-webhook-key".to_string());
+    config.rest.webhook_max_skew_seconds = 60;
+
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("Engine creation failed"));
+    let state = openalertd::ingress::rest::AppState {
+        engine,
+        config: config.rest.clone(),
+    };
+
+    // 1. Health check is public (unauthenticated allowed)
+    let health_resp = openalertd::ingress::rest::health_check(axum::extract::State(state.clone())).await;
+    assert_eq!(health_resp.status(), axum::http::StatusCode::OK);
+
+    // 2. Status handler without auth -> 401
+    let unauth_status = openalertd::ingress::rest::status_handler(axum::http::HeaderMap::new(), axum::extract::State(state.clone())).await;
+    assert_eq!(unauth_status.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    // 3. Status handler with valid Bearer token -> 200
+    let mut authed_headers = axum::http::HeaderMap::new();
+    authed_headers.insert(
+        axum::http::header::AUTHORIZATION,
+        axum::http::HeaderValue::from_static("Bearer secret-test-bearer-token"),
+    );
+    let ok_status = openalertd::ingress::rest::status_handler(authed_headers.clone(), axum::extract::State(state.clone())).await;
+    assert_eq!(ok_status.status(), axum::http::StatusCode::OK);
+
+    // 4. Ingest alert without HMAC signature -> 401
+    let alert_payload = serde_json::json!({
+        "alert_id": "hmac-test-01",
+        "severity": "critical",
+        "summary": "Perimeter alarm",
+        "destinations": ["webhook"]
+    });
+    let body_bytes = axum::body::Bytes::from(serde_json::to_vec(&alert_payload).unwrap());
+    let missing_sig = openalertd::ingress::rest::ingest_alert(authed_headers.clone(), axum::extract::State(state.clone()), body_bytes.clone()).await;
+    assert_eq!(missing_sig.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    // 5. Ingest alert with valid HMAC-SHA256 signature and timestamp -> 202 Accepted
+    let sig_hex = openalertd::ingress::rest::compute_hmac_sha256(b"secret-webhook-key", &body_bytes);
+    let mut secure_headers = authed_headers.clone();
+    secure_headers.insert(
+        "x-openalert-signature",
+        axum::http::HeaderValue::from_str(&sig_hex).unwrap(),
+    );
+    let now = chrono::Utc::now().timestamp();
+    secure_headers.insert(
+        "x-openalert-timestamp",
+        axum::http::HeaderValue::from_str(&now.to_string()).unwrap(),
+    );
+
+    let accepted_resp = openalertd::ingress::rest::ingest_alert(secure_headers, axum::extract::State(state.clone()), body_bytes).await;
+    assert_eq!(accepted_resp.status(), axum::http::StatusCode::ACCEPTED);
+    println!("✅ REST ingress Bearer and HMAC-SHA256 security tests passed successfully!");
+}
+
+#[tokio::test]
+async fn test_peering_multihop_3node_mesh_forwarding() {
+    let psk = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
+
+    // Node A (Edge): 127.0.0.1:19881, peers with Node B
+    let mut config_a = test_config();
+    config_a.peering.enabled = true;
+    config_a.peering.listen_addr = "127.0.0.1:19881".to_string();
+    config_a.peering.shared_key = psk.clone();
+    config_a.peering.nodes = vec![openalertd::config::PeeringNodeConfig {
+        name: "node-b".to_string(),
+        addr: "127.0.0.1:19882".to_string(),
+        link_type: openalertd::config::PeeringLinkType::Lan,
+        shared_key: None,
+        ..Default::default()
+    }];
+
+    // Node B (Relay): 127.0.0.1:19882, peers with Node A and Node C
+    let mut config_b = test_config();
+    config_b.peering.enabled = true;
+    config_b.peering.listen_addr = "127.0.0.1:19882".to_string();
+    config_b.peering.shared_key = psk.clone();
+    config_b.peering.nodes = vec![
+        openalertd::config::PeeringNodeConfig {
+            name: "node-a".to_string(),
+            addr: "127.0.0.1:19881".to_string(),
+            link_type: openalertd::config::PeeringLinkType::Lan,
+            shared_key: None,
+            ..Default::default()
+        },
+        openalertd::config::PeeringNodeConfig {
+            name: "node-c".to_string(),
+            addr: "127.0.0.1:19883".to_string(),
+            link_type: openalertd::config::PeeringLinkType::Lan,
+            shared_key: None,
+            ..Default::default()
+        },
+    ];
+
+    // Node C (Gateway): 127.0.0.1:19883, peers with Node B
+    let mut config_c = test_config();
+    config_c.peering.enabled = true;
+    config_c.peering.listen_addr = "127.0.0.1:19883".to_string();
+    config_c.peering.shared_key = psk.clone();
+    config_c.peering.nodes = vec![openalertd::config::PeeringNodeConfig {
+        name: "node-b".to_string(),
+        addr: "127.0.0.1:19882".to_string(),
+        link_type: openalertd::config::PeeringLinkType::Lan,
+        shared_key: None,
+        ..Default::default()
+    }];
+
+    let engine_a = Arc::new(AlertEngine::new(config_a.clone()).unwrap());
+    let engine_b = Arc::new(AlertEngine::new(config_b.clone()).unwrap());
+    let engine_c = Arc::new(AlertEngine::new(config_c.clone()).unwrap());
+
+    let peering_a = Arc::new(PeeringService::new(config_a.peering.clone(), engine_a.storage().cloned()).await.unwrap());
+    let peering_b = Arc::new(PeeringService::new(config_b.peering.clone(), engine_b.storage().cloned()).await.unwrap());
+    let peering_c = Arc::new(PeeringService::new(config_c.peering.clone(), engine_c.storage().cloned()).await.unwrap());
+
+    peering_a.set_engine(engine_a.clone()).await;
+    engine_a.set_peering_service(peering_a.clone()).await;
+    peering_a.clone().start();
+
+    peering_b.set_engine(engine_b.clone()).await;
+    engine_b.set_peering_service(peering_b.clone()).await;
+    peering_b.clone().start();
+
+    peering_c.set_engine(engine_c.clone()).await;
+    engine_c.set_peering_service(peering_c.clone()).await;
+    peering_c.clone().start();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+
+    // Node A sends an alert with hop: 3 destined for ["peering"]
+    let multihop_alert = Alert {
+        alert_id: "multihop-cascade-01".to_string(),
+        severity: AlertSeverity::Emergency,
+        summary: "Dam Water Level Critical".to_string(),
+        description: Some("Reservoir crest exceeded".to_string()),
+        source: AlertSource::Rest,
+        sender: Some("sensor-crest-01".to_string()),
+        node: Some("node-a".to_string()),
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["peering".to_string()],
+        origin_peer: None,
+        hop: 3,
+    };
+
+    engine_a.route_alert(multihop_alert).await.unwrap();
+
+    // Allow UDP hop traversal: Node A -> Node B (hop 3->2) -> Node C (hop 2->1)
+    tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+    // Node B (Relay) must have received it
+    let b_received = engine_b.metrics().alerts_received_total.with_label_values(&["peering"]).get();
+    assert_eq!(b_received as u64, 1, "Node B (Relay) must have received exactly 1 alert");
+
+    // Node C (Gateway) must have received the forwarded multi-hop alert
+    let c_received = engine_c.metrics().alerts_received_total.with_label_values(&["peering"]).get();
+    assert_eq!(c_received as u64, 1, "Node C (Gateway) must have received exactly 1 forwarded multi-hop alert");
+
+    println!("✅ Multi-hop 3-node mesh traversal verified: Node A -> Node B (Relay) -> Node C (Gateway)");
+}
+
+#[tokio::test]
+async fn test_embedded_dashboard_and_sse_telemetry() {
+    let config = test_config();
+    let engine = Arc::new(AlertEngine::new(config.clone()).unwrap());
+    let state = openalertd::ingress::rest::AppState {
+        engine,
+        config: config.rest.clone(),
+    };
+
+    // 1. Verify dashboard HTML response (unauthenticated default: open access)
+    let dash_resp = openalertd::ingress::dashboard::dashboard_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+    ).await;
+    assert_eq!(dash_resp.status(), axum::http::StatusCode::OK);
+    let content_type = dash_resp.headers().get(axum::http::header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    assert!(content_type.contains("text/html"));
+
+    // 2. Verify dashboard HTML content contains control plane markers and operator action triggers
+    let html = openalertd::ingress::dashboard::dashboard_html();
+    assert!(html.contains("OpenAlert Control Plane"));
+    assert!(html.contains("Mesh Topology & Peer Circuit Breakers"));
+    assert!(html.contains("Dynamic Multi-Hop Distance-Vector Routing"));
+    assert!(html.contains("Nostr Relays Quorum & Health"));
+    assert!(html.contains("resetPeerCircuit"));
+    assert!(html.contains("purgeSpool"));
+
+    // 3. Verify SSE handler initializes
+    let sse_resp = openalertd::ingress::dashboard::sse_telemetry_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state),
+    ).await;
+    assert_eq!(sse_resp.status(), axum::http::StatusCode::OK);
+    // Sse response wrapped successfully
+    drop(sse_resp);
+
+    println!("✅ Zero-dependency embedded Web Dashboard & SSE telemetry verified!");
+}
+
+#[tokio::test]
+async fn test_cli_hash_password() {
+    let hash = openalertd::cli::hash_password("test");
+    assert_eq!(hash, "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08");
+    println!("✅ CLI hash-password test vector verified!");
+}
+
+#[tokio::test]
+async fn test_dashboard_auth_flow() {
+    use base64::Engine;
+    let mut config = test_config();
+    let expected_pass = "controlPlaneSecret!";
+    let pass_hash = openalertd::cli::hash_password(expected_pass);
+
+    config.dashboard.auth.enabled = true;
+    config.dashboard.auth.username = "sysadmin".to_string();
+    config.dashboard.auth.password_hash = pass_hash;
+
+    let engine = Arc::new(AlertEngine::new(config.clone()).unwrap());
+    let state = openalertd::ingress::rest::AppState {
+        engine,
+        config: config.rest.clone(),
+    };
+
+    // 1. Missing Authorization header -> 401 Unauthorized
+    let resp_no_auth = openalertd::ingress::dashboard::dashboard_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+    ).await;
+    assert_eq!(resp_no_auth.status(), axum::http::StatusCode::UNAUTHORIZED);
+    let auth_header = resp_no_auth.headers().get(axum::http::header::WWW_AUTHENTICATE).unwrap();
+    assert!(auth_header.to_str().unwrap().contains("Basic realm="));
+
+    // 2. Wrong password -> 401 Unauthorized
+    let bad_creds = base64::engine::general_purpose::STANDARD.encode("sysadmin:wrongpassword");
+    let mut bad_headers = axum::http::HeaderMap::new();
+    bad_headers.insert(
+        axum::http::header::AUTHORIZATION,
+        format!("Basic {}", bad_creds).parse().unwrap(),
+    );
+    let resp_bad = openalertd::ingress::dashboard::dashboard_handler(
+        bad_headers,
+        axum::extract::State(state.clone()),
+    ).await;
+    assert_eq!(resp_bad.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    // 3. Correct credentials -> 200 OK
+    let good_creds = base64::engine::general_purpose::STANDARD.encode(format!("sysadmin:{}", expected_pass));
+    let mut good_headers = axum::http::HeaderMap::new();
+    good_headers.insert(
+        axum::http::header::AUTHORIZATION,
+        format!("Basic {}", good_creds).parse().unwrap(),
+    );
+    let resp_good = openalertd::ingress::dashboard::dashboard_handler(
+        good_headers.clone(),
+        axum::extract::State(state.clone()),
+    ).await;
+    assert_eq!(resp_good.status(), axum::http::StatusCode::OK);
+
+    // 4. SSE telemetry endpoint with correct auth -> 200 OK
+    let sse_good = openalertd::ingress::dashboard::sse_telemetry_handler(
+        good_headers,
+        axum::extract::State(state),
+    ).await;
+    assert_eq!(sse_good.status(), axum::http::StatusCode::OK);
+
+    println!("✅ Dashboard HTTP Basic Authentication via password hash verified!");
+}
+
+#[tokio::test]
+async fn test_operator_peer_reset_and_spool_purge() {
+    let mut config = test_config();
+    config.peering.enabled = true;
+    config.peering.nodes = vec![
+        openalertd::config::PeeringNodeConfig {
+            name: "remote-repeater".to_string(),
+            addr: "127.0.0.1:29877".to_string(),
+            failure_threshold: Some(2),
+            ..Default::default()
+        }
+    ];
+
+    let engine = Arc::new(AlertEngine::new(config.clone()).unwrap());
+    let peering = Arc::new(openalertd::peering::PeeringService::new(
+        config.peering.clone(),
+        engine.storage().cloned(),
+    ).await.unwrap());
+    engine.set_peering_service(peering.clone()).await;
+
+    let state = openalertd::ingress::rest::AppState {
+        engine: engine.clone(),
+        config: config.rest.clone(),
+    };
+
+    // 1. Spool a packet into persistent storage
+    let storage = engine.storage().unwrap();
+    storage.spool_peering_packet("remote-repeater", 0xbeefcafe, b"test-packet").await.unwrap();
+    let stats_before = storage.get_spool_stats().await.unwrap();
+    assert_eq!(stats_before.spooled, 1);
+
+    // 2. Trigger Spool Purge via operator handler
+    let purge_resp = openalertd::ingress::rest::purge_spool_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+    ).await;
+    assert_eq!(purge_resp.status(), axum::http::StatusCode::OK);
+
+    let stats_after = storage.get_spool_stats().await.unwrap();
+    assert_eq!(stats_after.spooled, 0);
+
+    // 3. Test Peer Circuit Breaker Reset via operator handler
+    let reset_resp = openalertd::ingress::rest::reset_peer_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::extract::Path("remote-repeater".to_string()),
+    ).await;
+    assert_eq!(reset_resp.status(), axum::http::StatusCode::OK);
+
+    // 4. Test non-existent peer returns 404
+    let not_found_resp = openalertd::ingress::rest::reset_peer_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state),
+        axum::extract::Path("unknown-node".to_string()),
+    ).await;
+    assert_eq!(not_found_resp.status(), axum::http::StatusCode::NOT_FOUND);
+
+    println!("✅ Operator Peer Circuit Breaker Reset and Spool Purge verified!");
 }

@@ -2,12 +2,14 @@
 //!
 //! Subscribes to configured Nostr relays via WebSockets to ingest decentralized alerts.
 //! Enforces NIP-40 expiration tags, alert TTL filtering, and prevents self-echo loops.
+//! Implements periodic heartbeat pings and exponential backoff with jitter for network resilience.
 
 use crate::config::NostrConfig;
 use crate::engine::AlertEngine;
 use crate::error::Result;
 use crate::models::{Alert, AlertSeverity, AlertSource, NostrEvent};
 use futures_util::{SinkExt, StreamExt};
+use rand::Rng;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_tungstenite::connect_async;
@@ -50,8 +52,10 @@ impl NostrSubscriber {
         Ok(())
     }
 
-    /// Continuous connection management loop with exponential/fixed backoff reconnection.
+    /// Continuous connection management loop with exponential/jittered backoff reconnection and ping/pong heartbeats.
     async fn listen_relay_loop(&self, relay_url: String) {
+        let mut reconnect_attempt: u32 = 0;
+
         loop {
             info!("Connecting Nostr subscriber to [{}]...", relay_url);
 
@@ -73,33 +77,72 @@ impl NostrSubscriber {
                     if let Err(e) = write.send(Message::Text(sub_msg.to_string().into())).await {
                         warn!("Failed to send subscription filter to {}: {}", relay_url, e);
                     } else {
-                        while let Some(msg) = read.next().await {
-                            match msg {
-                                Ok(Message::Text(text)) => {
-                                    self.handle_relay_message(&text).await;
+                        // Connection established and subscribed: reset reconnect backoff
+                        reconnect_attempt = 0;
+
+                        let mut ping_interval = tokio::time::interval(Duration::from_secs(30));
+                        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+                        loop {
+                            tokio::select! {
+                                _ = ping_interval.tick() => {
+                                    if let Err(e) = write.send(Message::Ping(vec![0x4f, 0x41].into())).await {
+                                        warn!("Heartbeat ping failed to Nostr relay {}: {}", relay_url, e);
+                                        break;
+                                    }
                                 }
-                                Ok(Message::Close(_)) => {
-                                    warn!("Nostr relay {} closed connection", relay_url);
-                                    break;
+                                maybe_msg = read.next() => {
+                                    match maybe_msg {
+                                        Some(Ok(Message::Text(text))) => {
+                                            self.handle_relay_message(&text).await;
+                                        }
+                                        Some(Ok(Message::Ping(payload))) => {
+                                            let _ = write.send(Message::Pong(payload)).await;
+                                        }
+                                        Some(Ok(Message::Pong(_))) => {
+                                            // Heartbeat acknowledged by relay
+                                        }
+                                        Some(Ok(Message::Close(_))) => {
+                                            warn!("Nostr relay {} closed connection", relay_url);
+                                            break;
+                                        }
+                                        Some(Err(e)) => {
+                                            warn!("Error reading from Nostr relay {}: {}", relay_url, e);
+                                            break;
+                                        }
+                                        None => {
+                                            warn!("Nostr relay {} connection stream closed", relay_url);
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
                                 }
-                                Err(e) => {
-                                    warn!("Error reading from Nostr relay {}: {}", relay_url, e);
-                                    break;
-                                }
-                                _ => {}
                             }
                         }
                     }
                 }
                 Err(e) => {
                     warn!(
-                        "Failed to connect to Nostr relay {}: {}. Retrying in 5s...",
+                        "Failed to connect to Nostr relay {}: {}",
                         relay_url, e
                     );
                 }
             }
 
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            // Exponential backoff with random jitter (2s, 4s, 8s, 16s, ... up to 60s max)
+            let base_delay = std::cmp::min(60, 2u64.saturating_pow(reconnect_attempt.min(6)));
+            let jitter: u64 = if base_delay > 2 {
+                rand::rng().random_range(0..=(base_delay / 5).max(1))
+            } else {
+                0
+            };
+            let sleep_secs = base_delay + jitter;
+            warn!(
+                "Reconnecting to Nostr relay {} in {}s (attempt {})...",
+                relay_url, sleep_secs, reconnect_attempt + 1
+            );
+            reconnect_attempt = reconnect_attempt.saturating_add(1);
+            tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
         }
     }
 

@@ -9,3 +9,4 @@ pub mod rest;
 
 pub use nostr::NostrSubscriber;
 pub use rest::RestServer;
+pub mod dashboard;

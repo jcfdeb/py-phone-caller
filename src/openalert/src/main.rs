@@ -4,22 +4,143 @@
 //! and Bluetooth Low Energy BitChat ad-hoc mesh networks into a unified alerting pipeline.
 
 use openalertd::bitchat::BitChatService;
+use openalertd::cli;
 use openalertd::config::AppConfig;
 use openalertd::engine::AlertEngine;
 use openalertd::error::Result;
 use openalertd::ingress::nostr::NostrSubscriber;
-use openalertd::peering::PeeringService;
 use openalertd::ingress::rest::RestServer;
+use openalertd::peering::PeeringService;
 use std::env;
 use std::sync::Arc;
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+fn print_usage() {
+    println!("OpenAlert Daemon (openalertd) - Mission-Critical Alert Router");
+    println!();
+    println!("USAGE:");
+    println!("    openalertd [COMMAND] [OPTIONS]");
+    println!();
+    println!("COMMANDS:");
+    println!("    check [config_path]       Validate syntax & consistency of configuration file (alias: check-config)");
+    println!("    status [--url <api_url>]  Query live operational status from running daemon");
+    println!("    peers  [--url <api_url>]  Query live peering link states and circuit breakers");
+    println!("    spool  [--url <api_url>]  Query persistent peering spool backlog count");
+    println!("    hash-password <password>  Generate SHA-256 hash for dashboard configuration");
+    println!("    run   [config_path]       Explicitly start daemon in foreground (default)");
+    println!("    help                      Display this help information");
+    println!();
+    println!("OPTIONS:");
+    println!("    --url <api_url>           Base URL of daemon REST API (default: http://127.0.0.1:8090)");
+    println!();
+    println!("DEFAULT BEHAVIOR:");
+    println!("    Running 'openalertd' without subcommands boots the daemon with config/openalertd.toml");
+}
+
+fn extract_url(args: &[String]) -> String {
+    for i in 0..args.len() {
+        if args[i] == "--url" && i + 1 < args.len() {
+            return args[i + 1].clone();
+        }
+        if args[i].starts_with("--url=") {
+            return args[i].trim_start_matches("--url=").to_string();
+        }
+    }
+    "http://127.0.0.1:8090".to_string()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
-    let config_path = if args.len() > 1 {
-        args[1].clone()
+    let subcommand = args.get(1).map(|s| s.as_str()).unwrap_or("");
+
+    match subcommand {
+        "help" | "--help" | "-h" => {
+            print_usage();
+            return Ok(());
+        }
+        "check" | "check-config" => {
+            let config_path = args.get(2).map(|s| s.as_str()).unwrap_or("config/openalertd.toml");
+            match cli::validate_config(config_path) {
+                Ok(summary) => {
+                    println!("✅ Configuration file '{}' is VALID:\n{}", config_path, summary);
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("❌ Configuration check failed:\n{}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        "status" => {
+            let url = extract_url(&args[2..]);
+            match cli::query_status(&url).await {
+                Ok(status) => {
+                    cli::print_status(&status);
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("❌ {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        "peers" => {
+            let url = extract_url(&args[2..]);
+            match cli::query_peers(&url).await {
+                Ok(peers) => {
+                    cli::print_peers(&peers);
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("❌ {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        "spool" => {
+            let url = extract_url(&args[2..]);
+            match cli::query_spool(&url).await {
+                Ok(spool) => {
+                    cli::print_spool(&spool);
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("❌ {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        "hash-password" | "hash" => {
+            let password = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            if password.is_empty() {
+                eprintln!("❌ Error: Missing password argument.");
+                println!("Usage: openalertd hash-password <password>");
+                std::process::exit(1);
+            }
+            let hash = cli::hash_password(password);
+            println!("============================================================");
+            println!(" 🔑 OpenAlert Dashboard Authentication Hash");
+            println!("============================================================");
+            println!("Password Hash:  {}", hash);
+            println!();
+            println!("Paste the following block into your config/openalertd.toml:");
+            println!();
+            println!("[dashboard.auth]");
+            println!("enabled = true");
+            println!("username = \"admin\"");
+            println!("password_hash = \"{}\"", hash);
+            println!("============================================================");
+            std::process::exit(0);
+        }
+        _ => {}
+    }
+
+    let config_path = if subcommand == "run" {
+        args.get(2).cloned().unwrap_or_else(|| "config/openalertd.toml".to_string())
+    } else if !subcommand.is_empty() && !subcommand.starts_with('-') {
+        subcommand.to_string()
     } else {
         "config/openalertd.toml".to_string()
     };
@@ -91,7 +212,23 @@ async fn main() -> Result<()> {
     }
 
     let rest_server = RestServer::new(config.rest.clone(), engine.clone());
-    rest_server.run().await?;
+    let bitchat_teardown = bitchat_service.clone();
+
+    tokio::select! {
+        res = rest_server.run() => {
+            if let Err(e) = res {
+                tracing::error!("REST server terminated with error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("🛑 Received shutdown signal (SIGINT/Ctrl+C). Initiating clean teardown...");
+        }
+    }
+
+    info!("Unregistering BitChat BLE GATT applications...");
+    bitchat_teardown.stop();
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    info!("OpenAlert Daemon terminated cleanly.");
 
     Ok(())
 }

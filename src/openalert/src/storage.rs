@@ -6,7 +6,7 @@
 
 use crate::config::StorageConfig;
 use crate::error::{OpenAlertError, Result};
-use crate::models::{Alert, AlertSeverity, AlertSource};
+use crate::models::{Alert, AlertSeverity, AlertSource, SpoolStats};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 use std::path::Path;
@@ -368,5 +368,59 @@ impl Storage {
         )
         .map_err(OpenAlertError::Storage)?;
         Ok(())
+    }
+
+    /// Aggregates spool backlog statistics across states.
+    pub async fn get_spool_stats(&self) -> Result<SpoolStats> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn
+            .prepare("SELECT status, count(*) FROM peering_spool GROUP BY status")
+            .map_err(OpenAlertError::Storage)?;
+
+        let mut spooled = 0;
+        let mut delivered = 0;
+        let mut total = 0;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let status: String = row.get(0)?;
+                let count: i64 = row.get(1)?;
+                Ok((status, count as usize))
+            })
+            .map_err(OpenAlertError::Storage)?;
+
+        for r in rows.flatten() {
+            total += r.1;
+            match r.0.as_str() {
+                "spooled" => spooled = r.1,
+                "delivered" => delivered = r.1,
+                _ => {}
+            }
+        }
+
+        Ok(SpoolStats {
+            spooled,
+            delivered,
+            total,
+        })
+    }
+
+    /// Returns count of spooled packets waiting for a specific peer.
+    pub async fn get_peer_spool_count(&self, peer_name: &str) -> Result<usize> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn
+            .prepare("SELECT count(*) FROM peering_spool WHERE peer_name = ?1 AND status = 'spooled'")
+            .map_err(OpenAlertError::Storage)?;
+        let count: i64 = stmt.query_row(params![peer_name], |row| row.get(0)).unwrap_or(0);
+        Ok(count as usize)
+    }
+
+    /// Purges all records from the peering spool table.
+    pub async fn purge_peering_spool(&self) -> Result<usize> {
+        let conn = self.conn.lock().await;
+        let deleted = conn
+            .execute("DELETE FROM peering_spool", [])
+            .map_err(OpenAlertError::Storage)?;
+        Ok(deleted)
     }
 }

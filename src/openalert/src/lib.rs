@@ -47,8 +47,11 @@
 //! - [`models`]: Canonical internal alert schema and network serialization models.
 //! - [`storage`]: Embedded SQLite storage with sliding-window retention, RAM fallback, and crash recovery.
 //! - [`templates`]: Jinja2/Tera template engine for dynamic HTTP webhook payload generation.
+//! - [`peering`]: Decentralized UDP peering and out-of-band failover backhaul.
+//! - [`cli`]: Operational diagnostics and status inspection CLI.
 
 pub mod bitchat;
+pub mod cli;
 pub mod config;
 pub mod egress;
 pub mod engine;

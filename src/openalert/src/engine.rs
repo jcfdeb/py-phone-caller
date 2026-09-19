@@ -8,11 +8,14 @@ use crate::config::AppConfig;
 use crate::egress::{BitChatEgress, NostrPublisher, PrometheusWebhookDispatcher};
 use crate::error::Result;
 use crate::metrics::{MetricsHandle, OpenAlertMetrics};
-use crate::models::{Alert, AlertSource};
+use crate::models::{
+    Alert, AlertSource, BitChatStatusReport, HealthResponse, NodeStatusResponse,
+    NostrStatusReport, PeeringStatusReport, SpoolStats, StorageStatusReport, WebhookStatusReport,
+};
+use crate::peering::PeeringService;
 use crate::storage::Storage;
 use crate::templates::TemplateEngine;
 use std::collections::HashMap;
-use crate::peering::PeeringService;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
@@ -28,6 +31,7 @@ pub struct AlertEngine {
     dedup_cache: Arc<Mutex<HashMap<String, Instant>>>,
     metrics: MetricsHandle,
     peering_service: Arc<RwLock<Option<Arc<PeeringService>>>>,
+    started_at: Instant,
 }
 
 impl AlertEngine {
@@ -44,6 +48,8 @@ impl AlertEngine {
             config.nostr.relays.clone(),
             config.nostr.kind,
             config.nostr.alert_ttl_seconds,
+            config.nostr.quorum_min_relays,
+            config.nostr.nip20_timeout_secs,
         ));
 
         let webhook_dispatcher = Arc::new(PrometheusWebhookDispatcher::new(
@@ -79,6 +85,7 @@ impl AlertEngine {
             dedup_cache: Arc::new(Mutex::new(HashMap::new())),
             metrics,
             peering_service: Arc::new(RwLock::new(None)),
+            started_at: Instant::now(),
         })
     }
 
@@ -116,6 +123,129 @@ impl AlertEngine {
     /// Returns a reference to the active PeeringService if attached.
     pub async fn peering_service(&self) -> Option<Arc<PeeringService>> {
         self.peering_service.read().await.clone()
+    }
+
+    /// Returns a reference to the daemon configuration.
+    pub fn config(&self) -> &crate::config::AppConfig {
+        &self.config
+    }
+
+    /// Returns the engine boot instant.
+    pub fn started_at(&self) -> Instant {
+        self.started_at
+    }
+
+    /// Returns a lightweight health response.
+    pub fn get_health(&self) -> HealthResponse {
+        HealthResponse {
+            status: "ok".to_string(),
+            uptime_seconds: self.started_at.elapsed().as_secs(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        }
+    }
+
+    /// Returns a snapshot of active dynamic routes from the mesh routing table.
+    pub async fn get_routes(&self) -> Vec<crate::peering::routing::RouteEntry> {
+        let peering = self.peering_service.read().await;
+        if let Some(ref p) = *peering {
+            p.get_routes().await
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Returns peering diagnostics report if peering is enabled and active.
+    pub async fn get_peering_diagnostics(&self) -> Option<PeeringStatusReport> {
+        let peering = self.peering_service.read().await;
+        if let Some(ref p) = *peering {
+            Some(p.get_diagnostics().await)
+        } else {
+            None
+        }
+    }
+
+    /// Returns spool stats if storage is enabled.
+    pub async fn get_spool_stats(&self) -> Option<SpoolStats> {
+        if let Some(ref storage) = self.storage {
+            storage.get_spool_stats().await.ok()
+        } else {
+            None
+        }
+    }
+
+    /// Manually resets a specific peer's circuit breaker to CLOSED.
+    pub async fn reset_peer_circuit_breaker(&self, peer_name: &str) -> bool {
+        let peering = self.peering_service.read().await;
+        if let Some(ref p) = *peering {
+            p.reset_peer_circuit_breaker(peer_name).await
+        } else {
+            false
+        }
+    }
+
+    /// Purges all records from the peering spool table.
+    pub async fn purge_spool(&self) -> Result<usize> {
+        if let Some(ref storage) = self.storage {
+            storage.purge_peering_spool().await
+        } else {
+            Ok(0)
+        }
+    }
+
+    /// Returns full operational diagnostics report.
+    pub async fn get_status(&self) -> NodeStatusResponse {
+        let storage_status = if let Some(ref s) = self.storage {
+            StorageStatusReport {
+                enabled: true,
+                is_in_memory: s.is_in_memory(),
+                spool: s.get_spool_stats().await.ok(),
+            }
+        } else {
+            StorageStatusReport {
+                enabled: false,
+                is_in_memory: false,
+                spool: None,
+            }
+        };
+
+        let peering_report = self.get_peering_diagnostics().await;
+
+        let targets_count = if !self.config.py_phone_caller.webhooks.is_empty() {
+            self.config.py_phone_caller.webhooks.len()
+        } else if self.config.py_phone_caller.webhook_url.is_some() {
+            1
+        } else {
+            0
+        };
+
+        let webhook_report = WebhookStatusReport {
+            strategy: format!("{:?}", self.config.py_phone_caller.strategy).to_lowercase(),
+            targets_count,
+        };
+
+        let nostr_report = NostrStatusReport {
+            enabled: self.config.nostr.enable_subscriber,
+            relays_count: self.config.nostr.relays.len(),
+            pubkey: self.nostr_publisher.public_key().to_string(),
+        };
+
+        let bitchat_report = BitChatStatusReport {
+            enabled: self.config.bitchat.enabled,
+            node_name: self.config.bitchat.node_name.clone(),
+        };
+
+        NodeStatusResponse {
+            status: "operational".to_string(),
+            node_name: self.config.daemon.name.clone(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            pubkey: self.nostr_publisher.public_key().to_string(),
+            uptime_seconds: self.started_at.elapsed().as_secs(),
+            storage: storage_status,
+            peering: peering_report,
+            webhook: webhook_report,
+            nostr: nostr_report,
+            bitchat: bitchat_report,
+        }
     }
 
     /// Evaluates if an alert is duplicate using a multi-key strategy:

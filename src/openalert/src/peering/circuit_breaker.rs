@@ -6,11 +6,13 @@
 //!   preserving strict European 868 MHz 1% Duty Cycle compliance.
 
 use crate::config::PeeringLinkType;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
 /// Operational states of the peer circuit breaker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CircuitState {
     /// Traffic enabled normally under designated link retry profile.
     Closed,
@@ -89,7 +91,7 @@ impl PeeringCircuitBreaker {
             CircuitState::HalfOpen => {
                 match self.link_type {
                     // Radio / LoRa: Optimistic transmission without ACKs
-                    PeeringLinkType::Lora => true,
+                    PeeringLinkType::Lora | PeeringLinkType::LoraSerial => true,
                     // LAN / VPN: Permit single canary probe at a time
                     PeeringLinkType::Lan | PeeringLinkType::Vpn => !self.canary_in_flight,
                 }
@@ -117,6 +119,19 @@ impl PeeringCircuitBreaker {
         self.consecutive_failures = 0;
         self.current_cooldown = self.base_cooldown;
         self.canary_in_flight = false;
+    }
+
+    /// Manually resets the circuit breaker to CLOSED and clears failure counters.
+    pub fn reset(&mut self) {
+        info!(
+            "🔄 Circuit Breaker for peer '{}' [{:?}]: Manually reset to CLOSED",
+            self.peer_name, self.link_type
+        );
+        self.state = CircuitState::Closed;
+        self.consecutive_failures = 0;
+        self.current_cooldown = self.base_cooldown;
+        self.canary_in_flight = false;
+        self.last_state_change = Instant::now();
     }
 
     /// Records a delivery failure or socket error.
@@ -162,6 +177,21 @@ impl PeeringCircuitBreaker {
         self.state
     }
 
+    /// Returns the number of consecutive recorded delivery failures.
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures
+    }
+
+    /// Returns the current cooldown duration applied upon trip.
+    pub fn current_cooldown(&self) -> Duration {
+        self.current_cooldown
+    }
+
+    /// Returns elapsed seconds since the last circuit state transition.
+    pub fn last_state_change_secs(&self) -> u64 {
+        self.last_state_change.elapsed().as_secs()
+    }
+
     /// Returns the canary acknowledgment timeout duration.
     pub fn canary_timeout(&self) -> Duration {
         self.canary_timeout
@@ -194,46 +224,48 @@ mod tests {
         // Failure 1
         cb.record_failure();
         assert_eq!(cb.state(), CircuitState::Closed);
+        assert_eq!(cb.consecutive_failures(), 1);
 
-        // Failure 2 -> Trips to OPEN
+        // Failure 2 -> Trip
         cb.record_failure();
         assert_eq!(cb.state(), CircuitState::Open);
+        assert_eq!(cb.consecutive_failures(), 2);
         assert!(!cb.can_send());
 
-        // Fast-forward cooldown by modifying last_state_change
-        cb.last_state_change = Instant::now() - Duration::from_secs(2);
+        // Wait cooldown (1 sec)
+        std::thread::sleep(Duration::from_millis(1100));
         assert!(cb.can_send());
         assert_eq!(cb.state(), CircuitState::HalfOpen);
 
-        // Success in HalfOpen restores Closed
+        // Canary probe succeeds
         cb.record_success();
         assert_eq!(cb.state(), CircuitState::Closed);
-        assert_eq!(cb.consecutive_failures, 0);
+        assert_eq!(cb.consecutive_failures(), 0);
     }
 
     #[test]
     fn test_half_open_failure_doubles_cooldown() {
         let mut cb = PeeringCircuitBreaker::new(
-            "test-peer-lora".to_string(),
+            "test-peer-radio".to_string(),
             PeeringLinkType::Lora,
             1,
-            2, // 2s base cooldown
-            30,
+            2,
+            10,
             500,
         );
 
         cb.record_failure();
         assert_eq!(cb.state(), CircuitState::Open);
-        assert_eq!(cb.current_cooldown, Duration::from_secs(2));
+        assert_eq!(cb.current_cooldown.as_secs(), 2);
 
-        // Advance to HalfOpen
-        cb.last_state_change = Instant::now() - Duration::from_secs(3);
+        // Cooldown elapse
+        std::thread::sleep(Duration::from_millis(2100));
         assert!(cb.can_send());
         assert_eq!(cb.state(), CircuitState::HalfOpen);
 
-        // Failure in HalfOpen doubles cooldown to 4s
+        // HalfOpen probe failure -> double cooldown
         cb.record_failure();
         assert_eq!(cb.state(), CircuitState::Open);
-        assert_eq!(cb.current_cooldown, Duration::from_secs(4));
+        assert_eq!(cb.current_cooldown.as_secs(), 4);
     }
 }

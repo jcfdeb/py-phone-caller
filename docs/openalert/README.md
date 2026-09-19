@@ -50,3 +50,45 @@ cargo test
 # Launch openalertd with the default configuration
 cargo run -- config/openalertd.toml
 ```
+### Heterogeneous Peering & Multi-Hop Distance-Vector Mesh
+When backhauls fail or are unavailable, OpenAlert operates an autonomous peering grid:
+* **Heterogeneous Physical Transports:** Supports LoRa serial transceivers (`/dev/ttyUSB*` with SLIP framing and ETSI EN 300 220 duty-cycle pacing), local Ethernet/LAN, and encrypted WireGuard VPN tunnels.
+* **Dynamic Distance-Vector Routing:** Computes shortest path metrics with split-horizon loop suppression and hop decrements across multi-node topologies.
+* **Self-Healing Circuit Breakers & Flash Spooling:** Automatic link state tracking with exponential cooldown backoff and persistent SQLite flash-spool storage to ensure zero packet loss during network partitions.
+
+---
+
+## 4. Web UI Mission Control & Operator Telemetry
+
+OpenAlert features a zero-dependency, self-contained real-time Web Dashboard served directly by the daemon on `/`:
+* **Live SSE Telemetry:** Real-time Server-Sent Events stream updating daemon health, link states, routing tables, and spool metrics every 2s without external web servers or frameworks.
+* **Operator Actions:** Interactive browser buttons for manually resetting peer circuit breakers and purging test spool queues.
+* **Authentication (`[dashboard.auth]`):** Zero-friction open access by default; configurable HTTP Basic and Bearer authentication backed by timing-safe constant-time comparisons (`subtle::ConstantTimeEq`) and SHA-256 password hashing.
+
+---
+
+## 5. CLI Management & Turnkey Profiles
+
+### Operational CLI Commands
+The daemon provides operational terminal subcommands:
+
+```bash
+cd src/openalert
+
+# Validate configuration syntax and directory structure
+cargo run -- check-config config/openalertd.toml
+
+# Generate a secure SHA-256 password hash for dashboard configuration
+cargo run -- hash-password "yourSecretPassword"
+
+# Query live daemon status, peering links, and persistent spool
+cargo run -- status
+cargo run -- peers
+cargo run -- spool
+```
+
+### Turnkey Deployment Profiles
+Pre-configured, production-ready configuration profiles are located in `config/profiles/`:
+* `config/profiles/edge-sensor.toml`: Minimal footprint off-grid sensor (LoRa serial + BitChat BLE only; REST on `127.0.0.1:8091`).
+* `config/profiles/mesh-repeater.toml`: Hilltop tower relay bridging RF LoRa clusters to LAN backhaul routers.
+* `config/profiles/central-gateway.toml`: NOC / Datacenter gateway with protected Web UI, Asterisk telephony egress, Nostr quorum, and WireGuard VPN peering.

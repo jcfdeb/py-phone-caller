@@ -9,6 +9,15 @@ listen_host = "0.0.0.0"
 listen_port = 8090
 enable_cors = true
 
+[dashboard.auth]
+# Web Mission Control dashboard authentication.
+# Default: disabled (zero-friction open access on localhost / trusted LAN).
+# To enable authentication, set enabled = true, pick a username, and generate a SHA-256 hash using:
+#   openalertd hash-password "<your-password>"
+enabled = false
+username = "admin"
+password_hash = ""
+
 [templates]
 template_dir = "templates"
 default_template = "prometheus_alertmanager.json.tera"

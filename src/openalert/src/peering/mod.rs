@@ -12,13 +12,17 @@
 
 pub mod circuit_breaker;
 pub mod crypto;
+pub mod lora;
+pub mod routing;
 pub mod wire;
 pub mod worker;
+
+pub use routing::{RouteEntry, RoutingTable};
 
 use crate::config::PeeringConfig;
 use crate::engine::AlertEngine;
 use crate::error::{OpenAlertError, Result};
-use crate::models::Alert;
+use crate::models::{Alert, PeeringStatusReport};
 use crate::peering::crypto::{encrypt_datagram, KeyRegistry};
 use crate::peering::wire::{AckPacket, PeeringPacket, FLAG_ACK_REQ, FLAG_CANARY};
 use crate::peering::worker::{spawn_peer_worker, AckWaiters, OutboundAlertRequest, PeerWorkerHandle};
@@ -39,7 +43,9 @@ pub struct PeeringService {
     workers: Arc<HashMap<String, PeerWorkerHandle>>,
     ack_waiters: AckWaiters,
     dedup_cache: Arc<Mutex<HashMap<u64, Instant>>>,
+    routing_table: Arc<RwLock<RoutingTable>>,
     engine: Arc<RwLock<Option<Arc<AlertEngine>>>>,
+    storage: Option<Arc<Storage>>,
 }
 
 impl PeeringService {
@@ -95,7 +101,9 @@ impl PeeringService {
             workers: Arc::new(workers),
             ack_waiters,
             dedup_cache: Arc::new(Mutex::new(HashMap::new())),
+            routing_table: Arc::new(RwLock::new(RoutingTable::new())),
             engine: Arc::new(RwLock::new(None)),
+            storage,
         })
     }
 
@@ -103,6 +111,37 @@ impl PeeringService {
     pub async fn set_engine(&self, engine: Arc<AlertEngine>) {
         let mut eng = self.engine.write().await;
         *eng = Some(engine);
+    }
+
+    /// Returns current active dynamic routing table entries.
+    pub async fn get_routes(&self) -> Vec<RouteEntry> {
+        let rt = self.routing_table.read().await;
+        rt.get_routes(Duration::from_secs(300))
+    }
+
+    /// Returns live diagnostics across all configured peering workers and circuit breakers.
+    pub async fn get_diagnostics(&self) -> PeeringStatusReport {
+        let mut peers = Vec::new();
+        for worker in self.workers.values() {
+            let diag = worker.get_diagnostics(self.storage.as_deref()).await;
+            peers.push(diag);
+        }
+        peers.sort_by(|a, b| a.name.cmp(&b.name));
+        PeeringStatusReport {
+            enabled: self.config.enabled,
+            listen_addr: self.config.listen_addr.clone(),
+            peers,
+        }
+    }
+
+    /// Manually resets a specific peer's circuit breaker to CLOSED.
+    pub async fn reset_peer_circuit_breaker(&self, peer_name: &str) -> bool {
+        if let Some(worker) = self.workers.get(peer_name) {
+            worker.reset_circuit_breaker().await;
+            true
+        } else {
+            false
+        }
     }
 
     /// Starts the background UDP receiver task.
@@ -164,7 +203,7 @@ impl PeeringService {
             let datagram = &buf[..len];
 
             // 1. Decrypt and authenticate using XChaCha20-Poly1305
-            let (plaintext, matched_peer) = match self.key_registry.try_decrypt_any(datagram) {
+            let (plaintext, mut matched_peer) = match self.key_registry.try_decrypt_any(datagram) {
                 Some(res) => res,
                 None => {
                     // Silently drop unauthenticated / corrupt bytes
@@ -172,6 +211,17 @@ impl PeeringService {
                     continue;
                 }
             };
+
+            // If matched_peer is None (decrypted via default shared key), match src_addr against configured peers
+            if matched_peer.is_none() {
+                for peer_node in &self.config.nodes {
+                    if let Ok(target_addr) = peer_node.addr.parse::<std::net::SocketAddr>()
+                        && (target_addr == src_addr || (target_addr.ip() == src_addr.ip() && target_addr.port() == src_addr.port())) {
+                        matched_peer = Some(peer_node.name.clone());
+                        break;
+                    }
+                }
+            }
 
             // 2. Deserialize packed tuple binary payload
             let packet = match PeeringPacket::deserialize(&plaintext) {
@@ -184,6 +234,12 @@ impl PeeringService {
 
             // 3. Process packet variants
             match packet {
+                PeeringPacket::RouteAdv(adv) => {
+                    let mut rt = self.routing_table.write().await;
+                    let via_peer = matched_peer.as_deref().unwrap_or(&adv.src);
+                    rt.update_route(&adv.dst, via_peer, adv.metric, adv.hops);
+                    debug!("🗺️ Learned mesh route to '{}' via '{}' (metric: {}, hops: {})", adv.dst, via_peer, adv.metric, adv.hops);
+                }
                 PeeringPacket::Ack(ack) => {
                     let mut waiters = self.ack_waiters.lock().await;
                     if let Some(tx) = waiters.remove(&ack.fp) {
@@ -241,12 +297,43 @@ impl PeeringService {
 
                     // Convert to canonical Alert and route through daemon core
                     let origin_name = matched_peer.clone().unwrap_or_else(|| alert_pkt.src.clone());
-                    let alert = alert_pkt.into_alert(Some(origin_name));
+                    let alert = alert_pkt.clone().into_alert(Some(origin_name.clone()));
 
                     info!(
                         "📥 [Peering Ingress] Ingested alert [{}] from '{}' via UDP (Severity: {:?}, Summary: \"{}\")",
                         alert.alert_id, alert.sender.as_deref().unwrap_or("unknown"), alert.severity, alert.summary
                     );
+
+                    // Dynamic route learning for alert sender
+                    {
+                        let mut rt = self.routing_table.write().await;
+                        let via_peer = matched_peer.as_deref().unwrap_or(&alert_pkt.src);
+                        rt.update_route(&alert_pkt.src, via_peer, 20, 1);
+                    }
+
+                    // Multi-hop dynamic mesh forwarding
+                    if alert_pkt.hop > 1 {
+                        let mut fwd_alert = alert.clone();
+                        fwd_alert.hop = alert_pkt.hop - 1;
+                        fwd_alert.origin_peer = Some(origin_name.clone());
+
+                        for (peer_name, worker) in self.workers.iter() {
+                            if peer_name == &origin_name
+                                || peer_name == &alert_pkt.src
+                                || Some(peer_name.as_str()) == alert.sender.as_deref()
+                                || Some(peer_name.as_str()) == alert.node.as_deref()
+                                || matched_peer.as_deref() == Some(peer_name.as_str())
+                            {
+                                // Strict Split-Horizon loop suppression
+                                continue;
+                            }
+                            let req = OutboundAlertRequest {
+                                alert: fwd_alert.clone(),
+                                is_failover: false,
+                            };
+                            let _ = worker.dispatch(req).await;
+                        }
+                    }
 
                     let eng_guard = self.engine.read().await;
                     if let Some(ref eng) = *eng_guard {
@@ -279,4 +366,6 @@ impl PeeringService {
             }
         }
     }
+
+
 }
