@@ -206,40 +206,118 @@ impl NostrSubscriber {
             }
         }
 
-        let mut alert_id = event.id[..12.min(event.id.len())].to_string();
-        let mut severity = AlertSeverity::Critical;
-        let mut sender = event.pubkey.clone();
+        let is_encrypted = event.tags.iter().any(|t| {
+            t.len() >= 2 && t[0] == "enc" && (t[1] == "xchacha20poly1305" || t[1] == "chacha20poly1305")
+        });
 
-        for tag in &event.tags {
-            if tag.len() >= 2 {
-                match tag[0].as_str() {
-                    "d" => alert_id = tag[1].clone(),
-                    "severity" => {
-                        severity = match tag[1].to_lowercase().as_str() {
-                            "info" => AlertSeverity::Info,
-                            "warning" => AlertSeverity::Warning,
-                            _ => AlertSeverity::Critical,
-                        }
-                    }
-                    "sender" => sender = tag[1].clone(),
-                    _ => {}
+        let alert = if is_encrypted {
+            // Check whitelist if configured
+            if !self.config.privacy.authorized_senders.is_empty() {
+                let authorized = self
+                    .config
+                    .privacy
+                    .authorized_senders
+                    .iter()
+                    .any(|p| p.eq_ignore_ascii_case(&event.pubkey));
+                if !authorized {
+                    warn!(
+                        "Dropping encrypted Nostr alert [{}] from unauthorized sender pubkey: {}",
+                        &event.id[..8.min(event.id.len())],
+                        &event.pubkey
+                    );
+                    return;
                 }
             }
-        }
 
-        let alert = Alert {
-            alert_id,
-            severity,
-            summary: event.content.clone(),
-            description: Some(event.content),
-            source: AlertSource::Nostr,
-            sender: Some(sender),
-            node: None,
-            starts_at: chrono::DateTime::from_timestamp(event.created_at as i64, 0)
-                .unwrap_or_else(chrono::Utc::now),
-            destinations: vec!["webhook".to_string()],
-            origin_peer: None,
-            hop: 3,
+            let Some(key) = self.config.privacy.get_key_bytes() else {
+                warn!(
+                    "Received encrypted Nostr alert [{}] but no valid nostr.privacy.shared_key configured; dropping",
+                    &event.id[..8.min(event.id.len())]
+                );
+                return;
+            };
+
+            use base64::Engine;
+            let Ok(datagram) = base64::engine::general_purpose::STANDARD.decode(event.content.trim()) else {
+                warn!(
+                    "Encrypted Nostr alert [{}] contains malformed base64 content",
+                    &event.id[..8.min(event.id.len())]
+                );
+                return;
+            };
+
+            let decrypted = match crate::peering::crypto::decrypt_datagram(&key, &datagram) {
+                Ok(d) => d,
+                Err(e) => {
+                    warn!(
+                        "Failed to decrypt Nostr alert [{}] (corrupt, tampered, or wrong key): {}",
+                        &event.id[..8.min(event.id.len())],
+                        e
+                    );
+                    return;
+                }
+            };
+
+            let mut inner_alert: Alert = match serde_json::from_slice(&decrypted) {
+                Ok(a) => a,
+                Err(e) => {
+                    warn!(
+                        "Decrypted Nostr alert [{}] contains invalid Alert JSON: {}",
+                        &event.id[..8.min(event.id.len())],
+                        e
+                    );
+                    return;
+                }
+            };
+            inner_alert.source = AlertSource::Nostr;
+            inner_alert.sender = Some(event.pubkey.clone());
+            inner_alert
+        } else {
+            if self.config.privacy.mode == crate::config::NostrPrivacyMode::Encrypted
+                && !self.config.privacy.allow_unencrypted_fallback
+            {
+                info!(
+                    "Dropping cleartext Nostr alert [{}] because nostr.privacy.mode is encrypted and allow_unencrypted_fallback is false",
+                    &event.id[..8.min(event.id.len())]
+                );
+                return;
+            }
+
+            let mut alert_id = event.id[..12.min(event.id.len())].to_string();
+            let mut severity = AlertSeverity::Critical;
+            let mut sender = event.pubkey.clone();
+
+            for tag in &event.tags {
+                if tag.len() >= 2 {
+                    match tag[0].as_str() {
+                        "d" => alert_id = tag[1].clone(),
+                        "severity" => {
+                            severity = match tag[1].to_lowercase().as_str() {
+                                "info" => AlertSeverity::Info,
+                                "warning" => AlertSeverity::Warning,
+                                _ => AlertSeverity::Critical,
+                            }
+                        }
+                        "sender" => sender = tag[1].clone(),
+                        _ => {}
+                    }
+                }
+            }
+
+            Alert {
+                alert_id,
+                severity,
+                summary: event.content.clone(),
+                description: Some(event.content),
+                source: AlertSource::Nostr,
+                sender: Some(sender),
+                node: None,
+                starts_at: chrono::DateTime::from_timestamp(event.created_at as i64, 0)
+                    .unwrap_or_else(chrono::Utc::now),
+                destinations: vec!["webhook".to_string()],
+                origin_peer: None,
+                hop: 3,
+            }
         };
 
         if let Err(err) = self.engine.route_alert(alert).await {

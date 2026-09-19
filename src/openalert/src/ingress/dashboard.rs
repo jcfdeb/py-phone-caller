@@ -411,6 +411,7 @@ pub fn dashboard_html() -> &'static str {
     <button class="tab-btn" onclick="switchTab('peers')">Peer Links & Circuit Breakers</button>
     <button class="tab-btn" onclick="switchTab('routes')">Dynamic Distance-Vector Routes</button>
     <button class="tab-btn" onclick="switchTab('nostr')">Nostr Quorum & Relays</button>
+    <button class="tab-btn" onclick="switchTab('sms')">Cellular GSM / SMS</button>
   </div>
 
   <!-- Tab 1: Overview & Topology -->
@@ -599,6 +600,113 @@ pub fn dashboard_html() -> &'static str {
     </div>
   </div>
 
+  <!-- Tab 5: Cellular GSM / SMS Gateway -->
+  <div id="tab-sms" class="tab-content" style="display: none;">
+    <div class="layout-cols">
+      <!-- Left Column: Config & Form -->
+      <div>
+        <!-- Hardware & Status Card -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>Cellular Baseband Modem Status</span>
+            <span id="sms-status-badge" class="badge badge-warning">Checking...</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+            <div>
+              <div class="stat-title">Subsystem</div>
+              <div id="sms-enabled-text" style="font-weight: 600; color: #fff;">--</div>
+            </div>
+            <div>
+              <div class="stat-title">Serial AT Port</div>
+              <div id="sms-port-text" style="font-family: monospace; color: var(--cyan);">--</div>
+            </div>
+            <div>
+              <div class="stat-title">Baud Rate</div>
+              <div id="sms-baud-text" style="font-weight: 600; color: #fff;">--</div>
+            </div>
+            <div>
+              <div class="stat-title">Poll Interval</div>
+              <div id="sms-poll-text" style="font-weight: 600; color: #fff;">--</div>
+            </div>
+            <div>
+              <div class="stat-title">Retention TTL</div>
+              <div id="sms-ttl-text" style="font-weight: 600; color: #fff;">--</div>
+            </div>
+          </div>
+          <div id="sms-error-box" style="display: none; padding: 0.75rem; border-radius: 6px; background: rgba(244, 63, 94, 0.15); border: 1px solid var(--danger); color: #fda4af; font-size: 0.8rem;"></div>
+        </div>
+
+        <!-- Dynamic Configuration Card -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>Dynamic Recipients &amp; Authorized Senders</span>
+            <span class="badge badge-primary">Hot-Reload &amp; SQLite Persisted</span>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+            Recipients and authorized senders configured here take effect immediately in RAM and survive daemon restarts via SQLite.
+          </p>
+          <div class="form-group">
+            <label>Outbound Alert Recipients (comma or newline separated)</label>
+            <textarea id="sms-recipients-input" class="form-control" rows="2" placeholder="+393349246425, +393331122334"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Authorized Inbound Senders (comma or newline separated; empty = all permitted)</label>
+            <textarea id="sms-senders-input" class="form-control" rows="2" placeholder="+393349246425"></textarea>
+          </div>
+          <div style="display: flex; justify-content: flex-end;">
+            <button class="btn btn-primary" onclick="saveSmsConfig()">Save SMS Settings</button>
+          </div>
+        </div>
+
+        <!-- Manual SMS Dispatcher -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>Direct Test SMS Dispatch</span>
+            <span class="badge badge-cyan">Modem Direct</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; margin-bottom: 1rem;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Recipient Number</label>
+              <input type="text" id="sms-manual-phone" class="form-control" placeholder="+393349246425">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>SMS Text (UTF-8 / Accents / Emojis)</label>
+              <input type="text" id="sms-manual-msg" class="form-control" value="OpenAlert NOC Test: temperatura elevata! 🚨">
+            </div>
+          </div>
+          <div style="display: flex; justify-content: flex-end;">
+            <button class="btn btn-primary" onclick="sendManualSms()">Send Test SMS</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Recent SMS Journal -->
+      <div>
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>SMS Message Journal (SQLite)</span>
+            <button class="btn" style="font-size: 0.7rem; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.08); color: #fff;" onclick="loadSmsHistory()">Refresh</button>
+          </div>
+          <div style="max-height: 580px; overflow-y: auto;">
+            <table id="sms-history-table">
+              <thead>
+                <tr>
+                  <th>Dir</th>
+                  <th>Phone</th>
+                  <th>Message</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No SMS history recorded</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Test Alert Dispatcher -->
   <div id="test-modal" class="modal-overlay">
     <div class="glass-panel modal-box">
@@ -626,6 +734,7 @@ pub fn dashboard_html() -> &'static str {
           <option value="py-phone-caller">py-phone-caller Telephony</option>
           <option value="nostr">Nostr Relay Mesh</option>
           <option value="bitchat">BitChat BLE Mesh</option>
+          <option value="sms">Cellular GSM / SMS Alert</option>
         </select>
       </div>
       <div class="modal-footer">
@@ -639,9 +748,15 @@ pub fn dashboard_html() -> &'static str {
     function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
-      event.target.classList.add('active');
+      if (window.event && window.event.target && window.event.target.classList) {
+        window.event.target.classList.add('active');
+      }
       const target = document.getElementById('tab-' + tabId);
       if (target) target.style.display = 'block';
+      if (tabId === 'sms') {
+        loadSmsStatus();
+        loadSmsHistory();
+      }
     }
 
     async function resetPeerCircuit(peerName) {
@@ -757,6 +872,142 @@ pub fn dashboard_html() -> &'static str {
       }
       if (data.nostr_relays) {
         renderNostr(data.nostr_relays);
+      }
+      if (data.sms) {
+        renderSmsStatus(data.sms);
+      }
+    }
+
+    async function loadSmsStatus() {
+      try {
+        const res = await fetch('/api/v1/sms/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderSmsStatus(data);
+      } catch (err) {
+        console.error('Error fetching SMS status', err);
+      }
+    }
+
+    function renderSmsStatus(data) {
+      if (!data) return;
+      const badge = document.getElementById('sms-status-badge');
+      if (badge) {
+        let isConnected = data.modem_status && (data.modem_status.includes('Registered') || data.modem_status.includes('Connected') || data.modem_status.includes('Responsive'));
+        badge.className = !data.enabled ? 'badge badge-warning' : (isConnected ? 'badge badge-success' : 'badge badge-danger');
+        badge.innerText = !data.enabled ? 'Disabled' : data.modem_status;
+      }
+      const enabledText = document.getElementById('sms-enabled-text');
+      if (enabledText) enabledText.innerText = data.enabled ? 'Active / Enabled' : 'Disabled';
+      const portText = document.getElementById('sms-port-text');
+      if (portText) portText.innerText = data.port || '--';
+      const baudText = document.getElementById('sms-baud-text');
+      if (baudText) baudText.innerText = data.baud_rate ? data.baud_rate + ' bps' : '--';
+      const pollText = document.getElementById('sms-poll-text');
+      if (pollText) pollText.innerText = data.poll_interval_seconds ? data.poll_interval_seconds + 's' : '--';
+      const ttlText = document.getElementById('sms-ttl-text');
+      if (ttlText) ttlText.innerText = data.ttl_minutes === 0 ? 'Never Deleted (0)' : (data.ttl_minutes + ' min');
+
+      const errBox = document.getElementById('sms-error-box');
+      if (errBox) {
+        if (data.last_error) {
+          errBox.style.display = 'block';
+          errBox.innerText = '⚠️ Modem Notice: ' + data.last_error;
+        } else {
+          errBox.style.display = 'none';
+        }
+      }
+
+      const recInput = document.getElementById('sms-recipients-input');
+      if (recInput && document.activeElement !== recInput) {
+        recInput.value = (data.recipients || []).join('\n');
+      }
+      const sendersInput = document.getElementById('sms-senders-input');
+      if (sendersInput && document.activeElement !== sendersInput) {
+        sendersInput.value = (data.authorized_senders || []).join('\n');
+      }
+    }
+
+    async function saveSmsConfig() {
+      const recRaw = document.getElementById('sms-recipients-input').value;
+      const sendRaw = document.getElementById('sms-senders-input').value;
+
+      const recipients = recRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
+      const authorized_senders = sendRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
+
+      try {
+        const res = await fetch('/api/v1/sms/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipients, authorized_senders })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('✅ SMS configuration saved and hot-reloaded successfully!');
+          renderSmsStatus(data);
+        } else {
+          alert('❌ Failed to save SMS configuration: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('❌ Error saving SMS configuration: ' + err);
+      }
+    }
+
+    async function sendManualSms() {
+      const phone = document.getElementById('sms-manual-phone').value.trim();
+      const message = document.getElementById('sms-manual-msg').value.trim();
+      if (!phone || !message) {
+        alert('Please specify recipient phone and message text');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/v1/sms/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone_number: phone, message: message })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('✅ ' + data.message);
+          loadSmsHistory();
+        } else {
+          alert('❌ ' + (data.message || 'SMS send failed'));
+        }
+      } catch (err) {
+        alert('❌ Error dispatching SMS: ' + err);
+      }
+    }
+
+    async function loadSmsHistory() {
+      try {
+        const res = await fetch('/api/v1/sms/history');
+        if (!res.ok) return;
+        const list = await res.json();
+        const tbody = document.querySelector('#sms-history-table tbody');
+        if (!tbody) return;
+
+        if (!list || list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No SMS history recorded</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = list.map(item => {
+          const dirIcon = item.direction === 'inbound' ? '📥 IN' : '📤 OUT';
+          const dirClass = item.direction === 'inbound' ? 'badge-cyan' : 'badge-primary';
+          const stClass = item.status === 'sent' || item.status === 'received' ? 'badge-success' : 'badge-danger';
+          const dateStr = new Date(item.created_at * 1000).toLocaleTimeString();
+          return `
+            <tr>
+              <td><span class="badge ${dirClass}" style="font-size: 0.65rem;">${dirIcon}</span></td>
+              <td><code>${item.phone_number}</code><div style="font-size: 0.65rem; color: var(--text-muted);">${dateStr}</div></td>
+              <td style="font-size: 0.8rem; word-break: break-word;">${item.message}</td>
+              <td><span class="badge ${stClass}" style="font-size: 0.65rem;">${item.status}</span></td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Error fetching SMS history', err);
       }
     }
 
@@ -899,6 +1150,12 @@ pub async fn sse_telemetry_handler(
         let spool = state.engine.get_spool_stats().await;
         let nostr_relays = state.engine.nostr_publisher().get_relay_health().await;
 
+        let sms_status = if let Some(sms) = state.engine.sms_service().await {
+            Some(sms.get_status().await)
+        } else {
+            None
+        };
+
         let payload = serde_json::json!({
             "status": health.status,
             "version": health.version,
@@ -908,6 +1165,7 @@ pub async fn sse_telemetry_handler(
             "routes": routes,
             "spool": spool.map(|s| s.spooled).unwrap_or(0),
             "nostr_relays": nostr_relays,
+            "sms": sms_status,
         });
 
         let event = Event::default().data(payload.to_string());

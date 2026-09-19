@@ -13,6 +13,7 @@ use crate::models::{
     NostrStatusReport, PeeringStatusReport, SpoolStats, StorageStatusReport, WebhookStatusReport,
 };
 use crate::peering::PeeringService;
+use crate::sms::SmsService;
 use crate::storage::Storage;
 use crate::templates::TemplateEngine;
 use std::collections::HashMap;
@@ -31,6 +32,7 @@ pub struct AlertEngine {
     dedup_cache: Arc<Mutex<HashMap<String, Instant>>>,
     metrics: MetricsHandle,
     peering_service: Arc<RwLock<Option<Arc<PeeringService>>>>,
+    sms_service: Arc<RwLock<Option<Arc<SmsService>>>>,
     started_at: Instant,
 }
 
@@ -50,6 +52,7 @@ impl AlertEngine {
             config.nostr.alert_ttl_seconds,
             config.nostr.quorum_min_relays,
             config.nostr.nip20_timeout_secs,
+            config.nostr.privacy.clone(),
         ));
 
         let webhook_dispatcher = Arc::new(PrometheusWebhookDispatcher::new(
@@ -85,6 +88,7 @@ impl AlertEngine {
             dedup_cache: Arc::new(Mutex::new(HashMap::new())),
             metrics,
             peering_service: Arc::new(RwLock::new(None)),
+            sms_service: Arc::new(RwLock::new(None)),
             started_at: Instant::now(),
         })
     }
@@ -123,6 +127,17 @@ impl AlertEngine {
     /// Returns a reference to the active PeeringService if attached.
     pub async fn peering_service(&self) -> Option<Arc<PeeringService>> {
         self.peering_service.read().await.clone()
+    }
+
+    /// Links the SmsService to this engine.
+    pub async fn set_sms_service(&self, sms: Arc<SmsService>) {
+        let mut guard = self.sms_service.write().await;
+        *guard = Some(sms);
+    }
+
+    /// Returns a reference to the active SmsService if attached.
+    pub async fn sms_service(&self) -> Option<Arc<SmsService>> {
+        self.sms_service.read().await.clone()
     }
 
     /// Returns a reference to the daemon configuration.
@@ -234,6 +249,12 @@ impl AlertEngine {
             node_name: self.config.bitchat.node_name.clone(),
         };
 
+        let sms_report = if let Some(sms) = self.sms_service().await {
+            Some(sms.get_status().await)
+        } else {
+            None
+        };
+
         NodeStatusResponse {
             status: "operational".to_string(),
             node_name: self.config.daemon.name.clone(),
@@ -245,6 +266,7 @@ impl AlertEngine {
             webhook: webhook_report,
             nostr: nostr_report,
             bitchat: bitchat_report,
+            sms: sms_report,
         }
     }
 
@@ -394,6 +416,7 @@ impl AlertEngine {
             AlertSource::BitChat => "bitchat",
             AlertSource::Prometheus => "prometheus",
             AlertSource::Peering => "peering",
+            AlertSource::Sms => "sms",
         };
         self.metrics.alerts_received_total.with_label_values(&[source_name]).inc();
 
@@ -531,6 +554,28 @@ impl AlertEngine {
                                 }
                             }
                         });
+                    }
+                }
+                "sms" => {
+                    if alert.source != AlertSource::Sms {
+                        let sms_opt = self.sms_service.read().await.clone();
+                        if let Some(sms) = sms_opt {
+                            let outbound_alert = alert.clone();
+                            let metrics = self.metrics.clone();
+                            tokio::spawn(async move {
+                                match sms.dispatch_alert(&outbound_alert).await {
+                                    Ok(sent_count) => {
+                                        if sent_count > 0 {
+                                            metrics.alerts_dispatched_total.with_label_values(&["sms", "success"]).inc();
+                                        }
+                                    }
+                                    Err(err) => {
+                                        metrics.alerts_dispatched_total.with_label_values(&["sms", "failure"]).inc();
+                                        warn!("SMS dispatch failed for alert [{}]: {}", outbound_alert.alert_id, err);
+                                    }
+                                }
+                            });
+                        }
                     }
                 }
                 unknown_dest => {

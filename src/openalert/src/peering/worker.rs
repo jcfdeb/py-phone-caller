@@ -517,6 +517,7 @@ impl PeerWorker {
                     hop: 1,
                     src: "canary".to_string(),
                     code: "PING".to_string(),
+                    desc: None,
                 });
                 if let Ok(ser) = canary.serialize()
                     && let Ok(datagram) = encrypt_datagram(&self.key, &ser) {
@@ -546,6 +547,7 @@ impl PeerWorker {
                     hop: 1,
                     src: "canary".to_string(),
                     code: "PING".to_string(),
+                    desc: None,
                 });
 
                 if let Ok(ser) = canary.serialize()

@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![HRF Grant](https://img.shields.io/badge/supported%20by-HRF%20Bitcoin%20Dev%20Fund-f7931a.svg)](https://x.com/gladstein/status/2092304843037884677)
-[![Tests](https://img.shields.io/badge/tests-52%20passed-success.svg)]()
+[![Tests](https://img.shields.io/badge/tests-65%20passed-success.svg)]()
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg)]()
 
 > **OpenAlert** is a decentralized, resilient alerting daemon designed to bridge emergency notifications across isolated networks and physical air gaps. Developed with the support of a grant from the **[Human Rights Foundation (HRF) Bitcoin Development Fund](https://x.com/gladstein/status/2092304843037884677)**, `openalertd` ensures that life-safety alarms, disaster advisories, and critical infrastructure telemetries reach first responders even under total internet blackouts, grid collapses, or adversarial censorship.
@@ -52,6 +52,14 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 * **Distance-Vector Routing:** Computes shortest-path metrics across heterogeneous peer links (accounting for link RTT, packet loss, and physical bandwidth).
 * **Split-Horizon Loop Suppression:** Suppresses packet reflection to origin interfaces, preventing routing loops and broadcast storms in cyclic mesh topologies.
 * **Hop Limit Enforcement:** Enforces decremental hop counters to bound packet propagation across wide-area peer networks.
+
+### 📱 Cellular GSM/LTE AT Modem SMS Subsystem
+* **Direct Hardware Interfacing:** Async serial AT command engine (`tokio-serial`) communicating directly with standard GSM/LTE cellular modems (e.g. SIMCom SIM7600, SIM7100, Quectel) attached via USB (`/dev/ttyUSB*`).
+* **Bidirectional Operation:** Transparently delivers critical alerts as outbound SMS to designated phone numbers and continuously polls inbound SMS from the SIM card to ingest and route alerts into the OpenAlert engine.
+* **Strict UTF-8 & UCS-2 Transcoding:** Full bidirectional conversion between internal UTF-8 strings and modem UCS-2 hexadecimal / 7-bit GSM, ensuring international accents, diacritics, and emojis are transmitted without data corruption.
+* **Zero-Crash Resilience:** Serial hardware disconnects, loose cables, missing ports, or SIM errors will NEVER panic or crash `openalertd`. The daemon logs rate-limited warnings and continues running unaffected.
+* **Dynamic Hot-Reload & Web UI:** Recipients and authorized senders can be updated live via the embedded NOC Dashboard or REST API, immediately taking effect in RAM and permanently persisting to SQLite across daemon restarts.
+* **Configurable SQLite TTL:** All incoming and outgoing SMS transactions are recorded in the embedded SQLite database with a configurable retention TTL in minutes (`0` = never deleted).
 
 ### 🛡️ Resilience, Storage & Ingress Hardening
 * **Embedded SQLite Flash Spool:** Zero-loss persistence for outbound packets during network outages. Spooled items are automatically flushed upon link recovery.
@@ -185,6 +193,23 @@ cargo run -- check-config config/profiles/edge-sensor.toml
 cargo run -- config/profiles/central-gateway.toml
 ```
 
+### Nostr Group Privacy & Encrypted Mode (`[nostr.privacy]`)
+By default, Nostr publishes cleartext alert summaries (`mode = "public"`). For high-security environments, critical infrastructure monitoring, or operating across untrusted public relays, switch to **Encrypted Mode**:
+
+1. Generate a 256-bit cryptographic hex key:
+   ```bash
+   cargo run -- generate-key
+   ```
+2. Enable encryption in `openalertd.toml`:
+   ```toml
+   [nostr.privacy]
+   mode = "encrypted"
+   shared_key = "<64-hex-character-key>"
+   authorized_senders = []
+   allow_unencrypted_fallback = false
+   ```
+   *Result: Alerts are sealed using `XChaCha20-Poly1305` AEAD with 192-bit random nonces before publishing to Nostr. Public relays only see opaque base64 ciphertext and cannot read the alert summary, description, severity, or node attributes.*
+
 ### Disabling Absent Hardware
 If running on a system without Bluetooth or LoRa hardware, simply toggle their flags in your configuration:
 
@@ -248,6 +273,7 @@ openalertd [COMMAND] [OPTIONS]
 | :--- | :--- | :--- |
 | `check [config_path]` | `check-config` | Validates syntax, directories, templates, and consistency of configuration |
 | `hash-password <secret>` | `hash` | Computes a SHA-256 hash formatted for `[dashboard.auth]` |
+| `generate-key` | `gen-key` | Generates a 256-bit hex key for peering or Nostr group privacy |
 | `status [--url <api>]` | — | Queries live uptime, health status, and configured routes from running daemon |
 | `peers [--url <api>]` | — | Queries live peering link states and circuit breaker counters |
 | `spool [--url <api>]` | — | Queries persistent peering spool backlog count |
@@ -283,6 +309,28 @@ All HTTP endpoints bind to unprivileged ports ($\ge 1024$), default `8090`.
   `x-openalert-signature: <hmac-sha256-hex>`  
   `x-openalert-timestamp: <unix-timestamp>`  
   *Returns:* `202 Accepted`
+
+### Cellular GSM / SMS Gateway
+* **`GET /api/v1/sms/status`** (or `GET /api/v1/sms/config`)  
+  Returns live modem connectivity, port path, baud rate, retention TTL, recipients list, authorized senders, and recent error notices.
+* **`POST /api/v1/sms/config`**  
+  Dynamically hot-reloads and persists alert recipients and authorized senders into SQLite:
+  ```json
+  {
+    "recipients": ["+393349246425"],
+    "authorized_senders": ["+393349246425"]
+  }
+  ```
+* **`GET /api/v1/sms/history`**  
+  Retrieves the most recent SMS transactions (inbound and outbound) from SQLite.
+* **`POST /api/v1/sms/send`**  
+  Manually dispatches an ad-hoc test SMS to a specified phone number:
+  ```json
+  {
+    "phone_number": "+393349246425",
+    "message": "Allarme test OpenAlertD: temperatura 42C 🚨"
+  }
+  ```
 
 ### Operational Diagnostics & Actions
 * **`GET /api/v1/status`**  
@@ -353,8 +401,12 @@ src/openalert/
     ├── config.rs                 # TOML configuration structs & validation
     ├── models.rs                 # Core alert domain types & severities
     ├── engine.rs                 # Alert routing core, deduplication & orchestration
-    ├── storage.rs                # Embedded SQLite engine & sliding-window retention
+    ├── storage.rs                # Embedded SQLite engine, SMS journal & sliding-window retention
     ├── cli.rs                    # CLI query client, formatting & hash generators
+    ├── sms/
+    │   ├── mod.rs                # Cellular SMS service coordinator & background poller
+    │   ├── modem.rs              # Asynchronous AT command driver (tokio-serial)
+    │   └── codec.rs              # UTF-8 and UCS-2 / GSM7 bidirectional transcoding
     ├── bitchat.rs                # BitChat BLE GATT peripheral & Noise XX engine
     ├── ingress/
     │   ├── rest.rs               # Axum REST API, Bearer & HMAC auth, operator endpoints

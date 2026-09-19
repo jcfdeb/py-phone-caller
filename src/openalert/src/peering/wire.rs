@@ -20,7 +20,7 @@ pub const FLAG_SPOOLED: u8 = 0x04;
 /// Control bit: Designates an emergency escape-valve failover alert triggered after primary egress collapse.
 pub const FLAG_FAILOVER: u8 = 0x08;
 
-/// Compact alert packet formatted as packed sequential primitives (~22–26 bytes plaintext).
+/// Compact alert packet formatted as packed sequential primitives (~22–32 bytes plaintext).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AlertPacket {
     /// 64-bit cryptographic alert fingerprint for atomic deduplication and tracking.
@@ -35,8 +35,10 @@ pub struct AlertPacket {
     pub hop: u8,
     /// Originating node identifier (e.g. "e-01").
     pub src: String,
-    /// Compact alarm summary code (e.g. "PWR_DN", "BGP_FL").
+    /// Alert summary or compact alarm code.
     pub code: String,
+    /// Optional extended alert description or payload details.
+    pub desc: Option<String>,
 }
 
 /// Compact acknowledgment packet confirming receipt of an `AlertPacket` (~12–14 bytes plaintext).
@@ -107,12 +109,6 @@ impl AlertPacket {
             .unwrap_or("node")
             .to_string();
 
-        let code = if alert.summary.len() > 32 {
-            alert.summary[..32].to_string()
-        } else {
-            alert.summary.clone()
-        };
-
         Self {
             fp: alert.fingerprint_u64(),
             ts: alert.starts_at.timestamp() as u32,
@@ -120,7 +116,8 @@ impl AlertPacket {
             flags,
             hop: alert.hop,
             src,
-            code,
+            code: alert.summary.clone(),
+            desc: alert.description.clone(),
         }
     }
 
@@ -136,14 +133,24 @@ impl AlertPacket {
         let alert_id = format!("peer-{}-{:016x}", self.src, self.fp);
         let starts_at = DateTime::from_timestamp(self.ts as i64, 0).unwrap_or_else(Utc::now);
 
+        // Preserve original alert description; fall back to summary (code) so speech synthesis/TTS
+        // reports actual alert content rather than internal technical wire metadata!
+        let description = self.desc.or_else(|| {
+            if !self.code.is_empty() {
+                Some(self.code.clone())
+            } else {
+                Some(format!(
+                    "Federated alert from peer '{}' [Flags: 0x{:02x}, Fingerprint: 0x{:016x}]",
+                    self.src, self.flags, self.fp
+                ))
+            }
+        });
+
         Alert {
             alert_id,
             severity,
             summary: self.code.clone(),
-            description: Some(format!(
-                "Federated alert from peer '{}' [Flags: 0x{:02x}, Fingerprint: 0x{:016x}]",
-                self.src, self.flags, self.fp
-            )),
+            description,
             source: AlertSource::Peering,
             sender: Some(self.src.clone()),
             node: Some(self.src),
@@ -169,10 +176,11 @@ mod tests {
             hop: 3,
             src: "e-01".to_string(),
             code: "PWR_DN".to_string(),
+            desc: None,
         });
 
         let encoded = packet.serialize().expect("Serialization should succeed");
-        // Ensure payload is under 30 bytes for LoRa SF11/SF12 margin!
+        // Ensure payload is under 32 bytes for LoRa SF11/SF12 margin!
         assert!(
             encoded.len() <= 32,
             "Serialized AlertPacket size ({} bytes) exceeds 32-byte envelope",
@@ -181,6 +189,54 @@ mod tests {
 
         let decoded = PeeringPacket::deserialize(&encoded).expect("Deserialization should succeed");
         assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn test_alert_packet_with_description_roundtrip() {
+        let alert = Alert {
+            alert_id: "edge-alert-123".to_string(),
+            severity: AlertSeverity::Critical,
+            summary: "Warning: Core router temperature exceeds threshold.".to_string(),
+            description: Some("Rack 4 sensor reads 96C (alarm threshold: 80C)".to_string()),
+            source: AlertSource::Rest,
+            sender: Some("edge-sensor-01".to_string()),
+            node: Some("substation-01".to_string()),
+            starts_at: Utc::now(),
+            destinations: vec!["peering".to_string()],
+            origin_peer: None,
+            hop: 3,
+        };
+
+        let pkt = AlertPacket::from_alert(&alert, FLAG_ACK_REQ);
+        assert_eq!(pkt.code, alert.summary);
+        assert_eq!(pkt.desc, alert.description);
+
+        let reconstructed = pkt.into_alert(Some("peer-gw".to_string()));
+        assert_eq!(reconstructed.summary, alert.summary);
+        assert_eq!(reconstructed.description, alert.description);
+        assert_eq!(reconstructed.origin_peer, Some("peer-gw".to_string()));
+        assert_eq!(reconstructed.hop, 2);
+    }
+
+    #[test]
+    fn test_alert_packet_fallback_to_summary_when_desc_missing() {
+        let packet = AlertPacket {
+            fp: 0x12345678,
+            ts: 1789035000,
+            lvl: 2,
+            flags: 0,
+            hop: 1,
+            src: "edge-node".to_string(),
+            code: "Power Grid Instability".to_string(),
+            desc: None,
+        };
+
+        let reconstructed = packet.into_alert(None);
+        assert_eq!(reconstructed.summary, "Power Grid Instability");
+        assert_eq!(
+            reconstructed.description,
+            Some("Power Grid Instability".to_string())
+        );
     }
 
     #[test]

@@ -54,6 +54,21 @@ alert_ttl_seconds = 3600
 # Historical catch-up lookback in seconds on startup (0 = only live events, 300 = past 5 minutes)
 subscription_lookback_seconds = 300
 
+[nostr.privacy]
+# Nostr alert privacy and group encryption.
+# Mode options:
+#   "public"    - Cleartext event content and human-readable tags (default).
+#   "encrypted" - Authenticated AEAD encryption (XChaCha20-Poly1305). Public relays and observers
+#                 cannot read the alert summary, description, severity, or node details.
+mode = "public"
+# 256-bit pre-shared hex key (required when mode = "encrypted").
+# Generate a secure key using: `openalertd generate-key`
+shared_key = ""
+# Optional list of authorized sender public keys (hex). If empty, any sender possessing the key is accepted.
+authorized_senders = []
+# When mode is "encrypted", whether to accept unencrypted public alerts. Default: false.
+allow_unencrypted_fallback = false
+
 [bitchat]
 # Native Bluetooth Low Energy (BlueZ D-Bus GATT peripheral & advertising)
 enabled = true
@@ -128,3 +143,28 @@ max_timeout_ms = 8000
 # link_type = "lan"
 # max_ip_retries = 3
 # base_timeout_ms = 200
+
+[sms]
+# Cellular GSM/LTE AT Modem Subsystem (SMS Gateway)
+# Disabled by default. Set enabled = true when a USB GSM/LTE modem (e.g. SIM7600, SIM7100) is attached.
+enabled = false
+
+# Serial AT command port (e.g. /dev/ttyUSB2 for SIMCom Cat-1/Cat-4 modem AT port)
+port = "/dev/ttyUSB2"
+
+# Serial baud rate (standard 115200)
+baud_rate = 115200
+
+# SIM inbound polling interval in seconds
+poll_interval_seconds = 10
+
+# SQLite message retention TTL in minutes (1440 = 24 hours, 0 = never delete)
+ttl_minutes = 1440
+
+# Pre-configured phone numbers to notify on outbound alerts (E.164 format)
+# Note: Can also be dynamically viewed and edited via the Web UI NOC Dashboard and REST API.
+recipients = []
+
+# Authorized sender phone numbers permitted to trigger alerts via incoming SMS.
+# If empty, all incoming SMS from any sender are accepted and routed into OpenAlert.
+authorized_senders = []

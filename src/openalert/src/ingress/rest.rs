@@ -10,6 +10,7 @@ use crate::error::Result;
 use crate::models::{
     Alert, AlertSource, PeeringStatusReport, PrometheusAlertmanagerPayload,
     PrometheusWebhookResponse, RestAlertRequest, RestAlertResponse,
+    SmsConfigUpdateRequest, SmsSendRequest,
 };
 use axum::{
     body::Bytes,
@@ -285,6 +286,10 @@ impl RestServer {
                 "/api/v1/webhook/prometheus",
                 post(ingest_prometheus_webhook),
             )
+            .route("/api/v1/sms/status", get(sms_status_handler))
+            .route("/api/v1/sms/config", get(sms_status_handler).post(sms_update_config_handler))
+            .route("/api/v1/sms/history", get(sms_history_handler))
+            .route("/api/v1/sms/send", post(sms_send_handler))
             .layer(TraceLayer::new_for_http())
             .layer(
                 CorsLayer::new()
@@ -595,6 +600,135 @@ pub async fn ingest_prometheus_webhook(
         }),
     )
         .into_response()
+}
+
+/// Cellular SMS status report.
+pub async fn sms_status_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Response {
+    if let Err((status, json)) = check_bearer_auth(&headers, &state.config) {
+        return (status, json).into_response();
+    }
+    if let Some(sms) = state.engine.sms_service().await {
+        let status = sms.get_status().await;
+        (StatusCode::OK, Json(status)).into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "SMS gateway service not initialized"
+            })),
+        )
+            .into_response()
+    }
+}
+
+/// Updates cellular SMS dynamic configuration (recipients and authorized senders).
+pub async fn sms_update_config_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<SmsConfigUpdateRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+    if let Some(sms) = state.engine.sms_service().await {
+        match sms.update_config(payload.recipients, payload.authorized_senders).await {
+            Ok(updated) => {
+                info!(
+                    "Updated cellular SMS configuration: {} recipients, {} authorized senders",
+                    updated.recipients.len(),
+                    updated.authorized_senders.len()
+                );
+                (StatusCode::OK, Json(updated)).into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "status": "error", "message": e })),
+            )
+                .into_response(),
+        }
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "SMS gateway service not initialized"
+            })),
+        )
+            .into_response()
+    }
+}
+
+/// Fetches recent SMS history (inbound and outbound).
+pub async fn sms_history_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Response {
+    if let Err((status, json)) = check_bearer_auth(&headers, &state.config) {
+        return (status, json).into_response();
+    }
+    if let Some(sms) = state.engine.sms_service().await {
+        match sms.get_history(50).await {
+            Ok(history) => (StatusCode::OK, Json(history)).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "status": "error", "message": e })),
+            )
+                .into_response(),
+        }
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "SMS gateway service not initialized"
+            })),
+        )
+            .into_response()
+    }
+}
+
+/// Sends a test or manual SMS via the cellular modem.
+pub async fn sms_send_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<SmsSendRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+    if let Some(sms) = state.engine.sms_service().await {
+        match sms.send_manual_sms(&payload.phone_number, &payload.message).await {
+            Ok(()) => (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ok",
+                    "message": format!("SMS successfully dispatched to {}", payload.phone_number)
+                })),
+            )
+                .into_response(),
+            Err(e) => (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "status": "error",
+                    "message": format!("SMS dispatch failed: {}", e)
+                })),
+            )
+                .into_response(),
+        }
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "SMS gateway service not initialized"
+            })),
+        )
+            .into_response()
+    }
 }
 
 #[cfg(test)]

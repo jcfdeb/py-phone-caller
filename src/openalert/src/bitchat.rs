@@ -27,7 +27,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::sleep;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519StaticSecret};
 
 pub const DEFAULT_BITCHAT_SERVICE_UUID: &str = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c";
@@ -676,6 +676,15 @@ impl BitChatService {
             if let Err(e) = adapt.set_powered(true).await {
                 warn!("⚠️ Could not power on Bluetooth adapter: {}", e);
             }
+            if let Err(e) = adapt.set_discoverable(true).await {
+                debug!("Could not set discoverable: {}", e);
+            }
+            if let Err(e) = adapt.set_pairable(true).await {
+                debug!("Could not set pairable: {}", e);
+            }
+            if let Err(e) = adapt.set_discoverable_timeout(0).await {
+                debug!("Could not set discoverable timeout: {}", e);
+            }
 
             break (sess, adapt);
         };
@@ -686,10 +695,12 @@ impl BitChatService {
         let running_adv = self.running.clone();
 
         tokio::spawn(async move {
+            
             let le_advertisement = Advertisement {
                 service_uuids: vec![adv_uuid].into_iter().collect::<BTreeSet<_>>(),
                 local_name: Some(adv_name.clone()),
                 discoverable: Some(true),
+                system_includes: vec![bluer::adv::Feature::TxPower].into_iter().collect(),
                 ..Default::default()
             };
 

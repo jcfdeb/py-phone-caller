@@ -57,10 +57,26 @@ pub fn validate_config(path: &str) -> Result<String, String> {
     ));
 
     // Nostr check
+    let privacy_str = if config.nostr.privacy.mode == crate::config::NostrPrivacyMode::Encrypted {
+        match config.nostr.privacy.get_key_bytes() {
+            Some(_) => {
+                let key_preview = &config.nostr.privacy.shared_key.as_deref().unwrap_or("")[..8];
+                format!("Encrypted (XChaCha20-Poly1305, key: {}...)", key_preview)
+            }
+            None => {
+                return Err(
+                    "nostr.privacy.mode is 'encrypted' but nostr.privacy.shared_key is missing or not a valid 64-character (32-byte) hex string".to_string()
+                );
+            }
+        }
+    } else {
+        "Public (cleartext broadcast)".to_string()
+    };
     checks.push(format!(
-        "Nostr:            {} relay(s), Subscriber: {}",
+        "Nostr:            {} relay(s), Subscriber: {}, Privacy: {}",
         config.nostr.relays.len(),
-        if config.nostr.enable_subscriber { "enabled" } else { "disabled" }
+        if config.nostr.enable_subscriber { "enabled" } else { "disabled" },
+        privacy_str
     ));
 
     // BitChat check
@@ -211,4 +227,12 @@ pub fn hash_password(password: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+/// Generates a cryptographically secure 256-bit (32-byte) random hex key for peering or Nostr group privacy.
+pub fn generate_key() -> String {
+    use rand::RngCore;
+    let mut key_bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut key_bytes);
+    hex::encode(key_bytes)
 }

@@ -50,6 +50,8 @@ pub enum AlertSource {
     BitChat,
     /// Ingested from a federated peer node via encrypted UDP datagram.
     Peering,
+    /// Ingested from a cellular GSM modem via inbound SMS.
+    Sms,
 }
 
 impl std::fmt::Display for AlertSource {
@@ -60,6 +62,7 @@ impl std::fmt::Display for AlertSource {
             Self::Nostr => write!(f, "nostr"),
             Self::BitChat => write!(f, "bitchat"),
             Self::Peering => write!(f, "peering"),
+            Self::Sms => write!(f, "sms"),
         }
     }
 }
@@ -90,7 +93,7 @@ pub struct Alert {
     pub node: Option<String>,
     /// UTC timestamp marking when the alert condition began.
     pub starts_at: DateTime<Utc>,
-    /// List of target egress channels (e.g., `"nostr"`, `"webhook"`, `"bitchat"`, `"peering"`).
+    /// List of target egress channels (e.g., `"nostr"`, `"webhook"`, `"bitchat"`, `"peering"`, `"sms"`).
     #[serde(default)]
     pub destinations: Vec<String>,
     /// Originating peer identifier if received via peering (used for split-horizon suppression).
@@ -336,6 +339,8 @@ pub struct NodeStatusResponse {
     pub webhook: WebhookStatusReport,
     pub nostr: NostrStatusReport,
     pub bitchat: BitChatStatusReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sms: Option<SmsStatusResponse>,
 }
 
 /// Storage status and spool backlog report.
@@ -393,4 +398,49 @@ pub struct NostrStatusReport {
 pub struct BitChatStatusReport {
     pub enabled: bool,
     pub node_name: String,
+}
+
+/// Historical record of an SMS transaction in SQLite.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmsRecord {
+    pub id: i64,
+    pub direction: String,
+    pub phone_number: String,
+    pub message: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_detail: Option<String>,
+    pub created_at: i64,
+}
+
+/// Request payload to update SMS configuration dynamically.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SmsConfigUpdateRequest {
+    #[serde(default)]
+    pub recipients: Option<Vec<String>>,
+    #[serde(default)]
+    pub authorized_senders: Option<Vec<String>>,
+}
+
+/// Request payload to send an ad-hoc SMS via REST / Web UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmsSendRequest {
+    #[serde(alias = "phone")]
+    pub phone_number: String,
+    pub message: String,
+}
+
+/// Status and configuration of the cellular SMS subsystem.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmsStatusResponse {
+    pub enabled: bool,
+    pub port: String,
+    pub baud_rate: u32,
+    pub poll_interval_seconds: u64,
+    pub ttl_minutes: u64,
+    pub recipients: Vec<String>,
+    pub authorized_senders: Vec<String>,
+    pub modem_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
 }

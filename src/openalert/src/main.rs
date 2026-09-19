@@ -11,6 +11,7 @@ use openalertd::error::Result;
 use openalertd::ingress::nostr::NostrSubscriber;
 use openalertd::ingress::rest::RestServer;
 use openalertd::peering::PeeringService;
+use openalertd::{SmsService, Storage};
 use std::env;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -27,7 +28,8 @@ fn print_usage() {
     println!("    status [--url <api_url>]  Query live operational status from running daemon");
     println!("    peers  [--url <api_url>]  Query live peering link states and circuit breakers");
     println!("    spool  [--url <api_url>]  Query persistent peering spool backlog count");
-    println!("    hash-password <password>  Generate SHA-256 hash for dashboard configuration");
+    println!("    hash-password <password>  Generate SHA-256 hash for dashboard configuration (alias: hash)");
+    println!("    generate-key              Generate 256-bit hex key for peering or Nostr encryption (alias: gen-key)");
     println!("    run   [config_path]       Explicitly start daemon in foreground (default)");
     println!("    help                      Display this help information");
     println!();
@@ -111,6 +113,21 @@ async fn main() -> Result<()> {
                     std::process::exit(1);
                 }
             }
+        }
+        "generate-key" | "gen-key" => {
+            let key = cli::generate_key();
+            println!("============================================================");
+            println!(" 🔑 OpenAlert Cryptographic 256-Bit Hex Key");
+            println!("============================================================");
+            println!("Key: {}", key);
+            println!();
+            println!("For Nostr Group Encryption, paste into config/openalertd.toml:");
+            println!();
+            println!("[nostr.privacy]");
+            println!("mode = \"encrypted\"");
+            println!("shared_key = \"{}\"", key);
+            println!("============================================================");
+            std::process::exit(0);
         }
         "hash-password" | "hash" => {
             let password = args.get(2).map(|s| s.as_str()).unwrap_or("");
@@ -210,6 +227,28 @@ async fn main() -> Result<()> {
             }
         }
     }
+
+    // Initialize cellular GSM/LTE SMS gateway service
+    let storage_for_sms = engine.storage().cloned().unwrap_or_else(|| {
+        Arc::new(
+            Storage::new(openalertd::config::StorageConfig {
+                enabled: true,
+                path: ":memory:".to_string(),
+                ..Default::default()
+            })
+            .expect("in-memory storage fallback"),
+        )
+    });
+    let sms_service = Arc::new(
+        SmsService::new(
+            config.sms.clone(),
+            storage_for_sms,
+            Arc::downgrade(&engine),
+        )
+        .await,
+    );
+    engine.set_sms_service(sms_service.clone()).await;
+    sms_service.start_worker();
 
     let rest_server = RestServer::new(config.rest.clone(), engine.clone());
     let bitchat_teardown = bitchat_service.clone();

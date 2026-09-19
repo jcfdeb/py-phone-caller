@@ -6,7 +6,7 @@
 
 use crate::config::StorageConfig;
 use crate::error::{OpenAlertError, Result};
-use crate::models::{Alert, AlertSeverity, AlertSource, SpoolStats};
+use crate::models::{Alert, AlertSeverity, AlertSource, SmsRecord, SpoolStats};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 use std::path::Path;
@@ -110,7 +110,23 @@ impl Storage {
                 status TEXT CHECK(status IN ('spooled', 'draining', 'delivered')) NOT NULL DEFAULT 'spooled'
             );
             CREATE INDEX IF NOT EXISTS idx_peering_spool_peer ON peering_spool(peer_name, status);
-            CREATE INDEX IF NOT EXISTS idx_peering_spool_fp ON peering_spool(fingerprint);",
+            CREATE INDEX IF NOT EXISTS idx_peering_spool_fp ON peering_spool(fingerprint);
+
+            CREATE TABLE IF NOT EXISTS sms_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                direction TEXT NOT NULL,
+                phone_number TEXT NOT NULL,
+                message TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error_detail TEXT,
+                created_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sms_records_created_at ON sms_records(created_at);
+
+            CREATE TABLE IF NOT EXISTS sms_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
         )
         .map_err(OpenAlertError::Storage)?;
 
@@ -422,5 +438,95 @@ impl Storage {
             .execute("DELETE FROM peering_spool", [])
             .map_err(OpenAlertError::Storage)?;
         Ok(deleted)
+    }
+
+    /// Inserts an SMS transaction record (inbound or outbound) and returns its row ID.
+    pub async fn record_sms(
+        &self,
+        direction: &str,
+        phone_number: &str,
+        message: &str,
+        status: &str,
+        error_detail: Option<&str>,
+    ) -> Result<i64> {
+        let conn = self.conn.lock().await;
+        let created_at = Utc::now().timestamp();
+        conn.execute(
+            "INSERT INTO sms_records (direction, phone_number, message, status, error_detail, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![direction, phone_number, message, status, error_detail, created_at],
+        )
+        .map_err(OpenAlertError::Storage)?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Fetches recent SMS records ordered newest first.
+    pub async fn get_recent_sms(&self, limit: u32) -> Result<Vec<SmsRecord>> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, direction, phone_number, message, status, error_detail, created_at
+                 FROM sms_records
+                 ORDER BY id DESC LIMIT ?1",
+            )
+            .map_err(OpenAlertError::Storage)?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok(SmsRecord {
+                    id: row.get(0)?,
+                    direction: row.get(1)?,
+                    phone_number: row.get(2)?,
+                    message: row.get(3)?,
+                    status: row.get(4)?,
+                    error_detail: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })
+            .map_err(OpenAlertError::Storage)?;
+
+        let mut list = Vec::new();
+        for r in rows.flatten() {
+            list.push(r);
+        }
+        Ok(list)
+    }
+
+    /// Prunes SMS records older than ttl_minutes. If ttl_minutes is 0, records are never pruned.
+    pub async fn prune_sms(&self, ttl_minutes: u64) -> Result<usize> {
+        if ttl_minutes == 0 {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().await;
+        let cutoff = Utc::now().timestamp() - (ttl_minutes as i64 * 60);
+        let deleted = conn
+            .execute(
+                "DELETE FROM sms_records WHERE created_at < ?1",
+                params![cutoff],
+            )
+            .map_err(OpenAlertError::Storage)?;
+        Ok(deleted)
+    }
+
+    /// Retrieves an SMS setting value by key from SQLite.
+    pub async fn get_sms_setting(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn
+            .prepare("SELECT value FROM sms_settings WHERE key = ?1")
+            .map_err(OpenAlertError::Storage)?;
+        let res = stmt.query_row(params![key], |row| row.get(0)).ok();
+        Ok(res)
+    }
+
+    /// Persists an SMS setting key-value pair in SQLite (upsert).
+    pub async fn set_sms_setting(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO sms_settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )
+        .map_err(OpenAlertError::Storage)?;
+        Ok(())
     }
 }

@@ -114,6 +114,7 @@ pub struct NostrPublisher {
     alert_ttl_seconds: u64,
     quorum_min_relays: usize,
     nip20_timeout: Duration,
+    privacy: crate::config::NostrPrivacyConfig,
     health: Arc<RwLock<HashMap<String, RelayHealth>>>,
 }
 
@@ -125,6 +126,7 @@ impl NostrPublisher {
         alert_ttl_seconds: u64,
         quorum_min_relays: usize,
         nip20_timeout_secs: u64,
+        privacy: crate::config::NostrPrivacyConfig,
     ) -> Self {
         let secp = Secp256k1::new();
         let (secret_key, _) = secp.generate_keypair(&mut OsRng);
@@ -145,6 +147,7 @@ impl NostrPublisher {
             alert_ttl_seconds,
             quorum_min_relays: quorum_min_relays.max(1),
             nip20_timeout: Duration::from_secs(nip20_timeout_secs.max(1)),
+            privacy,
             health: Arc::new(RwLock::new(health_map)),
         }
     }
@@ -160,18 +163,39 @@ impl NostrPublisher {
         let created_at_i64 = Utc::now().timestamp();
         let created_at = created_at_i64.max(0) as u64;
 
-        let mut tags = vec![
-            vec!["d".to_string(), alert.alert_id.clone()],
-            vec![
-                "severity".to_string(),
-                format!("{:?}", alert.severity).to_lowercase(),
-            ],
-            vec![
-                "source".to_string(),
-                format!("{:?}", alert.source).to_lowercase(),
-            ],
-            vec!["t".to_string(), "alert".to_string()],
-        ];
+        let (content, mut tags) = if self.privacy.mode == crate::config::NostrPrivacyMode::Encrypted {
+            let key = self.privacy.get_key_bytes().ok_or_else(|| {
+                crate::error::OpenAlertError::Config(
+                    "Nostr publisher set to encrypted mode but lacks a valid 32-byte shared_key".to_string(),
+                )
+            })?;
+            let alert_json = serde_json::to_vec(alert)?;
+            let encrypted_bytes = crate::peering::crypto::encrypt_datagram(&key, &alert_json)?;
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&encrypted_bytes);
+
+            let enc_tags = vec![
+                vec!["d".to_string(), alert.alert_id.clone()],
+                vec!["t".to_string(), "openalert".to_string()],
+                vec!["enc".to_string(), "xchacha20poly1305".to_string()],
+                vec!["v".to_string(), "1".to_string()],
+            ];
+            (b64, enc_tags)
+        } else {
+            let pub_tags = vec![
+                vec!["d".to_string(), alert.alert_id.clone()],
+                vec![
+                    "severity".to_string(),
+                    format!("{:?}", alert.severity).to_lowercase(),
+                ],
+                vec![
+                    "source".to_string(),
+                    format!("{:?}", alert.source).to_lowercase(),
+                ],
+                vec!["t".to_string(), "alert".to_string()],
+            ];
+            (alert.summary.clone(), pub_tags)
+        };
 
         // NIP-40: Expiration Timestamp
         if self.alert_ttl_seconds > 0 {
@@ -185,7 +209,7 @@ impl NostrPublisher {
             created_at,
             self.kind,
             tags,
-            alert.summary
+            content
         ]))?;
 
         let mut hasher = Sha256::new();
@@ -202,7 +226,7 @@ impl NostrPublisher {
             created_at,
             kind: self.kind,
             tags,
-            content: alert.summary.clone(),
+            content,
             sig: sig_hex,
         })
     }

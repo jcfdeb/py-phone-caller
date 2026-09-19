@@ -49,6 +49,7 @@
 //! - [`templates`]: Jinja2/Tera template engine for dynamic HTTP webhook payload generation.
 //! - [`peering`]: Decentralized UDP peering and out-of-band failover backhaul.
 //! - [`cli`]: Operational diagnostics and status inspection CLI.
+//! - [`sms`]: Cellular GSM/LTE SMS gateway (serial AT modem ingress, egress, and persistence).
 
 pub mod bitchat;
 pub mod cli;
@@ -62,9 +63,11 @@ pub mod models;
 pub mod storage;
 pub mod peering;
 pub mod templates;
+pub mod sms;
 
 pub use bitchat::BitChatService;
 pub use config::AppConfig;
 pub use engine::AlertEngine;
 pub use metrics::OpenAlertMetrics;
 pub use storage::Storage;
+pub use sms::SmsService;

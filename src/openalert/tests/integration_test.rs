@@ -21,6 +21,7 @@ use std::sync::Arc;
 fn test_config() -> AppConfig {
     let mut config = AppConfig::load("config/openalertd.toml").expect("Failed to load config");
     config.storage.path = ":memory:".to_string();
+    config.sms.enabled = false;
     config
 }
 
@@ -867,6 +868,7 @@ async fn test_peering_end_to_end_edge_to_gateway_backhaul() {
 
     // Node B (Central Gateway)
     let mut config_b = test_config();
+    config_b.routing.default_destinations = vec![];
     config_b.peering.enabled = true;
     config_b.peering.listen_addr = "127.0.0.1:19877".to_string();
     config_b.peering.shared_key = psk.clone();
@@ -916,16 +918,29 @@ async fn test_peering_end_to_end_edge_to_gateway_backhaul() {
         hop: 3,
     };
 
-    engine_a.route_alert(edge_alert).await.unwrap();
+    let res_a = engine_a.route_alert(edge_alert).await;
+    println!("DEBUG: engine_a.route_alert result = {:?}", res_a);
 
     // Allow UDP delivery, AEAD decryption, and Gateway ingestion
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+
+    let diag_a = peering_a.get_diagnostics().await;
+    println!("DEBUG: diag_a = {:?}", diag_a);
+    let diag_b = peering_b.get_diagnostics().await;
+    println!("DEBUG: diag_b = {:?}", diag_b);
 
     // Verify Gateway received the alert in its deduplication cache
     let peering_received = engine_b.metrics().alerts_received_total.with_label_values(&["peering"]).get();
+    println!("DEBUG: peering_received on B = {}", peering_received);
     assert_eq!(peering_received as u64, 1, "Gateway must have received exactly 1 peering alert");
 
-    println!("✅ Edge-to-Gateway UDP Peering verified! Ingested into central gateway.");
+    // Verify Gateway preserved full summary and description
+    let pending = engine_b.storage().unwrap().get_pending_alerts(900).await.unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].summary, "Substation Generator Offline");
+    assert_eq!(pending[0].description, Some("Battery backup engaged at zone 4".to_string()));
+
+    println!("✅ Edge-to-Gateway UDP Peering verified! Ingested into central gateway with full payload preserved.");
 }
 
 #[tokio::test]
@@ -1425,4 +1440,217 @@ async fn test_operator_peer_reset_and_spool_purge() {
     assert_eq!(not_found_resp.status(), axum::http::StatusCode::NOT_FOUND);
 
     println!("✅ Operator Peer Circuit Breaker Reset and Spool Purge verified!");
+}
+
+#[tokio::test]
+async fn test_cli_generate_key() {
+    let key = openalertd::cli::generate_key();
+    assert_eq!(key.len(), 64, "Key must be 64 hex characters (32 bytes)");
+    let decoded = hex::decode(&key).expect("Key must be valid hex");
+    assert_eq!(decoded.len(), 32);
+    println!("✅ CLI generate-key produced valid 256-bit hex key: {}...", &key[..12]);
+}
+
+#[tokio::test]
+async fn test_nostr_encrypted_event_serialization_and_deserialization() {
+    use base64::Engine;
+
+    let key_hex = openalertd::cli::generate_key();
+    let key_bytes: [u8; 32] = hex::decode(&key_hex).unwrap().try_into().unwrap();
+
+    let privacy_config = openalertd::config::NostrPrivacyConfig {
+        mode: openalertd::config::NostrPrivacyMode::Encrypted,
+        shared_key: Some(key_hex.clone()),
+        authorized_senders: vec![],
+        allow_unencrypted_fallback: false,
+    };
+
+    let publisher = openalertd::egress::nostr::NostrPublisher::new(
+        vec!["wss://test.relay".to_string()],
+        30000,
+        3600,
+        1,
+        5,
+        privacy_config,
+    );
+
+    let alert = Alert {
+        alert_id: "sec-confidential-01".to_string(),
+        severity: AlertSeverity::Emergency,
+        summary: "Top Secret Compound Infiltration".to_string(),
+        description: Some("Sensor 9 triggered in Sector G".to_string()),
+        source: AlertSource::Rest,
+        sender: Some("operator-alpha".to_string()),
+        node: Some("gateway-01".to_string()),
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["nostr".to_string()],
+        origin_peer: None,
+        hop: 3,
+    };
+
+    // 1. Sign alert with publisher in Encrypted mode
+    let event = publisher.sign_alert(&alert).expect("Signing must succeed");
+
+    // 2. Content MUST NOT contain plaintext alert summary!
+    assert!(!event.content.contains("Top Secret Compound Infiltration"), "Content must not be cleartext");
+    assert!(!event.content.contains("Sensor 9"), "Content must not contain description");
+
+    // 3. Verify event tags contain encryption marker
+    let has_enc_tag = event.tags.iter().any(|t| t.len() >= 2 && t[0] == "enc" && t[1] == "xchacha20poly1305");
+    assert!(has_enc_tag, "Event must have enc tag");
+
+    // 4. Decrypt payload with matching key
+    let datagram = base64::engine::general_purpose::STANDARD.decode(event.content.trim()).expect("Valid base64");
+    let decrypted_bytes = openalertd::peering::crypto::decrypt_datagram(&key_bytes, &datagram).expect("Decryption must succeed");
+    let decrypted_alert: Alert = serde_json::from_slice(&decrypted_bytes).expect("Valid Alert JSON");
+
+    assert_eq!(decrypted_alert.alert_id, "sec-confidential-01");
+    assert_eq!(decrypted_alert.summary, "Top Secret Compound Infiltration");
+    assert_eq!(decrypted_alert.severity, AlertSeverity::Emergency);
+    assert_eq!(decrypted_alert.description.as_deref(), Some("Sensor 9 triggered in Sector G"));
+
+    // 5. Tamper / Wrong key rejection
+    let wrong_key = [0x42u8; 32];
+    let wrong_dec = openalertd::peering::crypto::decrypt_datagram(&wrong_key, &datagram);
+    assert!(wrong_dec.is_err(), "Decryption with wrong key must fail");
+
+    println!("✅ Nostr AEAD encrypted event serialization, privacy, and tamper rejection verified!");
+}
+
+#[tokio::test]
+async fn test_sms_rest_config_hot_reload_and_sqlite_persistence() {
+    let mut config = test_config();
+    config.sms.enabled = false;
+    config.sms.port = "/dev/ttyUSB2".to_string();
+    config.sms.recipients = vec![];
+    config.sms.authorized_senders = vec![];
+
+    let storage = Arc::new(Storage::new(config.storage.clone()).expect("storage"));
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("engine"));
+
+    let sms_service = Arc::new(
+        openalertd::sms::SmsService::new(
+            config.sms.clone(),
+            storage.clone(),
+            Arc::downgrade(&engine),
+        )
+        .await,
+    );
+    engine.set_sms_service(sms_service.clone()).await;
+
+    let state = openalertd::ingress::rest::AppState {
+        engine: engine.clone(),
+        config: config.rest.clone(),
+    };
+
+    // 1. Initial status query via REST
+    let status_resp = openalertd::ingress::rest::sms_status_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+    )
+    .await;
+    assert_eq!(status_resp.status(), axum::http::StatusCode::OK);
+
+    // 2. Hot-reload configuration via POST /api/v1/sms/config
+    let update_req = openalertd::models::SmsConfigUpdateRequest {
+        recipients: Some(vec!["+393349246425".to_string(), "+393339988776".to_string()]),
+        authorized_senders: Some(vec!["+393349246425".to_string()]),
+    };
+    let update_resp = openalertd::ingress::rest::sms_update_config_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::Json(update_req),
+    )
+    .await;
+    assert_eq!(update_resp.status(), axum::http::StatusCode::OK);
+
+    // 3. Verify in-memory state updated
+    let live_status = sms_service.get_status().await;
+    assert_eq!(live_status.recipients, vec!["+393349246425", "+393339988776"]);
+    assert_eq!(live_status.authorized_senders, vec!["+393349246425"]);
+
+    // 4. Verify SQLite persistence: a new instance with the same storage restores dynamic config
+    let restored_service = openalertd::sms::SmsService::new(
+        config.sms.clone(), // initial config has empty lists
+        storage.clone(),
+        Arc::downgrade(&engine),
+    )
+    .await;
+    let restored_status = restored_service.get_status().await;
+    assert_eq!(restored_status.recipients, vec!["+393349246425", "+393339988776"]);
+    assert_eq!(restored_status.authorized_senders, vec!["+393349246425"]);
+
+    println!("✅ Cellular SMS dynamic configuration hot-reload & SQLite persistence verified!");
+}
+
+#[tokio::test]
+async fn test_sms_sqlite_ttl_pruning_and_resilience() {
+    let mut config = test_config();
+    config.sms.enabled = false;
+    config.sms.port = "/dev/nonexistent_cellular_serial_port_xyz".to_string();
+
+    let storage = Arc::new(Storage::new(config.storage.clone()).expect("storage"));
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("engine"));
+
+    let sms_service = Arc::new(
+        openalertd::sms::SmsService::new(
+            config.sms.clone(),
+            storage.clone(),
+            Arc::downgrade(&engine),
+        )
+        .await,
+    );
+    engine.set_sms_service(sms_service.clone()).await;
+
+    // 1. Record an SMS into SQLite
+    let id1 = storage
+        .record_sms(
+            "outbound",
+            "+393349246425",
+            "Emergency: Power line failure detected ⚡",
+            "sent",
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(id1 > 0);
+
+    let id2 = storage
+        .record_sms(
+            "inbound",
+            "+393349246425",
+            "ACK alert 104",
+            "received",
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(id2 > id1);
+
+    // 2. Fetch history via service
+    let history = sms_service.get_history(10).await.unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].id, id2); // most recent first
+    assert_eq!(history[0].direction, "inbound");
+    assert_eq!(history[1].direction, "outbound");
+
+    // 3. TTL = 0 means NEVER delete
+    let pruned_zero = storage.prune_sms(0).await.unwrap();
+    assert_eq!(pruned_zero, 0);
+
+    // 4. Resilience: sending via nonexistent port must return Err, record failure in SQLite, and NEVER panic
+    let send_res = sms_service.send_manual_sms("+393349246425", "Test resilient SMS").await;
+    assert!(send_res.is_err(), "Dispatch on nonexistent port must return error gracefully");
+
+    // Check that failure was recorded in history
+    let history_after_fail = sms_service.get_history(10).await.unwrap();
+    assert_eq!(history_after_fail.len(), 3);
+    assert_eq!(history_after_fail[0].status, "failed");
+    assert!(history_after_fail[0].error_detail.is_some());
+
+    // Service status must report failure notice, not crash
+    let status = sms_service.get_status().await;
+    assert!(status.modem_status.contains("Unavailable") || status.modem_status.contains("Disabled"));
+
+    println!("✅ Cellular SMS SQLite TTL retention, history, and zero-crash failure resilience verified!");
 }

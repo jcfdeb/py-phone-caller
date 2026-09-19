@@ -35,6 +35,9 @@ pub struct AppConfig {
     /// Optional embedded web dashboard and authentication settings.
     #[serde(default)]
     pub dashboard: DashboardConfig,
+    /// Optional cellular GSM/LTE SMS gateway subsystem (ingress & egress).
+    #[serde(default)]
+    pub sms: SmsConfig,
 }
 
 impl AppConfig {
@@ -152,6 +155,49 @@ impl DashboardAuthConfig {
     }
 }
 
+/// Operational privacy mode for Nostr transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum NostrPrivacyMode {
+    #[default]
+    Public,
+    Encrypted,
+}
+
+/// Nostr alert privacy and group encryption parameters.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NostrPrivacyConfig {
+    /// Operational mode: "public" (cleartext) or "encrypted" (XChaCha20-Poly1305).
+    #[serde(default)]
+    pub mode: NostrPrivacyMode,
+    /// 256-bit pre-shared hex key (64 hex characters) required when mode is "encrypted".
+    #[serde(default)]
+    pub shared_key: Option<String>,
+    /// Optional whitelist of authorized sender public keys (hex). If empty, any sender possessing the key is accepted.
+    #[serde(default)]
+    pub authorized_senders: Vec<String>,
+    /// When mode is "encrypted", whether to accept unencrypted public alerts. Default: false.
+    #[serde(default)]
+    pub allow_unencrypted_fallback: bool,
+}
+
+impl NostrPrivacyConfig {
+    /// Returns decoded 32-byte shared key if mode is Encrypted and key is valid.
+    pub fn get_key_bytes(&self) -> Option<[u8; 32]> {
+        if let Some(ref hex_str) = self.shared_key {
+            let clean = hex_str.trim();
+            if let Ok(bytes) = hex::decode(clean)
+                && bytes.len() == 32
+            {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                return Some(arr);
+            }
+        }
+        None
+    }
+}
+
 /// Nostr relay mesh and subscription parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrConfig {
@@ -176,6 +222,9 @@ pub struct NostrConfig {
     /// Timeout in seconds to wait for NIP-20 command results from each relay.
     #[serde(default = "default_nip20_timeout_secs")]
     pub nip20_timeout_secs: u64,
+    /// Privacy and group encryption settings.
+    #[serde(default)]
+    pub privacy: NostrPrivacyConfig,
 }
 
 fn default_quorum_min_relays() -> usize {
@@ -501,7 +550,6 @@ pub struct TemplateConfig {
     pub default_template: String,
 }
 
-
 /// Physical link layer profile for a federated peer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -733,6 +781,66 @@ impl Default for PeeringNodeConfig {
             failure_threshold: None,
             base_cooldown_secs: None,
             shared_key: None,
+        }
+    }
+}
+
+/// Configuration for the cellular GSM/LTE SMS gateway subsystem.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmsConfig {
+    /// Whether the SMS gateway subsystem is active (default: false).
+    #[serde(default = "default_sms_enabled")]
+    pub enabled: bool,
+    /// Serial AT device path (e.g., "/dev/ttyUSB2").
+    #[serde(default = "default_sms_port")]
+    pub port: String,
+    /// Serial baud rate (default: 115200).
+    #[serde(default = "default_sms_baud_rate")]
+    pub baud_rate: u32,
+    /// Preconfigured recipient phone numbers for outbound alerts.
+    #[serde(default)]
+    pub recipients: Vec<String>,
+    /// Authorized sender phone numbers for inbound alert generation (empty = all allowed).
+    #[serde(default)]
+    pub authorized_senders: Vec<String>,
+    /// Polling interval in seconds to check for incoming SMS messages.
+    #[serde(default = "default_sms_poll_interval")]
+    pub poll_interval_seconds: u64,
+    /// SQLite SMS retention TTL in minutes (0 = never deleted).
+    #[serde(default = "default_sms_ttl_minutes")]
+    pub ttl_minutes: u64,
+}
+
+fn default_sms_enabled() -> bool {
+    false
+}
+
+fn default_sms_port() -> String {
+    "/dev/ttyUSB2".to_string()
+}
+
+fn default_sms_baud_rate() -> u32 {
+    115200
+}
+
+fn default_sms_poll_interval() -> u64 {
+    10
+}
+
+fn default_sms_ttl_minutes() -> u64 {
+    1440 // 24 hours
+}
+
+impl Default for SmsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_sms_enabled(),
+            port: default_sms_port(),
+            baud_rate: default_sms_baud_rate(),
+            recipients: Vec::new(),
+            authorized_senders: Vec::new(),
+            poll_interval_seconds: default_sms_poll_interval(),
+            ttl_minutes: default_sms_ttl_minutes(),
         }
     }
 }
