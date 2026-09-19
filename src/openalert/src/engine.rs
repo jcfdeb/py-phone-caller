@@ -33,6 +33,7 @@ pub struct AlertEngine {
     metrics: MetricsHandle,
     peering_service: Arc<RwLock<Option<Arc<PeeringService>>>>,
     sms_service: Arc<RwLock<Option<Arc<SmsService>>>>,
+    bitchat_service: Arc<RwLock<Option<Arc<crate::bitchat::BitChatService>>>>,
     started_at: Instant,
 }
 
@@ -89,6 +90,7 @@ impl AlertEngine {
             metrics,
             peering_service: Arc::new(RwLock::new(None)),
             sms_service: Arc::new(RwLock::new(None)),
+            bitchat_service: Arc::new(RwLock::new(None)),
             started_at: Instant::now(),
         })
     }
@@ -138,6 +140,17 @@ impl AlertEngine {
     /// Returns a reference to the active SmsService if attached.
     pub async fn sms_service(&self) -> Option<Arc<SmsService>> {
         self.sms_service.read().await.clone()
+    }
+
+    /// Links the BitChatService to this engine.
+    pub async fn set_bitchat_service(&self, bitchat: Arc<crate::bitchat::BitChatService>) {
+        let mut guard = self.bitchat_service.write().await;
+        *guard = Some(bitchat);
+    }
+
+    /// Returns a reference to the active BitChatService if attached.
+    pub async fn bitchat_service(&self) -> Option<Arc<crate::bitchat::BitChatService>> {
+        self.bitchat_service.read().await.clone()
     }
 
     /// Returns a reference to the daemon configuration.
@@ -244,9 +257,20 @@ impl AlertEngine {
             pubkey: self.nostr_publisher.public_key().to_string(),
         };
 
-        let bitchat_report = BitChatStatusReport {
-            enabled: self.config.bitchat.enabled,
-            node_name: self.config.bitchat.node_name.clone(),
+        let bitchat_report = if let Some(bitchat) = self.bitchat_service().await {
+            bitchat.get_status().await
+        } else {
+            let (_, _, my_sender_id) = crate::bitchat::BitChatService::derive_keys(&self.config.bitchat.node_name);
+            BitChatStatusReport {
+                enabled: self.config.bitchat.enabled,
+                node_name: self.config.bitchat.node_name.clone(),
+                sender_id: hex::encode(my_sender_id),
+                service_uuid: crate::bitchat::DEFAULT_BITCHAT_SERVICE_UUID.to_string(),
+                status: if self.config.bitchat.enabled { "Active (Standby)".to_string() } else { "Disabled".to_string() },
+                peers_count: 0,
+                active_sessions_count: 0,
+                peers: Vec::new(),
+            }
         };
 
         let sms_report = if let Some(sms) = self.sms_service().await {

@@ -393,11 +393,29 @@ pub struct NostrStatusReport {
     pub pubkey: String,
 }
 
+/// Detailed BitChat peer node information.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BitChatPeerInfo {
+    pub sender_id: String,
+    pub nickname: String,
+    pub session_state: String,
+    pub verified: bool,
+    pub last_seen_seconds_ago: u64,
+    pub messages_received: u64,
+    pub messages_sent: u64,
+}
+
 /// BitChat BLE mesh status report.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitChatStatusReport {
     pub enabled: bool,
     pub node_name: String,
+    pub sender_id: String,
+    pub service_uuid: String,
+    pub status: String,
+    pub peers_count: usize,
+    pub active_sessions_count: usize,
+    pub peers: Vec<BitChatPeerInfo>,
 }
 
 /// Historical record of an SMS transaction in SQLite.

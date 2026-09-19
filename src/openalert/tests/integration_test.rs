@@ -10,6 +10,7 @@ use openalertd::config::{
     PyPhoneCallerConfig, StorageConfig, WebhookEndpointConfig, WebhookStrategy,
 };
 use openalertd::peering::PeeringService;
+use openalertd::bitchat::BitChatService;
 use openalertd::egress::{BitChatEgress, PrometheusWebhookDispatcher};
 use openalertd::engine::AlertEngine;
 use openalertd::models::{Alert, AlertSeverity, AlertSource, PrometheusAlertmanagerPayload};
@@ -208,6 +209,35 @@ async fn test_nostr_ttl_config_and_lookback() {
     assert_eq!(config.storage.retention_seconds, 900);
     assert!(config.storage.enabled);
     println!("✅ Nostr & Storage config verified (TTL: 3600s, Lookback: 300s, Storage retention: 900s)");
+}
+
+#[tokio::test]
+async fn test_bitchat_status_api_and_peer_tracking() {
+    let config = test_config();
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("Failed to create engine"));
+    let bitchat_svc = Arc::new(BitChatService::new(config.bitchat.clone(), Some(engine.clone())));
+    engine.set_bitchat_service(bitchat_svc.clone()).await;
+
+    // Initially 0 peers
+    let st = bitchat_svc.get_status().await;
+    assert_eq!(st.peers_count, 0);
+    assert_eq!(st.node_name, config.bitchat.node_name);
+
+    // Record a peer (e.g. Jorge phone)
+    let peer_id: [u8; 8] = [0x2a, 0x7b, 0xc9, 0x9a, 0x8d, 0xbe, 0x97, 0x5f];
+    bitchat_svc.record_peer(peer_id, "Jorge", true).await;
+
+    let updated_st = bitchat_svc.get_status().await;
+    assert_eq!(updated_st.peers_count, 1);
+    assert_eq!(updated_st.peers[0].nickname, "Jorge");
+    assert_eq!(updated_st.peers[0].sender_id, "2a7bc99a8dbe975f");
+    assert!(updated_st.peers[0].verified);
+
+    // Verify engine node status embeds the bitchat report
+    let node_status = engine.get_status().await;
+    assert_eq!(node_status.bitchat.peers_count, 1);
+    assert_eq!(node_status.bitchat.peers[0].nickname, "Jorge");
+    println!("✅ BitChat status reporting and peer registration verified!");
 }
 
 #[tokio::test]

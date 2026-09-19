@@ -8,7 +8,7 @@ use crate::config::RestConfig;
 use crate::engine::AlertEngine;
 use crate::error::Result;
 use crate::models::{
-    Alert, AlertSource, PeeringStatusReport, PrometheusAlertmanagerPayload,
+    Alert, AlertSeverity, AlertSource, PeeringStatusReport, PrometheusAlertmanagerPayload,
     PrometheusWebhookResponse, RestAlertRequest, RestAlertResponse,
     SmsConfigUpdateRequest, SmsSendRequest,
 };
@@ -290,6 +290,8 @@ impl RestServer {
             .route("/api/v1/sms/config", get(sms_status_handler).post(sms_update_config_handler))
             .route("/api/v1/sms/history", get(sms_history_handler))
             .route("/api/v1/sms/send", post(sms_send_handler))
+            .route("/api/v1/bitchat/status", get(bitchat_status_handler))
+            .route("/api/v1/bitchat/broadcast", post(bitchat_broadcast_handler))
             .layer(TraceLayer::new_for_http())
             .layer(
                 CorsLayer::new()
@@ -728,6 +730,114 @@ pub async fn sms_send_handler(
             })),
         )
             .into_response()
+    }
+}
+
+/// BitChat mesh status report handler.
+pub async fn bitchat_status_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+    let status = if let Some(bc) = state.engine.bitchat_service().await {
+        bc.get_status().await
+    } else {
+        let (_, _, my_sender_id) = crate::bitchat::BitChatService::derive_keys(&state.engine.config().bitchat.node_name);
+        crate::models::BitChatStatusReport {
+            enabled: state.engine.config().bitchat.enabled,
+            node_name: state.engine.config().bitchat.node_name.clone(),
+            sender_id: hex::encode(my_sender_id),
+            service_uuid: crate::bitchat::DEFAULT_BITCHAT_SERVICE_UUID.to_string(),
+            status: if state.engine.config().bitchat.enabled {
+                "Active (BLE GATT)".to_string()
+            } else {
+                "Disabled".to_string()
+            },
+            peers_count: 0,
+            active_sessions_count: 0,
+            peers: Vec::new(),
+        }
+    };
+    (StatusCode::OK, Json(status)).into_response()
+}
+
+/// Request payload for manual BitChat mesh broadcast.
+#[derive(Debug, serde::Deserialize)]
+pub struct BitChatBroadcastRequest {
+    pub message: String,
+    #[serde(default = "default_bitchat_severity")]
+    pub severity: String,
+}
+
+fn default_bitchat_severity() -> String {
+    "warning".to_string()
+}
+
+/// Broadcasts an ad-hoc emergency or alert message across the BitChat Bluetooth Low Energy mesh.
+pub async fn bitchat_broadcast_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<BitChatBroadcastRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    if payload.message.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Message content cannot be empty"
+            })),
+        )
+            .into_response();
+    }
+
+    let sev = match payload.severity.to_lowercase().as_str() {
+        "critical" => AlertSeverity::Critical,
+        "emergency" => AlertSeverity::Emergency,
+        _ => AlertSeverity::Warning,
+    };
+
+    let alert_id = format!("bitchat-manual-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let alert = Alert {
+        alert_id: alert_id.clone(),
+        severity: sev,
+        summary: payload.message.clone(),
+        description: Some(format!(
+            "Ad-hoc manual BitChat broadcast from OpenAlert Control Plane ({})",
+            state.engine.config().daemon.name
+        )),
+        source: AlertSource::Rest,
+        sender: Some(state.engine.config().daemon.name.clone()),
+        node: Some(state.engine.config().bitchat.node_name.clone()),
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["bitchat".to_string()],
+        origin_peer: None,
+        hop: 1,
+    };
+
+    match state.engine.bitchat_egress.broadcast(&alert).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ok",
+                "message": format!("Alert successfully broadcast to BitChat BLE mesh [ID: {}]", alert_id),
+                "alert_id": alert_id
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": format!("BitChat broadcast failed: {}", e)
+            })),
+        )
+            .into_response(),
     }
 }
 

@@ -206,6 +206,7 @@ async fn main() -> Result<()> {
         config.bitchat.clone(),
         Some(engine.clone()),
     ));
+    engine.set_bitchat_service(bitchat_service.clone()).await;
     let bitchat_svc = bitchat_service.clone();
     tokio::spawn(async move {
         if let Err(e) = bitchat_svc.start().await {

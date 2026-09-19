@@ -158,6 +158,46 @@ pub fn dashboard_html() -> &'static str {
       position: relative;
       overflow: hidden;
     }
+
+    /* BitChat Radar Animations */
+    @keyframes radar-sweep {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes ble-ripple-1 {
+      0% { r: 16px; opacity: 0.85; stroke-width: 2px; }
+      100% { r: 125px; opacity: 0; stroke-width: 0.5px; }
+    }
+    @keyframes ble-ripple-2 {
+      0% { r: 16px; opacity: 0.85; stroke-width: 2px; }
+      100% { r: 125px; opacity: 0; stroke-width: 0.5px; }
+    }
+    .radar-scanner {
+      animation: radar-sweep 6s linear infinite;
+    }
+    .radar-ripple-1 {
+      animation: ble-ripple-1 3.2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+    }
+    .radar-ripple-2 {
+      animation: ble-ripple-2 3.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1.6s infinite;
+    }
+    .bitchat-peer-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 8px;
+      font-size: 0.75rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .bitchat-peer-chip:hover {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: rgba(56, 189, 248, 0.5);
+      transform: translateY(-1px);
+    }
     .stat-title {
       font-size: 0.75rem;
       color: var(--text-muted);
@@ -403,15 +443,31 @@ pub fn dashboard_html() -> &'static str {
       </div>
       <div class="stat-meta">ETSI EN 300 220 Sub-GHz Cap</div>
     </div>
+
+    <div class="glass-panel stat-card" style="cursor: pointer;" onclick="switchTab('bitchat')">
+      <div class="stat-glow-bar" style="background: linear-gradient(90deg, transparent, #38bdf8, transparent)"></div>
+      <div class="stat-title" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>BitChat BLE Mesh</span>
+        <span id="stat-bitchat-pulse" class="pulse-dot" style="background: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
+      </div>
+      <div class="stat-value">
+        <span id="stat-bitchat-peers-count">0</span>
+        <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 400;">peers</span>
+      </div>
+      <div class="stat-meta">
+        <span class="badge" id="stat-bitchat-badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);">BLE Active</span>
+      </div>
+    </div>
   </div>
 
   <!-- Navigation Tab Bar -->
   <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('overview')">Overview & Topology</button>
-    <button class="tab-btn" onclick="switchTab('peers')">Peer Links & Circuit Breakers</button>
+    <button class="tab-btn active" onclick="switchTab('overview')">Overview &amp; Topology</button>
+    <button class="tab-btn" onclick="switchTab('peers')">Peer Links &amp; Circuit Breakers</button>
     <button class="tab-btn" onclick="switchTab('routes')">Dynamic Distance-Vector Routes</button>
-    <button class="tab-btn" onclick="switchTab('nostr')">Nostr Quorum & Relays</button>
+    <button class="tab-btn" onclick="switchTab('nostr')">Nostr Quorum &amp; Relays</button>
     <button class="tab-btn" onclick="switchTab('sms')">Cellular GSM / SMS</button>
+    <button class="tab-btn" onclick="switchTab('bitchat')">Bluetooth &amp; BitChat Mesh</button>
   </div>
 
   <!-- Tab 1: Overview & Topology -->
@@ -519,6 +575,79 @@ pub fn dashboard_html() -> &'static str {
               <div class="event-meta">
                 <span>Ingress: REST / Peering / Nostr</span>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overview BitChat Mesh Live Radar Card -->
+    <div class="glass-panel card" style="margin-top: 1.5rem;">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+          <span>Bluetooth BLE &amp; BitChat Ad-Hoc Mesh Radar</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);" id="overview-bitchat-status">Active (BLE GATT)</span>
+          <button class="btn btn-primary" style="font-size: 0.72rem; padding: 0.25rem 0.65rem;" onclick="switchTab('bitchat')">
+            Manage Mesh &rarr;
+          </button>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(260px, 320px) 1fr; gap: 1.5rem; align-items: center;">
+        <div style="position: relative; width: 260px; height: 260px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+          <svg width="260" height="260" viewBox="0 0 260 260" id="overview-radar-svg">
+            <defs>
+              <radialGradient id="radarScanGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+                <stop offset="60%" stop-color="#38bdf8" stop-opacity="0.1"/>
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+              </radialGradient>
+              <linearGradient id="sweepBeam" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8"/>
+                <stop offset="100%" stop-color="#0284c7" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <circle cx="130" cy="130" r="120" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1.5" fill="rgba(15, 23, 42, 0.75)"/>
+            <circle cx="130" cy="130" r="85" stroke="rgba(56, 189, 248, 0.18)" stroke-width="1" fill="none" stroke-dasharray="3,3"/>
+            <circle cx="130" cy="130" r="50" stroke="rgba(56, 189, 248, 0.22)" stroke-width="1" fill="none"/>
+            <line x1="10" y1="130" x2="250" y2="130" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
+            <line x1="130" y1="10" x2="130" y2="250" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
+            <circle cx="130" cy="130" r="20" stroke="#38bdf8" fill="none" class="radar-ripple-1"/>
+            <circle cx="130" cy="130" r="20" stroke="#38bdf8" fill="none" class="radar-ripple-2"/>
+            <g class="radar-scanner" style="transform-origin: 130px 130px;">
+              <path d="M 130 130 L 250 130 A 120 120 0 0 0 214.85 45.15 Z" fill="url(#radarScanGrad)"/>
+              <line x1="130" y1="130" x2="250" y2="130" stroke="url(#sweepBeam)" stroke-width="2"/>
+            </g>
+            <circle cx="130" cy="130" r="14" fill="#0284c7" stroke="#38bdf8" stroke-width="2"/>
+            <path d="M127 125 L133 131 L130 134 L130 122 L133 125 L127 131" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <g id="overview-radar-peers"></g>
+          </svg>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
+            <div style="padding: 0.75rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.18); border-radius: 8px;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Local BLE Identity</div>
+              <div style="font-weight: 600; color: #fff; font-size: 0.9rem;" id="overview-bitchat-nodename">OpenAlert-Mesh</div>
+              <div style="font-size: 0.72rem; color: #38bdf8; font-family: monospace; display: flex; align-items: center; gap: 0.3rem; margin-top: 0.2rem;">
+                <span id="overview-bitchat-senderid">--</span>
+              </div>
+            </div>
+            <div style="padding: 0.75rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.18); border-radius: 8px;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">GATT Service UUID</div>
+              <div style="font-weight: 500; font-family: monospace; color: #cbd5e1; font-size: 0.72rem; margin-top: 0.2rem; word-break: break-all;" id="overview-bitchat-uuid">
+                f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c
+              </div>
+            </div>
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+              <span style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em;">Discovered BLE Mesh Nodes</span>
+              <span class="badge" style="background: rgba(56,189,248,0.12); color: #38bdf8; font-size: 0.65rem;" id="overview-bitchat-peer-count-badge">0 Active</span>
+            </div>
+            <div id="overview-bitchat-peers-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 48px; align-items: center;">
+              <span style="color: var(--text-muted); font-size: 0.8rem; font-style: italic;">Listening for BitChat BLE broadcast announcements...</span>
             </div>
           </div>
         </div>
@@ -707,6 +836,149 @@ pub fn dashboard_html() -> &'static str {
     </div>
   </div>
 
+  <!-- Tab 6: Bluetooth BLE & BitChat Mesh -->
+  <div id="tab-bitchat" class="tab-content" style="display: none;">
+    <div class="layout-cols">
+      <!-- Left Column: Local BLE Subsystem & Manual Broadcast -->
+      <div>
+        <!-- Node Hardware Card -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+              <span>Local Bluetooth LE Mesh Node</span>
+            </div>
+            <span class="badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);" id="bitchat-tab-status">Active</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+            <div>
+              <div class="stat-title">Node Alias</div>
+              <div id="bitchat-tab-nodename" style="font-size: 1.1rem; font-weight: 700; color: #fff;">OpenAlert-Mesh</div>
+            </div>
+            <div>
+              <div class="stat-title">Sender ID (8-Byte)</div>
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <code id="bitchat-tab-senderid" style="color: #38bdf8; font-weight: 700; font-size: 0.95rem;">--</code>
+                <button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(56,189,248,0.15); color: #38bdf8;" onclick="copySenderId()">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+            <div>
+              <div class="stat-title">BLE GATT Service UUID</div>
+              <code style="font-size: 0.72rem; word-break: break-all; color: #94a3b8;" id="bitchat-tab-uuid">f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c</code>
+            </div>
+            <div>
+              <div class="stat-title">E2EE Cryptographic Suite</div>
+              <span class="badge badge-success" style="font-size: 0.68rem;">Noise XX + ChaChaPoly + Ed25519</span>
+            </div>
+          </div>
+
+          <div style="padding: 0.75rem; border-radius: 8px; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.18); font-size: 0.78rem; color: #94a3b8; line-height: 1.4;">
+            🛡️ <strong>Zero-Trust Mesh</strong>: BitChat uses ephemeral X25519 Diffie-Hellman keys with mutual Ed25519 identity verification and authenticated ChaCha20-Poly1305 transport encryption. Alerts reaching this node are automatically relayed to Nostr and Prometheus.
+          </div>
+        </div>
+
+        <!-- Ad-Hoc Mesh Broadcast Console -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>Ad-Hoc BitChat Mesh Alert Broadcast</span>
+            <span class="badge badge-cyan">Direct BLE Transmission</span>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+            Transmits an ad-hoc alert packet across the Bluetooth Low Energy mesh. Connected mobile devices and relays decrypt and display notifications.
+          </p>
+          <div class="form-group">
+            <label>Alert Severity</label>
+            <select id="bitchat-broadcast-sev" class="form-control">
+              <option value="warning">Warning</option>
+              <option value="critical" selected>Critical</option>
+              <option value="emergency">Emergency</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Emergency Notification Text</label>
+            <textarea id="bitchat-broadcast-msg" class="form-control" rows="3" placeholder="Enter message text to broadcast across the Bluetooth mesh..."></textarea>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="bitchat-broadcast-feedback" style="font-size: 0.8rem; color: var(--text-muted);"></span>
+            <button class="btn btn-primary" onclick="sendBitChatBroadcast()">Broadcast to Mesh</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Interactive Radar & Peers Table -->
+      <div>
+        <!-- Radar Constellation Visualizer Card -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="m12 12 7-7"/></svg>
+              <span>BitChat Mesh Radar Constellation</span>
+            </div>
+            <span class="badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);" id="tab-radar-peer-count">0 Peers Online</span>
+          </div>
+
+          <div style="position: relative; width: 300px; height: 300px; margin: 0.5rem auto 1.5rem auto; display: flex; align-items: center; justify-content: center;">
+            <svg width="300" height="300" viewBox="0 0 300 300" id="tab-radar-svg">
+              <defs>
+                <radialGradient id="tabRadarScanGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+                  <stop offset="60%" stop-color="#38bdf8" stop-opacity="0.1"/>
+                  <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="tabSweepBeam" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.9"/>
+                  <stop offset="100%" stop-color="#0284c7" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <circle cx="150" cy="150" r="140" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1.5" fill="rgba(15, 23, 42, 0.8)"/>
+              <circle cx="150" cy="150" r="100" stroke="rgba(56, 189, 248, 0.18)" stroke-width="1" fill="none" stroke-dasharray="4,4"/>
+              <circle cx="150" cy="150" r="60" stroke="rgba(56, 189, 248, 0.22)" stroke-width="1" fill="none"/>
+              <line x1="10" y1="150" x2="290" y2="150" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
+              <line x1="150" y1="10" x2="150" y2="290" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
+              <circle cx="150" cy="150" r="24" stroke="#38bdf8" fill="none" class="radar-ripple-1"/>
+              <circle cx="150" cy="150" r="24" stroke="#38bdf8" fill="none" class="radar-ripple-2"/>
+              <g class="radar-scanner" style="transform-origin: 150px 150px;">
+                <path d="M 150 150 L 290 150 A 140 140 0 0 0 248.99 51.01 Z" fill="url(#tabRadarScanGrad)"/>
+                <line x1="150" y1="150" x2="290" y2="150" stroke="url(#tabSweepBeam)" stroke-width="2.5"/>
+              </g>
+              <circle cx="150" cy="150" r="16" fill="#0284c7" stroke="#38bdf8" stroke-width="2.5"/>
+              <path d="M147 144 L154 151 L150 155 L150 141 L154 145 L147 152" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <g id="tab-radar-peers"></g>
+            </svg>
+          </div>
+
+          <!-- Peer List Table -->
+          <div class="card-title" style="margin-top: 1rem;">
+            <span>Discovered Peers &amp; Cryptographic Sessions</span>
+            <button class="btn" style="font-size: 0.7rem; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.08); color: #fff;" onclick="loadBitChatStatus()">Refresh</button>
+          </div>
+          <div style="max-height: 380px; overflow-y: auto;">
+            <table id="bitchat-peers-table">
+              <thead>
+                <tr>
+                  <th>Peer Device / Nick</th>
+                  <th>Sender ID</th>
+                  <th>E2EE Handshake State</th>
+                  <th>Verification</th>
+                  <th>Traffic</th>
+                  <th>Last Seen</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Scanning for BitChat BLE peer packets...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Test Alert Dispatcher -->
   <div id="test-modal" class="modal-overlay">
     <div class="glass-panel modal-box">
@@ -756,6 +1028,9 @@ pub fn dashboard_html() -> &'static str {
       if (tabId === 'sms') {
         loadSmsStatus();
         loadSmsHistory();
+      }
+      if (tabId === 'bitchat') {
+        loadBitChatStatus();
       }
     }
 
@@ -876,6 +1151,9 @@ pub fn dashboard_html() -> &'static str {
       if (data.sms) {
         renderSmsStatus(data.sms);
       }
+      if (data.bitchat) {
+        renderBitChat(data.bitchat);
+      }
     }
 
     async function loadSmsStatus() {
@@ -887,6 +1165,164 @@ pub fn dashboard_html() -> &'static str {
       } catch (err) {
         console.error('Error fetching SMS status', err);
       }
+    }
+
+    function copySenderId() {
+      const code = document.getElementById('bitchat-tab-senderid').innerText.trim();
+      if (!code || code === '--') return;
+      navigator.clipboard.writeText(code).then(() => {
+        alert('Copied BitChat Sender ID: ' + code);
+      });
+    }
+
+    async function loadBitChatStatus() {
+      try {
+        const res = await fetch('/api/v1/bitchat/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderBitChat(data);
+      } catch (err) {
+        console.error('Error fetching BitChat status', err);
+      }
+    }
+
+    async function sendBitChatBroadcast() {
+      const msg = document.getElementById('bitchat-broadcast-msg').value.trim();
+      const sev = document.getElementById('bitchat-broadcast-sev').value;
+      const fb = document.getElementById('bitchat-broadcast-feedback');
+      if (!msg) {
+        alert('Please enter a message to broadcast across the BitChat mesh');
+        return;
+      }
+      if (fb) fb.innerText = 'Transmitting across Bluetooth mesh...';
+      try {
+        const res = await fetch('/api/v1/bitchat/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, severity: sev })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (fb) fb.innerText = '✅ Broadcast dispatched!';
+          document.getElementById('bitchat-broadcast-msg').value = '';
+          setTimeout(() => { if (fb) fb.innerText = ''; }, 4000);
+        } else {
+          if (fb) fb.innerText = '❌ Failed: ' + (data.message || res.statusText);
+        }
+      } catch (err) {
+        if (fb) fb.innerText = '❌ Error: ' + err;
+      }
+    }
+
+    function renderBitChat(bc) {
+      if (!bc) return;
+
+      const pCount = (bc.peers || []).length;
+      const countEl = document.getElementById('stat-bitchat-peers-count');
+      if (countEl) countEl.innerText = pCount;
+      const badgeEl = document.getElementById('stat-bitchat-badge');
+      if (badgeEl) {
+        badgeEl.innerText = !bc.enabled ? 'Disabled' : (bc.status || 'Active (BLE GATT)');
+      }
+
+      const ovNode = document.getElementById('overview-bitchat-nodename');
+      if (ovNode) ovNode.innerText = bc.node_name || 'OpenAlert-Mesh';
+      const ovId = document.getElementById('overview-bitchat-senderid');
+      if (ovId) ovId.innerText = bc.sender_id || '--';
+      const ovUuid = document.getElementById('overview-bitchat-uuid');
+      if (ovUuid && bc.service_uuid) ovUuid.innerText = bc.service_uuid;
+      const ovStatus = document.getElementById('overview-bitchat-status');
+      if (ovStatus) ovStatus.innerText = !bc.enabled ? 'Disabled' : (bc.status || 'Active (BLE GATT)');
+
+      const ovPeerBadge = document.getElementById('overview-bitchat-peer-count-badge');
+      if (ovPeerBadge) ovPeerBadge.innerText = `${pCount} Discovered`;
+
+      const ovPeerList = document.getElementById('overview-bitchat-peers-list');
+      if (ovPeerList) {
+        if (!bc.peers || bc.peers.length === 0) {
+          ovPeerList.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem; font-style: italic;">Listening for BitChat BLE broadcast announcements...</span>';
+        } else {
+          ovPeerList.innerHTML = bc.peers.map(p => {
+            const isEst = p.session_state && p.session_state.includes('Established');
+            const dotCol = isEst ? '#10b981' : '#38bdf8';
+            return `
+              <div class="bitchat-peer-chip" onclick="switchTab('bitchat')" title="Sender ID: ${p.sender_id}">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: ${dotCol}; box-shadow: 0 0 6px ${dotCol};"></span>
+                <strong>${p.nickname || 'Peer'}</strong>
+                <span style="color: var(--text-muted); font-family: monospace; font-size: 0.7rem;">${p.sender_id.slice(0, 6)}...</span>
+                <span style="font-size: 0.68rem; color: #38bdf8;">${isEst ? '🔒 E2EE' : '📡 Discovered'}</span>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      const tabNode = document.getElementById('bitchat-tab-nodename');
+      if (tabNode) tabNode.innerText = bc.node_name || 'OpenAlert-Mesh';
+      const tabId = document.getElementById('bitchat-tab-senderid');
+      if (tabId) tabId.innerText = bc.sender_id || '--';
+      const tabUuid = document.getElementById('bitchat-tab-uuid');
+      if (tabUuid && bc.service_uuid) tabUuid.innerText = bc.service_uuid;
+      const tabStatus = document.getElementById('bitchat-tab-status');
+      if (tabStatus) tabStatus.innerText = !bc.enabled ? 'Disabled' : (bc.status || 'Active');
+      const tabCount = document.getElementById('tab-radar-peer-count');
+      if (tabCount) tabCount.innerText = `${pCount} Peers Online`;
+
+      const tbody = document.querySelector('#bitchat-peers-table tbody');
+      if (tbody) {
+        if (!bc.peers || bc.peers.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No active BitChat peers detected in BLE range</td></tr>';
+        } else {
+          tbody.innerHTML = bc.peers.map(p => {
+            const isEst = p.session_state && p.session_state.includes('Established');
+            const stBadge = isEst ? 'badge-success' : 'badge-primary';
+            const verBadge = p.verified ? '<span class="badge badge-success" style="font-size: 0.65rem;">✅ Valid Ed25519</span>' : '<span class="badge badge-warning" style="font-size: 0.65rem;">⚠️ Unverified</span>';
+            const timeStr = p.last_seen_seconds_ago < 5 ? 'Just now' : `${p.last_seen_seconds_ago}s ago`;
+            return `
+              <tr>
+                <td><strong>${p.nickname || 'Peer'}</strong></td>
+                <td><code style="color: #38bdf8;">${p.sender_id}</code></td>
+                <td><span class="badge ${stBadge}" style="font-size: 0.68rem;">${p.session_state}</span></td>
+                <td>${verBadge}</td>
+                <td style="font-size: 0.75rem;">RX: ${p.messages_received || 0} | TX: ${p.messages_sent || 0}</td>
+                <td style="font-size: 0.75rem; color: var(--text-muted);">${timeStr}</td>
+                <td>
+                  <button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.5rem; background: rgba(56,189,248,0.2); border: 1px solid rgba(56,189,248,0.4); color: #38bdf8; cursor: pointer;" onclick="document.getElementById('bitchat-broadcast-msg').value = 'Direct notification to ${p.nickname}: '; switchTab('bitchat');">Alert</button>
+                </td>
+              </tr>
+            `;
+          }).join('');
+        }
+      }
+
+      drawRadarPeers('overview-radar-peers', bc.peers || [], 130, 130, 100);
+      drawRadarPeers('tab-radar-peers', bc.peers || [], 150, 150, 120);
+    }
+
+    function drawRadarPeers(groupId, peers, cx, cy, maxR) {
+      const g = document.getElementById(groupId);
+      if (!g) return;
+
+      if (!peers || peers.length === 0) {
+        g.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+      peers.forEach((p, idx) => {
+        const count = peers.length;
+        const angle = (idx / count) * (2 * Math.PI) + 0.6;
+        const dist = 45 + (idx % 3) * 28;
+        const px = cx + dist * Math.cos(angle);
+        const py = cy + dist * Math.sin(angle);
+        const isEst = p.session_state && p.session_state.includes('Established');
+        const fillCol = isEst ? '#10b981' : '#38bdf8';
+
+        html += `<line x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" stroke="${fillCol}" stroke-width="1.2" stroke-dasharray="2,2" stroke-opacity="0.6"/>`;
+        html += `<circle cx="${px}" cy="${py}" r="7" fill="${fillCol}" stroke="#fff" stroke-width="1.5" style="filter: drop-shadow(0 0 4px ${fillCol}); cursor: pointer;" onclick="switchTab('bitchat')"/>`;
+        html += `<text x="${px}" y="${py - 10}" fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle" font-family="sans-serif">${p.nickname || 'Peer'}</text>`;
+      });
+      g.innerHTML = html;
     }
 
     function renderSmsStatus(data) {
@@ -1156,6 +1592,26 @@ pub async fn sse_telemetry_handler(
             None
         };
 
+        let bitchat_status = if let Some(bc) = state.engine.bitchat_service().await {
+            Some(bc.get_status().await)
+        } else {
+            let (_, _, my_sender_id) = crate::bitchat::BitChatService::derive_keys(&state.engine.config().bitchat.node_name);
+            Some(crate::models::BitChatStatusReport {
+                enabled: state.engine.config().bitchat.enabled,
+                node_name: state.engine.config().bitchat.node_name.clone(),
+                sender_id: hex::encode(my_sender_id),
+                service_uuid: crate::bitchat::DEFAULT_BITCHAT_SERVICE_UUID.to_string(),
+                status: if state.engine.config().bitchat.enabled {
+                    "Active (BLE GATT)".to_string()
+                } else {
+                    "Disabled".to_string()
+                },
+                peers_count: 0,
+                active_sessions_count: 0,
+                peers: Vec::new(),
+            })
+        };
+
         let payload = serde_json::json!({
             "status": health.status,
             "version": health.version,
@@ -1166,6 +1622,7 @@ pub async fn sse_telemetry_handler(
             "spool": spool.map(|s| s.spooled).unwrap_or(0),
             "nostr_relays": nostr_relays,
             "sms": sms_status,
+            "bitchat": bitchat_status,
         });
 
         let event = Event::default().data(payload.to_string());

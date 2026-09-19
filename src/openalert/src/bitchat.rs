@@ -24,7 +24,7 @@ use snow::TransportState;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
@@ -77,12 +77,24 @@ pub struct ParsedPacket {
     pub signature_valid: bool,
 }
 
+/// Detailed record of a discovered or connected BitChat peer in the local registry.
+#[derive(Debug, Clone)]
+pub struct BitChatPeerEntry {
+    pub sender_id: [u8; 8],
+    pub nickname: String,
+    pub verified: bool,
+    pub last_seen: Instant,
+    pub messages_received: u64,
+    pub messages_sent: u64,
+}
+
 /// Manages native Linux BlueZ Bluetooth Low Energy operations and BitChat mesh communications.
 pub struct BitChatService {
     config: BitChatConfig,
     engine: Option<Arc<AlertEngine>>,
     running: Arc<AtomicBool>,
     sessions: Arc<RwLock<HashMap<[u8; 8], PeerNoiseSession>>>,
+    peers: Arc<RwLock<HashMap<[u8; 8], BitChatPeerEntry>>>,
 }
 
 impl BitChatService {
@@ -93,12 +105,81 @@ impl BitChatService {
             engine,
             running: Arc::new(AtomicBool::new(true)),
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            peers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Terminates all background BLE advertising and notification loops.
     pub fn stop(&self) {
         self.running.store(false, Ordering::Relaxed);
+    }
+
+    /// Manually registers or updates a peer in the registry (useful for testing or pre-configured peers).
+    pub async fn record_peer(&self, sender_id: [u8; 8], nickname: &str, verified: bool) {
+        let mut guard = self.peers.write().await;
+        let entry = guard.entry(sender_id).or_insert_with(|| BitChatPeerEntry {
+            sender_id,
+            nickname: nickname.to_string(),
+            verified,
+            last_seen: Instant::now(),
+            messages_received: 0,
+            messages_sent: 0,
+        });
+        entry.nickname = nickname.to_string();
+        entry.verified = verified;
+        entry.last_seen = Instant::now();
+    }
+
+    /// Generates a comprehensive status report of the BitChat BLE mesh and connected peers.
+    pub async fn get_status(&self) -> crate::models::BitChatStatusReport {
+        let (_, _, my_sender_id) = Self::derive_keys(&self.config.node_name);
+        let peers_guard = self.peers.read().await;
+        let sessions_guard = self.sessions.read().await;
+
+        let mut peer_infos = Vec::new();
+        let mut active_sessions_count = 0;
+
+        for (sender_id, entry) in peers_guard.iter() {
+            let session_state = match sessions_guard.get(sender_id) {
+                Some(PeerNoiseSession::Established(_)) => {
+                    active_sessions_count += 1;
+                    "Established (E2EE 🔒)".to_string()
+                }
+                Some(PeerNoiseSession::Handshaking(_)) => "Handshaking...".to_string(),
+                None => "Announced / Discovered".to_string(),
+            };
+
+            peer_infos.push(crate::models::BitChatPeerInfo {
+                sender_id: hex::encode(entry.sender_id),
+                nickname: entry.nickname.clone(),
+                session_state,
+                verified: entry.verified,
+                last_seen_seconds_ago: entry.last_seen.elapsed().as_secs(),
+                messages_received: entry.messages_received,
+                messages_sent: entry.messages_sent,
+            });
+        }
+
+        peer_infos.sort_by_key(|p| p.last_seen_seconds_ago);
+
+        let status_desc = if !self.config.enabled {
+            "Disabled".to_string()
+        } else if self.running.load(Ordering::Relaxed) {
+            "Active & Advertising (BLE GATT)".to_string()
+        } else {
+            "Standby".to_string()
+        };
+
+        crate::models::BitChatStatusReport {
+            enabled: self.config.enabled,
+            node_name: self.config.node_name.clone(),
+            sender_id: hex::encode(my_sender_id),
+            service_uuid: DEFAULT_BITCHAT_SERVICE_UUID.to_string(),
+            status: status_desc,
+            peers_count: peer_infos.len(),
+            active_sessions_count,
+            peers: peer_infos,
+        }
     }
 
     /// Derives the standard BitChat 8-byte sender ID from an X25519 static public key.
@@ -754,6 +835,7 @@ impl BitChatService {
         let noise_privkey_bytes: [u8; 32] = noise_hasher.finalize().into();
 
         let sess_map = self.sessions.clone();
+        let peer_map = self.peers.clone();
         let eng_opt = self.engine.clone();
         let my_sender_id = sender_id;
         let tx_w = bcast_tx.clone();
@@ -791,6 +873,7 @@ impl BitChatService {
                             let name_w = name_w.clone();
                             let n_priv_w = n_priv_w.clone();
                             let sess_map = sess_map.clone();
+                            let peer_map = peer_map.clone();
                             let eng_opt = eng_opt.clone();
 
                             async move {
@@ -829,6 +912,26 @@ impl BitChatService {
                                         ann_reply.len()
                                     );
                                     let _ = tx_w.send(ann_reply);
+
+                                    if let Some(ref p) = parsed {
+                                        let mut p_guard = peer_map.write().await;
+                                        let nick = if let Some(ref b) = p.payload {
+                                            String::from_utf8_lossy(b).to_string()
+                                        } else {
+                                            format!("Peer-{}", &hex::encode(p.sender_id)[..4])
+                                        };
+                                        let entry = p_guard.entry(p.sender_id).or_insert_with(|| BitChatPeerEntry {
+                                            sender_id: p.sender_id,
+                                            nickname: nick.clone(),
+                                            verified: p.signature_valid,
+                                            last_seen: Instant::now(),
+                                            messages_received: 0,
+                                            messages_sent: 0,
+                                        });
+                                        entry.nickname = nick;
+                                        entry.verified = p.signature_valid;
+                                        entry.last_seen = Instant::now();
+                                    }
                                 } else if pkt_type == PACKET_TYPE_NOISE_HANDSHAKE || pkt_type == 0x12 {
                                     if let Some(parsed_pkt) = parsed {
                                         let from_peer = parsed_pkt.sender_id;
@@ -893,6 +996,17 @@ impl BitChatService {
                                                                     );
                                                                     let mut s = sess_map.write().await;
                                                                     s.insert(from_peer, PeerNoiseSession::Established(transport));
+                                                                    {
+                                                                        let mut p_guard = peer_map.write().await;
+                                                                        p_guard.entry(from_peer).or_insert_with(|| BitChatPeerEntry {
+                                                                            sender_id: from_peer,
+                                                                            nickname: format!("Peer-{}", &hex::encode(from_peer)[..4]),
+                                                                            verified: true,
+                                                                            last_seen: Instant::now(),
+                                                                            messages_received: 0,
+                                                                            messages_sent: 0,
+                                                                        }).last_seen = Instant::now();
+                                                                    }
                                                                 }
                                                                 Err(e) => warn!("Failed to convert handshake into transport mode: {}", e),
                                                             }
@@ -966,6 +1080,14 @@ impl BitChatService {
                                                                 reply_txt
                                                             );
                                                             let _ = tx_w.send(enc_reply);
+                                                        }
+                                                        {
+                                                            let mut p_guard = peer_map.write().await;
+                                                            if let Some(entry) = p_guard.get_mut(&from_peer) {
+                                                                entry.messages_received += 1;
+                                                                entry.messages_sent += 1;
+                                                                entry.last_seen = Instant::now();
+                                                            }
                                                         }
 
                                                         if let Some(ref eng) = eng_opt {
