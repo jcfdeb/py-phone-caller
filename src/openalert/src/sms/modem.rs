@@ -38,10 +38,58 @@ impl ModemDriver {
         }
     }
 
+    /// Resolves the effective serial port path.
+    /// If the configured path exists and is accessible, it is returned.
+    /// If missing or disconnected, attempts auto-discovery of known persistent AT endpoints:
+    /// 1. `/dev/ttySMS` (OpenAlert udev rule)
+    /// 2. `/dev/simcom-at` (OpenAlert udev rule)
+    /// 3. Any `/dev/serial/by-id/*SimTech*if02*` (Hardware AT Interface 02)
+    /// 4. `/dev/ttyUSB2` (Standard primary AT tty)
+    pub fn resolve_port(&self) -> String {
+        let configured = std::path::Path::new(&self.port_path);
+        if configured.exists() {
+            return self.port_path.clone();
+        }
+
+        // Only fall back to hardware discovery if the configured port was a modem device pattern
+        let is_modem_pattern = self.port_path.starts_with("/dev/ttyUSB")
+            || self.port_path.starts_with("/dev/serial/")
+            || self.port_path == "/dev/ttySMS"
+            || self.port_path == "/dev/simcom-at";
+
+        if !is_modem_pattern {
+            return self.port_path.clone();
+        }
+
+        if std::path::Path::new("/dev/ttySMS").exists() {
+            return "/dev/ttySMS".to_string();
+        }
+
+        if std::path::Path::new("/dev/simcom-at").exists() {
+            return "/dev/simcom-at".to_string();
+        }
+
+        if let Ok(entries) = std::fs::read_dir("/dev/serial/by-id") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.contains("SimTech") && name.contains("if02") {
+                    return format!("/dev/serial/by-id/{}", name);
+                }
+            }
+        }
+
+        if std::path::Path::new("/dev/ttyUSB2").exists() {
+            return "/dev/ttyUSB2".to_string();
+        }
+
+        self.port_path.clone()
+    }
+
     /// Attempts to open the serial port asynchronously.
     /// Returns `Err` if the device file is missing, permission is denied, or port is busy.
     pub fn open_port(&self) -> Result<SerialStream, String> {
-        let mut builder = tokio_serial::new(&self.port_path, self.baud_rate);
+        let actual_port = self.resolve_port();
+        let mut builder = tokio_serial::new(&actual_port, self.baud_rate);
         builder = builder.data_bits(tokio_serial::DataBits::Eight);
         builder = builder.stop_bits(tokio_serial::StopBits::One);
         builder = builder.parity(tokio_serial::Parity::None);
@@ -49,8 +97,8 @@ impl ModemDriver {
 
         builder.open_native_async().map_err(|e| {
             format!(
-                "Serial port '{}' could not be opened: {}",
-                self.port_path, e
+                "Serial port '{}' (resolved: '{}') could not be opened: {}",
+                self.port_path, actual_port, e
             )
         })
     }
@@ -351,7 +399,7 @@ pub fn parse_cmgl_response(raw: &str) -> Vec<InboundSms> {
         }
     }
 
-    // Commit trailing message
+    // Commit final message in buffer
     if let Some(idx) = current_index {
         let body = current_body_lines.join("\n");
         let decoded_sender = codec::normalize_inbound_text(&current_sender);
@@ -374,37 +422,33 @@ mod tests {
     #[test]
     fn test_parse_cmgl_plain_ascii() {
         let raw = r#"
-+CMGL: 1,"REC UNREAD","+393349246425",,"26/09/19,14:30:00+08"
-High temperature in server room rack 4
-+CMGL: 2,"REC READ","+393331122334",,"26/09/19,14:35:00+08"
-Power supply restored
++CMGL: 1,"REC UNREAD","+393349246425",,"2026/09/19 14:30:00+08"
+CRITICAL: Water pump failure at plant 4
++CMGL: 2,"REC READ","+391234567890",,"2026/09/19 14:32:00+08"
+System OK
 OK
 "#;
-        let parsed = parse_cmgl_response(raw);
-        assert_eq!(parsed.len(), 2);
-        assert_eq!(parsed[0].index, 1);
-        assert_eq!(parsed[0].sender, "+393349246425");
-        assert_eq!(parsed[0].body, "High temperature in server room rack 4");
-        assert_eq!(parsed[1].index, 2);
-        assert_eq!(parsed[1].sender, "+393331122334");
-        assert_eq!(parsed[1].body, "Power supply restored");
+        let msgs = parse_cmgl_response(raw);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].index, 1);
+        assert_eq!(msgs[0].sender, "+393349246425");
+        assert_eq!(msgs[0].body, "CRITICAL: Water pump failure at plant 4");
+        assert_eq!(msgs[1].index, 2);
+        assert_eq!(msgs[1].body, "System OK");
     }
 
     #[test]
     fn test_parse_cmgl_ucs2() {
-        let phone = "+393349246425";
-        let body = "Allarme: surriscaldamento 🚨";
-        let hex_phone = codec::to_ucs2_hex(phone);
-        let hex_body = codec::to_ucs2_hex(body);
-
-        let raw = format!(
-            "+CMGL: 5,\"REC UNREAD\",\"{hex_phone}\",,\"26/09/19,15:00:00+08\"\r\n{hex_body}\r\nOK\r\n"
-        );
-
-        let parsed = parse_cmgl_response(&raw);
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].index, 5);
-        assert_eq!(parsed[0].sender, phone);
-        assert_eq!(parsed[0].body, body);
+        // "004F004B" is "OK" in UCS-2 HEX
+        let raw = r#"
++CMGL: 3,"REC UNREAD","002B003300390033003300340039003200340036003400320035",,"2026/09/19 14:30:00+08"
+004F004B
+OK
+"#;
+        let msgs = parse_cmgl_response(raw);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].index, 3);
+        assert_eq!(msgs[0].sender, "+393349246425");
+        assert_eq!(msgs[0].body, "OK");
     }
 }

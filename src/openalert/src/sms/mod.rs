@@ -100,11 +100,21 @@ impl SmsService {
         if !is_enabled {
             info!("Cellular GSM/LTE SMS subsystem is disabled ([sms] enabled = false)");
         } else {
-            info!(
-                "📡 Starting cellular SMS worker on '{}' (poll interval: {}s)",
-                self.driver.port_path,
-                self.config.read().await.poll_interval_seconds
-            );
+            let active_port = self.driver.resolve_port();
+            if active_port != self.driver.port_path {
+                info!(
+                    "📡 Starting cellular SMS worker on '{}' (resolved to active port '{}', poll interval: {}s)",
+                    self.driver.port_path,
+                    active_port,
+                    self.config.read().await.poll_interval_seconds
+                );
+            } else {
+                info!(
+                    "📡 Starting cellular SMS worker on '{}' (poll interval: {}s)",
+                    self.driver.port_path,
+                    self.config.read().await.poll_interval_seconds
+                );
+            }
         }
 
         let mut last_probe_log = tokio::time::Instant::now() - Duration::from_secs(300);
@@ -154,7 +164,7 @@ impl SmsService {
                             if last_probe_log.elapsed() > Duration::from_secs(60) {
                                 warn!(
                                     "⚠️ SMS modem device '{}' unreachable: {}. Subsystem remains resilient.",
-                                    self.driver.port_path, err
+                                    self.driver.resolve_port(), err
                                 );
                                 last_probe_log = tokio::time::Instant::now();
                             }
@@ -237,8 +247,8 @@ impl SmsService {
             let alert = Alert {
                 alert_id,
                 severity: AlertSeverity::Warning,
-                summary: clean_body.to_string(),
-                description: Some(format!("Cellular SMS notification from {}", clean_sender)),
+                summary: format!("Cellular SMS notification from {}", clean_sender),
+                description: Some(clean_body.to_string()),
                 source: AlertSource::Sms,
                 sender: Some(clean_sender.to_string()),
                 node: None,
@@ -389,9 +399,10 @@ impl SmsService {
         let cfg = self.config.read().await;
         let state = self.modem_state.read().await;
 
+        let active_port = self.driver.resolve_port();
         SmsStatusResponse {
             enabled: cfg.enabled,
-            port: cfg.port.clone(),
+            port: active_port,
             baud_rate: cfg.baud_rate,
             poll_interval_seconds: cfg.poll_interval_seconds,
             ttl_minutes: cfg.ttl_minutes,
