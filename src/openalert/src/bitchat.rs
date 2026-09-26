@@ -1196,7 +1196,31 @@ impl BitChatService {
                                                 txt,
                                                 hex::encode(from_peer)
                                             );
-                                            // Public channel mesh chat messages are NOT escalated as alerts
+                                            if let Some(ref eng) = eng_opt {
+                                                let alert = Alert {
+                                                    alert_id: format!("bitchat-bcast-{}-{}", &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
+                                                    severity: AlertSeverity::Info,
+                                                    summary: format!("[Mesh Broadcast] {}", txt),
+                                                    description: Some(format!(
+                                                        "Public BLE mesh chat broadcast from BitChat peer {}",
+                                                        hex::encode(from_peer)
+                                                    )),
+                                                    source: AlertSource::BitChat,
+                                                    sender: Some(hex::encode(from_peer)),
+                                                    node: Some(name_w.to_string()),
+                                                    starts_at: Utc::now(),
+                                                    destinations: vec!["nostr".to_string()],
+                                                    origin_peer: None,
+                                                    hop: 3,
+                                                };
+                                                let eng_clone = eng.clone();
+                                                tokio::spawn(async move {
+                                                    sleep(Duration::from_millis(250)).await;
+                                                    if let Err(err) = eng_clone.route_alert(alert).await {
+                                                        warn!("Failed to route BitChat broadcast to Nostr: {}", err);
+                                                    }
+                                                });
+                                            }
                                         }
                                     }
                                 }

@@ -23,6 +23,14 @@ OpenAlert is fundamentally bidirectional, acting as both a listener and a broadc
 * **Inbound (Receive):** The gateway listens for incoming JSON payloads via standard REST webhooks (compatible with existing IT watchdogs). Simultaneously, it monitors the Nostr network via persistent WebSocket connections to a configured relay pool.
 * **Outbound (Send):** Upon processing an incoming decentralized event (from Nostr or BitChat), the system standardizes the payload into a Prometheus Alertmanager webhook and POSTs it to a configured local or remote endpoint. Alternatively, when ingesting a local IT alert, it can cryptographically sign and broadcast the alert globally as a Nostr event.
 
+### 0xChat & Embedded Nostr Tactical Micro-Relay
+To provide secure, human-in-the-loop mobile alerting and Command & Control (C2) without cloud dependencies:
+* **Embedded Tactical Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server running directly inside `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, SQLite event indexing).
+* **NIP-17 / NIP-59 / NIP-44 Onion Encryption:** Dual-mode DM engine supporting both legacy NIP-04 Kind 4 and modern three-tier Gift Wraps (`Kind 1059` Wrap $\rightarrow$ `Kind 13` Seal $\rightarrow$ `Kind 14` Rumor) with ChaCha20-Poly1305.
+* **Interactive Tactical C2:** Operators interact directly from 0xChat using `status`, `ping`, `mesh <msg>`, `sms <num> <msg>`, `ack`, or `help`.
+* **Thread-Aware Reply ACK:** Tapping "Reply" on an alert in 0xChat and sending `ack` or `ok` automatically follows the NIP-10 `#e` event tag to mark the alert resolved in SQLite.
+* **Dual SSL / TLS Strategy (Proxy Offloading & Native TLS):** Production deployments delegate WSS termination to edge reverse proxies (Caddy, Nginx). For air-gapped field kits, `openalertd` integrates battle-ready native TLS (`[nostr.relay_server.tls]`) using `tokio-rustls` for direct `wss://` encrypted sockets without third-party dependencies.
+
 ### BitChat Bluetooth LE Mesh Implementation
 To guarantee event delivery when standard internet routing (TCP/IP) fails, OpenAlert natively implements the BitChat protocol.
 * **Offline-First Ad-Hoc Mesh:** Utilizes Bluetooth Low Energy (BLE) peripheral GATT services via Linux BlueZ D-Bus, bypassing ISPs, cellular networks, and centralized servers.
@@ -61,8 +69,14 @@ When backhauls fail or are unavailable, OpenAlert operates an autonomous peering
 ## 4. Web UI Mission Control & Operator Telemetry
 
 OpenAlert features a zero-dependency, self-contained real-time Web Dashboard served directly by the daemon on `/`:
-* **Live SSE Telemetry:** Real-time Server-Sent Events stream updating daemon health, link states, routing tables, and spool metrics every 2s without external web servers or frameworks.
-* **Operator Actions:** Interactive browser buttons for manually resetting peer circuit breakers and purging test spool queues.
+* **Day / Night High-Contrast Theme Engine:** 1-click tactical toggle between **Midnight NOC** (dark obsidian glass) and **Day Mode** (crisp high-contrast slate & titanium white with sunlight-readable typography for mobile field operators).
+* **Zero-Dependency Web Audio Emergency Alarms (Muted by Default):** Pure HTML5 Web Audio API synthesized acoustic alarms without external sound files. Operators can toggle **Sound ON / Muted** with 1 click. Generates distinctive synthesized alarms for critical sirens, warnings, and chimes.
+* **Active Incident Strobe Banner & 1-Tap Acknowledge (ACK):** High-severity critical alarms drop an animated pulsating banner with an instant **"Acknowledge & Silence"** trigger that suppresses audio and marks the incident resolved.
+* **Live Status Hero Panels & Gauges:** Real-time daemon health, link states, spool buffer, and a visual **LoRa Duty-Cycle Progress Meter** tracking against the 1.0% ETSI EN 300 220 airtime ceiling.
+* **Live SSE Telemetry:** Server-Sent Events streaming daemon diagnostics, topology links, Nostr relay health, and BitChat radar every 2s without external web servers or frameworks.
+* **💻 Interactive Console & Live Log Terminal:** Dedicated streaming terminal with real-time log filtering (by text or level: `ALL`, `INFO`, `WARN`, `ERROR`), auto-scroll locking, 1-click clipboard export, and buffer clearance.
+* **🛠️ Integrated Operational Tools:** In-browser Nostr Secp256k1 keypair generator, BIP-340 Bech32 converter & deriver, cellular SMS UCS-2 hex translator, and 256-bit cryptographic keygen.
+* **⚙️ Live Configuration & ACL Management:** Web-based editing of Nostr 0xChat operator lists, SMS authorized sender ACLs, and live TOML configuration file with automatic `.bak` backups and syntax validation.
 * **Authentication (`[dashboard.auth]`):** Zero-friction open access by default; configurable HTTP Basic and Bearer authentication backed by timing-safe constant-time comparisons (`subtle::ConstantTimeEq`) and SHA-256 password hashing.
 
 ---
@@ -77,6 +91,15 @@ cd src/openalert
 
 # Validate configuration syntax and directory structure
 cargo run -- check-config config/openalertd.toml
+
+# Generate a full Nostr identity keypair (nsec / npub / hex) with ready-to-paste TOML
+cargo run -- generate-keypair
+
+# Convert 0xChat mobile npub or nsec into hex (and auto-derive pubkeys)
+cargo run -- convert-key npub1uvtjer4wn7y2qpe4clvqd7qz7x483pthpngewqddc03xes39uq3sw9p5u6
+
+# Bi-directionally convert between UTF-8 text and cellular SMS UCS-2 hex
+cargo run -- convert-sms "Critical alert ⚠️"
 
 # Generate a secure SHA-256 password hash for dashboard configuration
 cargo run -- hash-password "yourSecretPassword"

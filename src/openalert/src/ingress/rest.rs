@@ -9,16 +9,16 @@ use crate::engine::AlertEngine;
 use crate::error::Result;
 use crate::models::{
     Alert, AlertSeverity, AlertSource, PeeringStatusReport, PrometheusAlertmanagerPayload,
-    PrometheusWebhookResponse, RestAlertRequest, RestAlertResponse,
-    SmsConfigUpdateRequest, SmsSendRequest,
+    PrometheusWebhookResponse, RestAlertRequest, RestAlertResponse, SmsConfigUpdateRequest,
+    SmsSendRequest,
 };
 use axum::{
+    Json, Router,
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use hmac::{Hmac, Mac};
@@ -69,14 +69,21 @@ pub fn check_dashboard_auth(
                 .decode(encoded.trim())
                 .ok()
                 .and_then(|d| String::from_utf8(d).ok())
-                .and_then(|creds| creds.split_once(':').map(|(u, p)| (u.to_string(), p.to_string())))
+                .and_then(|creds| {
+                    creds
+                        .split_once(':')
+                        .map(|(u, p)| (u.to_string(), p.to_string()))
+                })
             {
                 use sha2::Digest;
                 let given_hash = hex::encode(sha2::Sha256::digest(password.as_bytes()));
                 let expected_hash = config.dashboard.auth.password_hash.trim().to_lowercase();
-                let clean_expected = expected_hash.strip_prefix("sha256:").unwrap_or(&expected_hash);
+                let clean_expected = expected_hash
+                    .strip_prefix("sha256:")
+                    .unwrap_or(&expected_hash);
 
-                let user_match = verify_constant_time(username.trim(), &config.dashboard.auth.username);
+                let user_match =
+                    verify_constant_time(username.trim(), &config.dashboard.auth.username);
                 let pass_match = verify_constant_time(&given_hash, clean_expected);
 
                 if user_match && pass_match {
@@ -86,13 +93,21 @@ pub fn check_dashboard_auth(
         }
         // 2. Also allow Bearer token if configured in rest.auth_token or matching hash
         if let Some(token) = auth_val.strip_prefix("Bearer ") {
-            if config.rest.auth_token.as_deref().map(|exp| verify_constant_time(token.trim(), exp)).unwrap_or(false) {
+            if config
+                .rest
+                .auth_token
+                .as_deref()
+                .map(|exp| verify_constant_time(token.trim(), exp))
+                .unwrap_or(false)
+            {
                 return Ok(());
             }
             use sha2::Digest;
             let token_hash = hex::encode(sha2::Sha256::digest(token.trim().as_bytes()));
             let expected_hash = config.dashboard.auth.password_hash.trim().to_lowercase();
-            let clean_expected = expected_hash.strip_prefix("sha256:").unwrap_or(&expected_hash);
+            let clean_expected = expected_hash
+                .strip_prefix("sha256:")
+                .unwrap_or(&expected_hash);
             if verify_constant_time(&token_hash, clean_expected) {
                 return Ok(());
             }
@@ -127,7 +142,10 @@ pub fn compute_hmac_sha256(secret: &[u8], payload: &[u8]) -> String {
 
 /// Verifies an HMAC-SHA256 hex string (with or without 'sha256=' prefix) against the raw payload.
 pub fn verify_hmac_sha256(secret: &[u8], payload: &[u8], signature_hex: &str) -> bool {
-    let clean_hex = signature_hex.strip_prefix("sha256=").unwrap_or(signature_hex).trim();
+    let clean_hex = signature_hex
+        .strip_prefix("sha256=")
+        .unwrap_or(signature_hex)
+        .trim();
     let Ok(expected_sig) = hex::decode(clean_hex) else {
         return false;
     };
@@ -273,25 +291,44 @@ impl RestServer {
 
         let app = Router::new()
             .route("/", get(crate::ingress::dashboard::dashboard_handler))
-            .route("/dashboard", get(crate::ingress::dashboard::dashboard_handler))
+            .route(
+                "/dashboard",
+                get(crate::ingress::dashboard::dashboard_handler),
+            )
             .route("/health", get(health_check))
+            .route("/api/v1/logo", get(crate::ingress::dashboard::logo_handler))
+            .route("/logo.png", get(crate::ingress::dashboard::logo_handler))
             .route("/api/v1/status", get(status_handler))
             .route("/api/v1/peers", get(peers_handler))
             .route("/api/v1/peers/{name}/reset", post(reset_peer_handler))
             .route("/api/v1/spool", get(spool_handler))
             .route("/api/v1/spool/purge", post(purge_spool_handler))
-            .route("/api/v1/events/live", get(crate::ingress::dashboard::sse_telemetry_handler))
+            .route(
+                "/api/v1/events/live",
+                get(crate::ingress::dashboard::sse_telemetry_handler),
+            )
             .route("/api/v1/alerts", post(ingest_alert))
             .route(
                 "/api/v1/webhook/prometheus",
                 post(ingest_prometheus_webhook),
             )
             .route("/api/v1/sms/status", get(sms_status_handler))
-            .route("/api/v1/sms/config", get(sms_status_handler).post(sms_update_config_handler))
+            .route(
+                "/api/v1/sms/config",
+                get(sms_status_handler).post(sms_update_config_handler),
+            )
             .route("/api/v1/sms/history", get(sms_history_handler))
             .route("/api/v1/sms/send", post(sms_send_handler))
             .route("/api/v1/bitchat/status", get(bitchat_status_handler))
             .route("/api/v1/bitchat/broadcast", post(bitchat_broadcast_handler))
+            .route("/api/v1/config", get(config_get_handler).post(config_save_handler))
+            .route("/api/v1/config/validate", post(config_validate_handler))
+            .route("/api/v1/nostr/oxchat", post(nostr_oxchat_update_handler))
+            .route("/api/v1/tools/convert-key", post(tools_convert_key_handler))
+            .route("/api/v1/tools/generate-keypair", post(tools_generate_keypair_handler))
+            .route("/api/v1/tools/convert-sms", post(tools_convert_sms_handler))
+            .route("/api/v1/tools/hash-password", post(tools_hash_password_handler))
+            .route("/api/v1/tools/generate-key", post(tools_generate_key_handler))
             .layer(TraceLayer::new_for_http())
             .layer(
                 CorsLayer::new()
@@ -355,10 +392,7 @@ pub async fn health_check(State(state): State<AppState>) -> Response {
 }
 
 /// Full daemon status diagnostics report.
-pub async fn status_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn status_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err((status, json)) = check_bearer_auth(&headers, &state.config) {
         return (status, json).into_response();
     }
@@ -367,10 +401,7 @@ pub async fn status_handler(
 }
 
 /// Peering diagnostics report.
-pub async fn peers_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn peers_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err((status, json)) = check_bearer_auth(&headers, &state.config) {
         return (status, json).into_response();
     }
@@ -390,10 +421,7 @@ pub async fn peers_handler(
 }
 
 /// Peering spool metrics report.
-pub async fn spool_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn spool_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err((status, json)) = check_bearer_auth(&headers, &state.config) {
         return (status, json).into_response();
     }
@@ -429,7 +457,10 @@ pub async fn reset_peer_handler(
     }
     let success = state.engine.reset_peer_circuit_breaker(&name).await;
     if success {
-        info!("Operator manually reset circuit breaker for peer '{}'", name);
+        info!(
+            "Operator manually reset circuit breaker for peer '{}'",
+            name
+        );
         (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -453,16 +484,16 @@ pub async fn reset_peer_handler(
 }
 
 /// Manually purges all spooled packets from the persistent peering database.
-pub async fn purge_spool_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn purge_spool_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
         return *resp;
     }
     match state.engine.purge_spool().await {
         Ok(count) => {
-            info!("Operator manually purged peering spool ({} records removed)", count);
+            info!(
+                "Operator manually purged peering spool ({} records removed)",
+                count
+            );
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -605,10 +636,7 @@ pub async fn ingest_prometheus_webhook(
 }
 
 /// Cellular SMS status report.
-pub async fn sms_status_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn sms_status_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err((status, json)) = check_bearer_auth(&headers, &state.config) {
         return (status, json).into_response();
     }
@@ -637,7 +665,10 @@ pub async fn sms_update_config_handler(
         return *resp;
     }
     if let Some(sms) = state.engine.sms_service().await {
-        match sms.update_config(payload.recipients, payload.authorized_senders).await {
+        match sms
+            .update_config(payload.recipients, payload.authorized_senders)
+            .await
+        {
             Ok(updated) => {
                 info!(
                     "Updated cellular SMS configuration: {} recipients, {} authorized senders",
@@ -665,10 +696,7 @@ pub async fn sms_update_config_handler(
 }
 
 /// Fetches recent SMS history (inbound and outbound).
-pub async fn sms_history_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn sms_history_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err((status, json)) = check_bearer_auth(&headers, &state.config) {
         return (status, json).into_response();
     }
@@ -703,7 +731,10 @@ pub async fn sms_send_handler(
         return *resp;
     }
     if let Some(sms) = state.engine.sms_service().await {
-        match sms.send_manual_sms(&payload.phone_number, &payload.message).await {
+        match sms
+            .send_manual_sms(&payload.phone_number, &payload.message)
+            .await
+        {
             Ok(()) => (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -734,17 +765,15 @@ pub async fn sms_send_handler(
 }
 
 /// BitChat mesh status report handler.
-pub async fn bitchat_status_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn bitchat_status_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
         return *resp;
     }
     let status = if let Some(bc) = state.engine.bitchat_service().await {
         bc.get_status().await
     } else {
-        let (_, _, my_sender_id) = crate::bitchat::BitChatService::derive_keys(&state.engine.config().bitchat.node_name);
+        let (_, _, my_sender_id) =
+            crate::bitchat::BitChatService::derive_keys(&state.engine.config().bitchat.node_name);
         crate::models::BitChatStatusReport {
             enabled: state.engine.config().bitchat.enabled,
             node_name: state.engine.config().bitchat.node_name.clone(),
@@ -841,6 +870,309 @@ pub async fn bitchat_broadcast_handler(
     }
 }
 
+
+/// Returns the current configuration (both as structured object and raw TOML text).
+pub async fn config_get_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+    let path = state.engine.get_config_path().await;
+    let toml_content = std::fs::read_to_string(&path).unwrap_or_else(|_| "".to_string());
+
+    (
+        StatusCode::OK,
+        Json(crate::models::ConfigResponse {
+            config_path: path,
+            toml_content,
+            config: state.engine.config().clone(),
+        }),
+    )
+        .into_response()
+}
+
+/// Validates arbitrary TOML configuration text without saving it to disk.
+pub async fn config_validate_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::ConfigUpdateRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    match toml::from_str::<crate::config::AppConfig>(&payload.toml_content) {
+        Ok(parsed) => {
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ok",
+                    "message": "Configuration syntax is valid and consistent.",
+                    "node_name": parsed.daemon.name,
+                    "relays_count": parsed.nostr.relays.len(),
+                    "oxchat_recipients_count": parsed.nostr.oxchat.recipients.len(),
+                    "sms_recipients_count": parsed.sms.recipients.len(),
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "status": "error",
+                    "message": format!("Configuration syntax error: {}", e),
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Persists new TOML configuration to disk with an automated timestamped backup.
+pub async fn config_save_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::ConfigUpdateRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    // 1. Validate syntax first
+    if let Err(e) = toml::from_str::<crate::config::AppConfig>(&payload.toml_content) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": format!("Validation failed; config was not saved: {}", e)
+            })),
+        )
+            .into_response();
+    }
+
+    let path = state.engine.get_config_path().await;
+
+    // 2. Create timestamped backup if file exists
+    if std::path::Path::new(&path).exists() {
+        let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+        let backup_path = format!("{}.bak.{}", path, ts);
+        if let Err(e) = std::fs::copy(&path, &backup_path) {
+            warn!("Failed to create configuration backup {}: {}", backup_path, e);
+        } else {
+            info!("Created configuration backup: {}", backup_path);
+        }
+    }
+
+    // 3. Write new configuration to disk atomically
+    if let Err(e) = std::fs::write(&path, &payload.toml_content) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": format!("Failed to write configuration to {}: {}", path, e)
+            })),
+        )
+            .into_response();
+    }
+
+    info!("Updated runtime configuration file: {}", path);
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "ok",
+            "message": format!("Configuration saved successfully to {}.", path),
+            "reloaded": payload.reload,
+        })),
+    )
+        .into_response()
+}
+
+/// Updates Nostr 0xChat recipients & C2 authorized operators specifically in config file.
+pub async fn nostr_oxchat_update_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::NostrOxchatUpdateRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    let path = state.engine.get_config_path().await;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "status": "error", "message": format!("Failed to read config file: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let mut parsed: crate::config::AppConfig = match toml::from_str(&content) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "status": "error", "message": format!("Config parsing error: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    if let Some(r) = payload.recipients {
+        parsed.nostr.oxchat.recipients = r;
+    }
+    if let Some(ops) = payload.c2_authorized_operators {
+        parsed.nostr.oxchat.c2_authorized_operators = ops;
+    }
+    if let Some(m) = payload.mode {
+        if m.eq_ignore_ascii_case("public") {
+            parsed.nostr.oxchat.mode = crate::config::OxChatMode::Public;
+        } else {
+            parsed.nostr.oxchat.mode = crate::config::OxChatMode::Dm;
+        }
+    }
+
+    let serialized = match toml::to_string_pretty(&parsed) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "status": "error", "message": format!("Failed to serialize TOML: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    if let Err(e) = std::fs::write(&path, &serialized) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "status": "error", "message": format!("Failed to write config file: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "ok",
+            "message": "Nostr 0xChat recipients and operators updated successfully",
+            "recipients": parsed.nostr.oxchat.recipients,
+            "c2_authorized_operators": parsed.nostr.oxchat.c2_authorized_operators,
+            "mode": format!("{:?}", parsed.nostr.oxchat.mode).to_lowercase(),
+        })),
+    )
+        .into_response()
+}
+
+/// Tools endpoint: Nostr Bech32 <-> Hex conversion & public key derivation.
+pub async fn tools_convert_key_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::ToolConvertKeyRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    match crate::cli::convert_key(&payload.key) {
+        Ok(res) => (StatusCode::OK, Json(serde_json::json!({
+            "status": "ok",
+            "input_format": res.input_format,
+            "hex_value": res.hex_value,
+            "bech32_value": res.bech32_value,
+            "derived_public": res.derived_public.map(|(hex_pub, npub)| serde_json::json!({
+                "hex": hex_pub,
+                "npub": npub,
+            })),
+        }))).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "status": "error",
+            "message": e,
+        }))).into_response(),
+    }
+}
+
+/// Tools endpoint: Secp256k1 Nostr keypair generator.
+pub async fn tools_generate_keypair_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    let id = crate::cli::generate_keypair();
+    (StatusCode::OK, Json(serde_json::json!({
+        "status": "ok",
+        "npub": id.npub,
+        "pub_hex": id.pub_hex,
+        "nsec": id.nsec,
+        "priv_hex": id.priv_hex,
+    }))).into_response()
+}
+
+/// Tools endpoint: SMS Codec (UTF-8 <-> UCS-2 Hex).
+pub async fn tools_convert_sms_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::ToolConvertSmsRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    match crate::cli::convert_sms_codec(&payload.payload) {
+        Ok((operation, result)) => (StatusCode::OK, Json(serde_json::json!({
+            "status": "ok",
+            "operation": operation,
+            "result": result,
+        }))).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "status": "error",
+            "message": e,
+        }))).into_response(),
+    }
+}
+
+/// Tools endpoint: SHA-256 password hasher.
+pub async fn tools_hash_password_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::ToolHashPasswordRequest>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    let hash = crate::cli::hash_password(&payload.password);
+    (StatusCode::OK, Json(serde_json::json!({
+        "status": "ok",
+        "hash": hash,
+    }))).into_response()
+}
+
+/// Tools endpoint: 256-bit cryptographically secure hex key generator.
+pub async fn tools_generate_key_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Response {
+    if let Err(resp) = check_dashboard_auth(&headers, state.engine.config()) {
+        return *resp;
+    }
+
+    let key = crate::cli::generate_key();
+    (StatusCode::OK, Json(serde_json::json!({
+        "status": "ok",
+        "key": key,
+    }))).into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -849,7 +1181,10 @@ mod tests {
     #[test]
     fn test_bearer_token_constant_time_verification() {
         assert!(verify_constant_time("my-secret-token", "my-secret-token"));
-        assert!(!verify_constant_time("my-secret-token", "wrong-secret-token"));
+        assert!(!verify_constant_time(
+            "my-secret-token",
+            "wrong-secret-token"
+        ));
         assert!(!verify_constant_time("short", "longer-string"));
 
         let mut config = RestConfig {
@@ -895,7 +1230,11 @@ mod tests {
 
         // Valid signature matches
         assert!(verify_hmac_sha256(secret, payload, &sig));
-        assert!(verify_hmac_sha256(secret, payload, &format!("sha256={}", sig)));
+        assert!(verify_hmac_sha256(
+            secret,
+            payload,
+            &format!("sha256={}", sig)
+        ));
 
         // Tampered payload fails
         let tampered = br#"{"status":"resolved","alerts":[{"status":"resolved"}]}"#;

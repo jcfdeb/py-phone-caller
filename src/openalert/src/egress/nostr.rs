@@ -115,11 +115,13 @@ pub struct NostrPublisher {
     quorum_min_relays: usize,
     nip20_timeout: Duration,
     privacy: crate::config::NostrPrivacyConfig,
+    oxchat: crate::config::OxChatConfig,
     health: Arc<RwLock<HashMap<String, RelayHealth>>>,
 }
 
 impl NostrPublisher {
     /// Generates an ephemeral cryptographic keypair and initializes the publisher.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         relays: Vec<String>,
         kind: u64,
@@ -127,9 +129,24 @@ impl NostrPublisher {
         quorum_min_relays: usize,
         nip20_timeout_secs: u64,
         privacy: crate::config::NostrPrivacyConfig,
+        private_key: Option<String>,
+        oxchat: crate::config::OxChatConfig,
     ) -> Self {
         let secp = Secp256k1::new();
-        let (secret_key, _) = secp.generate_keypair(&mut OsRng);
+        let secret_key = if let Some(ref hex_key) = private_key {
+            let clean = hex_key.trim();
+            if let Ok(bytes) = hex::decode(clean)
+                && bytes.len() == 32
+                && let Ok(sk) = secp256k1::SecretKey::from_slice(&bytes)
+            {
+                sk
+            } else {
+                warn!("Configured private_key is invalid; generating ephemeral keypair");
+                secp.generate_keypair(&mut OsRng).0
+            }
+        } else {
+            secp.generate_keypair(&mut OsRng).0
+        };
         let keypair = Keypair::from_secret_key(&secp, &secret_key);
         let (xonly, _) = keypair.x_only_public_key();
         let pubkey_hex = hex::encode(xonly.serialize());
@@ -148,6 +165,7 @@ impl NostrPublisher {
             quorum_min_relays: quorum_min_relays.max(1),
             nip20_timeout: Duration::from_secs(nip20_timeout_secs.max(1)),
             privacy,
+            oxchat,
             health: Arc::new(RwLock::new(health_map)),
         }
     }
@@ -157,16 +175,219 @@ impl NostrPublisher {
         &self.pubkey_hex
     }
 
+    /// Returns the secret key of the publisher.
+    pub fn secret_key(&self) -> secp256k1::SecretKey {
+        self.keypair.secret_key()
+    }
+
+    /// Returns a reference to the 0xChat configuration.
+    pub fn oxchat(&self) -> &crate::config::OxChatConfig {
+        &self.oxchat
+    }
+
+    /// Signs an arbitrary Nostr event with the publisher keypair.
+    pub fn sign_custom_event(
+        &self,
+        kind: u64,
+        content: String,
+        mut tags: Vec<Vec<String>>,
+    ) -> Result<NostrEvent> {
+        let secp = Secp256k1::new();
+        let created_at_i64 = Utc::now().timestamp();
+        let created_at = created_at_i64.max(0) as u64;
+
+        if self.alert_ttl_seconds > 0 {
+            let expiration = created_at_i64 + self.alert_ttl_seconds as i64;
+            tags.push(vec!["expiration".to_string(), expiration.to_string()]);
+        }
+
+        let serialized = serde_json::to_string(&json!([
+            0,
+            self.pubkey_hex,
+            created_at,
+            kind,
+            tags,
+            content
+        ]))?;
+
+        let mut hasher = Sha256::new();
+        hasher.update(serialized.as_bytes());
+        let id_bytes = hasher.finalize();
+        let id_hex = hex::encode(id_bytes);
+
+        let sig = secp.sign_schnorr(id_bytes.as_slice(), &self.keypair);
+        let sig_hex = hex::encode(sig.as_ref());
+
+        Ok(NostrEvent {
+            id: id_hex,
+            pubkey: self.pubkey_hex.clone(),
+            created_at,
+            kind,
+            tags,
+            content,
+            sig: sig_hex,
+        })
+    }
+
+    /// Signs one or more Nostr events formatted specifically for 0xChat.
+    /// In Mode "dm", generates an encrypted Kind 4 event for each recipient.
+    /// In Mode "public", generates a Kind 1 markdown event for the team timeline.
+    pub fn sign_oxchat_alert(&self, alert: &Alert) -> Result<Vec<NostrEvent>> {
+        let secp = Secp256k1::new();
+        let mut events = Vec::new();
+
+        let severity_emoji = match alert.severity {
+            crate::models::AlertSeverity::Emergency => "🚨🚨",
+            crate::models::AlertSeverity::Critical => "🚨",
+            crate::models::AlertSeverity::Warning => "⚠️",
+            crate::models::AlertSeverity::Info => "ℹ️",
+        };
+
+        let node_name = alert.node.as_deref().unwrap_or("openalert-node");
+        let desc = alert
+            .description
+            .as_deref()
+            .unwrap_or("No additional details.");
+
+        let formatted_text = format!(
+            "{} [{:?} ALERT] {}
+
+Node: {}
+Time: {} UTC
+
+{}
+
+ID: {}",
+            severity_emoji,
+            alert.severity,
+            alert.summary,
+            node_name,
+            Utc::now().format("%Y-%m-%d %H:%M:%S"),
+            desc,
+            alert.alert_id
+        );
+
+        match self.oxchat.mode {
+            crate::config::OxChatMode::Dm => {
+                for recipient in &self.oxchat.recipients {
+                    let clean = recipient.trim();
+                    let Ok(recipient_bytes) = hex::decode(clean) else {
+                        warn!("Skipping invalid 0xChat recipient hex: {}", recipient);
+                        continue;
+                    };
+                    if recipient_bytes.len() != 32 {
+                        warn!(
+                            "0xChat recipient must be 32 bytes (got {}): {}",
+                            recipient_bytes.len(),
+                            recipient
+                        );
+                        continue;
+                    }
+                    let Ok(xonly) = secp256k1::XOnlyPublicKey::from_slice(&recipient_bytes) else {
+                        continue;
+                    };
+                    let Ok(pk) = crate::crypto::nip04::xonly_to_full_pubkey(&xonly) else {
+                        continue;
+                    };
+                    let shared = crate::crypto::nip04::derive_shared_secret(
+                        &secp,
+                        &self.keypair.secret_key(),
+                        &pk,
+                    )?;
+                    let ciphertext = crate::crypto::nip04::nip04_encrypt(&shared, &formatted_text)?;
+
+                    let tags = vec![
+                        vec!["p".to_string(), clean.to_string()],
+                        vec!["d".to_string(), alert.alert_id.clone()],
+                    ];
+
+                    let event = self.sign_custom_event(4, ciphertext, tags)?;
+                    events.push(event);
+                }
+            }
+            crate::config::OxChatMode::Public => {
+                let tags = vec![
+                    vec!["t".to_string(), "openalert".to_string()],
+                    vec![
+                        "t".to_string(),
+                        format!("{:?}", alert.severity).to_lowercase(),
+                    ],
+                    vec!["d".to_string(), alert.alert_id.clone()],
+                ];
+                let event = self.sign_custom_event(1, formatted_text, tags)?;
+                events.push(event);
+            }
+        }
+
+        Ok(events)
+    }
+
+    /// Sends an encrypted NIP-04 C2 response back to the operator.
+    pub async fn send_oxchat_c2_response(
+        &self,
+        recipient_hex: &str,
+        response_text: &str,
+    ) -> Result<()> {
+        let secp = Secp256k1::new();
+        let clean = recipient_hex.trim();
+        let recipient_bytes = hex::decode(clean).map_err(|e| {
+            crate::error::OpenAlertError::Crypto(format!("Invalid hex recipient: {:?}", e))
+        })?;
+        let xonly = secp256k1::XOnlyPublicKey::from_slice(&recipient_bytes).map_err(|e| {
+            crate::error::OpenAlertError::Crypto(format!("Invalid XOnly pubkey: {:?}", e))
+        })?;
+        let pk = crate::crypto::nip04::xonly_to_full_pubkey(&xonly)?;
+        let shared =
+            crate::crypto::nip04::derive_shared_secret(&secp, &self.keypair.secret_key(), &pk)?;
+        let ciphertext = crate::crypto::nip04::nip04_encrypt(&shared, response_text)?;
+
+        let tags = vec![
+            vec!["p".to_string(), clean.to_string()],
+            vec!["t".to_string(), "c2_response".to_string()],
+        ];
+
+        // 1. Send Modern NIP-17 / NIP-59 Gift Wrap (for 0xChat modern clients)
+        if let Ok(gift_wrap) = crate::crypto::nip44::wrap_nip59_gift_wrap(&self.keypair, clean, response_text) {
+            self.publish_to_relays(&gift_wrap).await;
+        }
+
+        // 2. Send Legacy NIP-04 Direct Message (fallback)
+        let event = self.sign_custom_event(4, ciphertext, tags)?;
+        self.publish_to_relays(&event).await;
+        Ok(())
+    }
+
+
+    /// Sends a public timeline reply (NIP-10 Kind 1) back to an operator referencing their original event.
+    pub async fn send_oxchat_public_reply(
+        &self,
+        reply_to_event_id: &str,
+        recipient_pubkey: &str,
+        response_text: &str,
+    ) -> Result<()> {
+        let tags = vec![
+            vec!["e".to_string(), reply_to_event_id.to_string(), "".to_string(), "reply".to_string()],
+            vec!["p".to_string(), recipient_pubkey.to_string()],
+            vec!["t".to_string(), "openalert".to_string()],
+        ];
+
+        let event = self.sign_custom_event(1, response_text.to_string(), tags)?;
+        self.publish_to_relays(&event).await;
+        Ok(())
+    }
+
     /// Constructs and signs a canonical NIP-01 event from an [`Alert`], applying NIP-40 expiration tags.
     pub fn sign_alert(&self, alert: &Alert) -> Result<NostrEvent> {
         let secp = Secp256k1::new();
         let created_at_i64 = Utc::now().timestamp();
         let created_at = created_at_i64.max(0) as u64;
 
-        let (content, mut tags) = if self.privacy.mode == crate::config::NostrPrivacyMode::Encrypted {
+        let (content, mut tags) = if self.privacy.mode == crate::config::NostrPrivacyMode::Encrypted
+        {
             let key = self.privacy.get_key_bytes().ok_or_else(|| {
                 crate::error::OpenAlertError::Config(
-                    "Nostr publisher set to encrypted mode but lacks a valid 32-byte shared_key".to_string(),
+                    "Nostr publisher set to encrypted mode but lacks a valid 32-byte shared_key"
+                        .to_string(),
                 )
             })?;
             let alert_json = serde_json::to_vec(alert)?;
@@ -327,12 +548,18 @@ impl NostrPublisher {
         if successful_relays >= target_quorum {
             info!(
                 "🎯 Nostr alert [{}] achieved delivery quorum ({}/{} confirmed, required: {})",
-                short_id, successful_relays, self.relays.len(), target_quorum
+                short_id,
+                successful_relays,
+                self.relays.len(),
+                target_quorum
             );
         } else {
             warn!(
                 "⚠️ Nostr alert [{}] failed to achieve quorum ({}/{} confirmed, required: {})",
-                short_id, successful_relays, self.relays.len(), target_quorum
+                short_id,
+                successful_relays,
+                self.relays.len(),
+                target_quorum
             );
         }
 

@@ -6,8 +6,8 @@
 
 use crate::error::{OpenAlertError, Result};
 use prometheus::{
-    opts, register_counter_vec_with_registry, register_gauge_vec_with_registry, CounterVec,
-    Encoder, GaugeVec, Registry, TextEncoder,
+    CounterVec, Encoder, GaugeVec, Registry, TextEncoder, opts, register_counter_vec_with_registry,
+    register_gauge_vec_with_registry,
 };
 use std::sync::Arc;
 
@@ -34,8 +34,9 @@ pub struct OpenAlertMetrics {
 impl OpenAlertMetrics {
     /// Initializes all metric vectors and registers them with a dedicated registry.
     pub fn new() -> Result<Self> {
-        let registry = Registry::new_custom(Some("openalert".to_string()), None)
-            .map_err(|e| OpenAlertError::Config(format!("Failed to create metrics registry: {}", e)))?;
+        let registry = Registry::new_custom(Some("openalert".to_string()), None).map_err(|e| {
+            OpenAlertError::Config(format!("Failed to create metrics registry: {}", e))
+        })?;
 
         // Ingress alerts counter
         let alerts_received_total = register_counter_vec_with_registry!(

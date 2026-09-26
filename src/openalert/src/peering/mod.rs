@@ -23,9 +23,11 @@ use crate::config::PeeringConfig;
 use crate::engine::AlertEngine;
 use crate::error::{OpenAlertError, Result};
 use crate::models::{Alert, PeeringStatusReport};
-use crate::peering::crypto::{encrypt_datagram, KeyRegistry};
-use crate::peering::wire::{AckPacket, PeeringPacket, FLAG_ACK_REQ, FLAG_CANARY};
-use crate::peering::worker::{spawn_peer_worker, AckWaiters, OutboundAlertRequest, PeerWorkerHandle};
+use crate::peering::crypto::{KeyRegistry, encrypt_datagram};
+use crate::peering::wire::{AckPacket, FLAG_ACK_REQ, FLAG_CANARY, PeeringPacket};
+use crate::peering::worker::{
+    AckWaiters, OutboundAlertRequest, PeerWorkerHandle, spawn_peer_worker,
+};
 use crate::storage::Storage;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -51,9 +53,12 @@ pub struct PeeringService {
 impl PeeringService {
     /// Initializes the peering service and binds the listening UDP socket.
     pub async fn new(config: PeeringConfig, storage: Option<Arc<Storage>>) -> Result<Self> {
-        let socket = UdpSocket::bind(&config.listen_addr)
-            .await
-            .map_err(|e| OpenAlertError::Peering(format!("Failed to bind peering UDP socket on {}: {}", config.listen_addr, e)))?;
+        let socket = UdpSocket::bind(&config.listen_addr).await.map_err(|e| {
+            OpenAlertError::Peering(format!(
+                "Failed to bind peering UDP socket on {}: {}",
+                config.listen_addr, e
+            ))
+        })?;
         let socket = Arc::new(socket);
 
         let peer_overrides: Vec<(String, Option<String>)> = config
@@ -166,12 +171,13 @@ impl PeeringService {
         for (name, worker) in self.workers.iter() {
             // Split-horizon rule: Never reflect an alert back to the peer that sent it!
             if let Some(origin) = origin_peer
-                && origin == name {
-                    debug!(
-                        "🔄 [Split-Horizon] Suppressing alert [{}] reflection back to origin peer '{}'",
-                        alert.alert_id, name
-                    );
-                    continue;
+                && origin == name
+            {
+                debug!(
+                    "🔄 [Split-Horizon] Suppressing alert [{}] reflection back to origin peer '{}'",
+                    alert.alert_id, name
+                );
+                continue;
             }
 
             let req = OutboundAlertRequest {
@@ -207,7 +213,10 @@ impl PeeringService {
                 Some(res) => res,
                 None => {
                     // Silently drop unauthenticated / corrupt bytes
-                    debug!("⚠️ Discarded unauthenticated peering datagram ({} bytes) from {}", len, src_addr);
+                    debug!(
+                        "⚠️ Discarded unauthenticated peering datagram ({} bytes) from {}",
+                        len, src_addr
+                    );
                     continue;
                 }
             };
@@ -216,7 +225,10 @@ impl PeeringService {
             if matched_peer.is_none() {
                 for peer_node in &self.config.nodes {
                     if let Ok(target_addr) = peer_node.addr.parse::<std::net::SocketAddr>()
-                        && (target_addr == src_addr || (target_addr.ip() == src_addr.ip() && target_addr.port() == src_addr.port())) {
+                        && (target_addr == src_addr
+                            || (target_addr.ip() == src_addr.ip()
+                                && target_addr.port() == src_addr.port()))
+                    {
                         matched_peer = Some(peer_node.name.clone());
                         break;
                     }
@@ -227,7 +239,10 @@ impl PeeringService {
             let packet = match PeeringPacket::deserialize(&plaintext) {
                 Ok(p) => p,
                 Err(e) => {
-                    debug!("Failed to deserialize valid AEAD datagram from {}: {}", src_addr, e);
+                    debug!(
+                        "Failed to deserialize valid AEAD datagram from {}: {}",
+                        src_addr, e
+                    );
                     continue;
                 }
             };
@@ -238,7 +253,10 @@ impl PeeringService {
                     let mut rt = self.routing_table.write().await;
                     let via_peer = matched_peer.as_deref().unwrap_or(&adv.src);
                     rt.update_route(&adv.dst, via_peer, adv.metric, adv.hops);
-                    debug!("🗺️ Learned mesh route to '{}' via '{}' (metric: {}, hops: {})", adv.dst, via_peer, adv.metric, adv.hops);
+                    debug!(
+                        "🗺️ Learned mesh route to '{}' via '{}' (metric: {}, hops: {})",
+                        adv.dst, via_peer, adv.metric, adv.hops
+                    );
                 }
                 PeeringPacket::Ack(ack) => {
                     let mut waiters = self.ack_waiters.lock().await;
@@ -250,7 +268,8 @@ impl PeeringService {
                     // Check if canary probe
                     if alert_pkt.flags & FLAG_CANARY != 0 {
                         if alert_pkt.flags & FLAG_ACK_REQ != 0 {
-                            self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref()).await;
+                            self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                                .await;
                         }
                         continue;
                     }
@@ -281,9 +300,13 @@ impl PeeringService {
                         cache.retain(|_, seen_at| now.duration_since(*seen_at) < dedup_window);
 
                         if cache.contains_key(&alert_pkt.fp) {
-                            debug!("🛑 Dropped duplicate peering alert 0x{:016x} from {}", alert_pkt.fp, src_addr);
+                            debug!(
+                                "🛑 Dropped duplicate peering alert 0x{:016x} from {}",
+                                alert_pkt.fp, src_addr
+                            );
                             if alert_pkt.flags & FLAG_ACK_REQ != 0 {
-                                self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref()).await;
+                                self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                                    .await;
                             }
                             continue;
                         }
@@ -292,16 +315,22 @@ impl PeeringService {
 
                     // Respond with ACK if requested (Profile B on IP links)
                     if alert_pkt.flags & FLAG_ACK_REQ != 0 {
-                        self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref()).await;
+                        self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                            .await;
                     }
 
                     // Convert to canonical Alert and route through daemon core
-                    let origin_name = matched_peer.clone().unwrap_or_else(|| alert_pkt.src.clone());
+                    let origin_name = matched_peer
+                        .clone()
+                        .unwrap_or_else(|| alert_pkt.src.clone());
                     let alert = alert_pkt.clone().into_alert(Some(origin_name.clone()));
 
                     info!(
                         "📥 [Peering Ingress] Ingested alert [{}] from '{}' via UDP (Severity: {:?}, Summary: \"{}\")",
-                        alert.alert_id, alert.sender.as_deref().unwrap_or("unknown"), alert.severity, alert.summary
+                        alert.alert_id,
+                        alert.sender.as_deref().unwrap_or("unknown"),
+                        alert.severity,
+                        alert.summary
                     );
 
                     // Dynamic route learning for alert sender
@@ -366,6 +395,4 @@ impl PeeringService {
             }
         }
     }
-
-
 }

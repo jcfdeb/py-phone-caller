@@ -121,7 +121,12 @@ impl RoutingTable {
 
     /// Generates distance-vector advertisements using Split-Horizon:
     /// Never advertises a route back to the next-hop neighbor from which it was learned.
-    pub fn generate_split_horizon_advs(&self, neighbor: &str, local_src: &str, max_age: Duration) -> Vec<RouteAdvPacket> {
+    pub fn generate_split_horizon_advs(
+        &self,
+        neighbor: &str,
+        local_src: &str,
+        max_age: Duration,
+    ) -> Vec<RouteAdvPacket> {
         let now = Instant::now();
         let now_epoch = Utc::now().timestamp() as u32;
 
@@ -185,13 +190,15 @@ mod tests {
         );
 
         // Split-horizon for peer-b: MUST NOT advertise gateway back to peer-b!
-        let advs_for_b = table.generate_split_horizon_advs("peer-b", "node-a", Duration::from_secs(60));
+        let advs_for_b =
+            table.generate_split_horizon_advs("peer-b", "node-a", Duration::from_secs(60));
         assert_eq!(advs_for_b.len(), 1);
         assert_eq!(advs_for_b[0].dst, "edge-x");
         assert_eq!(advs_for_b[0].hops, 2);
 
         // Split-horizon for peer-c: MUST NOT advertise edge-x back to peer-c!
-        let advs_for_c = table.generate_split_horizon_advs("peer-c", "node-a", Duration::from_secs(60));
+        let advs_for_c =
+            table.generate_split_horizon_advs("peer-c", "node-a", Duration::from_secs(60));
         assert_eq!(advs_for_c.len(), 1);
         assert_eq!(advs_for_c[0].dst, "gateway");
         assert_eq!(advs_for_c[0].hops, 3);

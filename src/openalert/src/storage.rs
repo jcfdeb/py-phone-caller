@@ -8,10 +8,10 @@ use crate::config::StorageConfig;
 use crate::error::{OpenAlertError, Result};
 use crate::models::{Alert, AlertSeverity, AlertSource, SmsRecord, SpoolStats};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -36,7 +36,8 @@ impl Storage {
             let db_path = Path::new(&config.path);
             if let Some(parent) = db_path.parent()
                 && !parent.as_os_str().is_empty()
-                && let Err(e) = std::fs::create_dir_all(parent) {
+                && let Err(e) = std::fs::create_dir_all(parent)
+            {
                 warn!(
                     "⚠️ Cannot create directory for DB path '{}': {}. Falling back to in-memory SQLite (:memory:)",
                     config.path, e
@@ -123,6 +124,19 @@ impl Storage {
             );
             CREATE INDEX IF NOT EXISTS idx_sms_records_created_at ON sms_records(created_at);
 
+                        CREATE TABLE IF NOT EXISTS nostr_events (
+                id TEXT PRIMARY KEY,
+                pubkey TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                kind INTEGER NOT NULL,
+                tags TEXT NOT NULL,
+                content TEXT NOT NULL,
+                sig TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_nostr_events_kind ON nostr_events(kind);
+            CREATE INDEX IF NOT EXISTS idx_nostr_events_pubkey ON nostr_events(pubkey);
+            CREATE INDEX IF NOT EXISTS idx_nostr_events_created_at ON nostr_events(created_at);
+
             CREATE TABLE IF NOT EXISTS sms_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -147,15 +161,114 @@ impl Storage {
         &self.config
     }
 
+    /// Saves a canonical Nostr event into persistent storage.
+    pub async fn save_nostr_event(&self, event: &crate::models::NostrEvent) -> Result<bool> {
+        let conn = self.conn.lock().await;
+        let tags_json = serde_json::to_string(&event.tags).unwrap_or_else(|_| "[]".to_string());
+        let res = conn.execute(
+            "INSERT OR IGNORE INTO nostr_events (id, pubkey, created_at, kind, tags, content, sig) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![event.id, event.pubkey, event.created_at, event.kind, tags_json, event.content, event.sig],
+        ).map_err(OpenAlertError::Storage)?;
+        Ok(res > 0)
+    }
+
+    /// Queries Nostr events matching a set of filter parameters.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn query_nostr_events(
+        &self,
+        kinds: Option<&[u64]>,
+        authors: Option<&[String]>,
+        since: Option<u64>,
+        until: Option<u64>,
+        tag_p: Option<&[String]>,
+        tag_e: Option<&[String]>,
+        limit: usize,
+    ) -> Result<Vec<crate::models::NostrEvent>> {
+        let conn = self.conn.lock().await;
+        let mut query = "SELECT id, pubkey, created_at, kind, tags, content, sig FROM nostr_events WHERE 1=1".to_string();
+
+        if let Some(s) = since {
+            query.push_str(&format!(" AND created_at >= {}", s));
+        }
+        if let Some(u) = until {
+            query.push_str(&format!(" AND created_at <= {}", u));
+        }
+        if let Some(k_list) = kinds && !k_list.is_empty() {
+            let kinds_str = k_list.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(",");
+            query.push_str(&format!(" AND kind IN ({})", kinds_str));
+        }
+        if let Some(a_list) = authors && !a_list.is_empty() {
+            let authors_str = a_list.iter().map(|a| format!("\x27{}\x27", a.replace("\x27", ""))).collect::<Vec<_>>().join(",");
+            query.push_str(&format!(" AND pubkey IN ({})", authors_str));
+        }
+
+        query.push_str(" ORDER BY created_at DESC LIMIT ");
+        let query_limit = limit.clamp(1, 500);
+        query.push_str(&format!("{}", query_limit));
+
+        let mut stmt = conn.prepare(&query).map_err(OpenAlertError::Storage)?;
+        let rows = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let pubkey: String = row.get(1)?;
+            let created_at: u64 = row.get(2)?;
+            let kind: u64 = row.get(3)?;
+            let tags_raw: String = row.get(4)?;
+            let content: String = row.get(5)?;
+            let sig: String = row.get(6)?;
+
+            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_raw).unwrap_or_default();
+            Ok(crate::models::NostrEvent {
+                id,
+                pubkey,
+                created_at,
+                kind,
+                tags,
+                content,
+                sig,
+            })
+        }).map_err(OpenAlertError::Storage)?;
+
+        let mut matched = Vec::new();
+        for ev in rows.flatten() {
+                // Filter by #p tag if specified
+                if let Some(p_filters) = tag_p && !p_filters.is_empty() {
+                    let has_matching_p = ev.tags.iter().any(|t| {
+                        t.len() >= 2 && t[0] == "p" && p_filters.iter().any(|pf| pf.eq_ignore_ascii_case(&t[1]))
+                    });
+                    if !has_matching_p {
+                        continue;
+                    }
+                }
+                // Filter by #e tag if specified
+                if let Some(e_filters) = tag_e && !e_filters.is_empty() {
+                    let has_matching_e = ev.tags.iter().any(|t| {
+                        t.len() >= 2 && t[0] == "e" && e_filters.iter().any(|ef| ef.eq_ignore_ascii_case(&t[1]))
+                    });
+                    if !has_matching_e {
+                        continue;
+                    }
+                }
+                matched.push(ev);
+        }
+        Ok(matched)
+    }
+
+
     /// Checks if any of the provided candidate deduplication keys have been seen within the TTL window.
-    pub async fn is_duplicate(&self, keys: &[String], dedup_ttl_seconds: u64) -> Result<(bool, Option<String>)> {
+    pub async fn is_duplicate(
+        &self,
+        keys: &[String],
+        dedup_ttl_seconds: u64,
+    ) -> Result<(bool, Option<String>)> {
         let conn = self.conn.lock().await;
         let now = Utc::now().timestamp();
         let cutoff = now.saturating_sub(dedup_ttl_seconds as i64);
 
         for key in keys {
             let mut stmt = conn
-                .prepare_cached("SELECT key FROM dedup_records WHERE key = ?1 AND created_at >= ?2 LIMIT 1")
+                .prepare_cached(
+                    "SELECT key FROM dedup_records WHERE key = ?1 AND created_at >= ?2 LIMIT 1",
+                )
                 .map_err(OpenAlertError::Storage)?;
 
             let exists = stmt
@@ -189,8 +302,8 @@ impl Storage {
     /// Inserts or updates an alert record with initial status (e.g. 'pending').
     pub async fn record_alert(&self, alert: &Alert, status: &str) -> Result<()> {
         let conn = self.conn.lock().await;
-        let destinations_json = serde_json::to_string(&alert.destinations)
-            .unwrap_or_else(|_| "[]".to_string());
+        let destinations_json =
+            serde_json::to_string(&alert.destinations).unwrap_or_else(|_| "[]".to_string());
         let severity_str = format!("{:?}", alert.severity).to_lowercase();
         let source_str = format!("{:?}", alert.source).to_lowercase();
         let created_at = alert.starts_at.timestamp();
@@ -259,7 +372,8 @@ impl Storage {
                 let created_at: i64 = row.get(8)?;
 
                 let severity = AlertSeverity::parse_str(&severity_str);
-                let destinations: Vec<String> = serde_json::from_str(&destinations_json).unwrap_or_default();
+                let destinations: Vec<String> =
+                    serde_json::from_str(&destinations_json).unwrap_or_default();
                 let starts_at = DateTime::from_timestamp(created_at, 0).unwrap_or_else(Utc::now);
 
                 Ok(Alert {
@@ -297,7 +411,10 @@ impl Storage {
             .map_err(OpenAlertError::Storage)?;
 
         let deleted_dedup = conn
-            .execute("DELETE FROM dedup_records WHERE created_at < ?1", params![cutoff])
+            .execute(
+                "DELETE FROM dedup_records WHERE created_at < ?1",
+                params![cutoff],
+            )
             .map_err(OpenAlertError::Storage)?;
 
         let deleted_spool = conn
@@ -425,9 +542,13 @@ impl Storage {
     pub async fn get_peer_spool_count(&self, peer_name: &str) -> Result<usize> {
         let conn = self.conn.lock().await;
         let mut stmt = conn
-            .prepare("SELECT count(*) FROM peering_spool WHERE peer_name = ?1 AND status = 'spooled'")
+            .prepare(
+                "SELECT count(*) FROM peering_spool WHERE peer_name = ?1 AND status = 'spooled'",
+            )
             .map_err(OpenAlertError::Storage)?;
-        let count: i64 = stmt.query_row(params![peer_name], |row| row.get(0)).unwrap_or(0);
+        let count: i64 = stmt
+            .query_row(params![peer_name], |row| row.get(0))
+            .unwrap_or(0);
         Ok(count as usize)
     }
 

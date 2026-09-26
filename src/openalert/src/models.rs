@@ -135,7 +135,9 @@ impl Alert {
 
     /// Checks if a given destination is active for this alert.
     pub fn has_destination(&self, dest: &str) -> bool {
-        self.destinations.iter().any(|d| d.eq_ignore_ascii_case(dest))
+        self.destinations
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(dest))
     }
 }
 
@@ -391,6 +393,12 @@ pub struct NostrStatusReport {
     pub enabled: bool,
     pub relays_count: usize,
     pub pubkey: String,
+    #[serde(default)]
+    pub oxchat_enabled: bool,
+    #[serde(default)]
+    pub oxchat_mode: String,
+    #[serde(default)]
+    pub oxchat_recipients_count: usize,
 }
 
 /// Detailed BitChat peer node information.
@@ -461,4 +469,49 @@ pub struct SmsStatusResponse {
     pub modem_status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+}
+
+/// Request payload to convert a Nostr key or derive public keys.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolConvertKeyRequest {
+    pub key: String,
+}
+
+/// Request payload to convert between UTF-8 text and SMS UCS-2 hex.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolConvertSmsRequest {
+    pub payload: String,
+}
+
+/// Request payload to hash a password.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolHashPasswordRequest {
+    pub password: String,
+}
+
+/// Response payload for raw configuration operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigResponse {
+    pub config_path: String,
+    pub toml_content: String,
+    pub config: crate::config::AppConfig,
+}
+
+/// Request payload to validate or save raw configuration TOML.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigUpdateRequest {
+    pub toml_content: String,
+    #[serde(default)]
+    pub reload: bool,
+}
+
+/// Request payload to update Nostr 0xChat operators & recipients specifically.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NostrOxchatUpdateRequest {
+    #[serde(default)]
+    pub recipients: Option<Vec<String>>,
+    #[serde(default)]
+    pub c2_authorized_operators: Option<Vec<String>>,
+    #[serde(default)]
+    pub mode: Option<String>,
 }

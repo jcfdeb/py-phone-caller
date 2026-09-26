@@ -98,8 +98,9 @@ impl KeyRegistry {
         let mut peer_keys = HashMap::new();
         for (name, override_hex) in peer_overrides {
             if let Some(hex_key) = override_hex
-                && !hex_key.trim().is_empty() {
-                    peer_keys.insert(name.clone(), parse_psk(hex_key)?);
+                && !hex_key.trim().is_empty()
+            {
+                peer_keys.insert(name.clone(), parse_psk(hex_key)?);
             }
         }
 
@@ -129,8 +130,9 @@ impl KeyRegistry {
 
         // Fall back to global default key
         if let Some(ref key) = self.default_key
-            && let Ok(plaintext) = decrypt_datagram(key, datagram) {
-                return Some((plaintext, None));
+            && let Ok(plaintext) = decrypt_datagram(key, datagram)
+        {
+            return Some((plaintext, None));
         }
 
         None

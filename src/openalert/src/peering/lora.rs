@@ -139,7 +139,11 @@ impl LoraModulation {
         let t_preamble = (n_preamble + 4.25) * t_sym;
 
         // Payload symbol count
-        let de = if self.low_data_rate_optimization { 1.0 } else { 0.0 };
+        let de = if self.low_data_rate_optimization {
+            1.0
+        } else {
+            0.0
+        };
         let ih = if self.explicit_header { 0.0 } else { 1.0 };
         let crc = if self.crc_enabled { 1.0 } else { 0.0 };
         let pl = payload_bytes as f64;
@@ -344,14 +348,23 @@ mod tests {
 
         // 60-byte peering micro-frame at SF9/BW125 should calculate ~150-250ms
         let air_time_ms = mod_sf9.calculate_air_time_ms(60);
-        assert!(air_time_ms > 100.0 && air_time_ms < 500.0, "Air time was {}", air_time_ms);
+        assert!(
+            air_time_ms > 100.0 && air_time_ms < 500.0,
+            "Air time was {}",
+            air_time_ms
+        );
 
         // Higher spreading factor (SF12) must result in substantially higher air-time
         let mut mod_sf12 = mod_sf9.clone();
         mod_sf12.spreading_factor = 12;
         mod_sf12.low_data_rate_optimization = true;
         let air_time_sf12 = mod_sf12.calculate_air_time_ms(60);
-        assert!(air_time_sf12 > air_time_ms * 4.0, "SF12 air-time {} should be much greater than SF9 {}", air_time_sf12, air_time_ms);
+        assert!(
+            air_time_sf12 > air_time_ms * 4.0,
+            "SF12 air-time {} should be much greater than SF9 {}",
+            air_time_sf12,
+            air_time_ms
+        );
     }
 
     #[test]

@@ -7,13 +7,40 @@
 
 use crate::ingress::rest::AppState;
 use axum::{
-    extract::State,
-    http::{header, HeaderMap, StatusCode},
+    extract::{Query, State},
+    http::{HeaderMap, StatusCode, header},
     response::{
-        sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
     },
 };
+use std::collections::HashMap;
+
+/// Master transparent OpenAlert logo (Midnight / dark theme).
+pub static LOGO_PNG: &[u8] = include_bytes!("../../../../docs/openalert/openalert-logo.png");
+
+/// Pre-adapted high-contrast tactical sapphire OpenAlert logo (Day / sunlight theme).
+pub static LOGO_DAY_PNG: &[u8] = include_bytes!("../../../../docs/openalert/openalert-logo-day.png");
+
+/// HTTP handler serving the embedded logo asset with day/night adaptation.
+pub async fn logo_handler(
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let is_day = params
+        .get("theme")
+        .map(|t| t == "light" || t == "day")
+        .unwrap_or(false);
+    let bytes = if is_day { LOGO_DAY_PNG } else { LOGO_PNG };
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        bytes,
+    )
+        .into_response()
+}
 use futures_util::stream;
 use std::convert::Infallible;
 use std::time::Duration;
@@ -21,20 +48,25 @@ use std::time::Duration;
 /// Returns the embedded HTML5/CSS3/JavaScript single-page application.
 pub fn dashboard_html() -> &'static str {
     r##"<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenAlert Control Plane — NOC Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>OpenAlert Control Plane — Mission Control NOC</title>
+  <link rel="icon" type="image/png" href="/api/v1/logo">
   <style>
     :root {
       --bg: #070a13;
-      --card-bg: rgba(15, 23, 42, 0.75);
-      --card-border: rgba(255, 255, 255, 0.08);
-      --border-focus: rgba(99, 102, 241, 0.5);
+      --bg-gradient-1: rgba(99, 102, 241, 0.08);
+      --bg-gradient-2: rgba(6, 182, 212, 0.06);
+      --card-bg: rgba(15, 23, 42, 0.78);
+      --card-border: rgba(255, 255, 255, 0.09);
+      --border-focus: rgba(99, 102, 241, 0.6);
       --text: #e2e8f0;
+      --text-heading: #ffffff;
       --text-muted: #94a3b8;
       --primary: #6366f1;
+      --primary-hover: #4f46e5;
       --primary-glow: rgba(99, 102, 241, 0.35);
       --cyan: #06b6d4;
       --cyan-glow: rgba(6, 182, 212, 0.35);
@@ -44,66 +76,129 @@ pub fn dashboard_html() -> &'static str {
       --warning-glow: rgba(245, 158, 11, 0.3);
       --danger: #f43f5e;
       --danger-glow: rgba(244, 63, 94, 0.3);
+      --input-bg: #0b0f19;
+      --table-hover: rgba(255, 255, 255, 0.025);
+      --topo-bg: #04060b;
+      --console-bg: #030712;
+      --shadow-main: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     }
+
+    [data-theme="light"] {
+      --bg: #f1f5f9;
+      --bg-gradient-1: rgba(99, 102, 241, 0.05);
+      --bg-gradient-2: rgba(6, 182, 212, 0.05);
+      --card-bg: rgba(255, 255, 255, 0.95);
+      --card-border: rgba(15, 23, 42, 0.12);
+      --border-focus: rgba(79, 70, 229, 0.6);
+      --text: #1e293b;
+      --text-heading: #0f172a;
+      --text-muted: #64748b;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-glow: rgba(79, 70, 229, 0.25);
+      --cyan: #0891b2;
+      --cyan-glow: rgba(8, 145, 178, 0.25);
+      --success: #059669;
+      --success-glow: rgba(5, 150, 105, 0.2);
+      --warning: #d97706;
+      --warning-glow: rgba(217, 119, 6, 0.2);
+      --danger: #e11d48;
+      --danger-glow: rgba(225, 29, 72, 0.2);
+      --input-bg: #f8fafc;
+      --table-hover: rgba(15, 23, 42, 0.03);
+      --topo-bg: #e2e8f0;
+      --console-bg: #0f172a;
+      --shadow-main: 0 4px 20px 0 rgba(15, 23, 42, 0.08);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: var(--bg);
-      background-image: 
-        radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 85% 85%, rgba(6, 182, 212, 0.06) 0%, transparent 40%);
+      background-image:
+        radial-gradient(circle at 15% 15%, var(--bg-gradient-1) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, var(--bg-gradient-2) 0%, transparent 45%);
       color: var(--text);
       font-family: var(--font);
-      padding: 1.5rem;
+      padding: 1.25rem;
       min-height: 100vh;
       line-height: 1.5;
+      transition: background 0.25s ease, color 0.25s ease;
     }
 
-    /* Glassmorphism containers */
+    /* Glassmorphic Precision Containers */
     .glass-panel {
       background: var(--card-bg);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--card-border);
       border-radius: 12px;
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      box-shadow: var(--shadow-main);
+      transition: all 0.25s ease;
     }
 
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 1rem 1.5rem;
-      margin-bottom: 1.5rem;
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1rem;
       flex-wrap: wrap;
-      gap: 1rem;
+      gap: 0.75rem;
     }
-    .logo-area { display: flex; align-items: center; gap: 0.75rem; }
-    .logo-icon {
-      width: 36px;
-      height: 36px;
-      background: linear-gradient(135deg, var(--primary), var(--cyan));
-      border-radius: 8px;
+    .logo-area { display: flex; align-items: center; gap: 0.85rem; }
+    .brand-logo-wrap {
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 0 16px var(--primary-glow);
+      height: 48px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      transition: all 0.25s ease;
+      flex-shrink: 0;
     }
-    h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; color: #fff; }
-    .subtitle { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    [data-theme="light"] .brand-logo-wrap {
+      background: rgba(15, 23, 42, 0.04);
+      border-color: rgba(15, 23, 42, 0.12);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+    }
+    .brand-logo {
+      height: 40px;
+      width: auto;
+      max-width: 140px;
+      object-fit: contain;
+      display: block;
+      transition: filter 0.25s ease, transform 0.2s ease;
+    }
+    .brand-logo:hover {
+      transform: scale(1.05);
+    }
+    [data-theme="dark"] .brand-logo {
+      filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.5));
+    }
+    [data-theme="light"] .brand-logo {
+      filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.14));
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text-heading); }
+    .subtitle { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
 
-    .header-actions { display: flex; align-items: center; gap: 0.75rem; }
+    .header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
     .btn {
-      padding: 0.5rem 1rem;
+      padding: 0.45rem 0.85rem;
       border-radius: 8px;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 600;
       cursor: pointer;
       border: 1px solid transparent;
       transition: all 0.2s ease;
       display: inline-flex;
       align-items: center;
-      gap: 0.4rem;
+      justify-content: center;
+      gap: 0.35rem;
+      user-select: none;
     }
     .btn-primary {
       background: var(--primary);
@@ -111,13 +206,28 @@ pub fn dashboard_html() -> &'static str {
       box-shadow: 0 0 12px var(--primary-glow);
     }
     .btn-primary:hover {
-      background: #4f46e5;
+      background: var(--primary-hover);
       transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border: 1px solid var(--card-border);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    [data-theme="light"] .btn-secondary {
+      background: rgba(15, 23, 42, 0.06);
+      border-color: rgba(15, 23, 42, 0.15);
+    }
+    [data-theme="light"] .btn-secondary:hover {
+      background: rgba(15, 23, 42, 0.1);
     }
 
     .badge {
-      font-size: 0.72rem;
-      padding: 0.25rem 0.65rem;
+      font-size: 0.7rem;
+      padding: 0.22rem 0.55rem;
       border-radius: 9999px;
       font-weight: 600;
       letter-spacing: 0.04em;
@@ -126,11 +236,11 @@ pub fn dashboard_html() -> &'static str {
       align-items: center;
       gap: 0.35rem;
     }
-    .badge-success { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
-    .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
-    .badge-danger { background: rgba(244, 63, 94, 0.15); color: var(--danger); border: 1px solid rgba(244, 63, 94, 0.3); }
-    .badge-primary { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
-    .badge-cyan { background: rgba(6, 182, 212, 0.15); color: var(--cyan); border: 1px solid rgba(6, 182, 212, 0.3); }
+    .badge-success { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.35); }
+    .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.35); }
+    .badge-danger { background: rgba(244, 63, 94, 0.15); color: var(--danger); border: 1px solid rgba(244, 63, 94, 0.35); }
+    .badge-primary { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.35); }
+    .badge-cyan { background: rgba(6, 182, 212, 0.15); color: var(--cyan); border: 1px solid rgba(6, 182, 212, 0.35); }
 
     .pulse-dot {
       width: 8px;
@@ -146,17 +256,95 @@ pub fn dashboard_html() -> &'static str {
       100% { opacity: 0.6; transform: scale(0.95); }
     }
 
+    /* Active Incident Emergency Strobe Banner */
+    .incident-banner {
+      display: none;
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1rem;
+      border-radius: 10px;
+      background: rgba(244, 63, 94, 0.15);
+      border: 1px solid var(--danger);
+      box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
+      animation: alert-strobe 1.6s infinite alternate;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    @keyframes alert-strobe {
+      0% { border-color: var(--danger); box-shadow: 0 0 10px rgba(244, 63, 94, 0.2); }
+      100% { border-color: #fda4af; box-shadow: 0 0 24px rgba(244, 63, 94, 0.55); }
+    }
+    .incident-info { display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 260px; }
+    .incident-title { font-size: 0.9rem; font-weight: 700; color: #fff; }
+    [data-theme="light"] .incident-title { color: #9f1239; }
+    .incident-sub { font-size: 0.75rem; color: #fecdd3; }
+    [data-theme="light"] .incident-sub { color: #be123c; }
+
     /* Hero Grid Stats */
     .grid-stats {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 0.85rem;
+      margin-bottom: 1.25rem;
     }
     .stat-card {
-      padding: 1.25rem;
+      padding: 1rem 1.15rem;
       position: relative;
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 110px;
+    }
+    .stat-title {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.3rem;
+    }
+    .stat-value {
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: var(--text-heading);
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+    }
+    .stat-meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .stat-glow-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 3px;
+      width: 100%;
+    }
+
+    /* LoRa Duty Cycle Mini Progress Meter */
+    .duty-meter-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.35rem;
+    }
+    [data-theme="light"] .duty-meter-bar { background: rgba(15, 23, 42, 0.1); }
+    .duty-meter-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--success);
+      border-radius: 4px;
+      transition: width 0.4s ease, background 0.4s ease;
     }
 
     /* BitChat Radar Animations */
@@ -172,15 +360,9 @@ pub fn dashboard_html() -> &'static str {
       0% { r: 16px; opacity: 0.85; stroke-width: 2px; }
       100% { r: 125px; opacity: 0; stroke-width: 0.5px; }
     }
-    .radar-scanner {
-      animation: radar-sweep 6s linear infinite;
-    }
-    .radar-ripple-1 {
-      animation: ble-ripple-1 3.2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
-    }
-    .radar-ripple-2 {
-      animation: ble-ripple-2 3.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1.6s infinite;
-    }
+    .radar-scanner { animation: radar-sweep 6s linear infinite; }
+    .radar-ripple-1 { animation: ble-ripple-1 3.2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite; }
+    .radar-ripple-2 { animation: ble-ripple-2 3.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1.6s infinite; }
     .bitchat-peer-chip {
       display: inline-flex;
       align-items: center;
@@ -198,68 +380,45 @@ pub fn dashboard_html() -> &'static str {
       border-color: rgba(56, 189, 248, 0.5);
       transform: translateY(-1px);
     }
-    .stat-title {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.4rem;
-    }
-    .stat-value {
-      font-size: 1.75rem;
-      font-weight: 700;
-      color: #fff;
-      display: flex;
-      align-items: baseline;
-      gap: 0.4rem;
-    }
-    .stat-meta {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 0.4rem;
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-    }
-    .stat-glow-bar {
-      position: absolute;
-      top: 0;
-      left: 0;
-      height: 3px;
-      width: 100%;
-      background: linear-gradient(90deg, transparent, var(--primary), transparent);
-    }
 
-    /* Tabs */
+    /* Navigation Tab Bar */
+    .tab-bar-wrap {
+      position: relative;
+      margin-bottom: 1.25rem;
+    }
     .tab-bar {
       display: flex;
-      gap: 0.5rem;
+      gap: 0.35rem;
       border-bottom: 1px solid var(--card-border);
-      margin-bottom: 1.5rem;
-      padding-bottom: 0.5rem;
+      padding-bottom: 0.4rem;
       overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
     }
+    .tab-bar::-webkit-scrollbar { display: none; }
     .tab-btn {
       background: transparent;
       border: none;
       color: var(--text-muted);
       font-family: inherit;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
-      padding: 0.5rem 1rem;
+      padding: 0.5rem 0.85rem;
       border-radius: 6px;
       cursor: pointer;
       transition: all 0.2s ease;
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
     }
-    .tab-btn.active, .tab-btn:hover {
+    .tab-btn:hover {
       background: rgba(255, 255, 255, 0.06);
-      color: #fff;
+      color: var(--text-heading);
     }
     .tab-btn.active {
-      background: rgba(99, 102, 241, 0.15);
-      color: #818cf8;
+      background: rgba(99, 102, 241, 0.16);
+      color: var(--primary);
       border-bottom: 2px solid var(--primary);
     }
 
@@ -267,31 +426,40 @@ pub fn dashboard_html() -> &'static str {
     .layout-cols {
       display: grid;
       grid-template-columns: 2fr 1fr;
-      gap: 1.5rem;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    .layout-cols-equal {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      align-items: start;
     }
     @media (max-width: 1024px) {
-      .layout-cols { grid-template-columns: 1fr; }
+      .layout-cols, .layout-cols-equal { grid-template-columns: 1fr; }
     }
 
     .card {
       padding: 1.25rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
     }
     .card-title {
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
-      color: #fff;
-      margin-bottom: 1rem;
+      color: var(--text-heading);
+      margin-bottom: 0.85rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
     }
 
     /* SVG Topology Map */
     .topology-wrap {
       width: 100%;
-      height: 240px;
-      background: #04060b;
+      height: 230px;
+      background: var(--topo-bg);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       display: flex;
@@ -299,6 +467,7 @@ pub fn dashboard_html() -> &'static str {
       justify-content: center;
       position: relative;
       overflow: hidden;
+      transition: background 0.25s ease;
     }
     .svg-node { cursor: pointer; transition: all 0.3s ease; }
     .svg-node:hover circle { filter: drop-shadow(0 0 10px var(--cyan)); }
@@ -311,11 +480,16 @@ pub fn dashboard_html() -> &'static str {
       to { stroke-dashoffset: 0; }
     }
 
-    /* Tables */
-    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-    th, td { text-align: left; padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--card-border); }
-    th { color: var(--text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
-    tr:hover { background: rgba(255, 255, 255, 0.02); }
+    /* Responsive Tables */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--card-border); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    tr:hover { background: var(--table-hover); }
     tr:last-child td { border-bottom: none; }
 
     /* Live Feed */
@@ -323,19 +497,49 @@ pub fn dashboard_html() -> &'static str {
       max-height: 380px;
       overflow-y: auto;
       font-size: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
     }
     .event-card {
       padding: 0.65rem 0.75rem;
-      border-bottom: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
+      gap: 0.25rem;
       transition: background 0.15s ease;
     }
-    .event-card:hover { background: rgba(255, 255, 255, 0.03); }
+    [data-theme="light"] .event-card { background: rgba(15, 23, 42, 0.02); }
+    .event-card:hover { background: var(--table-hover); }
     .event-header { display: flex; justify-content: space-between; align-items: center; }
-    .event-summary { color: #f8fafc; font-weight: 500; font-size: 0.85rem; }
-    .event-meta { font-size: 0.72rem; color: var(--text-muted); display: flex; gap: 0.5rem; }
+    .event-summary { color: var(--text-heading); font-weight: 500; font-size: 0.83rem; }
+    .event-meta { font-size: 0.7rem; color: var(--text-muted); display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+    /* Console Terminal View */
+    .console-pane {
+      background: var(--console-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #94a3b8;
+      height: 440px;
+      overflow-y: auto;
+      padding: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      line-height: 1.45;
+    }
+    .console-line { display: flex; gap: 0.5rem; word-break: break-all; }
+    .console-ts { color: var(--text-muted); flex-shrink: 0; }
+    .console-tag-info { color: #38bdf8; font-weight: 600; flex-shrink: 0; }
+    .console-tag-warn { color: #fbbf24; font-weight: 600; flex-shrink: 0; }
+    .console-tag-error { color: #f43f5e; font-weight: 600; flex-shrink: 0; }
+    .console-tag-ack { color: #34d399; font-weight: 600; flex-shrink: 0; }
+    .console-msg { color: #e2e8f0; }
 
     /* Modal */
     .modal-overlay {
@@ -347,27 +551,43 @@ pub fn dashboard_html() -> &'static str {
       align-items: center;
       justify-content: center;
       z-index: 999;
+      padding: 1rem;
     }
     .modal-overlay.active { display: flex; }
     .modal-box {
-      width: 90%;
+      width: 100%;
       max-width: 480px;
       padding: 1.5rem;
     }
-    .form-group { margin-bottom: 1rem; }
-    .form-group label { display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 0.35rem; }
+    .form-group { margin-bottom: 0.9rem; }
+    .form-group label { display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem; }
     .form-control {
       width: 100%;
-      padding: 0.6rem 0.8rem;
-      background: #0b0f19;
+      padding: 0.55rem 0.75rem;
+      background: var(--input-bg);
       border: 1px solid var(--card-border);
       border-radius: 6px;
-      color: #fff;
+      color: var(--text-heading);
       font-family: inherit;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
+      transition: all 0.2s ease;
     }
-    .form-control:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 8px var(--primary-glow); }
-    .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+    .form-control:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 8px var(--primary-glow); }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.2rem; }
+
+    /* Mobile Media Tweaks */
+    @media (max-width: 640px) {
+      body { padding: 0.65rem; }
+      header { padding: 0.75rem 0.85rem; }
+      h1 { font-size: 1.1rem; }
+      .grid-stats { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+      .stat-card { padding: 0.75rem; min-height: 95px; }
+      .stat-value { font-size: 1.3rem; }
+      .btn { padding: 0.4rem 0.65rem; font-size: 0.72rem; }
+    }
+    @media (max-width: 400px) {
+      .grid-stats { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -375,10 +595,8 @@ pub fn dashboard_html() -> &'static str {
   <!-- Top Glassmorphic Navigation -->
   <header class="glass-panel">
     <div class="logo-area">
-      <div class="logo-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-        </svg>
+      <div class="brand-logo-wrap">
+        <img id="brand-logo-img" src="/api/v1/logo" alt="OpenAlert Logo" class="brand-logo">
       </div>
       <div>
         <h1 id="node-title">OpenAlert Control Plane</h1>
@@ -386,64 +604,104 @@ pub fn dashboard_html() -> &'static str {
       </div>
     </div>
     <div class="header-actions">
+      <!-- Live SSE Indicator -->
       <div id="live-indicator" class="badge badge-success">
         <div class="pulse-dot"></div>
         <span>Connected (Live SSE)</span>
       </div>
+
+      <!-- Audio Alarm Toggle (Disabled / Muted by Default) -->
+      <button id="btn-audio-toggle" class="btn btn-secondary" onclick="toggleAudioAlarm()" title="Emergency Audio Alarm (Disabled by default)">
+        <span id="audio-icon">🔇</span>
+        <span id="audio-text">Audio Muted</span>
+      </button>
+
+      <!-- Day / Night Theme Switcher -->
+      <button id="btn-theme-toggle" class="btn btn-secondary" onclick="toggleTheme()" title="Toggle Day/Night Mode">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-text">Night</span>
+      </button>
+
+      <!-- Dispatch Test Alert Action Trigger -->
       <button class="btn btn-primary" onclick="openTestModal()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         Dispatch Test Alert
       </button>
     </div>
   </header>
 
+  <!-- High-Severity Incident Active Strobe Banner -->
+  <div id="incident-banner" class="incident-banner">
+    <div class="incident-info">
+      <span class="badge badge-danger" id="incident-badge" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">🚨 CRITICAL ALARM</span>
+      <div>
+        <div class="incident-title" id="incident-summary">Active Incident Detected</div>
+        <div class="incident-sub" id="incident-meta">Node: -- | ID: --</div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+      <button class="btn btn-primary" style="background: #e11d48; border-color: #f43f5e;" onclick="acknowledgeActiveIncident()">
+        ✋ Acknowledge &amp; Silence
+      </button>
+      <button class="btn btn-secondary" onclick="dismissIncidentBanner()">Dismiss</button>
+    </div>
+  </div>
+
   <!-- Key Metrics Hero Bar -->
   <div class="grid-stats">
+    <!-- Stat 1: Daemon Status -->
     <div class="glass-panel stat-card">
       <div class="stat-glow-bar" style="background: linear-gradient(90deg, transparent, var(--success), transparent)"></div>
       <div class="stat-title">Daemon State</div>
       <div id="stat-status" class="stat-value" style="color: var(--success);">ONLINE</div>
       <div class="stat-meta">
         <span>Uptime:</span>
-        <strong id="stat-uptime" style="color: #fff;">--</strong>
+        <strong id="stat-uptime" style="color: var(--text-heading);">--</strong>
       </div>
     </div>
 
+    <!-- Stat 2: Mesh Peering Links -->
     <div class="glass-panel stat-card">
       <div class="stat-glow-bar" style="background: linear-gradient(90deg, transparent, var(--cyan), transparent)"></div>
       <div class="stat-title">Peering Mesh</div>
       <div class="stat-value">
         <span id="stat-peers-count">0</span>
-        <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 400;">active peers</span>
+        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 400;">active peers</span>
       </div>
       <div class="stat-meta">
         <span class="badge badge-cyan" id="stat-peers-healthy">All Healthy</span>
       </div>
     </div>
 
+    <!-- Stat 3: Spool Backlog -->
     <div class="glass-panel stat-card">
       <div class="stat-glow-bar" style="background: linear-gradient(90deg, transparent, var(--warning), transparent)"></div>
       <div class="stat-title" style="display: flex; justify-content: space-between; align-items: center;">
         <span>Persistent Spool</span>
-        <button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.5rem; background: rgba(244,63,94,0.2); border: 1px solid rgba(244,63,94,0.4); color: #fda4af; cursor: pointer;" onclick="purgeSpool()">Purge</button>
+        <button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.45rem; background: rgba(244,63,94,0.2); border: 1px solid rgba(244,63,94,0.4); color: #fda4af;" onclick="purgeSpool()">Purge</button>
       </div>
       <div class="stat-value">
         <span id="stat-spool-count">0</span>
-        <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 400;">queued</span>
+        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 400;">queued</span>
       </div>
       <div class="stat-meta">SQLite Flash Buffer Ready</div>
     </div>
 
+    <!-- Stat 4: LoRa Duty Cycle with Visual Progress Meter -->
     <div class="glass-panel stat-card">
       <div class="stat-glow-bar" style="background: linear-gradient(90deg, transparent, var(--primary), transparent)"></div>
       <div class="stat-title">LoRa Radio Duty-Cycle</div>
       <div class="stat-value">
         <span id="stat-duty-cycle">0.00%</span>
-        <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 400;">/ 1.0%</span>
+        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 400;">/ 1.0%</span>
       </div>
-      <div class="stat-meta">ETSI EN 300 220 Sub-GHz Cap</div>
+      <div class="duty-meter-bar">
+        <div id="duty-meter-fill" class="duty-meter-fill"></div>
+      </div>
+      <div class="stat-meta" style="margin-top: 0.25rem;">ETSI EN 300 220 Sub-GHz Cap</div>
     </div>
 
+    <!-- Stat 5: BitChat BLE Mesh -->
     <div class="glass-panel stat-card" style="cursor: pointer;" onclick="switchTab('bitchat')">
       <div class="stat-glow-bar" style="background: linear-gradient(90deg, transparent, #38bdf8, transparent)"></div>
       <div class="stat-title" style="display: flex; justify-content: space-between; align-items: center;">
@@ -452,7 +710,7 @@ pub fn dashboard_html() -> &'static str {
       </div>
       <div class="stat-value">
         <span id="stat-bitchat-peers-count">0</span>
-        <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 400;">peers</span>
+        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 400;">peers</span>
       </div>
       <div class="stat-meta">
         <span class="badge" id="stat-bitchat-badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);">BLE Active</span>
@@ -461,13 +719,18 @@ pub fn dashboard_html() -> &'static str {
   </div>
 
   <!-- Navigation Tab Bar -->
-  <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('overview')">Overview &amp; Topology</button>
-    <button class="tab-btn" onclick="switchTab('peers')">Peer Links &amp; Circuit Breakers</button>
-    <button class="tab-btn" onclick="switchTab('routes')">Dynamic Distance-Vector Routes</button>
-    <button class="tab-btn" onclick="switchTab('nostr')">Nostr Quorum &amp; Relays</button>
-    <button class="tab-btn" onclick="switchTab('sms')">Cellular GSM / SMS</button>
-    <button class="tab-btn" onclick="switchTab('bitchat')">Bluetooth &amp; BitChat Mesh</button>
+  <div class="tab-bar-wrap">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('overview')">Overview &amp; Topology</button>
+      <button class="tab-btn" onclick="switchTab('peers')">Peer Links &amp; Circuit Breakers</button>
+      <button class="tab-btn" onclick="switchTab('routes')">Dynamic Distance-Vector Routes</button>
+      <button class="tab-btn" onclick="switchTab('nostr')">Nostr Quorum &amp; Relays</button>
+      <button class="tab-btn" onclick="switchTab('sms')">Cellular GSM / SMS</button>
+      <button class="tab-btn" onclick="switchTab('bitchat')">Bluetooth &amp; BitChat Mesh</button>
+      <button class="tab-btn" onclick="switchTab('tools')">🛠️ Tools</button>
+      <button class="tab-btn" onclick="switchTab('config')">⚙️ Configuration</button>
+      <button class="tab-btn" onclick="switchTab('console')">💻 Console &amp; Logs</button>
+    </div>
   </div>
 
   <!-- Tab 1: Overview & Topology -->
@@ -481,7 +744,6 @@ pub fn dashboard_html() -> &'static str {
           </div>
           <div class="topology-wrap">
             <svg width="100%" height="100%" viewBox="0 0 600 220">
-              <!-- Definitions for arrows and glow effects -->
               <defs>
                 <linearGradient id="linkGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.8"/>
@@ -540,26 +802,29 @@ pub fn dashboard_html() -> &'static str {
 
           <div style="margin-top: 1.25rem;">
             <div class="card-title">Peer Circuit Breaker States</div>
-            <table id="overview-peers-table">
-              <thead>
-                <tr>
-                  <th>Node</th>
-                  <th>Transport</th>
-                  <th>Circuit State</th>
-                  <th>Failures</th>
-                  <th>Backlog</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Synchronizing link states...</td></tr>
-              </tbody>
-            </table>
+            <div class="table-responsive">
+              <table id="overview-peers-table">
+                <thead>
+                  <tr>
+                    <th>Node</th>
+                    <th>Transport</th>
+                    <th>Circuit State</th>
+                    <th>Failures</th>
+                    <th>Backlog</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Synchronizing link states...</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
 
       <div>
+        <!-- Live Alert Feed Card -->
         <div class="glass-panel card">
           <div class="card-title">
             <span>Live Alert Feed</span>
@@ -582,7 +847,7 @@ pub fn dashboard_html() -> &'static str {
     </div>
 
     <!-- Overview BitChat Mesh Live Radar Card -->
-    <div class="glass-panel card" style="margin-top: 1.5rem;">
+    <div class="glass-panel card" style="margin-top: 0.5rem;">
       <div class="card-title">
         <div style="display: flex; align-items: center; gap: 0.6rem;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
@@ -595,9 +860,9 @@ pub fn dashboard_html() -> &'static str {
           </button>
         </div>
       </div>
-      <div style="display: grid; grid-template-columns: minmax(260px, 320px) 1fr; gap: 1.5rem; align-items: center;">
-        <div style="position: relative; width: 260px; height: 260px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
-          <svg width="260" height="260" viewBox="0 0 260 260" id="overview-radar-svg">
+      <div style="display: grid; grid-template-columns: minmax(240px, 280px) 1fr; gap: 1.25rem; align-items: center;">
+        <div style="position: relative; width: 240px; height: 240px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+          <svg width="240" height="240" viewBox="0 0 260 260" id="overview-radar-svg">
             <defs>
               <radialGradient id="radarScanGrad" cx="50%" cy="50%" r="50%">
                 <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
@@ -625,28 +890,28 @@ pub fn dashboard_html() -> &'static str {
             <g id="overview-radar-peers"></g>
           </svg>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <div style="display: flex; flex-direction: column; gap: 0.85rem;">
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
             <div style="padding: 0.75rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.18); border-radius: 8px;">
               <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Local BLE Identity</div>
-              <div style="font-weight: 600; color: #fff; font-size: 0.9rem;" id="overview-bitchat-nodename">OpenAlert-Mesh</div>
+              <div style="font-weight: 600; color: var(--text-heading); font-size: 0.88rem;" id="overview-bitchat-nodename">OpenAlert-Mesh</div>
               <div style="font-size: 0.72rem; color: #38bdf8; font-family: monospace; display: flex; align-items: center; gap: 0.3rem; margin-top: 0.2rem;">
                 <span id="overview-bitchat-senderid">--</span>
               </div>
             </div>
             <div style="padding: 0.75rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.18); border-radius: 8px;">
               <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">GATT Service UUID</div>
-              <div style="font-weight: 500; font-family: monospace; color: #cbd5e1; font-size: 0.72rem; margin-top: 0.2rem; word-break: break-all;" id="overview-bitchat-uuid">
+              <div style="font-weight: 500; font-family: monospace; color: var(--text-muted); font-size: 0.72rem; margin-top: 0.2rem; word-break: break-all;" id="overview-bitchat-uuid">
                 f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c
               </div>
             </div>
           </div>
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-              <span style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em;">Discovered BLE Mesh Nodes</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Discovered BLE Mesh Nodes</span>
               <span class="badge" style="background: rgba(56,189,248,0.12); color: #38bdf8; font-size: 0.65rem;" id="overview-bitchat-peer-count-badge">0 Active</span>
             </div>
-            <div id="overview-bitchat-peers-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 48px; align-items: center;">
+            <div id="overview-bitchat-peers-list" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
               <span style="color: var(--text-muted); font-size: 0.8rem; font-style: italic;">Listening for BitChat BLE broadcast announcements...</span>
             </div>
           </div>
@@ -655,29 +920,31 @@ pub fn dashboard_html() -> &'static str {
     </div>
   </div>
 
-  <!-- Tab 2: Peers & Circuit Breakers -->
+  <!-- Tab 2: Peer Links & Circuit Breakers -->
   <div id="tab-peers" class="tab-content" style="display: none;">
     <div class="glass-panel card">
       <div class="card-title">
-        <span>Federated Peer Nodes & Circuit Breaker Telemetry</span>
-        <span class="badge badge-cyan">Self-Healing ARQ</span>
+        <span>Active Peering Links &amp; Failover Circuits</span>
+        <span class="badge badge-success">Automated Fault Isolation</span>
       </div>
-      <table id="full-peers-table">
-        <thead>
-          <tr>
-            <th>Peer Identifier</th>
-            <th>Socket / Device</th>
-            <th>Transport Type</th>
-            <th>Circuit Breaker</th>
-            <th>Consecutive Failures</th>
-            <th>Spooled Buffer</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading peer data...</td></tr>
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table id="full-peers-table">
+          <thead>
+            <tr>
+              <th>Node Identifier</th>
+              <th>Network Endpoint</th>
+              <th>Transport Type</th>
+              <th>Circuit Breaker</th>
+              <th>Consecutive Failures</th>
+              <th>Spooled Buffer</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Loading peer data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -688,20 +955,22 @@ pub fn dashboard_html() -> &'static str {
         <span>Dynamic Multi-Hop Distance-Vector Routing</span>
         <span class="badge badge-primary">Split-Horizon Enforced</span>
       </div>
-      <table id="routes-table">
-        <thead>
-          <tr>
-            <th>Destination Node</th>
-            <th>Next-Hop Peer</th>
-            <th>Path Metric</th>
-            <th>Hops</th>
-            <th>Link Classification</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Evaluating shortest mesh paths...</td></tr>
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table id="routes-table">
+          <thead>
+            <tr>
+              <th>Destination Node</th>
+              <th>Next-Hop Peer</th>
+              <th>Path Metric</th>
+              <th>Hops</th>
+              <th>Link Classification</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Evaluating shortest mesh paths...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -712,220 +981,136 @@ pub fn dashboard_html() -> &'static str {
         <span>Nostr Relays Quorum & Health</span>
         <span class="badge badge-primary">M-of-N Consensus</span>
       </div>
-      <table id="nostr-table">
-        <thead>
-          <tr>
-            <th>Relay WebSocket URI</th>
-            <th>Health Score</th>
-            <th>Success / Failure</th>
-            <th>Last Latency (ms)</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Probing configured Nostr relays...</td></tr>
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table id="nostr-table">
+          <thead>
+            <tr>
+              <th>Relay WebSocket URI</th>
+              <th>Health Score</th>
+              <th>Success / Failure</th>
+              <th>Last Latency (ms)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Probing configured Nostr relays...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <!-- Tab 5: Cellular GSM / SMS Gateway -->
+  <!-- Tab 5: Cellular GSM / SMS -->
   <div id="tab-sms" class="tab-content" style="display: none;">
     <div class="layout-cols">
-      <!-- Left Column: Config & Form -->
-      <div>
-        <!-- Hardware & Status Card -->
-        <div class="glass-panel card">
-          <div class="card-title">
-            <span>Cellular Baseband Modem Status</span>
-            <span id="sms-status-badge" class="badge badge-warning">Checking...</span>
-          </div>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-            <div>
-              <div class="stat-title">Subsystem</div>
-              <div id="sms-enabled-text" style="font-weight: 600; color: #fff;">--</div>
-            </div>
-            <div>
-              <div class="stat-title">Serial AT Port</div>
-              <div id="sms-port-text" style="font-family: monospace; color: var(--cyan);">--</div>
-            </div>
-            <div>
-              <div class="stat-title">Baud Rate</div>
-              <div id="sms-baud-text" style="font-weight: 600; color: #fff;">--</div>
-            </div>
-            <div>
-              <div class="stat-title">Poll Interval</div>
-              <div id="sms-poll-text" style="font-weight: 600; color: #fff;">--</div>
-            </div>
-            <div>
-              <div class="stat-title">Retention TTL</div>
-              <div id="sms-ttl-text" style="font-weight: 600; color: #fff;">--</div>
-            </div>
-          </div>
-          <div id="sms-error-box" style="display: none; padding: 0.75rem; border-radius: 6px; background: rgba(244, 63, 94, 0.15); border: 1px solid var(--danger); color: #fda4af; font-size: 0.8rem;"></div>
-        </div>
-
-        <!-- Dynamic Configuration Card -->
-        <div class="glass-panel card">
-          <div class="card-title">
-            <span>Dynamic Recipients &amp; Authorized Senders</span>
-            <span class="badge badge-primary">Hot-Reload &amp; SQLite Persisted</span>
-          </div>
-          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
-            Recipients and authorized senders configured here take effect immediately in RAM and survive daemon restarts via SQLite.
-          </p>
-          <div class="form-group">
-            <label>Outbound Alert Recipients (comma or newline separated)</label>
-            <textarea id="sms-recipients-input" class="form-control" rows="2" placeholder="+393349246425, +393331122334"></textarea>
-          </div>
-          <div class="form-group">
-            <label>Authorized Inbound Senders (comma or newline separated; empty = all permitted)</label>
-            <textarea id="sms-senders-input" class="form-control" rows="2" placeholder="+393349246425"></textarea>
-          </div>
-          <div style="display: flex; justify-content: flex-end;">
-            <button class="btn btn-primary" onclick="saveSmsConfig()">Save SMS Settings</button>
-          </div>
-        </div>
-
-        <!-- Manual SMS Dispatcher -->
-        <div class="glass-panel card">
-          <div class="card-title">
-            <span>Direct Test SMS Dispatch</span>
-            <span class="badge badge-cyan">Modem Direct</span>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; margin-bottom: 1rem;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label>Recipient Number</label>
-              <input type="text" id="sms-manual-phone" class="form-control" placeholder="+393349246425">
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-              <label>SMS Text (UTF-8 / Accents / Emojis)</label>
-              <input type="text" id="sms-manual-msg" class="form-control" value="OpenAlert NOC Test: temperatura elevata! 🚨">
-            </div>
-          </div>
-          <div style="display: flex; justify-content: flex-end;">
-            <button class="btn btn-primary" onclick="sendManualSms()">Send Test SMS</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Column: Recent SMS Journal -->
       <div>
         <div class="glass-panel card">
           <div class="card-title">
-            <span>SMS Message Journal (SQLite)</span>
-            <button class="btn" style="font-size: 0.7rem; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.08); color: #fff;" onclick="loadSmsHistory()">Refresh</button>
+            <span>Cellular Modem Telemetry</span>
+            <span id="sms-status-badge" class="badge badge-warning">Checking Modem...</span>
           </div>
-          <div style="max-height: 580px; overflow-y: auto;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
+            <div style="padding: 0.65rem; background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 6px;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Subsystem</div>
+              <strong id="sms-enabled-text" style="font-size: 0.85rem; color: var(--text-heading);">--</strong>
+            </div>
+            <div style="padding: 0.65rem; background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 6px;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Serial Port</div>
+              <strong id="sms-port-text" style="font-size: 0.85rem; color: var(--text-heading);">--</strong>
+            </div>
+            <div style="padding: 0.65rem; background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 6px;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Baud Rate</div>
+              <strong id="sms-baud-text" style="font-size: 0.85rem; color: var(--text-heading);">--</strong>
+            </div>
+            <div style="padding: 0.65rem; background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 6px;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Poll Interval</div>
+              <strong id="sms-poll-text" style="font-size: 0.85rem; color: var(--text-heading);">--</strong>
+            </div>
+            <div style="padding: 0.65rem; background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 6px;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Storage TTL</div>
+              <strong id="sms-ttl-text" style="font-size: 0.85rem; color: var(--text-heading);">--</strong>
+            </div>
+          </div>
+          <div id="sms-error-box" style="display: none; padding: 0.65rem 0.85rem; border-radius: 6px; background: rgba(244,63,94,0.15); border: 1px solid var(--danger); color: #fda4af; font-size: 0.8rem; margin-bottom: 1rem;"></div>
+
+          <div class="card-title" style="margin-top: 1rem;">Cellular SMS Transmission Log</div>
+          <div class="table-responsive">
             <table id="sms-history-table">
               <thead>
                 <tr>
-                  <th>Dir</th>
-                  <th>Phone</th>
-                  <th>Message</th>
+                  <th>Direction</th>
+                  <th>Phone Number</th>
+                  <th>Message Body</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No SMS history recorded</td></tr>
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Fetching SMS history...</td></tr>
               </tbody>
             </table>
           </div>
         </div>
       </div>
+
+      <div>
+        <!-- Send Manual SMS Card -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>Send Direct Cellular SMS</span>
+            <span class="badge badge-primary">GSM AT Command</span>
+          </div>
+          <div class="form-group">
+            <label>Recipient Phone Number (+E.164)</label>
+            <input type="text" id="sms-manual-phone" class="form-control" placeholder="+393349246425">
+          </div>
+          <div class="form-group">
+            <label>Message Content (UCS-2 / ASCII)</label>
+            <textarea id="sms-manual-msg" class="form-control" rows="3" placeholder="Test notification from OpenAlert NOC..."></textarea>
+          </div>
+          <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="sendManualSms()">
+            Dispatch SMS Now
+          </button>
+        </div>
+
+        <!-- Hot Reload SMS ACL Card -->
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>SMS Access Control Lists</span>
+            <span class="badge badge-cyan">SQLite Persisted</span>
+          </div>
+          <div class="form-group">
+            <label>Outbound Emergency Alert Recipients (newline separated)</label>
+            <textarea id="sms-recipients-input" class="form-control" rows="3" placeholder="+393349246425"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Authorized Inbound Senders (newline separated)</label>
+            <textarea id="sms-senders-input" class="form-control" rows="3" placeholder="+393349246425"></textarea>
+          </div>
+          <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="saveSmsConfig()">
+            Save &amp; Hot-Reload SMS Config
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Tab 6: Bluetooth BLE & BitChat Mesh -->
+  <!-- Tab 6: Bluetooth & BitChat Mesh -->
   <div id="tab-bitchat" class="tab-content" style="display: none;">
     <div class="layout-cols">
-      <!-- Left Column: Local BLE Subsystem & Manual Broadcast -->
       <div>
-        <!-- Node Hardware Card -->
         <div class="glass-panel card">
           <div class="card-title">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
-              <span>Local Bluetooth LE Mesh Node</span>
+              <span>BitChat Bluetooth LE Mesh Tactical Radar</span>
             </div>
-            <span class="badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);" id="bitchat-tab-status">Active</span>
+            <span class="badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);" id="bitchat-tab-status">Active (BLE GATT)</span>
           </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
-            <div>
-              <div class="stat-title">Node Alias</div>
-              <div id="bitchat-tab-nodename" style="font-size: 1.1rem; font-weight: 700; color: #fff;">OpenAlert-Mesh</div>
-            </div>
-            <div>
-              <div class="stat-title">Sender ID (8-Byte)</div>
-              <div style="display: flex; align-items: center; gap: 0.4rem;">
-                <code id="bitchat-tab-senderid" style="color: #38bdf8; font-weight: 700; font-size: 0.95rem;">--</code>
-                <button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(56,189,248,0.15); color: #38bdf8;" onclick="copySenderId()">Copy</button>
-              </div>
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
-            <div>
-              <div class="stat-title">BLE GATT Service UUID</div>
-              <code style="font-size: 0.72rem; word-break: break-all; color: #94a3b8;" id="bitchat-tab-uuid">f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c</code>
-            </div>
-            <div>
-              <div class="stat-title">E2EE Cryptographic Suite</div>
-              <span class="badge badge-success" style="font-size: 0.68rem;">Noise XX + ChaChaPoly + Ed25519</span>
-            </div>
-          </div>
-
-          <div style="padding: 0.75rem; border-radius: 8px; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.18); font-size: 0.78rem; color: #94a3b8; line-height: 1.4;">
-            🛡️ <strong>Zero-Trust Mesh</strong>: BitChat uses ephemeral X25519 Diffie-Hellman keys with mutual Ed25519 identity verification and authenticated ChaCha20-Poly1305 transport encryption. Alerts reaching this node are automatically relayed to Nostr and Prometheus.
-          </div>
-        </div>
-
-        <!-- Ad-Hoc Mesh Broadcast Console -->
-        <div class="glass-panel card">
-          <div class="card-title">
-            <span>Ad-Hoc BitChat Mesh Alert Broadcast</span>
-            <span class="badge badge-cyan">Direct BLE Transmission</span>
-          </div>
-          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
-            Transmits an ad-hoc alert packet across the Bluetooth Low Energy mesh. Connected mobile devices and relays decrypt and display notifications.
-          </p>
-          <div class="form-group">
-            <label>Alert Severity</label>
-            <select id="bitchat-broadcast-sev" class="form-control">
-              <option value="warning">Warning</option>
-              <option value="critical" selected>Critical</option>
-              <option value="emergency">Emergency</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Emergency Notification Text</label>
-            <textarea id="bitchat-broadcast-msg" class="form-control" rows="3" placeholder="Enter message text to broadcast across the Bluetooth mesh..."></textarea>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span id="bitchat-broadcast-feedback" style="font-size: 0.8rem; color: var(--text-muted);"></span>
-            <button class="btn btn-primary" onclick="sendBitChatBroadcast()">Broadcast to Mesh</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Column: Interactive Radar & Peers Table -->
-      <div>
-        <!-- Radar Constellation Visualizer Card -->
-        <div class="glass-panel card">
-          <div class="card-title">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="m12 12 7-7"/></svg>
-              <span>BitChat Mesh Radar Constellation</span>
-            </div>
-            <span class="badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3);" id="tab-radar-peer-count">0 Peers Online</span>
-          </div>
-
-          <div style="position: relative; width: 300px; height: 300px; margin: 0.5rem auto 1.5rem auto; display: flex; align-items: center; justify-content: center;">
-            <svg width="300" height="300" viewBox="0 0 300 300" id="tab-radar-svg">
+          <div style="position: relative; width: 280px; height: 280px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+            <svg width="280" height="280" viewBox="0 0 300 300" id="tab-radar-svg">
               <defs>
-                <radialGradient id="tabRadarScanGrad" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+                <radialGradient id="tabRadarGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.38"/>
                   <stop offset="60%" stop-color="#38bdf8" stop-opacity="0.1"/>
                   <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
                 </radialGradient>
@@ -934,35 +1119,37 @@ pub fn dashboard_html() -> &'static str {
                   <stop offset="100%" stop-color="#0284c7" stop-opacity="0"/>
                 </linearGradient>
               </defs>
-              <circle cx="150" cy="150" r="140" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1.5" fill="rgba(15, 23, 42, 0.8)"/>
-              <circle cx="150" cy="150" r="100" stroke="rgba(56, 189, 248, 0.18)" stroke-width="1" fill="none" stroke-dasharray="4,4"/>
-              <circle cx="150" cy="150" r="60" stroke="rgba(56, 189, 248, 0.22)" stroke-width="1" fill="none"/>
-              <line x1="10" y1="150" x2="290" y2="150" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
-              <line x1="150" y1="10" x2="150" y2="290" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
-              <circle cx="150" cy="150" r="24" stroke="#38bdf8" fill="none" class="radar-ripple-1"/>
-              <circle cx="150" cy="150" r="24" stroke="#38bdf8" fill="none" class="radar-ripple-2"/>
+              <circle cx="150" cy="150" r="135" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1.5" fill="rgba(15, 23, 42, 0.75)"/>
+              <circle cx="150" cy="150" r="95" stroke="rgba(56, 189, 248, 0.18)" stroke-width="1" fill="none" stroke-dasharray="3,3"/>
+              <circle cx="150" cy="150" r="55" stroke="rgba(56, 189, 248, 0.22)" stroke-width="1" fill="none"/>
+              <line x1="15" y1="150" x2="285" y2="150" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
+              <line x1="150" y1="15" x2="150" y2="285" stroke="rgba(56, 189, 248, 0.12)" stroke-width="1"/>
+              <circle cx="150" cy="150" r="22" stroke="#38bdf8" fill="none" class="radar-ripple-1"/>
+              <circle cx="150" cy="150" r="22" stroke="#38bdf8" fill="none" class="radar-ripple-2"/>
               <g class="radar-scanner" style="transform-origin: 150px 150px;">
-                <path d="M 150 150 L 290 150 A 140 140 0 0 0 248.99 51.01 Z" fill="url(#tabRadarScanGrad)"/>
-                <line x1="150" y1="150" x2="290" y2="150" stroke="url(#tabSweepBeam)" stroke-width="2.5"/>
+                <path d="M 150 150 L 285 150 A 135 135 0 0 0 245.45 54.55 Z" fill="url(#tabRadarGrad)"/>
+                <line x1="150" y1="150" x2="285" y2="150" stroke="url(#tabSweepBeam)" stroke-width="2.5"/>
               </g>
-              <circle cx="150" cy="150" r="16" fill="#0284c7" stroke="#38bdf8" stroke-width="2.5"/>
-              <path d="M147 144 L154 151 L150 155 L150 141 L154 145 L147 152" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="150" cy="150" r="16" fill="#0284c7" stroke="#38bdf8" stroke-width="2"/>
+              <path d="M147 145 L153 151 L150 154 L150 142 L153 145 L147 151" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <g id="tab-radar-peers"></g>
             </svg>
           </div>
+          <div style="text-align: center; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);" id="tab-radar-peer-count">0 Peers Online</div>
+        </div>
 
-          <!-- Peer List Table -->
-          <div class="card-title" style="margin-top: 1rem;">
-            <span>Discovered Peers &amp; Cryptographic Sessions</span>
-            <button class="btn" style="font-size: 0.7rem; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.08); color: #fff;" onclick="loadBitChatStatus()">Refresh</button>
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>Discovered BitChat Mesh Nodes</span>
+            <span class="badge badge-cyan">Ed25519 Verified</span>
           </div>
-          <div style="max-height: 380px; overflow-y: auto;">
+          <div class="table-responsive">
             <table id="bitchat-peers-table">
               <thead>
                 <tr>
-                  <th>Peer Device / Nick</th>
+                  <th>Nickname</th>
                   <th>Sender ID</th>
-                  <th>E2EE Handshake State</th>
+                  <th>Session State</th>
                   <th>Verification</th>
                   <th>Traffic</th>
                   <th>Last Seen</th>
@@ -970,10 +1157,335 @@ pub fn dashboard_html() -> &'static str {
                 </tr>
               </thead>
               <tbody>
-                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Scanning for BitChat BLE peer packets...</td></tr>
+                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No active BitChat peers detected</td></tr>
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>BitChat Node Metadata</span>
+            <span class="badge badge-cyan">Linux BlueZ GATT</span>
+          </div>
+          <div class="form-group">
+            <label>Advertised Node Nickname</label>
+            <input type="text" id="bitchat-tab-nodename" class="form-control" readonly value="OpenAlert-Mesh">
+          </div>
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <label style="margin: 0; font-size: 0.72rem;">Local Sender ID (Blake3 Pubkey Hash)</label>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(255,255,255,0.08); color: var(--text-heading);" onclick="copySenderId()">Copy</button>
+            </div>
+            <div id="bitchat-tab-senderid" style="font-family: monospace; font-size: 0.8rem; color: #38bdf8; word-break: break-all; padding: 0.5rem 0.75rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 6px;">--</div>
+          </div>
+          <div class="form-group">
+            <label>Service UUID</label>
+            <div id="bitchat-tab-uuid" style="font-family: monospace; font-size: 0.75rem; color: var(--text-muted); word-break: break-all; padding: 0.5rem 0.75rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 6px;">
+              f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>Broadcast BLE Mesh Alert</span>
+            <span class="badge badge-primary">E2EE Flooding</span>
+          </div>
+          <div class="form-group">
+            <label>Alert Severity</label>
+            <select id="bitchat-broadcast-sev" class="form-control">
+              <option value="warning">Warning</option>
+              <option value="critical">Critical</option>
+              <option value="emergency">Emergency</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Notification Text</label>
+            <textarea id="bitchat-broadcast-msg" class="form-control" rows="3" placeholder="Evacuation advisory or critical notice for nearby mobile nodes..."></textarea>
+          </div>
+          <div id="bitchat-broadcast-feedback" style="font-size: 0.78rem; margin-bottom: 0.5rem; color: #38bdf8;"></div>
+          <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="sendBitChatBroadcast()">
+            Broadcast to BitChat Mesh
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 7: Operational Tools & Conversions -->
+  <div id="tab-tools" class="tab-content" style="display: none;">
+    <div class="layout-cols-equal">
+      <!-- Left Column: Nostr Keypair Generator & Converter -->
+      <div>
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>🔑 Nostr Secp256k1 Keypair Generator</span>
+            <button class="btn btn-primary" style="font-size: 0.72rem; padding: 0.25rem 0.7rem;" onclick="generateNostrKeypair()">Generate Fresh Keypair</button>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+            Generates standard BIP-340 Schnorr Secp256k1 keys compatible with Nostr relays, NIP-17 0xChat, Coracle, and Damus.
+          </p>
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <label style="margin: 0; font-size: 0.72rem;">Public Key (npub1...)</label>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(255,255,255,0.08); color: var(--text-heading);" onclick="copyText('tool-gen-npub')">Copy npub</button>
+            </div>
+            <input type="text" id="tool-gen-npub" class="form-control" readonly placeholder="Click 'Generate Fresh Keypair' above">
+          </div>
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <label style="margin: 0; font-size: 0.72rem;">Public Key (Hex 64-char)</label>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(255,255,255,0.08); color: var(--text-heading);" onclick="copyText('tool-gen-pubhex')">Copy Hex</button>
+            </div>
+            <input type="text" id="tool-gen-pubhex" class="form-control" readonly placeholder="--">
+          </div>
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <label style="margin: 0; font-size: 0.72rem; color: #fda4af;">Secret Private Key (nsec1... - NEVER SHARE)</label>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(244,63,94,0.15); color: #fda4af;" onclick="copyText('tool-gen-nsec')">Copy nsec</button>
+            </div>
+            <input type="password" id="tool-gen-nsec" class="form-control" readonly placeholder="--">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <label style="margin: 0; font-size: 0.72rem; color: #fda4af;">Secret Private Key (Hex 64-char)</label>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(244,63,94,0.15); color: #fda4af;" onclick="copyText('tool-gen-privhex')">Copy PrivHex</button>
+            </div>
+            <input type="password" id="tool-gen-privhex" class="form-control" readonly placeholder="--">
+          </div>
+        </div>
+
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>🔄 Nostr Key Converter &amp; Deriver</span>
+            <span class="badge badge-cyan">Bech32 &harr; Hex &bull; BIP-340</span>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+            Paste any <code>npub1...</code>, <code>nsec1...</code>, or 64-character hex key. Decodes Bech32 format, verifies checksums, and derives public keys from private keys.
+          </p>
+          <div class="form-group">
+            <label>Input Key (npub1, nsec1, or 64-char Hex)</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="text" id="tool-conv-input" class="form-control" placeholder="e.g. npub1uvtjer4wn7y2qpe4clvqd7qz7x483pthpngewqddc03xes39uq3sw9p5u6">
+              <button class="btn btn-primary" onclick="convertNostrKey()">Convert</button>
+            </div>
+          </div>
+          <div id="tool-conv-result" style="display: none; padding: 0.75rem; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); margin-top: 0.5rem;">
+            <div style="display: grid; grid-template-columns: 100px 1fr; gap: 0.5rem; font-size: 0.8rem; align-items: center;">
+              <span style="color: var(--text-muted);">Detected:</span>
+              <strong id="tool-conv-format" style="color: var(--text-heading);">--</strong>
+              <span style="color: var(--text-muted);">Hex (64):</span>
+              <div style="display: flex; align-items: center; gap: 0.3rem;">
+                <code id="tool-conv-hex" style="word-break: break-all; color: var(--cyan);">--</code>
+                <button class="btn" style="font-size: 0.6rem; padding: 0.1rem 0.3rem;" onclick="copyText('tool-conv-hex')">Copy</button>
+              </div>
+              <span style="color: var(--text-muted);">Bech32:</span>
+              <div style="display: flex; align-items: center; gap: 0.3rem;">
+                <code id="tool-conv-bech32" style="word-break: break-all; color: #a5b4fc;">--</code>
+                <button class="btn" style="font-size: 0.6rem; padding: 0.1rem 0.3rem;" onclick="copyText('tool-conv-bech32')">Copy</button>
+              </div>
+              <span id="tool-conv-derived-label" style="color: var(--text-muted); display: none;">Derived Pub:</span>
+              <div id="tool-conv-derived-box" style="display: none;">
+                <div style="display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.2rem;">
+                  <code id="tool-conv-derived-hex" style="word-break: break-all; color: var(--success);">--</code>
+                  <button class="btn" style="font-size: 0.6rem; padding: 0.1rem 0.3rem;" onclick="copyText('tool-conv-derived-hex')">Copy</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                  <code id="tool-conv-derived-npub" style="word-break: break-all; color: #38bdf8;">--</code>
+                  <button class="btn" style="font-size: 0.6rem; padding: 0.1rem 0.3rem;" onclick="copyText('tool-conv-derived-npub')">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: SMS Codec & Cryptographic Generators -->
+      <div>
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>📱 Cellular SMS UCS-2 Hex Codec</span>
+            <span class="badge badge-primary">GSM 03.38 &bull; UCS-2 16-Bit</span>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+            Bi-directional cellular modem text codec. Converts UTF-8 (accents, emojis) to UCS-2 Big-Endian Hex, or translates raw modem hex dumps back to UTF-8.
+          </p>
+          <div class="form-group">
+            <label>Input Text (UTF-8) OR Modem Hex String</label>
+            <textarea id="tool-sms-input" class="form-control" rows="3" placeholder="Enter text (e.g. Allarme critico! 🚨) or hex (0041006c...)"></textarea>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem;">
+            <span id="tool-sms-op-badge" class="badge badge-cyan" style="display: none;">--</span>
+            <button class="btn btn-primary" onclick="convertSmsCodec()">Translate / Encode</button>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <label style="margin: 0; font-size: 0.72rem;">Result</label>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(255,255,255,0.08); color: var(--text-heading);" onclick="copyText('tool-sms-output')">Copy Result</button>
+            </div>
+            <textarea id="tool-sms-output" class="form-control" rows="3" readonly placeholder="Translated result will appear here"></textarea>
+          </div>
+        </div>
+
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>🛡️ Privacy &amp; Security Tools</span>
+          </div>
+
+          <!-- Password Hasher -->
+          <div style="margin-bottom: 1.15rem;">
+            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-heading); margin-bottom: 0.2rem;">Dashboard Password Hasher (SHA-256)</div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 0.45rem;">Computes the cryptographic SHA-256 hash for <code>[dashboard.auth] password_hash</code>.</p>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.35rem;">
+              <input type="password" id="tool-pwd-input" class="form-control" placeholder="Enter password to hash...">
+              <button class="btn btn-secondary" onclick="hashPassword()">Hash</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.3rem;">
+              <input type="text" id="tool-pwd-output" class="form-control" readonly placeholder="Generated SHA-256 hash" style="font-size: 0.75rem;">
+              <button class="btn" style="font-size: 0.65rem; padding: 0.2rem 0.5rem;" onclick="copyText('tool-pwd-output')">Copy</button>
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--card-border); margin: 0.85rem 0;">
+
+          <!-- 256-Bit Cryptographic Hex Generator -->
+          <div>
+            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-heading); margin-bottom: 0.2rem;">256-Bit Cryptographic Pre-Shared Key Generator</div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 0.45rem;">Generates 32-byte OsRng random hex for Peering PSKs (AEAD ChaCha20-Poly1305) and Webhook secrets.</p>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="text" id="tool-psk-output" class="form-control" readonly placeholder="Click 'Generate Key' ->" style="font-size: 0.75rem;">
+              <button class="btn btn-primary" style="font-size: 0.72rem; padding: 0.3rem 0.6rem; white-space: nowrap;" onclick="generateCryptoKey()">Generate Key</button>
+              <button class="btn" style="font-size: 0.72rem; padding: 0.3rem 0.5rem;" onclick="copyText('tool-psk-output')">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 8: Configuration Management & ACL Editor -->
+  <div id="tab-config" class="tab-content" style="display: none;">
+    <div class="layout-cols-equal">
+      <!-- Left Column: Visual Access Control Lists -->
+      <div>
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>📡 Nostr &amp; 0xChat Operators (ACL)</span>
+            <span class="badge badge-primary">NIP-17 / Kind 1 &bull; Hot-Reload</span>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+            Manage authorized operators permitted to send remote C2 commands (<code>ping</code>, <code>status</code>, <code>ack</code>, <code>mesh</code>, <code>sms</code>) and receive private encrypted alert DMs.
+          </p>
+
+          <div class="form-group">
+            <label>Add Operator (Paste npub1... or 64-char Hex)</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="text" id="config-oxchat-new-op" class="form-control" placeholder="npub1... or hex public key">
+              <button class="btn btn-primary" onclick="addNostrOperator()">+ Add</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 0.85rem;">
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.4rem;">Configured 0xChat C2 Authorized Operators:</div>
+            <div id="config-oxchat-ops-list" style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 160px; overflow-y: auto;">
+              <span style="color: var(--text-muted); font-size: 0.75rem; font-style: italic;">Loading operator list...</span>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 0.85rem;">
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.4rem;">Configured 0xChat Alert DM Recipients:</div>
+            <div id="config-oxchat-recipients-list" style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 160px; overflow-y: auto;">
+              <span style="color: var(--text-muted); font-size: 0.75rem; font-style: italic;">Loading recipients list...</span>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button class="btn btn-primary" onclick="saveNostrAcl()">Save Nostr Access Control</button>
+          </div>
+        </div>
+
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>📱 Cellular SMS Authorized Senders &amp; Recipients</span>
+            <span class="badge badge-cyan">GSM AT &bull; SQLite Persisted</span>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+            Configure inbound phone numbers authorized to execute remote SMS commands and outbound numbers receiving emergency SMS dispatches.
+          </p>
+          <div class="form-group">
+            <label>Outbound Emergency SMS Recipients (+E.164, newline separated)</label>
+            <textarea id="config-sms-recipients-text" class="form-control" rows="3" placeholder="+393349246425"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Authorized Inbound Senders (+E.164, newline separated; empty = all permitted)</label>
+            <textarea id="config-sms-senders-text" class="form-control" rows="3" placeholder="+393349246425"></textarea>
+          </div>
+          <div style="display: flex; justify-content: flex-end;">
+            <button class="btn btn-primary" onclick="saveSmsAclFromConfigTab()">Save SMS Access Control</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Interactive Raw TOML Configuration Editor -->
+      <div>
+        <div class="glass-panel card">
+          <div class="card-title">
+            <span>📝 Daemon Configuration Editor (openalertd.toml)</span>
+            <button class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.55rem;" onclick="loadConfigFile()">Reload File</button>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.65rem;">
+            Directly edit the live configuration file on disk (<code id="config-file-path-badge" style="color: var(--cyan);">config/openalertd.toml</code>). Built-in dry-run validation ensures no broken config is ever saved.
+          </p>
+
+          <div id="config-validation-banner" style="display: none; padding: 0.6rem 0.75rem; border-radius: 6px; font-size: 0.78rem; margin-bottom: 0.65rem;"></div>
+
+          <div class="form-group" style="margin-bottom: 0.65rem;">
+            <textarea id="config-toml-editor" class="form-control" rows="22" style="font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.4; tab-size: 4; white-space: pre;" spellcheck="false" placeholder="Loading daemon configuration..."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+            <button class="btn btn-secondary" style="color: var(--cyan); border-color: rgba(6,182,212,0.3);" onclick="validateTomlConfig()">Validate Syntax</button>
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-secondary" onclick="loadConfigFile()">Discard Changes</button>
+              <button class="btn btn-primary" onclick="saveTomlConfig()">Backup &amp; Save Config</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 9: Live Console & Event Log Stream (New!) -->
+  <div id="tab-console" class="tab-content" style="display: none;">
+    <div class="glass-panel card">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span>💻 Live Daemon Interactive Console</span>
+          <span class="badge badge-success" id="console-stream-badge">Streaming</span>
+        </div>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+          <input type="text" id="console-filter-input" class="form-control" style="width: 160px; padding: 0.25rem 0.5rem; font-size: 0.75rem;" placeholder="Filter logs..." oninput="filterConsoleLogs()">
+          <select id="console-level-select" class="form-control" style="width: 110px; padding: 0.25rem 0.5rem; font-size: 0.75rem;" onchange="filterConsoleLogs()">
+            <option value="all">All Levels</option>
+            <option value="info">INFO</option>
+            <option value="warn">WARN</option>
+            <option value="error">ERROR / ALERT</option>
+          </select>
+          <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: var(--text-muted); cursor: pointer; user-select: none;">
+            <input type="checkbox" id="console-autoscroll" checked> Auto-scroll
+          </label>
+          <button class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.25rem 0.55rem;" onclick="copyConsoleLogs()">📋 Copy</button>
+          <button class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.25rem 0.55rem;" onclick="clearConsoleLogs()">🧹 Clear</button>
+        </div>
+      </div>
+      <div id="console-pane" class="console-pane">
+        <div class="console-line" data-level="info">
+          <span class="console-ts">[SYSTEM BOOT]</span>
+          <span class="console-tag-info">[INFO]</span>
+          <span class="console-msg">OpenAlert Control Plane interactive terminal initialized.</span>
         </div>
       </div>
     </div>
@@ -984,7 +1496,7 @@ pub fn dashboard_html() -> &'static str {
     <div class="glass-panel modal-box">
       <div class="card-title">
         <span>Dispatch Test Alert</span>
-        <span style="cursor: pointer; font-size: 1.2rem;" onclick="closeTestModal()">&times;</span>
+        <span style="cursor: pointer; font-size: 1.2rem; color: var(--text-muted);" onclick="closeTestModal()">&times;</span>
       </div>
       <div class="form-group">
         <label>Summary / Code</label>
@@ -1010,13 +1522,253 @@ pub fn dashboard_html() -> &'static str {
         </select>
       </div>
       <div class="modal-footer">
-        <button class="btn" style="background: rgba(255,255,255,0.1); color: #fff;" onclick="closeTestModal()">Cancel</button>
+        <button class="btn btn-secondary" onclick="closeTestModal()">Cancel</button>
         <button class="btn btn-primary" onclick="sendTestAlert()">Dispatch Alert Now</button>
       </div>
     </div>
   </div>
 
   <script>
+    // --- THEME ENGINE (DAY / NIGHT) ---
+    let currentTheme = localStorage.getItem('openalert-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    updateThemeControls(currentTheme);
+
+    function toggleTheme() {
+      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      localStorage.setItem('openalert-theme', currentTheme);
+      updateThemeControls(currentTheme);
+      logToConsole('info', 'UI', `Switched theme to ${currentTheme.toUpperCase()} mode`);
+    }
+
+    function updateThemeControls(t) {
+      const icon = document.getElementById('theme-icon');
+      const text = document.getElementById('theme-text');
+      const logo = document.getElementById('brand-logo-img');
+      if (t === 'light') {
+        if (icon) icon.innerText = '☀️';
+        if (text) text.innerText = 'Day';
+        if (logo) logo.src = '/api/v1/logo?theme=day';
+      } else {
+        if (icon) icon.innerText = '🌙';
+        if (text) text.innerText = 'Night';
+        if (logo) logo.src = '/api/v1/logo?theme=night';
+      }
+    }
+
+    // --- SYNTHESIZED WEB AUDIO API ALARMS (Disabled / Muted by Default) ---
+    let audioEnabled = localStorage.getItem('openalert-audio') === 'true'; // Default is false!
+    let audioCtx = null;
+    let activeAlarmOscillators = [];
+
+    function initAudioContext() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          audioCtx = new AudioContext();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function toggleAudioAlarm() {
+      initAudioContext();
+      audioEnabled = !audioEnabled;
+      localStorage.setItem('openalert-audio', audioEnabled);
+      updateAudioControls();
+      if (audioEnabled) {
+        playTone(587, 0.1, 'sine');
+        setTimeout(() => playTone(880, 0.15, 'sine'), 120);
+        logToConsole('info', 'AUDIO', 'Acoustic alarm cues enabled by operator');
+      } else {
+        stopActiveAlarmSound();
+        logToConsole('warn', 'AUDIO', 'Acoustic alarm cues muted');
+      }
+    }
+
+    function updateAudioControls() {
+      const icon = document.getElementById('audio-icon');
+      const text = document.getElementById('audio-text');
+      const btn = document.getElementById('btn-audio-toggle');
+      if (audioEnabled) {
+        if (icon) icon.innerText = '🔊';
+        if (text) text.innerText = 'Sound ON';
+        if (btn) {
+          btn.style.background = 'rgba(16, 185, 129, 0.18)';
+          btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+          btn.style.color = '#34d399';
+        }
+      } else {
+        if (icon) icon.innerText = '🔇';
+        if (text) text.innerText = 'Sound Muted';
+        if (btn) {
+          btn.style.background = '';
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }
+      }
+    }
+    updateAudioControls();
+
+    function playTone(freq, duration, type = 'sine') {
+      if (!audioEnabled || !audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (err) {
+        console.warn('Audio synthesis notice:', err);
+      }
+    }
+
+    function triggerAlarmSiren(sev) {
+      if (!audioEnabled) return;
+      initAudioContext();
+      stopActiveAlarmSound();
+
+      if (sev === 'critical' || sev === 'emergency') {
+        let count = 0;
+        const interval = setInterval(() => {
+          if (!audioEnabled || count >= 6) {
+            clearInterval(interval);
+            return;
+          }
+          const freq = count % 2 === 0 ? 880 : 587;
+          playTone(freq, 0.22, 'sawtooth');
+          count++;
+        }, 260);
+        activeAlarmOscillators.push(interval);
+      } else if (sev === 'warning') {
+        playTone(659, 0.18, 'triangle');
+        setTimeout(() => playTone(880, 0.22, 'triangle'), 190);
+      } else {
+        playTone(523, 0.15, 'sine');
+      }
+    }
+
+    function stopActiveAlarmSound() {
+      activeAlarmOscillators.forEach(id => clearInterval(id));
+      activeAlarmOscillators = [];
+    }
+
+    // --- ACTIVE INCIDENT BANNER & ACK ---
+    let latestCriticalIncident = null;
+
+    function showIncidentBanner(alert) {
+      latestCriticalIncident = alert;
+      const banner = document.getElementById('incident-banner');
+      if (!banner) return;
+      banner.style.display = 'flex';
+
+      const badge = document.getElementById('incident-badge');
+      if (badge) badge.innerText = `🚨 ${(alert.severity || 'CRITICAL').toUpperCase()} ALARM`;
+      const sumEl = document.getElementById('incident-summary');
+      if (sumEl) sumEl.innerText = alert.summary || 'Unspecified emergency incident';
+      const metaEl = document.getElementById('incident-meta');
+      if (metaEl) metaEl.innerText = `ID: ${alert.alert_id} | Node: ${alert.node || 'Local'} | Egress: [${(alert.destinations || []).join(', ')}]`;
+
+      triggerAlarmSiren(alert.severity);
+    }
+
+    function acknowledgeActiveIncident() {
+      stopActiveAlarmSound();
+      const badge = document.getElementById('incident-badge');
+      if (badge) {
+        badge.className = 'badge badge-success';
+        badge.innerText = '✅ ACKNOWLEDGED';
+      }
+      if (latestCriticalIncident) {
+        logToConsole('ack', 'C2', `Alert ${latestCriticalIncident.alert_id} acknowledged by operator`);
+        addEventToFeed({
+          alert_id: 'ack-' + Date.now().toString(16),
+          severity: 'info',
+          summary: `✅ Acknowledged: ${latestCriticalIncident.summary} [${latestCriticalIncident.alert_id}]`,
+          destinations: ['control-plane']
+        });
+      }
+      setTimeout(() => dismissIncidentBanner(), 3500);
+    }
+
+    function dismissIncidentBanner() {
+      stopActiveAlarmSound();
+      const banner = document.getElementById('incident-banner');
+      if (banner) banner.style.display = 'none';
+    }
+
+    // --- LIVE CONSOLE LOG STREAM ---
+    function logToConsole(level, tag, msg) {
+      const pane = document.getElementById('console-pane');
+      if (!pane) return;
+      const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+      const div = document.createElement('div');
+      div.className = 'console-line';
+      div.setAttribute('data-level', level);
+
+      let tagClass = 'console-tag-info';
+      if (level === 'warn') tagClass = 'console-tag-warn';
+      else if (level === 'error') tagClass = 'console-tag-error';
+      else if (level === 'ack') tagClass = 'console-tag-ack';
+
+      div.innerHTML = `
+        <span class="console-ts">[${ts}]</span>
+        <span class="${tagClass}">[${level.toUpperCase()}]</span>
+        <span style="color: var(--cyan); font-weight: 500;">[${tag}]</span>
+        <span class="console-msg">${escapeHtml(msg)}</span>
+      `;
+      pane.appendChild(div);
+
+      const autoscroll = document.getElementById('console-autoscroll');
+      if (autoscroll && autoscroll.checked) {
+        pane.scrollTop = pane.scrollHeight;
+      }
+    }
+
+    function filterConsoleLogs() {
+      const term = (document.getElementById('console-filter-input').value || '').toLowerCase();
+      const level = document.getElementById('console-level-select').value;
+      const lines = document.querySelectorAll('.console-line');
+
+      lines.forEach(l => {
+        const text = l.innerText.toLowerCase();
+        const lLevel = l.getAttribute('data-level') || 'info';
+        const matchText = !term || text.includes(term);
+        const matchLevel = level === 'all' || lLevel === level || (level === 'error' && (lLevel === 'error' || lLevel === 'emergency' || lLevel === 'critical'));
+        l.style.display = matchText && matchLevel ? 'flex' : 'none';
+      });
+    }
+
+    function copyConsoleLogs() {
+      const pane = document.getElementById('console-pane');
+      if (!pane) return;
+      navigator.clipboard.writeText(pane.innerText).then(() => {
+        alert('Console logs copied to clipboard!');
+      }).catch(() => prompt('Copy logs:', pane.innerText));
+    }
+
+    function clearConsoleLogs() {
+      const pane = document.getElementById('console-pane');
+      if (pane) pane.innerHTML = '';
+      logToConsole('info', 'SYS', 'Console buffer cleared.');
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[m]);
+    }
+
+    // --- NAVIGATION TABS ---
     function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
@@ -1025,6 +1777,7 @@ pub fn dashboard_html() -> &'static str {
       }
       const target = document.getElementById('tab-' + tabId);
       if (target) target.style.display = 'block';
+
       if (tabId === 'sms') {
         loadSmsStatus();
         loadSmsHistory();
@@ -1032,8 +1785,13 @@ pub fn dashboard_html() -> &'static str {
       if (tabId === 'bitchat') {
         loadBitChatStatus();
       }
+      if (tabId === 'config') {
+        loadConfigFile();
+      }
+      logToConsole('info', 'NAV', `Switched active tab to '${tabId}'`);
     }
 
+    // --- PEER & SPOOL ACTIONS ---
     async function resetPeerCircuit(peerName) {
       if (!confirm(`Reset circuit breaker for peer '${peerName}' to CLOSED?`)) return;
       try {
@@ -1041,8 +1799,10 @@ pub fn dashboard_html() -> &'static str {
         const data = await res.json();
         if (res.ok) {
           alert(`✅ ${data.message || 'Circuit reset successfully'}`);
+          logToConsole('ack', 'PEER', `Reset circuit breaker for peer ${peerName}`);
         } else {
           alert(`❌ ${data.message || 'Failed to reset circuit'}`);
+          logToConsole('error', 'PEER', `Failed to reset peer ${peerName}: ${data.message}`);
         }
       } catch (err) {
         alert(`❌ Error connecting to server: ${err}`);
@@ -1057,6 +1817,7 @@ pub fn dashboard_html() -> &'static str {
         if (res.ok) {
           alert(`✅ ${data.message || 'Spool purged successfully'}`);
           document.getElementById('stat-spool-count').innerText = '0';
+          logToConsole('warn', 'STORAGE', 'Persistent spool purged by operator');
         } else {
           alert(`❌ ${data.message || 'Failed to purge spool'}`);
         }
@@ -1065,6 +1826,7 @@ pub fn dashboard_html() -> &'static str {
       }
     }
 
+    // --- TEST MODAL & ALERT DISPATCH ---
     function openTestModal() {
       document.getElementById('test-modal').classList.add('active');
     }
@@ -1094,6 +1856,10 @@ pub fn dashboard_html() -> &'static str {
         if (res.ok) {
           addEventToFeed(payload);
           closeTestModal();
+          logToConsole(severity === 'critical' || severity === 'emergency' ? 'error' : 'info', 'DISPATCH', `Dispatched alert [ID: ${payload.alert_id}] (${severity}): ${summary}`);
+          if (severity === 'critical' || severity === 'emergency') {
+            showIncidentBanner(payload);
+          }
         } else {
           alert('Failed to dispatch alert: ' + res.statusText);
         }
@@ -1104,6 +1870,7 @@ pub fn dashboard_html() -> &'static str {
 
     function addEventToFeed(alert) {
       const feed = document.getElementById('event-feed');
+      if (!feed) return;
       const card = document.createElement('div');
       card.className = 'event-card';
       const sevClass = alert.severity === 'emergency' ? 'danger' : alert.severity === 'critical' ? 'danger' : alert.severity === 'warning' ? 'warning' : 'primary';
@@ -1112,7 +1879,7 @@ pub fn dashboard_html() -> &'static str {
           <span class="badge badge-${sevClass}">${alert.severity.toUpperCase()}</span>
           <span class="ts" style="color: var(--text-muted); font-size: 0.7rem;">${new Date().toLocaleTimeString()}</span>
         </div>
-        <div class="event-summary">${alert.summary}</div>
+        <div class="event-summary">${escapeHtml(alert.summary)}</div>
         <div class="event-meta">
           <span>Target: [${(alert.destinations || []).join(', ')}]</span>
           <span>ID: ${alert.alert_id}</span>
@@ -1156,17 +1923,91 @@ pub fn dashboard_html() -> &'static str {
       }
     }
 
-    async function loadSmsStatus() {
-      try {
-        const res = await fetch('/api/v1/sms/status');
-        if (!res.ok) return;
-        const data = await res.json();
-        renderSmsStatus(data);
-      } catch (err) {
-        console.error('Error fetching SMS status', err);
+    // --- TELEMETRY RENDERERS ---
+    function renderPeers(peers) {
+      const obody = document.querySelector('#overview-peers-table tbody');
+      const fbody = document.querySelector('#full-peers-table tbody');
+
+      if (!peers || peers.length === 0) {
+        if (obody) obody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No peer nodes configured</td></tr>`;
+        if (fbody) fbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No peer nodes configured</td></tr>`;
+        return;
       }
+
+      const rows = peers.map(p => {
+        const stateClass = p.circuit_state === 'Closed' ? 'success' : p.circuit_state === 'HalfOpen' ? 'warning' : 'danger';
+        return `
+          <tr>
+            <td><strong>${p.name}</strong></td>
+            <td><span class="badge badge-cyan">${p.link_type}</span></td>
+            <td><span class="badge badge-${stateClass}">${p.circuit_state}</span></td>
+            <td>${p.consecutive_failures || 0}</td>
+            <td>${p.spooled_count || 0} msgs</td>
+            <td><button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.5rem; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); color: #a5b4fc; cursor: pointer;" onclick="resetPeerCircuit('${p.name}')">Reset</button></td>
+          </tr>
+        `;
+      }).join('');
+
+      if (obody) obody.innerHTML = rows;
+
+      const fullRows = peers.map(p => {
+        const stateClass = p.circuit_state === 'Closed' ? 'success' : p.circuit_state === 'HalfOpen' ? 'warning' : 'danger';
+        return `
+          <tr>
+            <td><strong>${p.name}</strong></td>
+            <td><code>${p.addr || 'serial'}</code></td>
+            <td><span class="badge badge-cyan">${p.link_type}</span></td>
+            <td><span class="badge badge-${stateClass}">${p.circuit_state}</span></td>
+            <td>${p.consecutive_failures || 0}</td>
+            <td>${p.spooled_count || 0}</td>
+            <td><button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.5rem; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); color: #a5b4fc; cursor: pointer;" onclick="resetPeerCircuit('${p.name}')">Reset</button></td>
+          </tr>
+        `;
+      }).join('');
+      if (fbody) fbody.innerHTML = fullRows;
     }
 
+    function renderRoutes(routes) {
+      const tbody = document.querySelector('#routes-table tbody');
+      if (!tbody) return;
+      if (!routes || routes.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No remote mesh routes discovered</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = routes.map(r => `
+        <tr>
+          <td><strong>${r.destination}</strong></td>
+          <td><code>${r.next_hop}</code></td>
+          <td><span class="badge badge-primary">${r.metric}</span></td>
+          <td>${r.hops}</td>
+          <td><span class="badge badge-cyan">${r.metric < 200 ? 'Fast LAN/VPN' : 'Sub-GHz LoRa'}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    function renderNostr(relays) {
+      const tbody = document.querySelector('#nostr-table tbody');
+      if (!tbody) return;
+      if (!relays || relays.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No Nostr relays active</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = relays.map(r => {
+        const pct = Math.round((r.score || 1.0) * 100);
+        const scoreClass = pct > 80 ? 'success' : pct > 50 ? 'warning' : 'danger';
+        return `
+          <tr>
+            <td><code>${r.url}</code></td>
+            <td><span class="badge badge-${scoreClass}">${pct}%</span></td>
+            <td>${r.successes || 0} / ${r.failures || 0}</td>
+            <td>${r.last_latency_ms ? r.last_latency_ms + ' ms' : '--'}</td>
+            <td><span class="badge badge-${scoreClass}">${pct > 50 ? 'Healthy' : 'Degraded'}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // --- BITCHAT BLE MESH ---
     function copySenderId() {
       const code = document.getElementById('bitchat-tab-senderid').innerText.trim();
       if (!code || code === '--') return;
@@ -1205,6 +2046,7 @@ pub fn dashboard_html() -> &'static str {
         if (res.ok) {
           if (fb) fb.innerText = '✅ Broadcast dispatched!';
           document.getElementById('bitchat-broadcast-msg').value = '';
+          logToConsole('info', 'BITCHAT', `Broadcast dispatched to BLE mesh (${sev}): ${msg}`);
           setTimeout(() => { if (fb) fb.innerText = ''; }, 4000);
         } else {
           if (fb) fb.innerText = '❌ Failed: ' + (data.message || res.statusText);
@@ -1248,7 +2090,7 @@ pub fn dashboard_html() -> &'static str {
             return `
               <div class="bitchat-peer-chip" onclick="switchTab('bitchat')" title="Sender ID: ${p.sender_id}">
                 <span style="width: 8px; height: 8px; border-radius: 50%; background: ${dotCol}; box-shadow: 0 0 6px ${dotCol};"></span>
-                <strong>${p.nickname || 'Peer'}</strong>
+                <strong>${escapeHtml(p.nickname || 'Peer')}</strong>
                 <span style="color: var(--text-muted); font-family: monospace; font-size: 0.7rem;">${p.sender_id.slice(0, 6)}...</span>
                 <span style="font-size: 0.68rem; color: #38bdf8;">${isEst ? '🔒 E2EE' : '📡 Discovered'}</span>
               </div>
@@ -1258,7 +2100,7 @@ pub fn dashboard_html() -> &'static str {
       }
 
       const tabNode = document.getElementById('bitchat-tab-nodename');
-      if (tabNode) tabNode.innerText = bc.node_name || 'OpenAlert-Mesh';
+      if (tabNode) tabNode.value = bc.node_name || 'OpenAlert-Mesh';
       const tabId = document.getElementById('bitchat-tab-senderid');
       if (tabId) tabId.innerText = bc.sender_id || '--';
       const tabUuid = document.getElementById('bitchat-tab-uuid');
@@ -1280,7 +2122,7 @@ pub fn dashboard_html() -> &'static str {
             const timeStr = p.last_seen_seconds_ago < 5 ? 'Just now' : `${p.last_seen_seconds_ago}s ago`;
             return `
               <tr>
-                <td><strong>${p.nickname || 'Peer'}</strong></td>
+                <td><strong>${escapeHtml(p.nickname || 'Peer')}</strong></td>
                 <td><code style="color: #38bdf8;">${p.sender_id}</code></td>
                 <td><span class="badge ${stBadge}" style="font-size: 0.68rem;">${p.session_state}</span></td>
                 <td>${verBadge}</td>
@@ -1320,11 +2162,12 @@ pub fn dashboard_html() -> &'static str {
 
         html += `<line x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" stroke="${fillCol}" stroke-width="1.2" stroke-dasharray="2,2" stroke-opacity="0.6"/>`;
         html += `<circle cx="${px}" cy="${py}" r="7" fill="${fillCol}" stroke="#fff" stroke-width="1.5" style="filter: drop-shadow(0 0 4px ${fillCol}); cursor: pointer;" onclick="switchTab('bitchat')"/>`;
-        html += `<text x="${px}" y="${py - 10}" fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle" font-family="sans-serif">${p.nickname || 'Peer'}</text>`;
+        html += `<text x="${px}" y="${py - 10}" fill="var(--text-heading)" font-size="10" font-weight="600" text-anchor="middle" font-family="sans-serif">${escapeHtml(p.nickname || 'Peer')}</text>`;
       });
       g.innerHTML = html;
     }
 
+    // --- CELLULAR SMS ---
     function renderSmsStatus(data) {
       if (!data) return;
       const badge = document.getElementById('sms-status-badge');
@@ -1364,10 +2207,20 @@ pub fn dashboard_html() -> &'static str {
       }
     }
 
+    async function loadSmsStatus() {
+      try {
+        const res = await fetch('/api/v1/sms/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderSmsStatus(data);
+      } catch (err) {
+        console.error('Error fetching SMS status', err);
+      }
+    }
+
     async function saveSmsConfig() {
       const recRaw = document.getElementById('sms-recipients-input').value;
       const sendRaw = document.getElementById('sms-senders-input').value;
-
       const recipients = recRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
       const authorized_senders = sendRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
 
@@ -1381,6 +2234,7 @@ pub fn dashboard_html() -> &'static str {
         if (res.ok) {
           alert('✅ SMS configuration saved and hot-reloaded successfully!');
           renderSmsStatus(data);
+          logToConsole('ack', 'SMS', `Updated SMS configuration: ${recipients.length} recipients, ${authorized_senders.length} senders`);
         } else {
           alert('❌ Failed to save SMS configuration: ' + (data.message || res.statusText));
         }
@@ -1407,6 +2261,7 @@ pub fn dashboard_html() -> &'static str {
         if (res.ok) {
           alert('✅ ' + data.message);
           loadSmsHistory();
+          logToConsole('info', 'SMS', `Sent manual SMS to ${phone}: ${message}`);
         } else {
           alert('❌ ' + (data.message || 'SMS send failed'));
         }
@@ -1437,7 +2292,7 @@ pub fn dashboard_html() -> &'static str {
             <tr>
               <td><span class="badge ${dirClass}" style="font-size: 0.65rem;">${dirIcon}</span></td>
               <td><code>${item.phone_number}</code><div style="font-size: 0.65rem; color: var(--text-muted);">${dateStr}</div></td>
-              <td style="font-size: 0.8rem; word-break: break-word;">${item.message}</td>
+              <td style="font-size: 0.8rem; word-break: break-word;">${escapeHtml(item.message)}</td>
               <td><span class="badge ${stClass}" style="font-size: 0.65rem;">${item.status}</span></td>
             </tr>
           `;
@@ -1447,88 +2302,397 @@ pub fn dashboard_html() -> &'static str {
       }
     }
 
-    function renderPeers(peers) {
-      const obody = document.querySelector('#overview-peers-table tbody');
-      const fbody = document.querySelector('#full-peers-table tbody');
+    // --- OPERATIONAL TOOLS ---
+    function copyText(elementId) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const val = el.value || el.innerText || '';
+      if (!val) return;
+      navigator.clipboard.writeText(val).then(() => {
+        alert('Copied to clipboard: ' + (val.length > 32 ? val.substring(0, 32) + '...' : val));
+      }).catch(() => prompt('Copy to clipboard (Ctrl+C):', val));
+    }
 
-      if (peers.length === 0) {
-        obody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No peer nodes configured</td></tr>`;
-        fbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No peer nodes configured</td></tr>`;
+    async function generateNostrKeypair() {
+      try {
+        const res = await fetch('/api/v1/tools/generate-keypair', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('tool-gen-npub').value = data.npub;
+          document.getElementById('tool-gen-pubhex').value = data.pub_hex;
+          document.getElementById('tool-gen-nsec').value = data.nsec;
+          document.getElementById('tool-gen-privhex').value = data.priv_hex;
+          logToConsole('info', 'TOOLS', `Generated Secp256k1 keypair [${data.npub.slice(0, 16)}...]`);
+        } else {
+          alert('Failed to generate keypair: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('Error generating keypair: ' + err);
+      }
+    }
+
+    async function convertNostrKey() {
+      const input = document.getElementById('tool-conv-input').value.trim();
+      if (!input) {
+        alert('Please enter an npub, nsec, or hex key to convert');
+        return;
+      }
+      try {
+        const res = await fetch('/api/v1/tools/convert-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: input })
+        });
+        const data = await res.json();
+        const box = document.getElementById('tool-conv-result');
+        if (res.ok) {
+          box.style.display = 'block';
+          document.getElementById('tool-conv-format').innerText = data.input_format;
+          document.getElementById('tool-conv-hex').innerText = data.hex_value;
+          document.getElementById('tool-conv-bech32').innerText = data.bech32_value;
+
+          const derLabel = document.getElementById('tool-conv-derived-label');
+          const derBox = document.getElementById('tool-conv-derived-box');
+          if (data.derived_public) {
+            derLabel.style.display = 'block';
+            derBox.style.display = 'block';
+            document.getElementById('tool-conv-derived-hex').innerText = data.derived_public.hex;
+            document.getElementById('tool-conv-derived-npub').innerText = data.derived_public.npub;
+          } else {
+            derLabel.style.display = 'none';
+            derBox.style.display = 'none';
+          }
+          logToConsole('info', 'TOOLS', `Converted ${data.input_format} key successfully`);
+        } else {
+          box.style.display = 'none';
+          alert('Conversion failed: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('Error converting key: ' + err);
+      }
+    }
+
+    async function convertSmsCodec() {
+      const payload = document.getElementById('tool-sms-input').value.trim();
+      if (!payload) {
+        alert('Please enter text or hex string to convert');
+        return;
+      }
+      try {
+        const res = await fetch('/api/v1/tools/convert-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const badge = document.getElementById('tool-sms-op-badge');
+          badge.style.display = 'inline-block';
+          badge.innerText = data.operation;
+          document.getElementById('tool-sms-output').value = data.result;
+          logToConsole('info', 'TOOLS', `Executed SMS codec operation: ${data.operation}`);
+        } else {
+          alert('SMS codec error: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('Error in SMS codec: ' + err);
+      }
+    }
+
+    async function hashPassword() {
+      const pwd = document.getElementById('tool-pwd-input').value;
+      if (!pwd) {
+        alert('Please enter a password');
+        return;
+      }
+      try {
+        const res = await fetch('/api/v1/tools/hash-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('tool-pwd-output').value = data.hash;
+          logToConsole('info', 'TOOLS', 'Computed SHA-256 dashboard password hash');
+        } else {
+          alert('Password hashing failed: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('Error hashing password: ' + err);
+      }
+    }
+
+    async function generateCryptoKey() {
+      try {
+        const res = await fetch('/api/v1/tools/generate-key', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('tool-psk-output').value = data.key;
+          logToConsole('info', 'TOOLS', 'Generated 256-bit OsRng cryptographic pre-shared key');
+        } else {
+          alert('Failed to generate key: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('Error generating key: ' + err);
+      }
+    }
+
+    // --- CONFIGURATION & ACL MANAGEMENT ---
+    let currentConfigObj = null;
+
+    async function loadConfigFile() {
+      try {
+        const res = await fetch('/api/v1/config');
+        if (!res.ok) {
+          console.error('Failed to load config', res.statusText);
+          return;
+        }
+        const data = await res.json();
+        currentConfigObj = data.config;
+
+        const pathEl = document.getElementById('config-file-path-badge');
+        if (pathEl) pathEl.innerText = data.config_path;
+
+        const editor = document.getElementById('config-toml-editor');
+        if (editor) editor.value = data.toml_content;
+
+        renderNostrAclLists(data.config);
+        renderSmsAclFields(data.config);
+        logToConsole('info', 'CONFIG', `Loaded configuration from ${data.config_path}`);
+      } catch (err) {
+        console.error('Error fetching config file', err);
+      }
+    }
+
+    function renderNostrAclLists(cfg) {
+      if (!cfg || !cfg.nostr || !cfg.nostr.oxchat) return;
+
+      const ops = cfg.nostr.oxchat.c2_authorized_operators || [];
+      const recs = cfg.nostr.oxchat.recipients || [];
+
+      const opsList = document.getElementById('config-oxchat-ops-list');
+      if (opsList) {
+        if (ops.length === 0) {
+          opsList.innerHTML = '<span style="color: var(--text-muted); font-size: 0.75rem; font-style: italic;">No operators configured</span>';
+        } else {
+          opsList.innerHTML = ops.map((op, idx) => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 4px; font-size: 0.75rem;">
+              <code style="color: #38bdf8;">${op}</code>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(244,63,94,0.15); color: #fda4af;" onclick="removeNostrOperator(${idx})">&times; Remove</button>
+            </div>
+          `).join('');
+        }
+      }
+
+      const recsList = document.getElementById('config-oxchat-recipients-list');
+      if (recsList) {
+        if (recs.length === 0) {
+          recsList.innerHTML = '<span style="color: var(--text-muted); font-size: 0.75rem; font-style: italic;">No recipients configured</span>';
+        } else {
+          recsList.innerHTML = recs.map((r, idx) => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 4px; font-size: 0.75rem;">
+              <code style="color: var(--cyan);">${r}</code>
+              <button class="btn" style="font-size: 0.65rem; padding: 0.1rem 0.4rem; background: rgba(244,63,94,0.15); color: #fda4af;" onclick="removeNostrRecipient(${idx})">&times; Remove</button>
+            </div>
+          `).join('');
+        }
+      }
+    }
+
+    function renderSmsAclFields(cfg) {
+      if (!cfg || !cfg.sms) return;
+      const recText = document.getElementById('config-sms-recipients-text');
+      if (recText) recText.value = (cfg.sms.recipients || []).join('\n');
+      const sendText = document.getElementById('config-sms-senders-text');
+      if (sendText) sendText.value = (cfg.sms.authorized_senders || []).join('\n');
+    }
+
+    async function addNostrOperator() {
+      const input = document.getElementById('config-oxchat-new-op');
+      let val = input.value.trim();
+      if (!val) return;
+
+      if (val.startsWith('npub1')) {
+        try {
+          const cRes = await fetch('/api/v1/tools/convert-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: val })
+          });
+          const cData = await cRes.json();
+          if (cRes.ok && cData.hex_value) {
+            val = cData.hex_value;
+          } else {
+            alert('Invalid npub key: ' + (cData.message || 'conversion failed'));
+            return;
+          }
+        } catch (err) {
+          alert('Error resolving npub: ' + err);
+          return;
+        }
+      }
+
+      if (val.length !== 64) {
+        alert('Operator public key must be a 64-character hex string or valid npub1...');
         return;
       }
 
-      const rows = peers.map(p => {
-        const stateClass = p.circuit_state === 'Closed' ? 'success' : p.circuit_state === 'HalfOpen' ? 'warning' : 'danger';
-        return `
-          <tr>
-            <td><strong>${p.name}</strong></td>
-            <td><span class="badge badge-cyan">${p.link_type}</span></td>
-            <td><span class="badge badge-${stateClass}">${p.circuit_state}</span></td>
-            <td>${p.consecutive_failures || 0}</td>
-            <td>${p.spooled_count || 0} msgs</td>
-            <td><button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.5rem; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); color: #a5b4fc; cursor: pointer;" onclick="resetPeerCircuit('${p.name}')">Reset</button></td>
-          </tr>
-        `;
-      }).join('');
+      if (!currentConfigObj) currentConfigObj = { nostr: { oxchat: { c2_authorized_operators: [], recipients: [] } } };
+      if (!currentConfigObj.nostr) currentConfigObj.nostr = {};
+      if (!currentConfigObj.nostr.oxchat) currentConfigObj.nostr.oxchat = { c2_authorized_operators: [], recipients: [] };
 
-      obody.innerHTML = rows;
+      const ops = currentConfigObj.nostr.oxchat.c2_authorized_operators || [];
+      const recs = currentConfigObj.nostr.oxchat.recipients || [];
 
-      const fullRows = peers.map(p => {
-        const stateClass = p.circuit_state === 'Closed' ? 'success' : p.circuit_state === 'HalfOpen' ? 'warning' : 'danger';
-        return `
-          <tr>
-            <td><strong>${p.name}</strong></td>
-            <td><code>${p.addr || 'serial'}</code></td>
-            <td><span class="badge badge-cyan">${p.link_type}</span></td>
-            <td><span class="badge badge-${stateClass}">${p.circuit_state}</span></td>
-            <td>${p.consecutive_failures || 0}</td>
-            <td>${p.spooled_count || 0}</td>
-            <td><button class="btn" style="font-size: 0.65rem; padding: 0.15rem 0.5rem; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); color: #a5b4fc; cursor: pointer;" onclick="resetPeerCircuit('${p.name}')">Reset</button></td>
-          </tr>
-        `;
-      }).join('');
-      fbody.innerHTML = fullRows;
+      if (!ops.includes(val)) ops.push(val);
+      if (!recs.includes(val)) recs.push(val);
+
+      currentConfigObj.nostr.oxchat.c2_authorized_operators = ops;
+      currentConfigObj.nostr.oxchat.recipients = recs;
+
+      input.value = '';
+      renderNostrAclLists(currentConfigObj);
     }
 
-    function renderRoutes(routes) {
-      const tbody = document.querySelector('#routes-table tbody');
-      if (!routes || routes.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No remote mesh routes discovered</td></tr>`;
+    function removeNostrOperator(idx) {
+      if (!currentConfigObj || !currentConfigObj.nostr || !currentConfigObj.nostr.oxchat) return;
+      currentConfigObj.nostr.oxchat.c2_authorized_operators.splice(idx, 1);
+      renderNostrAclLists(currentConfigObj);
+    }
+
+    function removeNostrRecipient(idx) {
+      if (!currentConfigObj || !currentConfigObj.nostr || !currentConfigObj.nostr.oxchat) return;
+      currentConfigObj.nostr.oxchat.recipients.splice(idx, 1);
+      renderNostrAclLists(currentConfigObj);
+    }
+
+    async function saveNostrAcl() {
+      if (!currentConfigObj || !currentConfigObj.nostr || !currentConfigObj.nostr.oxchat) return;
+      const ops = currentConfigObj.nostr.oxchat.c2_authorized_operators || [];
+      const recs = currentConfigObj.nostr.oxchat.recipients || [];
+
+      try {
+        const res = await fetch('/api/v1/nostr/oxchat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipients: recs,
+            c2_authorized_operators: ops
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('✅ Nostr 0xChat Access Control list updated and saved to config file!');
+          loadConfigFile();
+          logToConsole('ack', 'NOSTR', `Updated Nostr 0xChat ACL: ${ops.length} operators, ${recs.length} recipients`);
+        } else {
+          alert('❌ Failed to update Nostr ACL: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('❌ Error saving Nostr ACL: ' + err);
+      }
+    }
+
+    async function saveSmsAclFromConfigTab() {
+      const recRaw = document.getElementById('config-sms-recipients-text').value;
+      const sendRaw = document.getElementById('config-sms-senders-text').value;
+      const recipients = recRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
+      const authorized_senders = sendRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
+
+      try {
+        const res = await fetch('/api/v1/sms/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipients, authorized_senders })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('✅ Cellular SMS ACL saved and hot-reloaded successfully!');
+          renderSmsStatus(data);
+          logToConsole('ack', 'SMS', `Updated SMS ACL: ${recipients.length} recipients, ${authorized_senders.length} senders`);
+        } else {
+          alert('❌ Failed to save SMS ACL: ' + (data.message || res.statusText));
+        }
+      } catch (err) {
+        alert('❌ Error saving SMS ACL: ' + err);
+      }
+    }
+
+    async function validateTomlConfig() {
+      const editor = document.getElementById('config-toml-editor');
+      const banner = document.getElementById('config-validation-banner');
+      const tomlContent = editor.value;
+
+      try {
+        const res = await fetch('/api/v1/config/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ toml_content: tomlContent })
+        });
+        const data = await res.json();
+        banner.style.display = 'block';
+        if (res.ok) {
+          banner.style.background = 'rgba(16, 185, 129, 0.15)';
+          banner.style.border = '1px solid var(--success)';
+          banner.style.color = '#34d399';
+          banner.innerText = '✅ ' + data.message + ` (Node: ${data.node_name}, Relays: ${data.relays_count}, 0xChat: ${data.oxchat_recipients_count}, SMS: ${data.sms_recipients_count})`;
+          logToConsole('info', 'CONFIG', 'Configuration syntax validation passed');
+        } else {
+          banner.style.background = 'rgba(244, 63, 94, 0.15)';
+          banner.style.border = '1px solid var(--danger)';
+          banner.style.color = '#fda4af';
+          banner.innerText = '❌ ' + (data.message || 'Validation error');
+          logToConsole('error', 'CONFIG', `Validation error: ${data.message}`);
+        }
+      } catch (err) {
+        banner.style.display = 'block';
+        banner.style.background = 'rgba(244, 63, 94, 0.15)';
+        banner.style.border = '1px solid var(--danger)';
+        banner.style.color = '#fda4af';
+        banner.innerText = '❌ Validation request failed: ' + err;
+      }
+    }
+
+    async function saveTomlConfig() {
+      const editor = document.getElementById('config-toml-editor');
+      const banner = document.getElementById('config-validation-banner');
+      const tomlContent = editor.value;
+
+      if (!confirm('Save this configuration? A timestamped .bak copy will be automatically created on disk.')) {
         return;
       }
-      tbody.innerHTML = routes.map(r => `
-        <tr>
-          <td><strong>${r.destination}</strong></td>
-          <td><code>${r.next_hop}</code></td>
-          <td><span class="badge badge-primary">${r.metric}</span></td>
-          <td>${r.hops}</td>
-          <td><span class="badge badge-cyan">${r.metric < 200 ? 'Fast LAN/VPN' : 'Sub-GHz LoRa'}</span></td>
-        </tr>
-      `).join('');
-    }
 
-    function renderNostr(relays) {
-      const tbody = document.querySelector('#nostr-table tbody');
-      if (!relays || relays.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No Nostr relays active</td></tr>`;
-        return;
+      try {
+        const res = await fetch('/api/v1/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ toml_content: tomlContent, reload: true })
+        });
+        const data = await res.json();
+        banner.style.display = 'block';
+        if (res.ok) {
+          banner.style.background = 'rgba(16, 185, 129, 0.15)';
+          banner.style.border = '1px solid var(--success)';
+          banner.style.color = '#34d399';
+          banner.innerText = '✅ ' + data.message;
+          alert('✅ ' + data.message);
+          loadConfigFile();
+          logToConsole('ack', 'CONFIG', 'Configuration written and backed up successfully');
+        } else {
+          banner.style.background = 'rgba(244, 63, 94, 0.15)';
+          banner.style.border = '1px solid var(--danger)';
+          banner.style.color = '#fda4af';
+          banner.innerText = '❌ ' + (data.message || 'Save error');
+          alert('❌ Save failed: ' + (data.message || res.statusText));
+          logToConsole('error', 'CONFIG', `Save error: ${data.message}`);
+        }
+      } catch (err) {
+        alert('❌ Error saving configuration: ' + err);
       }
-      tbody.innerHTML = relays.map(r => {
-        const pct = Math.round((r.score || 1.0) * 100);
-        const scoreClass = pct > 80 ? 'success' : pct > 50 ? 'warning' : 'danger';
-        return `
-          <tr>
-            <td><code>${r.url}</code></td>
-            <td><span class="badge badge-${scoreClass}">${pct}%</span></td>
-            <td>${r.successes || 0} / ${r.failures || 0}</td>
-            <td>${r.last_latency_ms ? r.last_latency_ms + ' ms' : '--'}</td>
-            <td><span class="badge badge-${scoreClass}">${pct > 50 ? 'Healthy' : 'Degraded'}</span></td>
-          </tr>
-        `;
-      }).join('');
     }
 
-    // Connect to SSE stream
+    // --- CONNECT SSE TELEMETRY STREAM ---
     const eventSource = new EventSource('/api/v1/events/live');
     eventSource.onmessage = function(e) {
       try {
@@ -1540,13 +2704,18 @@ pub fn dashboard_html() -> &'static str {
     };
     eventSource.onerror = function() {
       const ind = document.getElementById('live-indicator');
-      ind.className = 'badge badge-warning';
-      ind.innerHTML = '<div class="pulse-dot" style="background: var(--warning)"></div><span>Reconnecting...</span>';
+      if (ind) {
+        ind.className = 'badge badge-warning';
+        ind.innerHTML = '<div class="pulse-dot" style="background: var(--warning)"></div><span>Reconnecting...</span>';
+      }
     };
     eventSource.onopen = function() {
       const ind = document.getElementById('live-indicator');
-      ind.className = 'badge badge-success';
-      ind.innerHTML = '<div class="pulse-dot"></div><span>Connected (Live SSE)</span>';
+      if (ind) {
+        ind.className = 'badge badge-success';
+        ind.innerHTML = '<div class="pulse-dot"></div><span>Connected (Live SSE)</span>';
+      }
+      logToConsole('info', 'SSE', 'Connected to real-time Server-Sent Events control plane stream');
     };
   </script>
 </body>
@@ -1554,10 +2723,7 @@ pub fn dashboard_html() -> &'static str {
 }
 
 /// HTTP handler serving the embedded dashboard.
-pub async fn dashboard_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn dashboard_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err(resp) = crate::ingress::rest::check_dashboard_auth(&headers, state.engine.config()) {
         return *resp;
     }
@@ -1570,10 +2736,7 @@ pub async fn dashboard_handler(
 }
 
 /// SSE handler streaming live daemon diagnostics, link states, routing tables, and spool metrics every 2s.
-pub async fn sse_telemetry_handler(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Response {
+pub async fn sse_telemetry_handler(headers: HeaderMap, State(state): State<AppState>) -> Response {
     if let Err(resp) = crate::ingress::rest::check_dashboard_auth(&headers, state.engine.config()) {
         return *resp;
     }
@@ -1595,7 +2758,9 @@ pub async fn sse_telemetry_handler(
         let bitchat_status = if let Some(bc) = state.engine.bitchat_service().await {
             Some(bc.get_status().await)
         } else {
-            let (_, _, my_sender_id) = crate::bitchat::BitChatService::derive_keys(&state.engine.config().bitchat.node_name);
+            let (_, _, my_sender_id) = crate::bitchat::BitChatService::derive_keys(
+                &state.engine.config().bitchat.node_name,
+            );
             Some(crate::models::BitChatStatusReport {
                 enabled: state.engine.config().bitchat.enabled,
                 node_name: state.engine.config().bitchat.node_name.clone(),
@@ -1629,5 +2794,7 @@ pub async fn sse_telemetry_handler(
         Some((Ok::<Event, Infallible>(event), state))
     });
 
-    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }

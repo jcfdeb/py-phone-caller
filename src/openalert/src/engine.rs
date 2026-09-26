@@ -9,8 +9,8 @@ use crate::egress::{BitChatEgress, NostrPublisher, PrometheusWebhookDispatcher};
 use crate::error::Result;
 use crate::metrics::{MetricsHandle, OpenAlertMetrics};
 use crate::models::{
-    Alert, AlertSource, BitChatStatusReport, HealthResponse, NodeStatusResponse,
-    NostrStatusReport, PeeringStatusReport, SpoolStats, StorageStatusReport, WebhookStatusReport,
+    Alert, AlertSource, BitChatStatusReport, HealthResponse, NodeStatusResponse, NostrStatusReport,
+    PeeringStatusReport, SpoolStats, StorageStatusReport, WebhookStatusReport,
 };
 use crate::peering::PeeringService;
 use crate::sms::SmsService;
@@ -25,6 +25,7 @@ use tracing::{info, warn};
 /// Coordinates alert processing, deduplication windows, persistent storage, and egress routing.
 pub struct AlertEngine {
     config: AppConfig,
+    config_path: Arc<RwLock<String>>,
     nostr_publisher: Arc<NostrPublisher>,
     webhook_dispatcher: Arc<PrometheusWebhookDispatcher>,
     pub bitchat_egress: Arc<BitChatEgress>,
@@ -54,6 +55,8 @@ impl AlertEngine {
             config.nostr.quorum_min_relays,
             config.nostr.nip20_timeout_secs,
             config.nostr.privacy.clone(),
+            config.nostr.private_key.clone(),
+            config.nostr.oxchat.clone(),
         ));
 
         let webhook_dispatcher = Arc::new(PrometheusWebhookDispatcher::new(
@@ -74,7 +77,11 @@ impl AlertEngine {
             "Initialized OpenAlert Engine [Pubkey: {}] (Storage: {})",
             nostr_publisher.public_key(),
             if let Some(ref s) = storage {
-                if s.is_in_memory() { "in-memory SQLite (:memory:)" } else { "persistent SQLite (disk)" }
+                if s.is_in_memory() {
+                    "in-memory SQLite (:memory:)"
+                } else {
+                    "persistent SQLite (disk)"
+                }
             } else {
                 "disabled"
             }
@@ -82,6 +89,7 @@ impl AlertEngine {
 
         Ok(Self {
             config,
+            config_path: Arc::new(RwLock::new("config/openalertd.toml".to_string())),
             nostr_publisher,
             webhook_dispatcher,
             bitchat_egress,
@@ -156,6 +164,17 @@ impl AlertEngine {
     /// Returns a reference to the daemon configuration.
     pub fn config(&self) -> &crate::config::AppConfig {
         &self.config
+    }
+
+    /// Sets the runtime configuration file path.
+    pub async fn set_config_path(&self, path: String) {
+        let mut p = self.config_path.write().await;
+        *p = path;
+    }
+
+    /// Returns the runtime configuration file path.
+    pub async fn get_config_path(&self) -> String {
+        self.config_path.read().await.clone()
     }
 
     /// Returns the engine boot instant.
@@ -255,18 +274,26 @@ impl AlertEngine {
             enabled: self.config.nostr.enable_subscriber,
             relays_count: self.config.nostr.relays.len(),
             pubkey: self.nostr_publisher.public_key().to_string(),
+            oxchat_enabled: self.config.nostr.oxchat.enabled,
+            oxchat_mode: format!("{:?}", self.config.nostr.oxchat.mode).to_lowercase(),
+            oxchat_recipients_count: self.config.nostr.oxchat.recipients.len(),
         };
 
         let bitchat_report = if let Some(bitchat) = self.bitchat_service().await {
             bitchat.get_status().await
         } else {
-            let (_, _, my_sender_id) = crate::bitchat::BitChatService::derive_keys(&self.config.bitchat.node_name);
+            let (_, _, my_sender_id) =
+                crate::bitchat::BitChatService::derive_keys(&self.config.bitchat.node_name);
             BitChatStatusReport {
                 enabled: self.config.bitchat.enabled,
                 node_name: self.config.bitchat.node_name.clone(),
                 sender_id: hex::encode(my_sender_id),
                 service_uuid: crate::bitchat::DEFAULT_BITCHAT_SERVICE_UUID.to_string(),
-                status: if self.config.bitchat.enabled { "Active (Standby)".to_string() } else { "Disabled".to_string() },
+                status: if self.config.bitchat.enabled {
+                    "Active (Standby)".to_string()
+                } else {
+                    "Disabled".to_string()
+                },
                 peers_count: 0,
                 active_sessions_count: 0,
                 peers: Vec::new(),
@@ -322,7 +349,10 @@ impl AlertEngine {
         let clean_summary = alert.summary.trim();
         if !clean_summary.is_empty() {
             let sender_str = alert.sender.as_deref().unwrap_or("");
-            let content_key = format!("content:{}:{:?}:{}", clean_summary, alert.severity, sender_str);
+            let content_key = format!(
+                "content:{}:{:?}:{}",
+                clean_summary, alert.severity, sender_str
+            );
             check_keys.push(content_key);
         }
 
@@ -335,8 +365,11 @@ impl AlertEngine {
 
         // 2. Persistent storage check (survives restarts)
         if let Some(ref storage) = self.storage
-            && let Ok((is_dup, Some(matched))) = storage.is_duplicate(&check_keys, self.config.routing.dedup_ttl_seconds).await
-            && is_dup {
+            && let Ok((is_dup, Some(matched))) = storage
+                .is_duplicate(&check_keys, self.config.routing.dedup_ttl_seconds)
+                .await
+            && is_dup
+        {
             cache.insert(matched.clone(), now);
             return (true, matched);
         }
@@ -367,8 +400,11 @@ impl AlertEngine {
         }
 
         if let Some(ref storage) = self.storage {
-            if let Ok((is_dup, _)) = storage.is_duplicate(&[key.to_string()], self.config.routing.dedup_ttl_seconds).await
-                && is_dup {
+            if let Ok((is_dup, _)) = storage
+                .is_duplicate(&[key.to_string()], self.config.routing.dedup_ttl_seconds)
+                .await
+                && is_dup
+            {
                 cache.insert(key.to_string(), now);
                 return true;
             }
@@ -385,7 +421,9 @@ impl AlertEngine {
             return Ok(0);
         };
 
-        let pending = storage.get_pending_alerts(self.config.storage.retention_seconds).await?;
+        let pending = storage
+            .get_pending_alerts(self.config.storage.retention_seconds)
+            .await?;
         let count = pending.len();
 
         if count > 0 {
@@ -421,7 +459,10 @@ impl AlertEngine {
                 interval.tick().await;
                 match storage.prune(retention_secs).await {
                     Ok(pruned) if pruned > 0 => {
-                        info!("🧹 Storage sliding window: pruned {} expired alert/dedup records", pruned);
+                        info!(
+                            "🧹 Storage sliding window: pruned {} expired alert/dedup records",
+                            pruned
+                        );
                     }
                     Err(e) => {
                         warn!("Failed to prune storage sliding window: {}", e);
@@ -442,7 +483,10 @@ impl AlertEngine {
             AlertSource::Peering => "peering",
             AlertSource::Sms => "sms",
         };
-        self.metrics.alerts_received_total.with_label_values(&[source_name]).inc();
+        self.metrics
+            .alerts_received_total
+            .with_label_values(&[source_name])
+            .inc();
 
         let (is_dup, matched_key) = self.is_duplicate_alert(&alert).await;
         if is_dup {
@@ -455,13 +499,14 @@ impl AlertEngine {
             } else {
                 "hash"
             };
-            self.metrics.duplicates_dropped_total.with_label_values(&[match_type]).inc();
+            self.metrics
+                .duplicates_dropped_total
+                .with_label_values(&[match_type])
+                .inc();
 
             info!(
                 "🛑 Dropped duplicate alert [{}] (summary: \"{}\", matched key: {}) within deduplication window",
-                alert.alert_id,
-                alert.summary,
-                matched_key
+                alert.alert_id, alert.summary, matched_key
             );
             return Ok(());
         }
@@ -469,7 +514,10 @@ impl AlertEngine {
         // Record initial pending state in persistent storage
         if let Some(ref storage) = self.storage {
             let _ = storage.record_alert(&alert, "pending").await;
-            self.metrics.storage_alerts_count.with_label_values(&["pending"]).inc();
+            self.metrics
+                .storage_alerts_count
+                .with_label_values(&["pending"])
+                .inc();
         }
 
         info!(
@@ -485,23 +533,55 @@ impl AlertEngine {
 
         for destination in destinations {
             match destination.as_str() {
-                "nostr" => {
+                "nostr" | "oxchat" | "0xchat" => {
                     if alert.source != AlertSource::Nostr {
                         let publisher = self.nostr_publisher.clone();
                         let outbound_alert = alert.clone();
                         let metrics = self.metrics.clone();
                         tokio::spawn(async move {
+                            // 1. Standard Nostr event (M2M / Group bus)
                             match publisher.sign_alert(&outbound_alert) {
                                 Ok(event) => {
                                     publisher.publish_to_relays(&event).await;
-                                    metrics.alerts_dispatched_total.with_label_values(&["nostr", "success"]).inc();
+                                    metrics
+                                        .alerts_dispatched_total
+                                        .with_label_values(&["nostr", "success"])
+                                        .inc();
                                 }
                                 Err(err) => {
                                     warn!(
                                         "Failed to sign Nostr event for alert [{}]: {}",
                                         outbound_alert.alert_id, err
                                     );
-                                    metrics.alerts_dispatched_total.with_label_values(&["nostr", "failure"]).inc();
+                                    metrics
+                                        .alerts_dispatched_total
+                                        .with_label_values(&["nostr", "failure"])
+                                        .inc();
+                                }
+                            }
+
+                            // 2. 0xChat Mobile Presentation Events (E2EE Kind 4 or Public Kind 1)
+                            if publisher.oxchat().enabled {
+                                match publisher.sign_oxchat_alert(&outbound_alert) {
+                                    Ok(oxchat_events) => {
+                                        for ev in oxchat_events {
+                                            publisher.publish_to_relays(&ev).await;
+                                            metrics
+                                                .alerts_dispatched_total
+                                                .with_label_values(&["oxchat", "success"])
+                                                .inc();
+                                        }
+                                    }
+                                    Err(err) => {
+                                        warn!(
+                                            "Failed to sign 0xChat event for alert [{}]: {}",
+                                            outbound_alert.alert_id, err
+                                        );
+                                        metrics
+                                            .alerts_dispatched_total
+                                            .with_label_values(&["oxchat", "failure"])
+                                            .inc();
+                                    }
                                 }
                             }
                         });
@@ -515,11 +595,20 @@ impl AlertEngine {
                         tokio::spawn(async move {
                             match peering.dispatch_alert(&outbound_alert, false).await {
                                 Ok(()) => {
-                                    metrics.alerts_dispatched_total.with_label_values(&["peering", "success"]).inc();
+                                    metrics
+                                        .alerts_dispatched_total
+                                        .with_label_values(&["peering", "success"])
+                                        .inc();
                                 }
                                 Err(err) => {
-                                    metrics.alerts_dispatched_total.with_label_values(&["peering", "failure"]).inc();
-                                    warn!("Peering dispatch failed for alert [{}]: {}", outbound_alert.alert_id, err);
+                                    metrics
+                                        .alerts_dispatched_total
+                                        .with_label_values(&["peering", "failure"])
+                                        .inc();
+                                    warn!(
+                                        "Peering dispatch failed for alert [{}]: {}",
+                                        outbound_alert.alert_id, err
+                                    );
                                 }
                             }
                         });
@@ -535,23 +624,39 @@ impl AlertEngine {
                     tokio::spawn(async move {
                         match dispatcher.dispatch(&outbound_alert).await {
                             Ok(()) => {
-                                metrics.alerts_dispatched_total.with_label_values(&["webhook", "success"]).inc();
+                                metrics
+                                    .alerts_dispatched_total
+                                    .with_label_values(&["webhook", "success"])
+                                    .inc();
                                 if let Some(ref s) = storage_opt {
                                     let _ = s.mark_dispatched(&outbound_alert.alert_id).await;
-                                    metrics.storage_alerts_count.with_label_values(&["dispatched"]).inc();
+                                    metrics
+                                        .storage_alerts_count
+                                        .with_label_values(&["dispatched"])
+                                        .inc();
                                 }
                             }
                             Err(e) => {
-                                metrics.alerts_dispatched_total.with_label_values(&["webhook", "failure"]).inc();
-                                warn!("Failed to dispatch webhook for alert [{}]: {}", outbound_alert.alert_id, e);
+                                metrics
+                                    .alerts_dispatched_total
+                                    .with_label_values(&["webhook", "failure"])
+                                    .inc();
+                                warn!(
+                                    "Failed to dispatch webhook for alert [{}]: {}",
+                                    outbound_alert.alert_id, e
+                                );
 
                                 if failover_destinations.contains(&"peering".to_string())
-                                    && let Some(peering) = peering_opt {
-                                        let failover_alert = outbound_alert.clone();
-                                        tokio::spawn(async move {
-                                            warn!("🚨 Primary webhook failed! Escalating alert [{}] to failover peering", failover_alert.alert_id);
-                                            let _ = peering.dispatch_alert(&failover_alert, true).await;
-                                        });
+                                    && let Some(peering) = peering_opt
+                                {
+                                    let failover_alert = outbound_alert.clone();
+                                    tokio::spawn(async move {
+                                        warn!(
+                                            "🚨 Primary webhook failed! Escalating alert [{}] to failover peering",
+                                            failover_alert.alert_id
+                                        );
+                                        let _ = peering.dispatch_alert(&failover_alert, true).await;
+                                    });
                                 }
                             }
                         }
@@ -567,10 +672,16 @@ impl AlertEngine {
                         tokio::spawn(async move {
                             match egress.broadcast(&outbound_alert).await {
                                 Ok(()) => {
-                                    metrics.alerts_dispatched_total.with_label_values(&["bitchat", "success"]).inc();
+                                    metrics
+                                        .alerts_dispatched_total
+                                        .with_label_values(&["bitchat", "success"])
+                                        .inc();
                                 }
                                 Err(err) => {
-                                    metrics.alerts_dispatched_total.with_label_values(&["bitchat", "failure"]).inc();
+                                    metrics
+                                        .alerts_dispatched_total
+                                        .with_label_values(&["bitchat", "failure"])
+                                        .inc();
                                     warn!(
                                         "BitChat broadcast failed for alert [{}]: {}",
                                         outbound_alert.alert_id, err
@@ -590,12 +701,21 @@ impl AlertEngine {
                                 match sms.dispatch_alert(&outbound_alert).await {
                                     Ok(sent_count) => {
                                         if sent_count > 0 {
-                                            metrics.alerts_dispatched_total.with_label_values(&["sms", "success"]).inc();
+                                            metrics
+                                                .alerts_dispatched_total
+                                                .with_label_values(&["sms", "success"])
+                                                .inc();
                                         }
                                     }
                                     Err(err) => {
-                                        metrics.alerts_dispatched_total.with_label_values(&["sms", "failure"]).inc();
-                                        warn!("SMS dispatch failed for alert [{}]: {}", outbound_alert.alert_id, err);
+                                        metrics
+                                            .alerts_dispatched_total
+                                            .with_label_values(&["sms", "failure"])
+                                            .inc();
+                                        warn!(
+                                            "SMS dispatch failed for alert [{}]: {}",
+                                            outbound_alert.alert_id, err
+                                        );
                                     }
                                 }
                             });

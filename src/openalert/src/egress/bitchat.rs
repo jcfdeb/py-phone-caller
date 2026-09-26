@@ -3,14 +3,14 @@
 //! Formats outbound alerts into compact BitChat text representations and broadcasts them
 //! over the local Bluetooth Low Energy mesh characteristic.
 
-use crate::bitchat::{BitChatService, BITCHAT_BROADCAST_RECIPIENT};
+use crate::bitchat::{BITCHAT_BROADCAST_RECIPIENT, BitChatService};
 use crate::config::BitChatConfig;
 use crate::error::Result;
 use crate::models::Alert;
 use ed25519_dalek::SigningKey;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tokio::time::sleep;
 use tracing::info;
 

@@ -198,11 +198,74 @@ impl NostrPrivacyConfig {
     }
 }
 
+/// Operational mode for 0xChat mobile client integration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OxChatMode {
+    /// End-to-End Encrypted 1-on-1 Direct Message (NIP-04 / NIP-44).
+    #[default]
+    Dm,
+    /// Public channel / feed note (NIP-01 Kind 1).
+    Public,
+}
+
+/// 0xChat mobile messenger egress and interactive C2 parameters.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OxChatConfig {
+    /// Whether 0xChat egress/ingress handling is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Operational presentation mode: "dm" (E2EE 1-on-1) or "public" (timeline feed).
+    #[serde(default)]
+    pub mode: OxChatMode,
+    /// List of authorized operator public keys (32-byte hex) to receive alerts.
+    #[serde(default)]
+    pub recipients: Vec<String>,
+    /// Whether Command & Control (C2) over 0xChat is enabled.
+    #[serde(default)]
+    pub c2_enabled: bool,
+    /// Whitelist of operator public keys (32-byte hex) authorized to execute C2 commands.
+    #[serde(default)]
+    pub c2_authorized_operators: Vec<String>,
+}
+
+impl OxChatConfig {
+    /// Returns decoded 32-byte public keys for all configured recipients.
+    pub fn get_recipient_pubkeys(&self) -> Vec<secp256k1::XOnlyPublicKey> {
+        self.recipients
+            .iter()
+            .filter_map(|r| {
+                let clean = r.trim();
+                let bytes = hex::decode(clean).ok()?;
+                if bytes.len() == 32 {
+                    secp256k1::XOnlyPublicKey::from_slice(&bytes).ok()
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Checks if a given 32-byte sender public key (hex) is authorized for C2 execution.
+    pub fn is_operator_authorized(&self, sender_hex: &str) -> bool {
+        if !self.c2_enabled {
+            return false;
+        }
+        let clean = sender_hex.trim().to_lowercase();
+        self.c2_authorized_operators
+            .iter()
+            .any(|op| op.trim().to_lowercase() == clean)
+    }
+}
+
 /// Nostr relay mesh and subscription parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrConfig {
     /// List of WebSocket URLs pointing to Nostr relays.
     pub relays: Vec<String>,
+    /// Optional 64-hex private key (nsec) for deterministic bot identity across restarts.
+    #[serde(default)]
+    pub private_key: Option<String>,
     /// Default Nostr event kind to publish and subscribe (e.g., 30000).
     pub kind: u64,
     /// Whether to launch the persistent inbound WebSocket subscriber.
@@ -225,7 +288,113 @@ pub struct NostrConfig {
     /// Privacy and group encryption settings.
     #[serde(default)]
     pub privacy: NostrPrivacyConfig,
+    /// 0xChat mobile integration and C2 configuration.
+    #[serde(default)]
+    pub oxchat: OxChatConfig,
+    /// Optional embedded in-process Nostr micro-relay server.
+    #[serde(default)]
+    pub relay_server: NostrRelayServerConfig,
 }
+
+/// Configuration for the embedded in-process Nostr micro-relay server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrRelayServerConfig {
+    /// Whether to start the embedded in-process WebSocket Nostr relay.
+    #[serde(default)]
+    pub enabled: bool,
+    /// TCP socket address to bind (e.g. "0.0.0.0:8080").
+    #[serde(default = "default_relay_bind_address")]
+    pub bind_address: String,
+    /// Name advertised in NIP-11 discovery document.
+    #[serde(default = "default_relay_name")]
+    pub name: String,
+    /// Description advertised in NIP-11 discovery document.
+    #[serde(default = "default_relay_description")]
+    pub description: String,
+    /// Contact URI or email advertised in NIP-11 discovery document.
+    #[serde(default = "default_relay_contact")]
+    pub contact: String,
+    /// Storage backend: "sqlite" (persistent) or "memory" (ephemeral RAM).
+    #[serde(default = "default_relay_storage")]
+    pub storage_backend: String,
+    /// Maximum events to retain before pruning older non-replaceable events.
+    #[serde(default = "default_relay_max_events")]
+    pub max_events: usize,
+    /// Maximum payload size in bytes per event (default: 65536).
+    #[serde(default = "default_relay_max_message_size")]
+    pub max_message_size_bytes: usize,
+    /// Maximum concurrent active WebSocket client connections.
+    #[serde(default = "default_relay_max_connections")]
+    pub max_connections: usize,
+    /// Maximum subscriptions per connected client.
+    #[serde(default = "default_relay_max_subs")]
+    pub max_subscriptions_per_conn: usize,
+    /// Optional native TLS configuration (for direct SSL/WSS without proxy).
+    #[serde(default)]
+    pub tls: NostrRelayTlsConfig,
+}
+
+/// Native TLS configuration for the embedded Nostr micro-relay server.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NostrRelayTlsConfig {
+    /// Whether native TLS (WSS / HTTPS) is enabled.
+    /// Default: false (allowing reverse proxy offloading).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Path to PEM-encoded certificate chain (e.g. "certs/relay.crt").
+    #[serde(default)]
+    pub cert_path: Option<String>,
+    /// Path to PEM-encoded private key (e.g. "certs/relay.key").
+    #[serde(default)]
+    pub key_path: Option<String>,
+}
+
+impl Default for NostrRelayServerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind_address: default_relay_bind_address(),
+            name: default_relay_name(),
+            description: default_relay_description(),
+            contact: default_relay_contact(),
+            storage_backend: default_relay_storage(),
+            max_events: default_relay_max_events(),
+            max_message_size_bytes: default_relay_max_message_size(),
+            max_connections: default_relay_max_connections(),
+            max_subscriptions_per_conn: default_relay_max_subs(),
+            tls: NostrRelayTlsConfig::default(),
+        }
+    }
+}
+
+fn default_relay_bind_address() -> String {
+    "0.0.0.0:8088".to_string()
+}
+fn default_relay_name() -> String {
+    "OpenAlert Tactical Relay".to_string()
+}
+fn default_relay_description() -> String {
+    "In-process tactical Nostr micro-relay for field operations".to_string()
+}
+fn default_relay_contact() -> String {
+    "operator@openalert.local".to_string()
+}
+fn default_relay_storage() -> String {
+    "sqlite".to_string()
+}
+fn default_relay_max_events() -> usize {
+    50000
+}
+fn default_relay_max_message_size() -> usize {
+    65536
+}
+fn default_relay_max_connections() -> usize {
+    64
+}
+fn default_relay_max_subs() -> usize {
+    16
+}
+
 
 fn default_quorum_min_relays() -> usize {
     1
@@ -346,7 +515,8 @@ where
         type Value = Option<u32>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a two-digit integer or string representing priority (e.g. 0, 10, '00')")
+            formatter
+                .write_str("a two-digit integer or string representing priority (e.g. 0, 10, '00')")
         }
 
         fn visit_i64<E>(self, v: i64) -> std::result::Result<Self::Value, E>
@@ -456,7 +626,8 @@ impl PyPhoneCallerConfig {
     pub fn resolved_webhooks(&self) -> Vec<WebhookEndpointConfig> {
         let mut list = self.webhooks.clone();
         if list.is_empty()
-            && let Some(ref url) = self.webhook_url {
+            && let Some(ref url) = self.webhook_url
+        {
             list.push(WebhookEndpointConfig {
                 url: url.clone(),
                 timeout_seconds: self.timeout_seconds,

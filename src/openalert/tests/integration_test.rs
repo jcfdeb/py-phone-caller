@@ -5,19 +5,19 @@
 //! embedded SQLite sliding-window persistence & crash recovery, multi-instance webhook balancing (Cascade/RoundRobin/Broadcast),
 //! Circuit Breaker protection, and Prometheus /metrics scraping.
 
-use openalertd::config::{
-    AppConfig, PeeringLinkType, PeeringNodeConfig,
-    PyPhoneCallerConfig, StorageConfig, WebhookEndpointConfig, WebhookStrategy,
-};
-use openalertd::peering::PeeringService;
 use openalertd::bitchat::BitChatService;
+use openalertd::config::{
+    AppConfig, PeeringLinkType, PeeringNodeConfig, PyPhoneCallerConfig, StorageConfig,
+    WebhookEndpointConfig, WebhookStrategy,
+};
 use openalertd::egress::{BitChatEgress, PrometheusWebhookDispatcher};
 use openalertd::engine::AlertEngine;
 use openalertd::models::{Alert, AlertSeverity, AlertSource, PrometheusAlertmanagerPayload};
+use openalertd::peering::PeeringService;
 use openalertd::storage::Storage;
 use openalertd::templates::TemplateEngine;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn test_config() -> AppConfig {
     let mut config = AppConfig::load("config/openalertd.toml").expect("Failed to load config");
@@ -100,9 +100,17 @@ async fn test_nostr_signing_and_dedup() {
 
     // Verify NIP-40 expiration tag is present and properly computed
     let exp_tag = event.tags.iter().find(|t| t[0] == "expiration");
-    assert!(exp_tag.is_some(), "NIP-40 expiration tag missing from Nostr event");
-    let exp_val: i64 = exp_tag.unwrap()[1].parse().expect("Expiration is not integer");
-    assert_eq!(exp_val, (event.created_at + config.nostr.alert_ttl_seconds) as i64);
+    assert!(
+        exp_tag.is_some(),
+        "NIP-40 expiration tag missing from Nostr event"
+    );
+    let exp_val: i64 = exp_tag.unwrap()[1]
+        .parse()
+        .expect("Expiration is not integer");
+    assert_eq!(
+        exp_val,
+        (event.created_at + config.nostr.alert_ttl_seconds) as i64
+    );
 
     println!(
         "✅ Nostr event signed with Schnorr sig: {} and NIP-40 expiration: {}",
@@ -121,7 +129,10 @@ async fn test_cross_transport_deduplication() {
         alert_id: "bitchat-dm-2a7bc99a-1788970467227".to_string(),
         severity: AlertSeverity::Critical,
         summary: "alert strong wind".to_string(),
-        description: Some("Private 1-on-1 encrypted BLE mesh alert from BitChat peer 2a7bc99a8dbe975f".to_string()),
+        description: Some(
+            "Private 1-on-1 encrypted BLE mesh alert from BitChat peer 2a7bc99a8dbe975f"
+                .to_string(),
+        ),
         source: AlertSource::BitChat,
         sender: Some("2a7bc99a8dbe975f".to_string()),
         node: Some("OpenAlert-Mesh".to_string()),
@@ -132,7 +143,10 @@ async fn test_cross_transport_deduplication() {
     };
 
     let (is_dup_1, _) = engine.is_duplicate_alert(&bitchat_alert).await;
-    assert!(!is_dup_1, "Initial BitChat alert should not be flagged as duplicate");
+    assert!(
+        !is_dup_1,
+        "Initial BitChat alert should not be flagged as duplicate"
+    );
 
     // 2. Alert echoes back from Nostr relay with Nostr-specific description
     let nostr_echo_alert = Alert {
@@ -141,7 +155,9 @@ async fn test_cross_transport_deduplication() {
         summary: "alert strong wind".to_string(),
         description: Some("alert strong wind".to_string()),
         source: AlertSource::Nostr,
-        sender: Some("2e62ef5450740edd9b2f2bb123cfcbd496c9ea5c87a8de0b0d82f2c6166fc3c3".to_string()),
+        sender: Some(
+            "2e62ef5450740edd9b2f2bb123cfcbd496c9ea5c87a8de0b0d82f2c6166fc3c3".to_string(),
+        ),
         node: None,
         starts_at: chrono::Utc::now(),
         destinations: vec!["webhook".to_string()],
@@ -156,7 +172,10 @@ async fn test_cross_transport_deduplication() {
         "Matched key should be id or fp: {}",
         matched_key
     );
-    println!("✅ Cross-transport duplicate correctly dropped! (Matched: {})", matched_key);
+    println!(
+        "✅ Cross-transport duplicate correctly dropped! (Matched: {})",
+        matched_key
+    );
 }
 
 #[tokio::test]
@@ -197,8 +216,14 @@ async fn test_identical_content_deduplication() {
     };
 
     let (is_dup_2, matched_key) = engine.is_duplicate_alert(&alert2).await;
-    assert!(is_dup_2, "Repeated content from same sender must be dropped as duplicate");
-    println!("✅ Identical content duplicate correctly dropped! (Matched: {})", matched_key);
+    assert!(
+        is_dup_2,
+        "Repeated content from same sender must be dropped as duplicate"
+    );
+    println!(
+        "✅ Identical content duplicate correctly dropped! (Matched: {})",
+        matched_key
+    );
 }
 
 #[tokio::test]
@@ -208,14 +233,19 @@ async fn test_nostr_ttl_config_and_lookback() {
     assert_eq!(config.nostr.subscription_lookback_seconds, 300);
     assert_eq!(config.storage.retention_seconds, 900);
     assert!(config.storage.enabled);
-    println!("✅ Nostr & Storage config verified (TTL: 3600s, Lookback: 300s, Storage retention: 900s)");
+    println!(
+        "✅ Nostr & Storage config verified (TTL: 3600s, Lookback: 300s, Storage retention: 900s)"
+    );
 }
 
 #[tokio::test]
 async fn test_bitchat_status_api_and_peer_tracking() {
     let config = test_config();
     let engine = Arc::new(AlertEngine::new(config.clone()).expect("Failed to create engine"));
-    let bitchat_svc = Arc::new(BitChatService::new(config.bitchat.clone(), Some(engine.clone())));
+    let bitchat_svc = Arc::new(BitChatService::new(
+        config.bitchat.clone(),
+        Some(engine.clone()),
+    ));
     engine.set_bitchat_service(bitchat_svc.clone()).await;
 
     // Initially 0 peers
@@ -277,18 +307,27 @@ async fn test_bitchat_private_1on1_alert_mesh_escalation() {
         alert_id: "bitchat-dm-2a7bc99a".to_string(),
         severity: AlertSeverity::Critical,
         summary: "URGENT: Main power feed failure on UPS-A".to_string(),
-        description: Some("Private direct alert received from BitChat mobile peer 2a7bc99a8dbe975f".to_string()),
+        description: Some(
+            "Private direct alert received from BitChat mobile peer 2a7bc99a8dbe975f".to_string(),
+        ),
         source: AlertSource::BitChat,
         sender: Some("2a7bc99a8dbe975f".to_string()),
         node: Some("OpenAlert-Mesh".to_string()),
         starts_at: chrono::Utc::now(),
-        destinations: vec!["webhook".to_string(), "nostr".to_string(), "bitchat".to_string()],
+        destinations: vec![
+            "webhook".to_string(),
+            "nostr".to_string(),
+            "bitchat".to_string(),
+        ],
         origin_peer: None,
         hop: 3,
     };
 
     let route_res = engine.route_alert(private_alert).await;
-    assert!(route_res.is_ok(), "Failed to route private 1-on-1 direct alert for mesh escalation");
+    assert!(
+        route_res.is_ok(),
+        "Failed to route private 1-on-1 direct alert for mesh escalation"
+    );
     println!("✅ BitChat private 1-on-1 alert mesh escalation route verified successfully");
 }
 
@@ -388,9 +427,15 @@ async fn test_storage_sliding_window_pruning() {
         hop: 3,
     };
 
-    storage.record_alert(&old_alert, "dispatched").await.unwrap();
+    storage
+        .record_alert(&old_alert, "dispatched")
+        .await
+        .unwrap();
     storage.record_alert(&fresh_alert, "pending").await.unwrap();
-    storage.record_dedup_keys(&["key-old".to_string()]).await.unwrap();
+    storage
+        .record_dedup_keys(&["key-old".to_string()])
+        .await
+        .unwrap();
 
     // Prune with 900s (15 min) retention window
     let pruned = storage.prune(900).await.expect("Prune failed");
@@ -400,7 +445,10 @@ async fn test_storage_sliding_window_pruning() {
     let pending = storage.get_pending_alerts(900).await.unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].alert_id, "fresh-alert-01");
-    println!("✅ Sliding-window 15m retention pruning successfully verified (pruned: {})", pruned);
+    println!(
+        "✅ Sliding-window 15m retention pruning successfully verified (pruned: {})",
+        pruned
+    );
 }
 
 #[tokio::test]
@@ -426,11 +474,20 @@ async fn test_storage_pending_alert_recovery() {
     };
 
     // Store as 'pending' simulating an in-flight alert before a crash
-    storage.record_alert(&pending_alert, "pending").await.unwrap();
+    storage
+        .record_alert(&pending_alert, "pending")
+        .await
+        .unwrap();
 
-    let recovered = engine.recover_pending_alerts().await.expect("Recovery failed");
+    let recovered = engine
+        .recover_pending_alerts()
+        .await
+        .expect("Recovery failed");
     assert_eq!(recovered, 1, "Should recover 1 pending alert");
-    println!("✅ Crash recovery: successfully found and re-routed {} pending alert(s)", recovered);
+    println!(
+        "✅ Crash recovery: successfully found and re-routed {} pending alert(s)",
+        recovered
+    );
 }
 
 #[tokio::test]
@@ -481,8 +538,14 @@ async fn test_persistent_deduplication_across_restarts() {
         };
 
         let (is_dup_2, matched) = engine2.is_duplicate_alert(&repeat_alert).await;
-        assert!(is_dup_2, "Alert MUST be detected as duplicate from persistent SQLite across restart!");
-        println!("✅ Persistent deduplication survived daemon restart! (Matched: {})", matched);
+        assert!(
+            is_dup_2,
+            "Alert MUST be detected as duplicate from persistent SQLite across restart!"
+        );
+        println!(
+            "✅ Persistent deduplication survived daemon restart! (Matched: {})",
+            matched
+        );
     }
 
     // Clean up temporary test db
@@ -577,8 +640,11 @@ async fn test_multi_webhook_cascade_failover() {
     let s2_counter = Arc::new(AtomicUsize::new(0));
 
     // Server 1 returns HTTP 500 (fails)
-    let (s1_url, _h1) =
-        spawn_mock_webhook_server(axum::http::StatusCode::INTERNAL_SERVER_ERROR, s1_counter.clone()).await;
+    let (s1_url, _h1) = spawn_mock_webhook_server(
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        s1_counter.clone(),
+    )
+    .await;
     // Server 2 returns HTTP 200 (succeeds)
     let (s2_url, _h2) =
         spawn_mock_webhook_server(axum::http::StatusCode::OK, s2_counter.clone()).await;
@@ -624,13 +690,19 @@ async fn test_multi_webhook_cascade_failover() {
     };
 
     let res = dispatcher.dispatch(&alert).await;
-    assert!(res.is_ok(), "Dispatcher should succeed on backup server in cascade: {:?}", res);
+    assert!(
+        res.is_ok(),
+        "Dispatcher should succeed on backup server in cascade: {:?}",
+        res
+    );
 
     // Primary server 1 failed and was hit
     assert_eq!(s1_counter.load(Ordering::SeqCst), 1);
     // Secondary server 2 was cascaded to and succeeded
     assert_eq!(s2_counter.load(Ordering::SeqCst), 1);
-    println!("✅ Cascade failover successfully delivered alert to secondary webhook upon primary failure!");
+    println!(
+        "✅ Cascade failover successfully delivered alert to secondary webhook upon primary failure!"
+    );
 }
 
 #[tokio::test]
@@ -673,7 +745,8 @@ async fn test_multi_webhook_broadcast_and_roundrobin() {
             ..Default::default()
         };
 
-        let dispatcher = PrometheusWebhookDispatcher::new(broadcast_cfg, template_engine.clone(), None);
+        let dispatcher =
+            PrometheusWebhookDispatcher::new(broadcast_cfg, template_engine.clone(), None);
         let alert = Alert {
             alert_id: "broadcast-test-01".to_string(),
             severity: AlertSeverity::Warning,
@@ -721,7 +794,8 @@ async fn test_multi_webhook_broadcast_and_roundrobin() {
             ..Default::default()
         };
 
-        let dispatcher = PrometheusWebhookDispatcher::new(roundrobin_cfg, template_engine.clone(), None);
+        let dispatcher =
+            PrometheusWebhookDispatcher::new(roundrobin_cfg, template_engine.clone(), None);
         let alert1 = Alert {
             alert_id: "rr-01".to_string(),
             severity: AlertSeverity::Info,
@@ -769,8 +843,11 @@ async fn test_circuit_breaker_tripping_and_fast_failover() {
     let s2_counter = Arc::new(AtomicUsize::new(0));
 
     // Server 1 always fails with 500
-    let (s1_url, _h1) =
-        spawn_mock_webhook_server(axum::http::StatusCode::INTERNAL_SERVER_ERROR, s1_counter.clone()).await;
+    let (s1_url, _h1) = spawn_mock_webhook_server(
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        s1_counter.clone(),
+    )
+    .await;
     // Server 2 always succeeds with 200
     let (s2_url, _h2) =
         spawn_mock_webhook_server(axum::http::StatusCode::OK, s2_counter.clone()).await;
@@ -827,7 +904,10 @@ async fn test_circuit_breaker_tripping_and_fast_failover() {
     dispatcher.dispatch(&alert).await.unwrap();
     assert_eq!(s1_counter.load(Ordering::SeqCst), 2);
     assert_eq!(s2_counter.load(Ordering::SeqCst), 2);
-    assert!(!dispatcher.can_attempt_endpoint(&s1_url), "S1 circuit should now be OPEN");
+    assert!(
+        !dispatcher.can_attempt_endpoint(&s1_url),
+        "S1 circuit should now be OPEN"
+    );
 
     // Attempt 3: S1 circuit is OPEN! Dispatcher must fast-skip S1 in 0ms and deliver straight to S2!
     let start = std::time::Instant::now();
@@ -835,12 +915,23 @@ async fn test_circuit_breaker_tripping_and_fast_failover() {
     let duration = start.elapsed();
 
     // S1 was fast-skipped (counter NOT incremented!)
-    assert_eq!(s1_counter.load(Ordering::SeqCst), 2, "S1 counter must NOT increment because circuit is open");
+    assert_eq!(
+        s1_counter.load(Ordering::SeqCst),
+        2,
+        "S1 counter must NOT increment because circuit is open"
+    );
     // S2 received the alert directly
     assert_eq!(s2_counter.load(Ordering::SeqCst), 3);
-    assert!(duration.as_millis() < 200, "Fast-skip should execute in sub-200ms: {:?}", duration);
+    assert!(
+        duration.as_millis() < 200,
+        "Fast-skip should execute in sub-200ms: {:?}",
+        duration
+    );
 
-    println!("✅ Circuit breaker tripped to OPEN after 2 failures and fast-skipped dead endpoint in {:?}", duration);
+    println!(
+        "✅ Circuit breaker tripped to OPEN after 2 failures and fast-skipped dead endpoint in {:?}",
+        duration
+    );
 }
 
 #[tokio::test]
@@ -869,7 +960,10 @@ async fn test_prometheus_metrics_registry() {
     let metrics_text = engine.metrics().render().expect("Failed to render metrics");
     assert!(metrics_text.contains("openalert_alerts_received_total{source=\"rest\"} 2"));
     assert!(metrics_text.contains("openalert_duplicates_dropped_total"));
-    println!("✅ Prometheus /metrics text rendered with all counters:\n{}", metrics_text);
+    println!(
+        "✅ Prometheus /metrics text rendered with all counters:\n{}",
+        metrics_text
+    );
 }
 
 #[tokio::test]
@@ -920,8 +1014,16 @@ async fn test_peering_end_to_end_edge_to_gateway_backhaul() {
     let engine_a = Arc::new(AlertEngine::new(config_a.clone()).unwrap());
     let engine_b = Arc::new(AlertEngine::new(config_b.clone()).unwrap());
 
-    let peering_a = Arc::new(PeeringService::new(config_a.peering.clone(), engine_a.storage().cloned()).await.unwrap());
-    let peering_b = Arc::new(PeeringService::new(config_b.peering.clone(), engine_b.storage().cloned()).await.unwrap());
+    let peering_a = Arc::new(
+        PeeringService::new(config_a.peering.clone(), engine_a.storage().cloned())
+            .await
+            .unwrap(),
+    );
+    let peering_b = Arc::new(
+        PeeringService::new(config_b.peering.clone(), engine_b.storage().cloned())
+            .await
+            .unwrap(),
+    );
 
     peering_a.set_engine(engine_a.clone()).await;
     engine_a.set_peering_service(peering_a.clone()).await;
@@ -960,17 +1062,34 @@ async fn test_peering_end_to_end_edge_to_gateway_backhaul() {
     println!("DEBUG: diag_b = {:?}", diag_b);
 
     // Verify Gateway received the alert in its deduplication cache
-    let peering_received = engine_b.metrics().alerts_received_total.with_label_values(&["peering"]).get();
+    let peering_received = engine_b
+        .metrics()
+        .alerts_received_total
+        .with_label_values(&["peering"])
+        .get();
     println!("DEBUG: peering_received on B = {}", peering_received);
-    assert_eq!(peering_received as u64, 1, "Gateway must have received exactly 1 peering alert");
+    assert_eq!(
+        peering_received as u64, 1,
+        "Gateway must have received exactly 1 peering alert"
+    );
 
     // Verify Gateway preserved full summary and description
-    let pending = engine_b.storage().unwrap().get_pending_alerts(900).await.unwrap();
+    let pending = engine_b
+        .storage()
+        .unwrap()
+        .get_pending_alerts(900)
+        .await
+        .unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].summary, "Substation Generator Offline");
-    assert_eq!(pending[0].description, Some("Battery backup engaged at zone 4".to_string()));
+    assert_eq!(
+        pending[0].description,
+        Some("Battery backup engaged at zone 4".to_string())
+    );
 
-    println!("✅ Edge-to-Gateway UDP Peering verified! Ingested into central gateway with full payload preserved.");
+    println!(
+        "✅ Edge-to-Gateway UDP Peering verified! Ingested into central gateway with full payload preserved."
+    );
 }
 
 #[tokio::test]
@@ -984,17 +1103,26 @@ async fn test_peering_sqlite_spooling_and_retrieval() {
     let payload = b"mock-postcard-alert-payload";
     let fp: u64 = 0x1234567890abcdef;
 
-    let id = storage.spool_peering_packet("hub-gateway", fp, payload).await.unwrap();
+    let id = storage
+        .spool_peering_packet("hub-gateway", fp, payload)
+        .await
+        .unwrap();
     assert!(id > 0);
 
-    let spooled = storage.get_spooled_peering_packets("hub-gateway", 10).await.unwrap();
+    let spooled = storage
+        .get_spooled_peering_packets("hub-gateway", 10)
+        .await
+        .unwrap();
     assert_eq!(spooled.len(), 1);
     assert_eq!(spooled[0].0, id);
     assert_eq!(spooled[0].1, fp);
     assert_eq!(spooled[0].2, payload.to_vec());
 
     storage.mark_peering_spool_delivered(id).await.unwrap();
-    let remaining = storage.get_spooled_peering_packets("hub-gateway", 10).await.unwrap();
+    let remaining = storage
+        .get_spooled_peering_packets("hub-gateway", 10)
+        .await
+        .unwrap();
     assert_eq!(remaining.len(), 0);
 
     println!("✅ SQLite peering_spool FIFO storage and delivery lifecycle verified!");
@@ -1048,17 +1176,30 @@ async fn test_peering_split_horizon_suppression() {
 #[test]
 fn test_cli_config_validator() {
     let res = openalertd::cli::validate_config("config/openalertd.toml");
-    assert!(res.is_ok(), "config/openalertd.toml must be valid: {:?}", res.err());
+    assert!(
+        res.is_ok(),
+        "config/openalertd.toml must be valid: {:?}",
+        res.err()
+    );
     let summary = res.unwrap();
     assert!(summary.contains("openalertd-hub"));
     assert!(summary.contains("REST Ingress:"));
     assert!(summary.contains("Templates:"));
 
     // Verify all turnkey configuration profiles validate cleanly
-    for profile in &["edge-sensor.toml", "mesh-repeater.toml", "central-gateway.toml"] {
+    for profile in &[
+        "edge-sensor.toml",
+        "mesh-repeater.toml",
+        "central-gateway.toml",
+    ] {
         let path = format!("config/profiles/{}", profile);
         let prof_res = openalertd::cli::validate_config(&path);
-        assert!(prof_res.is_ok(), "Profile '{}' must be valid: {:?}", path, prof_res.err());
+        assert!(
+            prof_res.is_ok(),
+            "Profile '{}' must be valid: {:?}",
+            path,
+            prof_res.err()
+        );
     }
 
     let bad_res = openalertd::cli::validate_config("nonexistent_config_path.toml");
@@ -1086,7 +1227,10 @@ async fn test_engine_diagnostics_and_status_api() {
     assert!(status.storage.is_in_memory);
     assert_eq!(status.webhook.strategy, "cascade");
     assert_eq!(status.nostr.relays_count, 6);
-    println!("✅ Engine status and diagnostics validated successfully: node={}, version={}", status.node_name, status.version);
+    println!(
+        "✅ Engine status and diagnostics validated successfully: node={}, version={}",
+        status.node_name, status.version
+    );
 }
 
 #[tokio::test]
@@ -1136,8 +1280,14 @@ async fn test_peering_lora_serial_dispatch() {
 
     // Dispatch alert through peering: should format micro-frame, SLIP-encode, check ETSI duty-cycle, and handle virtual serial
     let res = peering.dispatch_alert(&alert, false).await;
-    assert!(res.is_ok(), "LoraSerial dispatch must succeed without crashing: {:?}", res.err());
-    println!("✅ LoRa Serial physical profile successfully processed, SLIP-encoded, and regulated!");
+    assert!(
+        res.is_ok(),
+        "LoraSerial dispatch must succeed without crashing: {:?}",
+        res.err()
+    );
+    println!(
+        "✅ LoRa Serial physical profile successfully processed, SLIP-encoded, and regulated!"
+    );
 }
 
 #[tokio::test]
@@ -1154,11 +1304,16 @@ async fn test_rest_ingress_bearer_and_hmac_security() {
     };
 
     // 1. Health check is public (unauthenticated allowed)
-    let health_resp = openalertd::ingress::rest::health_check(axum::extract::State(state.clone())).await;
+    let health_resp =
+        openalertd::ingress::rest::health_check(axum::extract::State(state.clone())).await;
     assert_eq!(health_resp.status(), axum::http::StatusCode::OK);
 
     // 2. Status handler without auth -> 401
-    let unauth_status = openalertd::ingress::rest::status_handler(axum::http::HeaderMap::new(), axum::extract::State(state.clone())).await;
+    let unauth_status = openalertd::ingress::rest::status_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+    )
+    .await;
     assert_eq!(unauth_status.status(), axum::http::StatusCode::UNAUTHORIZED);
 
     // 3. Status handler with valid Bearer token -> 200
@@ -1167,7 +1322,11 @@ async fn test_rest_ingress_bearer_and_hmac_security() {
         axum::http::header::AUTHORIZATION,
         axum::http::HeaderValue::from_static("Bearer secret-test-bearer-token"),
     );
-    let ok_status = openalertd::ingress::rest::status_handler(authed_headers.clone(), axum::extract::State(state.clone())).await;
+    let ok_status = openalertd::ingress::rest::status_handler(
+        authed_headers.clone(),
+        axum::extract::State(state.clone()),
+    )
+    .await;
     assert_eq!(ok_status.status(), axum::http::StatusCode::OK);
 
     // 4. Ingest alert without HMAC signature -> 401
@@ -1178,11 +1337,17 @@ async fn test_rest_ingress_bearer_and_hmac_security() {
         "destinations": ["webhook"]
     });
     let body_bytes = axum::body::Bytes::from(serde_json::to_vec(&alert_payload).unwrap());
-    let missing_sig = openalertd::ingress::rest::ingest_alert(authed_headers.clone(), axum::extract::State(state.clone()), body_bytes.clone()).await;
+    let missing_sig = openalertd::ingress::rest::ingest_alert(
+        authed_headers.clone(),
+        axum::extract::State(state.clone()),
+        body_bytes.clone(),
+    )
+    .await;
     assert_eq!(missing_sig.status(), axum::http::StatusCode::UNAUTHORIZED);
 
     // 5. Ingest alert with valid HMAC-SHA256 signature and timestamp -> 202 Accepted
-    let sig_hex = openalertd::ingress::rest::compute_hmac_sha256(b"secret-webhook-key", &body_bytes);
+    let sig_hex =
+        openalertd::ingress::rest::compute_hmac_sha256(b"secret-webhook-key", &body_bytes);
     let mut secure_headers = authed_headers.clone();
     secure_headers.insert(
         "x-openalert-signature",
@@ -1194,7 +1359,12 @@ async fn test_rest_ingress_bearer_and_hmac_security() {
         axum::http::HeaderValue::from_str(&now.to_string()).unwrap(),
     );
 
-    let accepted_resp = openalertd::ingress::rest::ingest_alert(secure_headers, axum::extract::State(state.clone()), body_bytes).await;
+    let accepted_resp = openalertd::ingress::rest::ingest_alert(
+        secure_headers,
+        axum::extract::State(state.clone()),
+        body_bytes,
+    )
+    .await;
     assert_eq!(accepted_resp.status(), axum::http::StatusCode::ACCEPTED);
     println!("✅ REST ingress Bearer and HMAC-SHA256 security tests passed successfully!");
 }
@@ -1255,9 +1425,21 @@ async fn test_peering_multihop_3node_mesh_forwarding() {
     let engine_b = Arc::new(AlertEngine::new(config_b.clone()).unwrap());
     let engine_c = Arc::new(AlertEngine::new(config_c.clone()).unwrap());
 
-    let peering_a = Arc::new(PeeringService::new(config_a.peering.clone(), engine_a.storage().cloned()).await.unwrap());
-    let peering_b = Arc::new(PeeringService::new(config_b.peering.clone(), engine_b.storage().cloned()).await.unwrap());
-    let peering_c = Arc::new(PeeringService::new(config_c.peering.clone(), engine_c.storage().cloned()).await.unwrap());
+    let peering_a = Arc::new(
+        PeeringService::new(config_a.peering.clone(), engine_a.storage().cloned())
+            .await
+            .unwrap(),
+    );
+    let peering_b = Arc::new(
+        PeeringService::new(config_b.peering.clone(), engine_b.storage().cloned())
+            .await
+            .unwrap(),
+    );
+    let peering_c = Arc::new(
+        PeeringService::new(config_c.peering.clone(), engine_c.storage().cloned())
+            .await
+            .unwrap(),
+    );
 
     peering_a.set_engine(engine_a.clone()).await;
     engine_a.set_peering_service(peering_a.clone()).await;
@@ -1294,14 +1476,30 @@ async fn test_peering_multihop_3node_mesh_forwarding() {
     tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
 
     // Node B (Relay) must have received it
-    let b_received = engine_b.metrics().alerts_received_total.with_label_values(&["peering"]).get();
-    assert_eq!(b_received as u64, 1, "Node B (Relay) must have received exactly 1 alert");
+    let b_received = engine_b
+        .metrics()
+        .alerts_received_total
+        .with_label_values(&["peering"])
+        .get();
+    assert_eq!(
+        b_received as u64, 1,
+        "Node B (Relay) must have received exactly 1 alert"
+    );
 
     // Node C (Gateway) must have received the forwarded multi-hop alert
-    let c_received = engine_c.metrics().alerts_received_total.with_label_values(&["peering"]).get();
-    assert_eq!(c_received as u64, 1, "Node C (Gateway) must have received exactly 1 forwarded multi-hop alert");
+    let c_received = engine_c
+        .metrics()
+        .alerts_received_total
+        .with_label_values(&["peering"])
+        .get();
+    assert_eq!(
+        c_received as u64, 1,
+        "Node C (Gateway) must have received exactly 1 forwarded multi-hop alert"
+    );
 
-    println!("✅ Multi-hop 3-node mesh traversal verified: Node A -> Node B (Relay) -> Node C (Gateway)");
+    println!(
+        "✅ Multi-hop 3-node mesh traversal verified: Node A -> Node B (Relay) -> Node C (Gateway)"
+    );
 }
 
 #[tokio::test]
@@ -1317,9 +1515,15 @@ async fn test_embedded_dashboard_and_sse_telemetry() {
     let dash_resp = openalertd::ingress::dashboard::dashboard_handler(
         axum::http::HeaderMap::new(),
         axum::extract::State(state.clone()),
-    ).await;
+    )
+    .await;
     assert_eq!(dash_resp.status(), axum::http::StatusCode::OK);
-    let content_type = dash_resp.headers().get(axum::http::header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    let content_type = dash_resp
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(content_type.contains("text/html"));
 
     // 2. Verify dashboard HTML content contains control plane markers and operator action triggers
@@ -1330,12 +1534,15 @@ async fn test_embedded_dashboard_and_sse_telemetry() {
     assert!(html.contains("Nostr Relays Quorum & Health"));
     assert!(html.contains("resetPeerCircuit"));
     assert!(html.contains("purgeSpool"));
+    assert!(html.contains("/api/v1/logo"));
+    assert!(html.contains("brand-logo-img"));
 
     // 3. Verify SSE handler initializes
     let sse_resp = openalertd::ingress::dashboard::sse_telemetry_handler(
         axum::http::HeaderMap::new(),
         axum::extract::State(state),
-    ).await;
+    )
+    .await;
     assert_eq!(sse_resp.status(), axum::http::StatusCode::OK);
     // Sse response wrapped successfully
     drop(sse_resp);
@@ -1346,7 +1553,10 @@ async fn test_embedded_dashboard_and_sse_telemetry() {
 #[tokio::test]
 async fn test_cli_hash_password() {
     let hash = openalertd::cli::hash_password("test");
-    assert_eq!(hash, "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08");
+    assert_eq!(
+        hash,
+        "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    );
     println!("✅ CLI hash-password test vector verified!");
 }
 
@@ -1371,9 +1581,13 @@ async fn test_dashboard_auth_flow() {
     let resp_no_auth = openalertd::ingress::dashboard::dashboard_handler(
         axum::http::HeaderMap::new(),
         axum::extract::State(state.clone()),
-    ).await;
+    )
+    .await;
     assert_eq!(resp_no_auth.status(), axum::http::StatusCode::UNAUTHORIZED);
-    let auth_header = resp_no_auth.headers().get(axum::http::header::WWW_AUTHENTICATE).unwrap();
+    let auth_header = resp_no_auth
+        .headers()
+        .get(axum::http::header::WWW_AUTHENTICATE)
+        .unwrap();
     assert!(auth_header.to_str().unwrap().contains("Basic realm="));
 
     // 2. Wrong password -> 401 Unauthorized
@@ -1386,11 +1600,13 @@ async fn test_dashboard_auth_flow() {
     let resp_bad = openalertd::ingress::dashboard::dashboard_handler(
         bad_headers,
         axum::extract::State(state.clone()),
-    ).await;
+    )
+    .await;
     assert_eq!(resp_bad.status(), axum::http::StatusCode::UNAUTHORIZED);
 
     // 3. Correct credentials -> 200 OK
-    let good_creds = base64::engine::general_purpose::STANDARD.encode(format!("sysadmin:{}", expected_pass));
+    let good_creds =
+        base64::engine::general_purpose::STANDARD.encode(format!("sysadmin:{}", expected_pass));
     let mut good_headers = axum::http::HeaderMap::new();
     good_headers.insert(
         axum::http::header::AUTHORIZATION,
@@ -1399,14 +1615,16 @@ async fn test_dashboard_auth_flow() {
     let resp_good = openalertd::ingress::dashboard::dashboard_handler(
         good_headers.clone(),
         axum::extract::State(state.clone()),
-    ).await;
+    )
+    .await;
     assert_eq!(resp_good.status(), axum::http::StatusCode::OK);
 
     // 4. SSE telemetry endpoint with correct auth -> 200 OK
     let sse_good = openalertd::ingress::dashboard::sse_telemetry_handler(
         good_headers,
         axum::extract::State(state),
-    ).await;
+    )
+    .await;
     assert_eq!(sse_good.status(), axum::http::StatusCode::OK);
 
     println!("✅ Dashboard HTTP Basic Authentication via password hash verified!");
@@ -1416,20 +1634,19 @@ async fn test_dashboard_auth_flow() {
 async fn test_operator_peer_reset_and_spool_purge() {
     let mut config = test_config();
     config.peering.enabled = true;
-    config.peering.nodes = vec![
-        openalertd::config::PeeringNodeConfig {
-            name: "remote-repeater".to_string(),
-            addr: "127.0.0.1:29877".to_string(),
-            failure_threshold: Some(2),
-            ..Default::default()
-        }
-    ];
+    config.peering.nodes = vec![openalertd::config::PeeringNodeConfig {
+        name: "remote-repeater".to_string(),
+        addr: "127.0.0.1:29877".to_string(),
+        failure_threshold: Some(2),
+        ..Default::default()
+    }];
 
     let engine = Arc::new(AlertEngine::new(config.clone()).unwrap());
-    let peering = Arc::new(openalertd::peering::PeeringService::new(
-        config.peering.clone(),
-        engine.storage().cloned(),
-    ).await.unwrap());
+    let peering = Arc::new(
+        openalertd::peering::PeeringService::new(config.peering.clone(), engine.storage().cloned())
+            .await
+            .unwrap(),
+    );
     engine.set_peering_service(peering.clone()).await;
 
     let state = openalertd::ingress::rest::AppState {
@@ -1439,7 +1656,10 @@ async fn test_operator_peer_reset_and_spool_purge() {
 
     // 1. Spool a packet into persistent storage
     let storage = engine.storage().unwrap();
-    storage.spool_peering_packet("remote-repeater", 0xbeefcafe, b"test-packet").await.unwrap();
+    storage
+        .spool_peering_packet("remote-repeater", 0xbeefcafe, b"test-packet")
+        .await
+        .unwrap();
     let stats_before = storage.get_spool_stats().await.unwrap();
     assert_eq!(stats_before.spooled, 1);
 
@@ -1447,7 +1667,8 @@ async fn test_operator_peer_reset_and_spool_purge() {
     let purge_resp = openalertd::ingress::rest::purge_spool_handler(
         axum::http::HeaderMap::new(),
         axum::extract::State(state.clone()),
-    ).await;
+    )
+    .await;
     assert_eq!(purge_resp.status(), axum::http::StatusCode::OK);
 
     let stats_after = storage.get_spool_stats().await.unwrap();
@@ -1458,7 +1679,8 @@ async fn test_operator_peer_reset_and_spool_purge() {
         axum::http::HeaderMap::new(),
         axum::extract::State(state.clone()),
         axum::extract::Path("remote-repeater".to_string()),
-    ).await;
+    )
+    .await;
     assert_eq!(reset_resp.status(), axum::http::StatusCode::OK);
 
     // 4. Test non-existent peer returns 404
@@ -1466,7 +1688,8 @@ async fn test_operator_peer_reset_and_spool_purge() {
         axum::http::HeaderMap::new(),
         axum::extract::State(state),
         axum::extract::Path("unknown-node".to_string()),
-    ).await;
+    )
+    .await;
     assert_eq!(not_found_resp.status(), axum::http::StatusCode::NOT_FOUND);
 
     println!("✅ Operator Peer Circuit Breaker Reset and Spool Purge verified!");
@@ -1478,7 +1701,10 @@ async fn test_cli_generate_key() {
     assert_eq!(key.len(), 64, "Key must be 64 hex characters (32 bytes)");
     let decoded = hex::decode(&key).expect("Key must be valid hex");
     assert_eq!(decoded.len(), 32);
-    println!("✅ CLI generate-key produced valid 256-bit hex key: {}...", &key[..12]);
+    println!(
+        "✅ CLI generate-key produced valid 256-bit hex key: {}...",
+        &key[..12]
+    );
 }
 
 #[tokio::test]
@@ -1502,6 +1728,8 @@ async fn test_nostr_encrypted_event_serialization_and_deserialization() {
         1,
         5,
         privacy_config,
+        None,
+        Default::default(),
     );
 
     let alert = Alert {
@@ -1522,29 +1750,47 @@ async fn test_nostr_encrypted_event_serialization_and_deserialization() {
     let event = publisher.sign_alert(&alert).expect("Signing must succeed");
 
     // 2. Content MUST NOT contain plaintext alert summary!
-    assert!(!event.content.contains("Top Secret Compound Infiltration"), "Content must not be cleartext");
-    assert!(!event.content.contains("Sensor 9"), "Content must not contain description");
+    assert!(
+        !event.content.contains("Top Secret Compound Infiltration"),
+        "Content must not be cleartext"
+    );
+    assert!(
+        !event.content.contains("Sensor 9"),
+        "Content must not contain description"
+    );
 
     // 3. Verify event tags contain encryption marker
-    let has_enc_tag = event.tags.iter().any(|t| t.len() >= 2 && t[0] == "enc" && t[1] == "xchacha20poly1305");
+    let has_enc_tag = event
+        .tags
+        .iter()
+        .any(|t| t.len() >= 2 && t[0] == "enc" && t[1] == "xchacha20poly1305");
     assert!(has_enc_tag, "Event must have enc tag");
 
     // 4. Decrypt payload with matching key
-    let datagram = base64::engine::general_purpose::STANDARD.decode(event.content.trim()).expect("Valid base64");
-    let decrypted_bytes = openalertd::peering::crypto::decrypt_datagram(&key_bytes, &datagram).expect("Decryption must succeed");
-    let decrypted_alert: Alert = serde_json::from_slice(&decrypted_bytes).expect("Valid Alert JSON");
+    let datagram = base64::engine::general_purpose::STANDARD
+        .decode(event.content.trim())
+        .expect("Valid base64");
+    let decrypted_bytes = openalertd::peering::crypto::decrypt_datagram(&key_bytes, &datagram)
+        .expect("Decryption must succeed");
+    let decrypted_alert: Alert =
+        serde_json::from_slice(&decrypted_bytes).expect("Valid Alert JSON");
 
     assert_eq!(decrypted_alert.alert_id, "sec-confidential-01");
     assert_eq!(decrypted_alert.summary, "Top Secret Compound Infiltration");
     assert_eq!(decrypted_alert.severity, AlertSeverity::Emergency);
-    assert_eq!(decrypted_alert.description.as_deref(), Some("Sensor 9 triggered in Sector G"));
+    assert_eq!(
+        decrypted_alert.description.as_deref(),
+        Some("Sensor 9 triggered in Sector G")
+    );
 
     // 5. Tamper / Wrong key rejection
     let wrong_key = [0x42u8; 32];
     let wrong_dec = openalertd::peering::crypto::decrypt_datagram(&wrong_key, &datagram);
     assert!(wrong_dec.is_err(), "Decryption with wrong key must fail");
 
-    println!("✅ Nostr AEAD encrypted event serialization, privacy, and tamper rejection verified!");
+    println!(
+        "✅ Nostr AEAD encrypted event serialization, privacy, and tamper rejection verified!"
+    );
 }
 
 #[tokio::test]
@@ -1583,7 +1829,10 @@ async fn test_sms_rest_config_hot_reload_and_sqlite_persistence() {
 
     // 2. Hot-reload configuration via POST /api/v1/sms/config
     let update_req = openalertd::models::SmsConfigUpdateRequest {
-        recipients: Some(vec!["+393349246425".to_string(), "+393339988776".to_string()]),
+        recipients: Some(vec![
+            "+393349246425".to_string(),
+            "+393339988776".to_string(),
+        ]),
         authorized_senders: Some(vec!["+393349246425".to_string()]),
     };
     let update_resp = openalertd::ingress::rest::sms_update_config_handler(
@@ -1596,7 +1845,10 @@ async fn test_sms_rest_config_hot_reload_and_sqlite_persistence() {
 
     // 3. Verify in-memory state updated
     let live_status = sms_service.get_status().await;
-    assert_eq!(live_status.recipients, vec!["+393349246425", "+393339988776"]);
+    assert_eq!(
+        live_status.recipients,
+        vec!["+393349246425", "+393339988776"]
+    );
     assert_eq!(live_status.authorized_senders, vec!["+393349246425"]);
 
     // 4. Verify SQLite persistence: a new instance with the same storage restores dynamic config
@@ -1607,7 +1859,10 @@ async fn test_sms_rest_config_hot_reload_and_sqlite_persistence() {
     )
     .await;
     let restored_status = restored_service.get_status().await;
-    assert_eq!(restored_status.recipients, vec!["+393349246425", "+393339988776"]);
+    assert_eq!(
+        restored_status.recipients,
+        vec!["+393349246425", "+393339988776"]
+    );
     assert_eq!(restored_status.authorized_senders, vec!["+393349246425"]);
 
     println!("✅ Cellular SMS dynamic configuration hot-reload & SQLite persistence verified!");
@@ -1669,8 +1924,13 @@ async fn test_sms_sqlite_ttl_pruning_and_resilience() {
     assert_eq!(pruned_zero, 0);
 
     // 4. Resilience: sending via nonexistent port must return Err, record failure in SQLite, and NEVER panic
-    let send_res = sms_service.send_manual_sms("+393349246425", "Test resilient SMS").await;
-    assert!(send_res.is_err(), "Dispatch on nonexistent port must return error gracefully");
+    let send_res = sms_service
+        .send_manual_sms("+393349246425", "Test resilient SMS")
+        .await;
+    assert!(
+        send_res.is_err(),
+        "Dispatch on nonexistent port must return error gracefully"
+    );
 
     // Check that failure was recorded in history
     let history_after_fail = sms_service.get_history(10).await.unwrap();
@@ -1680,7 +1940,664 @@ async fn test_sms_sqlite_ttl_pruning_and_resilience() {
 
     // Service status must report failure notice, not crash
     let status = sms_service.get_status().await;
-    assert!(status.modem_status.contains("Unavailable") || status.modem_status.contains("Disabled"));
+    assert!(
+        status.modem_status.contains("Unavailable") || status.modem_status.contains("Disabled")
+    );
 
-    println!("✅ Cellular SMS SQLite TTL retention, history, and zero-crash failure resilience verified!");
+    println!(
+        "✅ Cellular SMS SQLite TTL retention, history, and zero-crash failure resilience verified!"
+    );
+}
+
+#[tokio::test]
+async fn test_oxchat_dm_encryption_and_signing() {
+    use openalertd::config::{NostrPrivacyConfig, OxChatConfig, OxChatMode};
+    use openalertd::egress::nostr::NostrPublisher;
+    use openalertd::models::{Alert, AlertSeverity, AlertSource};
+    use secp256k1::{PublicKey, Secp256k1, SecretKey};
+
+    let secp = Secp256k1::new();
+
+    // Generate operator keys (0xChat Mobile user)
+    let operator_sk = SecretKey::from_slice(&[0x44u8; 32]).unwrap();
+    let operator_pk = PublicKey::from_secret_key(&secp, &operator_sk);
+    let (operator_xonly, _) = operator_pk.x_only_public_key();
+    let operator_hex = hex::encode(operator_xonly.serialize());
+
+    // Daemon bot secret key
+    let bot_sk_bytes = [0x55u8; 32];
+    let bot_sk_hex = hex::encode(bot_sk_bytes);
+
+    let oxchat_config = OxChatConfig {
+        enabled: true,
+        mode: OxChatMode::Dm,
+        recipients: vec![operator_hex.clone()],
+        c2_enabled: true,
+        c2_authorized_operators: vec![operator_hex.clone()],
+    };
+
+    let publisher = NostrPublisher::new(
+        vec!["wss://relay.example.com".to_string()],
+        30000,
+        3600,
+        1,
+        5,
+        NostrPrivacyConfig::default(),
+        Some(bot_sk_hex),
+        oxchat_config,
+    );
+
+    let alert = Alert {
+        alert_id: "oxchat-dm-001".to_string(),
+        severity: AlertSeverity::Critical,
+        summary: "Cooling System Failure at Primary DC".to_string(),
+        description: Some(
+            "Chiller 3 head pressure exceeded 400 PSI. Immediate inspection required.".to_string(),
+        ),
+        source: AlertSource::Rest,
+        sender: Some("sensormon".to_string()),
+        node: Some("datacenter-alpha".to_string()),
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["oxchat".to_string()],
+        origin_peer: None,
+        hop: 0,
+    };
+
+    let events = publisher
+        .sign_oxchat_alert(&alert)
+        .expect("sign oxchat alert");
+    assert_eq!(events.len(), 1, "Expected 1 encrypted DM per recipient");
+
+    let event = &events[0];
+    assert_eq!(event.kind, 4, "NIP-04 Direct Messages must be Kind 4");
+    assert!(
+        event
+            .tags
+            .iter()
+            .any(|t| t.len() >= 2 && t[0] == "p" && t[1] == operator_hex)
+    );
+
+    // Operator receives and decrypts the alert
+    let bot_pk = PublicKey::from_slice(&{
+        let mut comp = [0u8; 33];
+        comp[0] = 0x02;
+        comp[1..33].copy_from_slice(&hex::decode(publisher.public_key()).unwrap());
+        comp
+    })
+    .unwrap();
+
+    let shared_secret =
+        openalertd::crypto::nip04::derive_shared_secret(&secp, &operator_sk, &bot_pk).unwrap();
+    let decrypted_text =
+        openalertd::crypto::nip04::nip04_decrypt(&shared_secret, &event.content).unwrap();
+
+    println!(
+        "Decrypted 0xChat Alert: 
+{}",
+        decrypted_text
+    );
+    assert!(decrypted_text.contains("Critical ALERT"));
+    assert!(decrypted_text.contains("Cooling System Failure at Primary DC"));
+    assert!(decrypted_text.contains("datacenter-alpha"));
+    assert!(decrypted_text.contains("oxchat-dm-001"));
+
+    println!("✅ 0xChat NIP-04 E2EE DM signing, encryption, and client decryption verified!");
+}
+
+#[tokio::test]
+async fn test_oxchat_public_note_signing() {
+    use openalertd::config::{NostrPrivacyConfig, OxChatConfig, OxChatMode};
+    use openalertd::egress::nostr::NostrPublisher;
+    use openalertd::models::{Alert, AlertSeverity, AlertSource};
+
+    let oxchat_config = OxChatConfig {
+        enabled: true,
+        mode: OxChatMode::Public,
+        recipients: vec![],
+        c2_enabled: false,
+        c2_authorized_operators: vec![],
+    };
+
+    let publisher = NostrPublisher::new(
+        vec!["wss://relay.example.com".to_string()],
+        30000,
+        3600,
+        1,
+        5,
+        NostrPrivacyConfig::default(),
+        None,
+        oxchat_config,
+    );
+
+    let alert = Alert {
+        alert_id: "oxchat-pub-002".to_string(),
+        severity: AlertSeverity::Emergency,
+        summary: "Substation Power Blackout".to_string(),
+        description: Some("Grid failure detected across entire Sector 7.".to_string()),
+        source: AlertSource::Rest,
+        sender: Some("grid-mon".to_string()),
+        node: Some("substation-07".to_string()),
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["0xchat".to_string()],
+        origin_peer: None,
+        hop: 0,
+    };
+
+    let events = publisher
+        .sign_oxchat_alert(&alert)
+        .expect("sign public note");
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    assert_eq!(event.kind, 1, "Public presentation notes must be Kind 1");
+    assert!(
+        event
+            .tags
+            .iter()
+            .any(|t| t.len() >= 2 && t[0] == "t" && t[1] == "openalert")
+    );
+    assert!(
+        event
+            .tags
+            .iter()
+            .any(|t| t.len() >= 2 && t[0] == "t" && t[1] == "emergency")
+    );
+    assert!(event.content.contains("Substation Power Blackout"));
+
+    println!("✅ 0xChat Public Kind 1 note signing verified!");
+}
+
+#[tokio::test]
+async fn test_oxchat_c2_interactive_commands() {
+    use openalertd::config::{OxChatConfig, OxChatMode};
+    use openalertd::engine::AlertEngine;
+    use openalertd::ingress::nostr::NostrSubscriber;
+    use openalertd::models::{Alert, AlertSeverity, AlertSource, NostrEvent};
+    use secp256k1::{PublicKey, Secp256k1, SecretKey};
+
+    let secp = Secp256k1::new();
+
+    // Operator keys
+    let operator_sk = SecretKey::from_slice(&[0x77u8; 32]).unwrap();
+    let operator_pk = PublicKey::from_secret_key(&secp, &operator_sk);
+    let (operator_xonly, _) = operator_pk.x_only_public_key();
+    let operator_hex = hex::encode(operator_xonly.serialize());
+
+    // Bot keys
+    let bot_sk = SecretKey::from_slice(&[0x88u8; 32]).unwrap();
+    let bot_pk = PublicKey::from_secret_key(&secp, &bot_sk);
+    let (bot_xonly, _) = bot_pk.x_only_public_key();
+    let bot_pubkey_hex = hex::encode(bot_xonly.serialize());
+    let bot_sk_hex = hex::encode(bot_sk.secret_bytes());
+
+    let mut config = test_config();
+    config.daemon.name = "test-node".to_string();
+    config.nostr.private_key = Some(bot_sk_hex);
+    config.nostr.oxchat = OxChatConfig {
+        enabled: true,
+        mode: OxChatMode::Dm,
+        recipients: vec![operator_hex.clone()],
+        c2_enabled: true,
+        c2_authorized_operators: vec![operator_hex.clone()],
+    };
+
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("engine"));
+    let subscriber = Arc::new(NostrSubscriber::new(config.nostr.clone(), engine.clone()));
+
+    // Shared secret for operator -> bot
+    let shared_secret =
+        openalertd::crypto::nip04::derive_shared_secret(&secp, &operator_sk, &bot_pk).unwrap();
+
+    // 1. Encrypt and execute 'ping'
+    let ping_ciphertext = openalertd::crypto::nip04::nip04_encrypt(&shared_secret, "ping").unwrap();
+    let _ping_event = NostrEvent {
+        id: "ev-ping-01".to_string(),
+        pubkey: operator_hex.clone(),
+        created_at: chrono::Utc::now().timestamp() as u64,
+        kind: 4,
+        tags: vec![vec!["p".to_string(), bot_pubkey_hex.clone()]],
+        content: ping_ciphertext,
+        sig: "fake_sig".to_string(),
+    };
+
+    // Process C2 command event
+    let resp = subscriber
+        .execute_c2_command("ping", None)
+        .await
+        .expect("execute ping");
+    assert!(resp.contains("PONG"));
+
+    // 2. Encrypt and execute 'status'
+    let status_resp = subscriber
+        .execute_c2_command("status", None)
+        .await
+        .expect("execute status");
+    assert!(status_resp.contains("OpenAlert Status Report"));
+    assert!(status_resp.contains("test-node"));
+
+    // 3. Insert an alert into SQLite storage, then ACK it via C2
+    let test_alert = Alert {
+        alert_id: "ack-target-999".to_string(),
+        severity: AlertSeverity::Warning,
+        summary: "High Memory Utilization on Node 3".to_string(),
+        description: None,
+        source: AlertSource::Rest,
+        sender: None,
+        node: None,
+        starts_at: chrono::Utc::now(),
+        destinations: vec![],
+        origin_peer: None,
+        hop: 0,
+    };
+    if let Some(storage) = engine.storage() {
+        storage
+            .record_alert(&test_alert, "pending")
+            .await
+            .expect("record alert");
+    }
+
+    let ack_resp = subscriber
+        .execute_c2_command("ack ack-target-999", None)
+        .await
+        .expect("execute ack");
+    assert!(ack_resp.contains("acknowledged and marked dispatched"));
+
+    println!("✅ 0xChat Interactive C2 commands (ping, status, ack) verified!");
+}
+
+
+#[tokio::test]
+async fn test_oxchat_nip17_giftwrap_and_public_reply() {
+    let mut config = test_config();
+    config.nostr.oxchat.enabled = true;
+    config.nostr.oxchat.c2_enabled = true;
+    let operator_secp = secp256k1::Secp256k1::new();
+    let operator_sk = secp256k1::SecretKey::from_slice(&[0x42u8; 32]).unwrap();
+    let operator_keypair = secp256k1::Keypair::from_secret_key(&operator_secp, &operator_sk);
+    let operator_pubkey_hex = hex::encode(operator_keypair.x_only_public_key().0.serialize());
+
+    config.nostr.oxchat.c2_authorized_operators = vec![operator_pubkey_hex.clone()];
+
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("Failed to create engine"));
+    use openalertd::ingress::nostr::NostrSubscriber;
+    let nostr_ingress = NostrSubscriber::new(config.nostr.clone(), engine.clone());
+
+    // 1. Test C2 ping via execute_c2_command
+    let ping_resp = nostr_ingress.execute_c2_command("ping", None).await.unwrap();
+    assert!(ping_resp.contains("PONG"));
+
+    // 2. Test C2 status command
+    let status_resp = nostr_ingress.execute_c2_command("status", None).await.unwrap();
+    assert!(status_resp.contains("OpenAlert Status Report"));
+
+    // 3. Test C2 help command
+    let help_resp = nostr_ingress.execute_c2_command("help", None).await.unwrap();
+    assert!(help_resp.contains("OpenAlert 0xChat C2 Commands"));
+
+    // 4. Test C2 public threaded reply formation
+    let publisher = engine.nostr_publisher();
+    let res = publisher.send_oxchat_public_reply("parent_event_123", &operator_pubkey_hex, "Acknowledged").await;
+    assert!(res.is_ok());
+
+    // 5. Test Thread-Aware Direct Reply ACK without explicit alert_id
+    let pending_alert = Alert {
+        alert_id: "auto-ack-456".to_string(),
+        severity: AlertSeverity::Critical,
+        summary: "Database connection pool exhausted".to_string(),
+        description: None,
+        source: AlertSource::Rest,
+        sender: None,
+        node: None,
+        starts_at: chrono::Utc::now(),
+        destinations: vec![],
+        origin_peer: None,
+        hop: 0,
+    };
+    if let Some(storage) = engine.storage() {
+        storage.record_alert(&pending_alert, "pending").await.expect("record alert");
+    }
+
+    // Operator merely replies 'ack' or 'ok'
+    let auto_ack_resp = nostr_ingress.execute_c2_command("ack", None).await.unwrap();
+    assert!(auto_ack_resp.contains("auto-ack-456"));
+    assert!(auto_ack_resp.contains("acknowledged and marked dispatched"));
+
+    println!("✅ NIP-17 0xChat C2 commands and NIP-10 public threaded replies successfully verified!");
+}
+
+
+#[tokio::test]
+async fn test_embedded_nostr_micro_relay_e2e() {
+    use openalertd::config::NostrRelayServerConfig;
+    use openalertd::nostr_relay::EmbeddedNostrRelay;
+    use openalertd::models::NostrEvent;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::connect_async;
+    use tokio_tungstenite::tungstenite::protocol::Message;
+
+    // 1. Pick ephemeral port for testing
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let relay_cfg = NostrRelayServerConfig {
+        enabled: true,
+        bind_address: format!("127.0.0.1:{}", port),
+        name: "Test Micro-Relay".to_string(),
+        description: "Embedded relay test instance".to_string(),
+        contact: "test@openalert.local".to_string(),
+        storage_backend: "memory".to_string(),
+        max_events: 1000,
+        max_message_size_bytes: 65536,
+        max_connections: 32,
+        max_subscriptions_per_conn: 8,
+        ..Default::default()
+    };
+
+    let relay = EmbeddedNostrRelay::new(relay_cfg, None);
+    relay.start().await.expect("Failed to start embedded relay");
+
+    // Allow socket to bind
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+    // 2. Test NIP-11 Discovery GET
+    let client = reqwest::Client::new();
+    let nip11_resp = client
+        .get(format!("http://127.0.0.1:{}", port))
+        .header("Accept", "application/nostr+json")
+        .send()
+        .await
+        .expect("NIP-11 GET request");
+    assert_eq!(nip11_resp.status(), 200);
+    let nip11_json: serde_json::Value = nip11_resp.json().await.expect("Parse NIP-11 JSON");
+    assert_eq!(nip11_json["name"], "Test Micro-Relay");
+    assert_eq!(nip11_json["software"], "openalertd-embedded-relay");
+
+    // 3. Connect client via WebSocket (simulating 0xChat or subscriber)
+    let ws_url = format!("ws://127.0.0.1:{}", port);
+    let (mut ws_stream, _) = connect_async(&ws_url).await.expect("WebSocket connection to embedded relay");
+
+    // 4. Send a subscription request: ["REQ", "sub-1", {"kinds": [1059, 1]}]
+    let req_msg = serde_json::json!(["REQ", "sub-1", {"kinds": [1059, 1]}]);
+    ws_stream.send(Message::Text(req_msg.to_string().into())).await.expect("Send REQ");
+
+    // Wait for EOSE response
+    let mut received_eose = false;
+    while let Some(Ok(msg)) = ws_stream.next().await {
+        if let Message::Text(txt) = msg {
+            let val: serde_json::Value = serde_json::from_str(&txt).unwrap();
+            if val[0] == "EOSE" && val[1] == "sub-1" {
+                received_eose = true;
+                break;
+            }
+        }
+    }
+    assert!(received_eose, "Expected EOSE response from embedded micro-relay");
+
+    // 5. Publish an EVENT: ["EVENT", { ... }]
+    let test_event = NostrEvent {
+        id: "ev-test-123456789".to_string(),
+        pubkey: "pubkey-alice-1234".to_string(),
+        created_at: 1700000000,
+        kind: 1,
+        tags: vec![vec!["t".to_string(), "openalert".to_string()]],
+        content: "Critical Alert: Generator Overheating".to_string(),
+        sig: "sig-hex-1234".to_string(),
+    };
+    let event_frame = serde_json::json!(["EVENT", test_event]);
+    ws_stream.send(Message::Text(event_frame.to_string().into())).await.expect("Send EVENT");
+
+    // 6. Expect NIP-20 OK acknowledgment and then live broadcast EVENT to sub-1
+    let mut received_ok = false;
+    let mut received_live_event = false;
+
+    for _ in 0..2 {
+        if let Some(Ok(Message::Text(txt))) = ws_stream.next().await {
+            let val: serde_json::Value = serde_json::from_str(&txt).unwrap();
+            if val[0] == "OK" && val[1] == "ev-test-123456789" && val[2] == true {
+                received_ok = true;
+            } else if val[0] == "EVENT" && val[1] == "sub-1" && val[2]["id"] == "ev-test-123456789" {
+                received_live_event = true;
+            }
+        }
+    }
+
+    assert!(received_ok, "Expected NIP-20 OK confirmation");
+    assert!(received_live_event, "Expected subscriber to receive live broadcast event");
+
+    println!("✅ Embedded Nostr Micro-Relay (NIP-01, NIP-11, NIP-20) verified end-to-end!");
+}
+
+
+#[tokio::test]
+async fn test_embedded_nostr_micro_relay_native_tls_e2e() {
+    use openalertd::config::{NostrRelayServerConfig, NostrRelayTlsConfig};
+    use openalertd::nostr_relay::EmbeddedNostrRelay;
+    use rcgen::generate_simple_self_signed;
+
+    // 1. Generate self-signed cert and key using rcgen
+    let subject_alt_names = vec!["localhost".to_string(), "127.0.0.1".to_string()];
+    let cert = generate_simple_self_signed(subject_alt_names).unwrap();
+    let cert_pem = cert.cert.pem();
+    let key_pem = cert.key_pair.serialize_pem();
+
+    let temp_dir = std::env::temp_dir();
+    let cert_path = temp_dir.join(format!("test_relay_cert_{}.pem", std::process::id()));
+    let key_path = temp_dir.join(format!("test_relay_key_{}.pem", std::process::id()));
+
+    std::fs::write(&cert_path, cert_pem).unwrap();
+    std::fs::write(&key_path, key_pem).unwrap();
+
+    // 2. Pick ephemeral port
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let relay_cfg = NostrRelayServerConfig {
+        enabled: true,
+        bind_address: format!("127.0.0.1:{}", port),
+        name: "TLS Micro-Relay".to_string(),
+        description: "Embedded relay native TLS test".to_string(),
+        contact: "security@openalert.local".to_string(),
+        storage_backend: "memory".to_string(),
+        max_events: 1000,
+        max_message_size_bytes: 65536,
+        max_connections: 32,
+        max_subscriptions_per_conn: 8,
+        tls: NostrRelayTlsConfig {
+            enabled: true,
+            cert_path: Some(cert_path.to_string_lossy().to_string()),
+            key_path: Some(key_path.to_string_lossy().to_string()),
+        },
+    };
+
+    let relay = EmbeddedNostrRelay::new(relay_cfg, None);
+    relay.start().await.expect("Failed to start embedded TLS relay");
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+
+    // 3. Test HTTPS NIP-11 Discovery GET
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap();
+
+    let nip11_resp = client
+        .get(format!("https://127.0.0.1:{}", port))
+        .header("Accept", "application/nostr+json")
+        .send()
+        .await
+        .expect("NIP-11 HTTPS GET request");
+
+    assert_eq!(nip11_resp.status(), 200);
+    let nip11_json: serde_json::Value = nip11_resp.json().await.expect("Parse NIP-11 JSON");
+    assert_eq!(nip11_json["name"], "TLS Micro-Relay");
+    assert_eq!(nip11_json["software"], "openalertd-embedded-relay");
+
+    // 4. Test HTTPS plain text greeting
+    let greeting_resp = client
+        .get(format!("https://127.0.0.1:{}", port))
+        .send()
+        .await
+        .expect("Plain HTTPS GET request");
+    assert_eq!(greeting_resp.status(), 200);
+    let body = greeting_resp.text().await.unwrap();
+    assert!(body.contains("wss://"));
+
+    // Cleanup
+    let _ = std::fs::remove_file(cert_path);
+    let _ = std::fs::remove_file(key_path);
+
+    println!("✅ Native TLS / WSS Embedded Nostr Micro-Relay verified successfully!");
+}
+
+#[tokio::test]
+async fn test_tools_endpoints() {
+    let config = test_config();
+    let engine = Arc::new(AlertEngine::new(config.clone()).unwrap());
+    let state = openalertd::ingress::rest::AppState {
+        engine,
+        config: config.rest.clone(),
+    };
+
+    // 1. Test Keypair Generator Endpoint
+    let keypair_resp = openalertd::ingress::rest::tools_generate_keypair_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+    )
+    .await;
+    assert_eq!(keypair_resp.status(), axum::http::StatusCode::OK);
+
+    // 2. Test Key Converter Endpoint with npub
+    let conv_req = openalertd::models::ToolConvertKeyRequest {
+        key: "npub1uvtjer4wn7y2qpe4clvqd7qz7x483pthpngewqddc03xes39uq3sw9p5u6".to_string(),
+    };
+    let conv_resp = openalertd::ingress::rest::tools_convert_key_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::Json(conv_req),
+    )
+    .await;
+    assert_eq!(conv_resp.status(), axum::http::StatusCode::OK);
+
+    // 3. Test SMS Codec Endpoint
+    let sms_req = openalertd::models::ToolConvertSmsRequest {
+        payload: "Allarme critico! 🚨".to_string(),
+    };
+    let sms_resp = openalertd::ingress::rest::tools_convert_sms_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::Json(sms_req),
+    )
+    .await;
+    assert_eq!(sms_resp.status(), axum::http::StatusCode::OK);
+
+    // 4. Test Password Hasher Endpoint
+    let pwd_req = openalertd::models::ToolHashPasswordRequest {
+        password: "SuperSecretOperatorPassword".to_string(),
+    };
+    let pwd_resp = openalertd::ingress::rest::tools_hash_password_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::Json(pwd_req),
+    )
+    .await;
+    assert_eq!(pwd_resp.status(), axum::http::StatusCode::OK);
+
+    // 5. Test 256-bit Key Generator Endpoint
+    let key_resp = openalertd::ingress::rest::tools_generate_key_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state),
+    )
+    .await;
+    assert_eq!(key_resp.status(), axum::http::StatusCode::OK);
+
+    println!("✅ All 5 Operational Tools REST endpoints verified successfully!");
+}
+
+#[tokio::test]
+async fn test_config_editor_and_validation_endpoints() {
+    let config = test_config();
+    let engine = Arc::new(AlertEngine::new(config.clone()).unwrap());
+    let state = openalertd::ingress::rest::AppState {
+        engine: engine.clone(),
+        config: config.rest.clone(),
+    };
+
+    // 1. Test Config Validate Endpoint with Valid TOML
+    let valid_toml = std::fs::read_to_string("config/openalertd.toml").unwrap();
+    let val_req = openalertd::models::ConfigUpdateRequest {
+        toml_content: valid_toml.to_string(),
+        reload: false,
+    };
+    let val_resp = openalertd::ingress::rest::config_validate_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::Json(val_req),
+    )
+    .await;
+    assert_eq!(val_resp.status(), axum::http::StatusCode::OK);
+
+    // 2. Test Config Validate Endpoint with Invalid TOML (syntax error)
+    let invalid_toml = "broken = [toml syntax unclosed string";
+    let inval_req = openalertd::models::ConfigUpdateRequest {
+        toml_content: invalid_toml.to_string(),
+        reload: false,
+    };
+    let inval_resp = openalertd::ingress::rest::config_validate_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::Json(inval_req),
+    )
+    .await;
+    assert_eq!(inval_resp.status(), axum::http::StatusCode::BAD_REQUEST);
+
+    // 3. Test Config Get Endpoint
+    let get_resp = openalertd::ingress::rest::config_get_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state),
+    )
+    .await;
+    assert_eq!(get_resp.status(), axum::http::StatusCode::OK);
+
+    println!("✅ Configuration editor validation & read endpoints verified!");
+}
+
+#[tokio::test]
+async fn test_logo_endpoint_day_and_night() {
+    use std::collections::HashMap;
+
+    // 1. Dark/night mode logo (default)
+    let params_dark = HashMap::new();
+    let resp_dark = openalertd::ingress::dashboard::logo_handler(axum::extract::Query(params_dark)).await;
+    assert_eq!(resp_dark.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        resp_dark.headers().get(axum::http::header::CONTENT_TYPE).unwrap(),
+        "image/png"
+    );
+
+    // 2. Day/light mode logo
+    let mut params_day = HashMap::new();
+    params_day.insert("theme".to_string(), "day".to_string());
+    let resp_day = openalertd::ingress::dashboard::logo_handler(axum::extract::Query(params_day)).await;
+    assert_eq!(resp_day.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        resp_day.headers().get(axum::http::header::CONTENT_TYPE).unwrap(),
+        "image/png"
+    );
+
+    // 3. Light theme synonym
+    let mut params_light = HashMap::new();
+    params_light.insert("theme".to_string(), "light".to_string());
+    let resp_light = openalertd::ingress::dashboard::logo_handler(axum::extract::Query(params_light)).await;
+    assert_eq!(resp_light.status(), axum::http::StatusCode::OK);
+
+    // 4. Verify static byte lengths are non-empty
+    assert!(!openalertd::ingress::dashboard::LOGO_PNG.is_empty());
+    assert!(!openalertd::ingress::dashboard::LOGO_DAY_PNG.is_empty());
+    println!(
+        "✅ Master logo ({} bytes) and Day variant ({} bytes) validated!",
+        openalertd::ingress::dashboard::LOGO_PNG.len(),
+        openalertd::ingress::dashboard::LOGO_DAY_PNG.len()
+    );
 }

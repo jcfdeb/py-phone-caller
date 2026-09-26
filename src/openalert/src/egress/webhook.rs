@@ -182,10 +182,7 @@ impl PrometheusWebhookDispatcher {
         let mut breakers = self.circuit_breakers.lock().unwrap();
         let cooldown = Duration::from_secs(self.config.circuit_breaker_cooldown_seconds);
         let entry = breakers.entry(url.to_string()).or_insert_with(|| {
-            CircuitBreakerEntry::new(
-                self.config.circuit_breaker_failure_threshold,
-                cooldown,
-            )
+            CircuitBreakerEntry::new(self.config.circuit_breaker_failure_threshold, cooldown)
         });
         let prev_state = entry.state;
         let new_state = entry.record_failure();
@@ -282,11 +279,7 @@ impl PrometheusWebhookDispatcher {
                 Err(err) => {
                     warn!(
                         "⚠️ Webhook [priority: {:02}] [{}] connection error: {} (attempt {}/{})",
-                        priority_val,
-                        endpoint.url,
-                        err,
-                        attempts,
-                        max_attempts
+                        priority_val, endpoint.url, err, attempts, max_attempts
                     );
                     last_error = Some(OpenAlertError::HttpClient(err));
                 }
@@ -309,7 +302,8 @@ impl PrometheusWebhookDispatcher {
                 .inc();
         }
 
-        Err(last_error.unwrap_or_else(|| OpenAlertError::Routing("Webhook dispatch failed".to_string())))
+        Err(last_error
+            .unwrap_or_else(|| OpenAlertError::Routing("Webhook dispatch failed".to_string())))
     }
 
     /// Renders the alert payload and transmits it according to the configured balancing strategy.
@@ -337,7 +331,10 @@ impl PrometheusWebhookDispatcher {
                         priority_val, endpoint.url, alert.alert_id
                     );
 
-                    match self.send_to_endpoint(endpoint, &alert.alert_id, &payload_json).await {
+                    match self
+                        .send_to_endpoint(endpoint, &alert.alert_id, &payload_json)
+                        .await
+                    {
                         Ok(()) => {
                             // Primary/active webhook succeeded, complete dispatch to avoid duplicate calls
                             return Ok(());
@@ -373,7 +370,9 @@ impl PrometheusWebhookDispatcher {
                     "❌ All {} cascade webhook instances exhausted for alert [{}]",
                     total, alert.alert_id
                 );
-                Err(last_err.unwrap_or_else(|| OpenAlertError::Routing("All cascade webhooks failed".to_string())))
+                Err(last_err.unwrap_or_else(|| {
+                    OpenAlertError::Routing("All cascade webhooks failed".to_string())
+                }))
             }
 
             WebhookStrategy::Roundrobin => {
@@ -384,7 +383,10 @@ impl PrometheusWebhookDispatcher {
                 for step in 0..total {
                     let idx = (start_idx + step) % total;
                     let endpoint = &endpoints[idx];
-                    match self.send_to_endpoint(endpoint, &alert.alert_id, &payload_json).await {
+                    match self
+                        .send_to_endpoint(endpoint, &alert.alert_id, &payload_json)
+                        .await
+                    {
                         Ok(()) => return Ok(()),
                         Err(err) => {
                             warn!(
@@ -400,7 +402,9 @@ impl PrometheusWebhookDispatcher {
                     "❌ All {} roundrobin webhook instances failed for alert [{}]",
                     total, alert.alert_id
                 );
-                Err(last_err.unwrap_or_else(|| OpenAlertError::Routing("All roundrobin webhooks failed".to_string())))
+                Err(last_err.unwrap_or_else(|| {
+                    OpenAlertError::Routing("All roundrobin webhooks failed".to_string())
+                }))
             }
 
             WebhookStrategy::Random => {
@@ -411,7 +415,10 @@ impl PrometheusWebhookDispatcher {
                 for step in 0..total {
                     let idx = (start_idx + step) % total;
                     let endpoint = &endpoints[idx];
-                    match self.send_to_endpoint(endpoint, &alert.alert_id, &payload_json).await {
+                    match self
+                        .send_to_endpoint(endpoint, &alert.alert_id, &payload_json)
+                        .await
+                    {
                         Ok(()) => return Ok(()),
                         Err(err) => {
                             warn!(
@@ -427,7 +434,9 @@ impl PrometheusWebhookDispatcher {
                     "❌ All {} webhook instances failed in random strategy for alert [{}]",
                     total, alert.alert_id
                 );
-                Err(last_err.unwrap_or_else(|| OpenAlertError::Routing("All random webhooks failed".to_string())))
+                Err(last_err.unwrap_or_else(|| {
+                    OpenAlertError::Routing("All random webhooks failed".to_string())
+                }))
             }
 
             WebhookStrategy::Broadcast => {
@@ -465,7 +474,9 @@ impl PrometheusWebhookDispatcher {
                         endpoints.len(),
                         alert.alert_id
                     );
-                    Err(last_err.unwrap_or_else(|| OpenAlertError::Routing("Broadcast webhook delivery failed".to_string())))
+                    Err(last_err.unwrap_or_else(|| {
+                        OpenAlertError::Routing("Broadcast webhook delivery failed".to_string())
+                    }))
                 }
             }
         }

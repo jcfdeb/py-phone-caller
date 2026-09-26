@@ -39,6 +39,7 @@
 //!
 //! - [`bitchat`]: Native BlueZ Linux GATT server and BitChat BLE mesh binary protocol parser/encoder.
 //! - [`config`]: Strongly-typed daemon configuration loader (TOML).
+//! - [`crypto`]: Cryptographic primitives (NIP-04 ECDH + AES-256-CBC for 0xChat).
 //! - [`engine`]: Central alert routing, deduplication cache, and dispatch pipeline.
 //! - [`error`]: Unified error types and result aliases.
 //! - [`ingress`]: Inbound alert listeners (HTTP REST API, Prometheus Alertmanager webhook, Nostr subscribers).
@@ -54,20 +55,24 @@
 pub mod bitchat;
 pub mod cli;
 pub mod config;
+pub mod crypto;
 pub mod egress;
 pub mod engine;
 pub mod error;
 pub mod ingress;
 pub mod metrics;
+pub mod nostr_relay;
 pub mod models;
-pub mod storage;
 pub mod peering;
-pub mod templates;
 pub mod sms;
+pub mod storage;
+pub mod templates;
 
 pub use bitchat::BitChatService;
 pub use config::AppConfig;
 pub use engine::AlertEngine;
 pub use metrics::OpenAlertMetrics;
-pub use storage::Storage;
 pub use sms::SmsService;
+pub use storage::Storage;
+
+pub use nostr_relay::EmbeddedNostrRelay;

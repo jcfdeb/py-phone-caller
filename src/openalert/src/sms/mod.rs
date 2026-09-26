@@ -53,11 +53,13 @@ impl SmsService {
     ) -> Self {
         // Restore dynamic settings from SQLite if present
         if let Ok(Some(recipients_json)) = storage.get_sms_setting("recipients").await
-            && let Ok(loaded) = serde_json::from_str::<Vec<String>>(&recipients_json) {
+            && let Ok(loaded) = serde_json::from_str::<Vec<String>>(&recipients_json)
+        {
             config.recipients = loaded;
         }
         if let Ok(Some(senders_json)) = storage.get_sms_setting("authorized_senders").await
-            && let Ok(loaded) = serde_json::from_str::<Vec<String>>(&senders_json) {
+            && let Ok(loaded) = serde_json::from_str::<Vec<String>>(&senders_json)
+        {
             config.authorized_senders = loaded;
         }
 
@@ -164,7 +166,8 @@ impl SmsService {
                             if last_probe_log.elapsed() > Duration::from_secs(60) {
                                 warn!(
                                     "⚠️ SMS modem device '{}' unreachable: {}. Subsystem remains resilient.",
-                                    self.driver.resolve_port(), err
+                                    self.driver.resolve_port(),
+                                    err
                                 );
                                 last_probe_log = tokio::time::Instant::now();
                             }
@@ -175,8 +178,12 @@ impl SmsService {
                 // Periodic TTL pruning of SQLite SMS records
                 if ttl_minutes > 0
                     && let Ok(pruned) = self.storage.prune_sms(ttl_minutes).await
-                    && pruned > 0 {
-                    debug!("🧹 Pruned {} expired SMS records older than {}m", pruned, ttl_minutes);
+                    && pruned > 0
+                {
+                    debug!(
+                        "🧹 Pruned {} expired SMS records older than {}m",
+                        pruned, ttl_minutes
+                    );
                 }
             }
 
@@ -319,7 +326,13 @@ impl SmsService {
                     );
                     let _ = self
                         .storage
-                        .record_sms("outbound", recipient, &message_payload, "failed", Some(&err))
+                        .record_sms(
+                            "outbound",
+                            recipient,
+                            &message_payload,
+                            "failed",
+                            Some(&err),
+                        )
                         .await;
                 }
             }

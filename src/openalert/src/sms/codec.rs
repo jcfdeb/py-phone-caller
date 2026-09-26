@@ -6,21 +6,23 @@
 
 /// Returns true if all characters in the string are safe 7-bit ASCII/GSM basic characters.
 pub fn is_pure_ascii(s: &str) -> bool {
-    s.chars().all(|c| c.is_ascii() && (c == '\r' || c == '\n' || (' '..='~').contains(&c)))
+    s.chars()
+        .all(|c| c.is_ascii() && (c == '\r' || c == '\n' || (' '..='~').contains(&c)))
 }
 
 /// Encodes a UTF-8 string into big-endian UTF-16 (UCS-2) hexadecimal format.
 pub fn to_ucs2_hex(s: &str) -> String {
-    s.encode_utf16()
-        .map(|v| format!("{:04X}", v))
-        .collect()
+    s.encode_utf16().map(|v| format!("{:04X}", v)).collect()
 }
 
 /// Decodes a big-endian UTF-16 (UCS-2) hexadecimal string back into a UTF-8 string.
 pub fn from_ucs2_hex(hex: &str) -> Result<String, String> {
     let clean = hex.trim();
     if !clean.len().is_multiple_of(4) {
-        return Err(format!("Invalid UCS-2 hex length {} (must be multiple of 4)", clean.len()));
+        return Err(format!(
+            "Invalid UCS-2 hex length {} (must be multiple of 4)",
+            clean.len()
+        ));
     }
     let mut u16_chars = Vec::with_capacity(clean.len() / 4);
     for i in (0..clean.len()).step_by(4) {
@@ -46,7 +48,8 @@ pub fn is_likely_ucs2_hex(s: &str) -> bool {
 pub fn normalize_inbound_text(text: &str) -> String {
     let clean = text.trim();
     if is_likely_ucs2_hex(clean)
-        && let Ok(decoded) = from_ucs2_hex(clean) {
+        && let Ok(decoded) = from_ucs2_hex(clean)
+    {
         return decoded;
     }
     clean.to_string()
@@ -94,6 +97,9 @@ mod tests {
         let original = "Router rebooted ⚡";
         let hex = to_ucs2_hex(original);
         assert_eq!(normalize_inbound_text(&hex), original);
-        assert_eq!(normalize_inbound_text("Simple ASCII alert"), "Simple ASCII alert");
+        assert_eq!(
+            normalize_inbound_text("Simple ASCII alert"),
+            "Simple ASCII alert"
+        );
     }
 }

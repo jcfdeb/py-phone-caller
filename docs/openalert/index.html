@@ -1,183 +1,945 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenAlert: Nostr & Multi-Protocol Alerting Bridge</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>OpenAlert — Decentralized Nostr & Multi-Protocol Alerting Bridge</title>
+    <meta name="description" content="OpenAlert (openalertd) is an autonomous, decentralized alerting bridge built in Rust. Supporting Nostr NIP-17/44/04, BitChat BLE Mesh, LoRa Sub-GHz RF, Cellular SMS, and Prometheus Alertmanager.">
+    <link rel="icon" type="image/png" href="openalert-logo.png">
     <style>
         :root {
-            --bg-color: #15181e; 
+            --bg: #070a13;
+            --bg-gradient-1: rgba(99, 102, 241, 0.08);
+            --bg-gradient-2: rgba(6, 182, 212, 0.06);
+            --card-bg: rgba(15, 23, 42, 0.78);
+            --card-border: rgba(255, 255, 255, 0.09);
             --text-main: #e2e8f0;
+            --text-heading: #ffffff;
             --text-muted: #94a3b8;
-            --accent-cyan: #22d3ee; 
-            --accent-cyan-glow: rgba(34, 211, 238, 0.15);
-            --card-bg: #1e222a;
-            --border-color: #2d333b;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --cyan: #06b6d4;
+            --cyan-glow: rgba(6, 182, 212, 0.35);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #f43f5e;
+            --code-bg: #0b0f19;
+            --tag-bg: rgba(255, 255, 255, 0.05);
+            --shadow-card: 0 12px 32px 0 rgba(0, 0, 0, 0.4);
+            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+            --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
         }
 
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --bg-gradient-1: rgba(99, 102, 241, 0.04);
+            --bg-gradient-2: rgba(6, 182, 212, 0.04);
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --card-border: rgba(15, 23, 42, 0.12);
+            --text-main: #1e293b;
+            --text-heading: #0f172a;
+            --text-muted: #64748b;
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --primary-glow: rgba(79, 70, 229, 0.2);
+            --cyan: #0891b2;
+            --cyan-glow: rgba(8, 145, 178, 0.2);
+            --success: #059669;
+            --warning: #d97706;
+            --danger: #e11d48;
+            --code-bg: #f1f5f9;
+            --tag-bg: rgba(15, 23, 42, 0.05);
+            --shadow-card: 0 8px 24px 0 rgba(15, 23, 42, 0.08);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
         body {
-            background-color: var(--bg-color);
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 15% 15%, var(--bg-gradient-1) 0%, transparent 45%),
+                radial-gradient(circle at 85% 85%, var(--bg-gradient-2) 0%, transparent 45%);
             color: var(--text-main);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: var(--font);
             line-height: 1.6;
             margin: 0;
             padding: 0;
             -webkit-font-smoothing: antialiased;
+            transition: background 0.25s ease, color 0.25s ease;
         }
 
         .container {
-            max-width: 800px;
+            max-width: 1100px;
             margin: 0 auto;
-            padding: 40px 20px;
+            padding: 40px 24px 80px 24px;
         }
 
-        header {
+        /* Top Bar & Theme Toggle */
+        .top-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--card-border);
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .nav-badges {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-frozen {
+            background: rgba(99, 102, 241, 0.15);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+        }
+
+        .badge-tests {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+
+        .badge-rust {
+            background: rgba(6, 182, 212, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(6, 182, 212, 0.35);
+        }
+
+        .theme-btn {
+            background: var(--tag-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-heading);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .theme-btn:hover {
+            border-color: var(--primary);
+            transform: translateY(-1px);
+        }
+
+        /* Hero Header */
+        header.hero {
             text-align: center;
             margin-bottom: 50px;
         }
 
+        .logo-wrapper {
+            display: inline-block;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
         .logo {
-            max-width: 280px;
-            margin: 0 auto 15px auto;
+            max-width: 320px;
+            height: auto;
             display: block;
-            mix-blend-mode: lighten; 
-        }
-
-        .subtitle {
-            font-size: 1.1rem;
-            color: var(--text-muted);
-            max-width: 600px;
             margin: 0 auto;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
+            transition: filter 0.25s ease, transform 0.2s ease;
         }
 
-        .hrf-grant {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-left: 4px solid var(--accent-cyan);
+        [data-theme="dark"] .logo {
+            filter: drop-shadow(0 0 24px rgba(6, 182, 212, 0.45));
+        }
+
+        [data-theme="light"] .logo {
+            filter: drop-shadow(0 4px 12px rgba(15, 23, 42, 0.12));
+        }
+
+        .hero h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--text-heading);
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .hero .tagline {
+            font-size: 1.15rem;
+            color: var(--cyan);
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+
+        .hero .desc {
+            font-size: 1.05rem;
+            color: var(--text-muted);
+            max-width: 780px;
+            margin: 0 auto 24px auto;
+            line-height: 1.7;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
             border-radius: 8px;
-            padding: 20px;
-            margin: 30px 0;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #ffffff;
+            box-shadow: 0 0 16px var(--primary-glow);
+            border: 1px solid transparent;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 0 24px var(--primary-glow);
+        }
+
+        .btn-secondary {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-heading);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            transform: translateY(-2px);
+        }
+
+        /* HRF Grant Banner */
+        .hrf-grant {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-left: 4px solid var(--cyan);
+            border-radius: 12px;
+            padding: 22px 26px;
+            margin: 35px 0 50px 0;
             display: flex;
             align-items: center;
-            box-shadow: 0 4px 20px var(--accent-cyan-glow);
+            gap: 18px;
+            box-shadow: var(--shadow-card);
+            backdrop-filter: blur(16px);
         }
 
-        .hrf-grant a {
-            color: var(--accent-cyan);
+        .hrf-icon {
+            font-size: 2.2rem;
+            flex-shrink: 0;
+        }
+
+        .hrf-text {
+            font-size: 0.98rem;
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        .hrf-text strong {
+            color: var(--text-heading);
+        }
+
+        .hrf-text a {
+            color: var(--cyan);
             text-decoration: none;
-            font-weight: bold;
+            font-weight: 700;
+            display: inline-block;
+            margin-top: 4px;
         }
 
-        .hrf-grant a:hover {
+        .hrf-text a:hover {
             text-decoration: underline;
         }
 
-        h2 {
-            color: var(--accent-cyan);
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
-            margin-top: 50px;
-            font-size: 1.5rem;
+        /* Section Styling */
+        h2.section-title {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--text-heading);
+            margin: 60px 0 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            letter-spacing: -0.01em;
         }
 
-        h3 {
-            color: #f8fafc;
-            margin-top: 30px;
-            font-size: 1.2rem;
+        h2.section-title::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--card-border);
+            margin-left: 10px;
         }
 
-        p {
-            margin-bottom: 20px;
+        p.section-intro {
+            color: var(--text-muted);
+            font-size: 1.02rem;
+            margin-bottom: 28px;
+            line-height: 1.7;
         }
 
-        ul {
-            list-style-type: none;
-            padding-left: 0;
+        /* Glassmorphic Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 22px;
+            margin-bottom: 40px;
         }
 
-        ul li {
-            position: relative;
-            padding-left: 25px;
-            margin-bottom: 15px;
-            background-color: var(--card-bg);
-            padding: 20px 20px 20px 45px;
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-card);
+            backdrop-filter: blur(16px);
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+            transform: translateY(-3px);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .card-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+            background: var(--tag-bg);
+            border: 1px solid var(--card-border);
+        }
+
+        .card-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-heading);
+        }
+
+        .card-body {
+            color: var(--text-main);
+            font-size: 0.92rem;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: auto;
+        }
+
+        .tag {
+            font-size: 0.72rem;
+            font-family: var(--font-mono);
+            background: var(--tag-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
+            padding: 3px 8px;
             border-radius: 6px;
-            border: 1px solid var(--border-color);
         }
 
-        ul li::before {
-            content: "▹";
-            position: absolute;
-            left: 20px;
-            top: 20px;
-            color: var(--accent-cyan);
+        /* Architecture Flow Diagram */
+        .flow-diagram {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 28px;
+            margin: 30px 0;
+            box-shadow: var(--shadow-card);
+            backdrop-filter: blur(16px);
+        }
+
+        .flow-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.3fr 1fr;
+            gap: 20px;
+            align-items: center;
+        }
+
+        @media (max-width: 860px) {
+            .flow-grid { grid-template-columns: 1fr; }
+        }
+
+        .flow-col {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .flow-box {
+            background: var(--code-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 0.85rem;
+        }
+
+        .flow-box.active-core {
+            border: 2px solid var(--cyan);
+            box-shadow: 0 0 16px var(--cyan-glow);
+            text-align: center;
+            padding: 20px;
+        }
+
+        .flow-box h4 {
+            font-size: 0.95rem;
+            color: var(--text-heading);
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .flow-box p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Code Block & CLI Showcase */
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 18px 20px;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: #38bdf8;
+            overflow-x: auto;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .code-comment {
+            color: var(--text-muted);
+        }
+
+        .code-cmd {
+            color: #34d399;
             font-weight: bold;
-            font-size: 1.2rem;
-            line-height: 1;
         }
 
-        strong {
-            color: #f8fafc;
+        /* Table */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            margin: 20px 0;
         }
 
-        @media (max-width: 600px) {
-            .logo { max-width: 220px; }
-            .container { padding: 20px 15px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+            background: var(--card-bg);
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        th {
+            background: var(--code-bg);
+            color: var(--text-heading);
+            font-weight: 700;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:last-child td { border-bottom: none; }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--card-border);
+            padding-top: 40px;
+            margin-top: 80px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+        }
+
+        footer a {
+            color: var(--cyan);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <header>
-            <img src="openalert-logo.png" alt="OpenAlert Logo" class="logo">
-            <div class="subtitle">Nostr & Multi-Protocol Alerting Bridge</div>
+        <!-- Top Navigation -->
+        <nav class="top-nav">
+            <div class="nav-badges">
+                <span class="badge badge-frozen">❄️ Feature Frozen v0.1.0</span>
+                <span class="badge badge-tests">🛡️ 83/83 Tests Passed</span>
+                <span class="badge badge-rust">🦀 Pure Rust 2024</span>
+            </div>
+            <div>
+                <button id="theme-btn" class="theme-btn" onclick="toggleTheme()" title="Toggle Day / Night theme">
+                    <span id="theme-icon">☀️</span>
+                    <span id="theme-text">Day Mode</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Hero Header -->
+        <header class="hero">
+            <div class="logo-wrapper">
+                <img id="main-logo" src="openalert-logo.png" alt="OpenAlert Logo" class="logo">
+            </div>
+            <h1>OpenAlert Control Plane</h1>
+            <div class="tagline">Decentralized Nostr & Multi-Protocol Alerting Bridge</div>
+            <p class="desc">
+                An autonomous, zero-dependency emergency alerting gateway compiled in pure Rust.
+                Bridges IT monitoring infrastructure to censorship-resistant decentralized networks,
+                offline Bluetooth LE meshes, and long-range LoRa radios.
+            </p>
+            <div class="hero-actions">
+                <a href="https://github.com/jcfdeb/py-phone-caller" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    GitHub Repository
+                </a>
+                <a href="#quickstart" class="btn btn-secondary">⚡ Quickstart Guide</a>
+                <a href="#features" class="btn btn-secondary">📐 Technical Specs</a>
+            </div>
         </header>
 
+        <!-- HRF Grant Section -->
         <div class="hrf-grant">
-            <div>
+            <div class="hrf-icon">🌐</div>
+            <div class="hrf-text">
                 Development of OpenAlert is supported by a grant from the 
                 <strong>Human Rights Foundation (HRF) Bitcoin Development Fund</strong>.<br>
-                <a href="https://x.com/gladstein/status/2092304843037884677" target="_blank" rel="noopener noreferrer">View the Announcement →</a>
+                Empowering human rights defenders, civil society, and operators in hostile or partitioned environments with resilient, sovereign communication tooling.
+                <br>
+                <a href="https://x.com/gladstein/status/2092304843037884677" target="_blank" rel="noopener noreferrer">View the Official Announcement on X &rarr;</a>
             </div>
         </div>
 
-        <p>OpenAlert is a decentralized alerting gateway designed to route critical system events across diverse transport layers. Originally conceived as a module for the <code>py-phone-caller</code> ecosystem, OpenAlert is architected as a standalone component that operates independently and integrates universally via standard alerting protocols.</p>
+        <!-- Architecture Flow -->
+        <h2 class="section-title">Core Architecture & Data Flow</h2>
+        <p class="section-intro">
+            OpenAlert operates as a multi-protocol gateway, standardizing incoming digital payloads into Prometheus Alertmanager schema, and securely relaying them across heterogeneous decentralized transports.
+        </p>
 
-        <h2>1. Core Architecture</h2>
-        <p>OpenAlert operates as a multi-protocol gateway, abstracting the transport layer of notifications to allow messages to flow fluidly between traditional IT infrastructure APIs and decentralized edge networks.</p>
-        
-        <ul>
-            <li><strong>Universal Downstream Compatibility:</strong> OpenAlert formats its outbound digital payloads using the industry-standard Prometheus Alertmanager JSON schema. This enables it to trigger <code>py-phone-caller</code> (which natively ingests Alertmanager webhooks) or seamlessly integrate with any other enterprise alerting and incident management system (e.g., Grafana, PagerDuty, or custom internal dashboards).</li>
-            <li><strong>Standalone Capable:</strong> OpenAlert's core daemon (<code>openalertd</code>) runs entirely on its own as a protocol translator—bridging local monitoring stacks to global networks—without requiring local telephony hardware.</li>
-        </ul>
+        <div class="flow-diagram">
+            <div class="flow-grid">
+                <!-- Ingress Sources -->
+                <div class="flow-col">
+                    <div class="flow-box">
+                        <h4>📥 Ingress Sources</h4>
+                        <p>REST Watchdogs & Webhooks</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>⚡ Nostr Events</h4>
+                        <p>NIP-04, NIP-17/44 Gift Wraps</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>📶 BitChat BLE</h4>
+                        <p>Noise XX Encrypted 1-on-1</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>📻 LoRa Sub-GHz</h4>
+                        <p>SLIP Micro-Datagram Peering</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>📱 Cellular SMS</h4>
+                        <p>GSM/LTE Modem AT Commands</p>
+                    </div>
+                </div>
 
-        <h2>2. Supported Protocols & Data Flow</h2>
-        <p>OpenAlert is fundamentally bidirectional, acting as both a listener and a broadcaster across three primary transport layers:</p>
+                <!-- OpenAlert Daemon Core -->
+                <div class="flow-box active-core">
+                    <h3 style="color: var(--cyan); font-size: 1.3rem; margin-bottom: 8px;">openalertd Daemon</h3>
+                    <p style="color: var(--text-heading); font-weight: 600; margin-bottom: 12px;">Rust Autonomous Control Plane</p>
+                    <ul style="list-style: none; text-align: left; font-size: 0.82rem; color: var(--text-muted); line-height: 1.7;">
+                        <li>🛡️ <strong>Zero-Loss Spool:</strong> SQLite Flash Queue</li>
+                        <li>🔄 <strong>Distance-Vector:</strong> Split-Horizon Routing</li>
+                        <li>⚡ <strong>Circuit Breakers:</strong> Exponential Cooldown</li>
+                        <li>⏱️ <strong>Duty-Cycle:</strong> ETSI 1.0% Airtime Limiter</li>
+                        <li>🔐 <strong>Crypto:</strong> BIP-340 Schnorr, XChaCha20</li>
+                        <li>📊 <strong>Embedded NOC:</strong> SSE Telemetry Web UI</li>
+                    </ul>
+                </div>
 
-        <h3>REST, Nostr, and Alertmanager Interfaces</h3>
-        <ul>
-            <li><strong>Inbound (Receive):</strong> The gateway listens for incoming JSON payloads via standard REST webhooks (compatible with existing IT watchdogs). Simultaneously, it monitors the Nostr network via persistent WebSocket connections to a configured relay pool.</li>
-            <li><strong>Outbound (Send):</strong> Upon processing an incoming decentralized event (from Nostr or BitChat), the system standardizes the payload into a Prometheus Alertmanager webhook and POSTs it to a configured local or remote endpoint. Alternatively, when ingesting a local IT alert, it can cryptographically sign and broadcast the alert globally as a Nostr event.</li>
-        </ul>
+                <!-- Egress Destinations -->
+                <div class="flow-col">
+                    <div class="flow-box">
+                        <h4>📞 py-phone-caller</h4>
+                        <p>Voice Telephony & GSM Dispatch</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>🌐 Nostr Relays</h4>
+                        <p>Encrypted DMs & Public Broadcast</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>📶 BitChat Mesh</h4>
+                        <p>Public BLE Mesh Escalation</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>📻 Multi-Hop RF</h4>
+                        <p>Edge-to-Gateway Forwarding</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>🚨 IT Operations</h4>
+                        <p>PagerDuty, Grafana, Alertmanager</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <h3>BitChat Mesh Implementation</h3>
-        <p>To guarantee event delivery when standard internet routing (TCP/IP) fails, OpenAlert natively implements the BitChat protocol.</p>
-        <ul>
-            <li>BitChat is a peer-to-peer messaging architecture utilizing Bluetooth Low Energy (BLE) mesh networks for local, offline communication.</li>
-            <li>By running the BitChat integration, OpenAlert nodes send and receive critical alerts over an ad-hoc local Bluetooth mesh network, bypassing centralized servers, ISPs, and cellular data networks.</li>
-            <li>Messages transmitted over the BitChat mesh use the Noise Protocol Framework for end-to-end encryption, ensuring alerts remain secure while routing across peer devices.</li>
-        </ul>
+        <!-- Feature Grid -->
+        <h2 id="features" class="section-title">Decentralized Capabilities & Transports</h2>
+        <p class="section-intro">
+            Engineered from first principles for mission-critical reliability, air-gapped field kits, and sovereign crisis networks.
+        </p>
 
-        <h2>3. Deployment Use Cases</h2>
-        <ul>
-            <li><strong>Universal Protocol Translator (Standalone):</strong> Ingesting Nostr/BitChat events and translating them into standard Alertmanager webhooks to trigger existing enterprise incident response stacks, or converting local REST monitoring alerts into Nostr broadcast events.</li>
-            <li><strong>Off-Grid Telephony Bridge:</strong> Catching offline BitChat mesh packets or Nostr events, securely decrypting the target recipient, and routing the Alertmanager payload into <code>py-phone-caller</code> to dial a physical Voice/SMS payload via a GSM modem.</li>
-        </ul>
+        <div class="feature-grid">
+            <!-- 0xChat & Embedded Nostr Relay -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">⚡</div>
+                        <div class="card-title">0xChat & Embedded Nostr Relay</div>
+                    </div>
+                    <div class="card-body">
+                        Zero-dependency embedded WebSocket Nostr micro-relay on port <code>8088</code>. Implements NIP-01/11/20 with SQLite event indexing. Supports NIP-17/59/44 onion gift wraps (ChaCha20-Poly1305) and legacy NIP-04. Features interactive Command & Control (C2) and thread-aware alert acknowledgments (ACK).
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">NIP-17</span>
+                    <span class="tag">NIP-44</span>
+                    <span class="tag">NIP-59</span>
+                    <span class="tag">0xChat C2</span>
+                    <span class="tag">Native TLS</span>
+                </div>
+            </div>
 
+            <!-- BitChat Bluetooth LE Mesh -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">📶</div>
+                        <div class="card-title">BitChat BLE Offline Mesh</div>
+                    </div>
+                    <div class="card-body">
+                        Direct peer-to-peer communication via Linux BlueZ D-Bus peripheral GATT services, bypassing ISPs, cell towers, and internet backbones. Direct messages are secured with the <code>Noise_XX_25519_ChaChaPoly_SHA256</code> handshake, automatically escalating private emergencies to the public mesh and telephony.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">Noise XX</span>
+                    <span class="tag">BlueZ GATT</span>
+                    <span class="tag">Zero Internet</span>
+                    <span class="tag">Ad-Hoc Mesh</span>
+                </div>
+            </div>
+
+            <!-- Peering, LoRa & Distance-Vector -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">📻</div>
+                        <div class="card-title">Heterogeneous Peering & LoRa RF</div>
+                    </div>
+                    <div class="card-body">
+                        Connects field nodes across LoRa serial radios, LAN Ethernet, and WireGuard tunnels. Dynamic distance-vector routing with split-horizon loop suppression. Features an integrated regulatory airtime limiter tracking the 1.0% ETSI EN 300 220 ceiling, backed by persistent SQLite flash-spool storage.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">LoRa SLIP</span>
+                    <span class="tag">ETSI 1.0%</span>
+                    <span class="tag">Distance-Vector</span>
+                    <span class="tag">SQLite Spool</span>
+                </div>
+            </div>
+
+            <!-- Cellular SMS Gateway -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">📱</div>
+                        <div class="card-title">Cellular SMS Hardware Bridge</div>
+                    </div>
+                    <div class="card-body">
+                        Direct serial AT interface to GSM/LTE cellular modems (SIMCOM, Quectel). Features bi-directional UCS-2 hex and ASCII transcoding for international alphabets and emergency emojis. Hot-reloadable authorized sender ACLs and SQLite audit history prevent unauthorized alert injection.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">AT Serial</span>
+                    <span class="tag">UCS-2 Hex</span>
+                    <span class="tag">Sender ACL</span>
+                    <span class="tag">SMS Egress</span>
+                </div>
+            </div>
+
+            <!-- Mission Control Dashboard -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">💻</div>
+                        <div class="card-title">Tactical Mission Control NOC</div>
+                    </div>
+                    <div class="card-body">
+                        Single-page glassmorphic dashboard embedded directly in the binary. Live Server-Sent Events (SSE) telemetry every 2s, Day/Night theme engine for field sunlight readability, synthesized Web Audio alarms (muted by default), active strobe incident banner with 1-click ACK, and an interactive streaming log console.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">Live SSE</span>
+                    <span class="tag">Day/Night Mode</span>
+                    <span class="tag">Web Audio API</span>
+                    <span class="tag">Log Terminal</span>
+                </div>
+            </div>
+
+            <!-- In-Browser & CLI Tools -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">🛠️</div>
+                        <div class="card-title">Operational Tooling & Config Editor</div>
+                    </div>
+                    <div class="card-body">
+                        1-to-1 operational tooling available via terminal CLI or in-browser. BIP-340 Secp256k1 keypair generator, Bech32 <code>npub/nsec</code> translator, SMS UCS-2 codec, SHA-256 hasher, and 256-bit PSK generator. Includes an in-dashboard TOML config editor with dry-run validation and automatic <code>.bak</code> backups.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">Keygen</span>
+                    <span class="tag">Bech32</span>
+                    <span class="tag">TOML Editor</span>
+                    <span class="tag">Dry-run Check</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quickstart Guide -->
+        <h2 id="quickstart" class="section-title">Quickstart & Building `openalertd`</h2>
+        <p class="section-intro">
+            Compiled with standard Rust tooling. Produces a single static executable with zero shared library or package dependencies.
+        </p>
+
+        <div class="code-block">
+            <pre><span class="code-comment"># 1. Clone the repository</span>
+<span class="code-cmd">git clone</span> https://github.com/jcfdeb/py-phone-caller.git
+<span class="code-cmd">cd</span> py-phone-caller/src/openalert
+
+<span class="code-comment"># 2. Run the comprehensive test suite (41 unit + 42 integration tests)</span>
+<span class="code-cmd">cargo test</span>
+
+<span class="code-comment"># 3. Build optimized release binary</span>
+<span class="code-cmd">cargo build</span> --release
+
+<span class="code-comment"># 4. Launch with turnkey profile</span>
+<span class="code-cmd">./target/release/openalertd</span> config/profiles/central-gateway.toml</pre>
+        </div>
+
+        <!-- CLI Operational Tooling Showcase -->
+        <h3 style="color: var(--text-heading); margin: 30px 0 15px 0; font-size: 1.2rem;">Operational CLI Commands</h3>
+        <div class="code-block">
+            <pre><span class="code-comment"># Validate configuration syntax and active directories</span>
+<span class="code-cmd">openalertd</span> check-config config/openalertd.toml
+
+<span class="code-comment"># Generate a full Nostr Secp256k1 identity (nsec, npub, and ready-to-paste TOML)</span>
+<span class="code-cmd">openalertd</span> generate-keypair
+
+<span class="code-comment"># Convert 0xChat mobile npub or nsec into hex (and auto-derive pubkeys)</span>
+<span class="code-cmd">openalertd</span> convert-key npub1uvtjer4wn7y2qpe4clvqd7qz7x483pthpngewqddc03xes39uq3sw9p5u6
+
+<span class="code-comment"># Transcode cellular SMS UCS-2 hex and international text</span>
+<span class="code-cmd">openalertd</span> convert-sms "Critical alert ⚠️"
+
+<span class="code-comment"># Generate secure SHA-256 password hash for Web UI authentication</span>
+<span class="code-cmd">openalertd</span> hash-password "yourTacticalPassword"
+
+<span class="code-comment"># Inspect live daemon status, peering links, and persistent spool</span>
+<span class="code-cmd">openalertd</span> status
+<span class="code-cmd">openalertd</span> peers
+<span class="code-cmd">openalertd</span> spool</pre>
+        </div>
+
+        <!-- Turnkey Profiles -->
+        <h2 class="section-title">Production Turnkey Deployment Profiles</h2>
+        <p class="section-intro">
+            Pre-configured profiles in <code>config/profiles/</code> tailored for diverse deployment environments:
+        </p>
+
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Profile</th>
+                        <th>Target Environment</th>
+                        <th>Active Transports</th>
+                        <th>Security & Auth</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong><code>edge-sensor.toml</code></strong></td>
+                        <td>Off-grid remote sensor node (solar/battery)</td>
+                        <td>LoRa Serial + BitChat BLE; REST on <code>127.0.0.1:8091</code></td>
+                        <td>Pre-shared XChaCha20 key</td>
+                    </tr>
+                    <tr>
+                        <td><strong><code>mesh-repeater.toml</code></strong></td>
+                        <td>Hilltop tower or tactical vehicle relay</td>
+                        <td>LoRa RF cluster bridged to LAN Ethernet backhaul</td>
+                        <td>Dynamic Distance-Vector routing</td>
+                    </tr>
+                    <tr>
+                        <td><strong><code>central-gateway.toml</code></strong></td>
+                        <td>Operations Center (NOC) / Datacenter</td>
+                        <td>Web UI, Asterisk Telephony, Nostr Quorum, WireGuard</td>
+                        <td>Bearer Token & SHA-256 Basic Auth</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Quality & Verification -->
+        <h2 class="section-title">Feature Freeze & Quality Assurance</h2>
+        <p class="section-intro">
+            At milestone v0.1.0, <code>openalertd</code> is officially <strong>feature frozen</strong>. All core protocols, cryptographic handshakes, and operator interfaces are fully specified, verified, and locked:
+        </p>
+
+        <div class="feature-grid">
+            <div class="card" style="border-left: 4px solid var(--success);">
+                <div class="card-title" style="color: var(--success);">🛡️ 83/83 Automated Tests</div>
+                <div class="card-body">
+                    Zero test failures. Comprehensive test matrix covers multi-node dynamic mesh forwarding, split-horizon suppression, replay-attack prevention, NIP-04/44/59 onion wrapping, modem AT command parsing, and live SSE streaming.
+                </div>
+            </div>
+            <div class="card" style="border-left: 4px solid var(--cyan);">
+                <div class="card-title" style="color: var(--cyan);">🦀 Zero Compiler Warnings</div>
+                <div class="card-body">
+                    Strict adherence to idiomatic Rust standards enforced via <code>cargo clippy -- -D warnings</code>. Memory-safe, concurrency-safe with <code>tokio</code> and <code>parking_lot</code>.
+                </div>
+            </div>
+            <div class="card" style="border-left: 4px solid var(--primary);">
+                <div class="card-title" style="color: var(--primary);">📦 Self-Contained Binary</div>
+                <div class="card-body">
+                    Entire Web UI, Day/Night logo assets, Web Audio synthesizers, and SQLite schemas compiled directly into the executable. Runs seamlessly on bare-metal x86_64 and ARM Linux field kits.
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <div class="footer-links">
+                <a href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+                <span>&bull;</span>
+                <a href="https://github.com/jcfdeb/py-phone-caller/tree/feature/openalert/docs/openalert" target="_blank" rel="noopener noreferrer">Documentation</a>
+                <span>&bull;</span>
+                <a href="https://github.com/jcfdeb/py-phone-caller/tree/feature/openalert/src/openalert" target="_blank" rel="noopener noreferrer">Source Code</a>
+                <span>&bull;</span>
+                <a href="https://x.com/gladstein/status/2092304843037884677" target="_blank" rel="noopener noreferrer">HRF Grant Announcement</a>
+            </div>
+            <p>
+                OpenAlert is part of the <strong>py-phone-caller</strong> decentralized alerting ecosystem.<br>
+                Supported by the <strong>Human Rights Foundation (HRF) Bitcoin Development Fund</strong>.<br>
+                Licensed under the Apache License, Version 2.0.
+            </p>
+        </footer>
     </div>
 
+    <!-- Theme Switcher Script -->
+    <script>
+        let currentTheme = localStorage.getItem('openalert-web-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        updateThemeUI(currentTheme);
+
+        function toggleTheme() {
+            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            localStorage.setItem('openalert-web-theme', currentTheme);
+            updateThemeUI(currentTheme);
+        }
+
+        function updateThemeUI(t) {
+            const icon = document.getElementById('theme-icon');
+            const text = document.getElementById('theme-text');
+            const logo = document.getElementById('main-logo');
+            if (t === 'light') {
+                if (icon) icon.innerText = '🌙';
+                if (text) text.innerText = 'Night Mode';
+                if (logo) logo.src = 'openalert-logo-day.png';
+            } else {
+                if (icon) icon.innerText = '☀️';
+                if (text) text.innerText = 'Day Mode';
+                if (logo) logo.src = 'openalert-logo.png';
+            }
+        }
+    </script>
 </body>
 </html>

@@ -175,8 +175,14 @@ impl ModemDriver {
         }
 
         // Check network registration (CREG or CEREG)
-        let creg_resp = self.send_command(&mut port, "AT+CREG?\r", 1500).await.unwrap_or_default();
-        let cereg_resp = self.send_command(&mut port, "AT+CEREG?\r", 1500).await.unwrap_or_default();
+        let creg_resp = self
+            .send_command(&mut port, "AT+CREG?\r", 1500)
+            .await
+            .unwrap_or_default();
+        let cereg_resp = self
+            .send_command(&mut port, "AT+CEREG?\r", 1500)
+            .await
+            .unwrap_or_default();
 
         let registered = creg_resp.contains(",1")
             || creg_resp.contains(",5")
@@ -221,12 +227,23 @@ impl ModemDriver {
 
         let use_unicode = !codec::is_pure_ascii(clean_msg);
         let (target_number, target_body) = if use_unicode {
-            let _ = self.send_command(&mut port, "AT+CSCS=\"UCS2\"\r", 1500).await;
-            let _ = self.send_command(&mut port, "AT+CSMP=17,167,0,8\r", 1500).await;
-            (codec::to_ucs2_hex(clean_phone), codec::to_ucs2_hex(clean_msg))
+            let _ = self
+                .send_command(&mut port, "AT+CSCS=\"UCS2\"\r", 1500)
+                .await;
+            let _ = self
+                .send_command(&mut port, "AT+CSMP=17,167,0,8\r", 1500)
+                .await;
+            (
+                codec::to_ucs2_hex(clean_phone),
+                codec::to_ucs2_hex(clean_msg),
+            )
         } else {
-            let _ = self.send_command(&mut port, "AT+CSCS=\"GSM\"\r", 1500).await;
-            let _ = self.send_command(&mut port, "AT+CSMP=17,167,0,0\r", 1500).await;
+            let _ = self
+                .send_command(&mut port, "AT+CSCS=\"GSM\"\r", 1500)
+                .await;
+            let _ = self
+                .send_command(&mut port, "AT+CSMP=17,167,0,0\r", 1500)
+                .await;
             (clean_phone.to_string(), clean_msg.to_string())
         };
 
@@ -246,7 +263,8 @@ impl ModemDriver {
         let mut prompt_acc = String::new();
 
         while prompt_start.elapsed() < Duration::from_millis(3500) {
-            match tokio::time::timeout(Duration::from_millis(150), port.read(&mut prompt_buf)).await {
+            match tokio::time::timeout(Duration::from_millis(150), port.read(&mut prompt_buf)).await
+            {
                 Ok(Ok(n)) if n > 0 => {
                     prompt_acc.push_str(&String::from_utf8_lossy(&prompt_buf[..n]));
                     if prompt_acc.contains('>') {
@@ -329,7 +347,9 @@ impl ModemDriver {
         let _ = self.send_command(&mut port, "AT+CMGF=1\r", 1500).await;
 
         // List all stored SMS messages
-        let raw_list = self.send_command(&mut port, "AT+CMGL=\"ALL\"\r", 5000).await?;
+        let raw_list = self
+            .send_command(&mut port, "AT+CMGL=\"ALL\"\r", 5000)
+            .await?;
         let parsed = parse_cmgl_response(&raw_list);
 
         // Delete processed messages so SIM card buffer does not exhaust

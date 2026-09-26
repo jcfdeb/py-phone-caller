@@ -10,9 +10,9 @@ use crate::error::Result;
 use crate::models::{Alert, PeerDiagnostics};
 use crate::peering::circuit_breaker::{CircuitState, PeeringCircuitBreaker};
 use crate::peering::crypto::encrypt_datagram;
-use crate::peering::lora::{slip_encode, LoraDutyCycleLimiter, LoraModulation};
+use crate::peering::lora::{LoraDutyCycleLimiter, LoraModulation, slip_encode};
 use crate::peering::wire::{
-    AlertPacket, PeeringPacket, FLAG_ACK_REQ, FLAG_CANARY, FLAG_FAILOVER, FLAG_SPOOLED,
+    AlertPacket, FLAG_ACK_REQ, FLAG_CANARY, FLAG_FAILOVER, FLAG_SPOOLED, PeeringPacket,
 };
 use crate::storage::Storage;
 use rand::Rng;
@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
-use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
@@ -103,7 +103,9 @@ pub fn spawn_peer_worker(
 
     let link_type = node.link_type;
     let failure_threshold = node.failure_threshold.unwrap_or(default_failure_threshold);
-    let base_cooldown_secs = node.base_cooldown_secs.unwrap_or(default_base_cooldown_secs);
+    let base_cooldown_secs = node
+        .base_cooldown_secs
+        .unwrap_or(default_base_cooldown_secs);
     let max_cooldown_secs = default_max_cooldown_secs;
     let canary_timeout_ms = default_canary_timeout_ms;
 
@@ -141,12 +143,7 @@ pub fn spawn_peer_worker(
         worker.run().await;
     });
 
-    PeerWorkerHandle {
-        name,
-        node,
-        tx,
-        cb,
-    }
+    PeerWorkerHandle { name, node, tx, cb }
 }
 
 struct PeerWorker {
@@ -269,7 +266,10 @@ impl PeerWorker {
         };
 
         let is_critical = alert.severity == crate::models::AlertSeverity::Critical;
-        if self.send_lora_serial_raw_with_meta(&datagram, is_critical, Some(&alert.alert_id)).await {
+        if self
+            .send_lora_serial_raw_with_meta(&datagram, is_critical, Some(&alert.alert_id))
+            .await
+        {
             self.cb.write().await.record_success();
         } else {
             self.cb.write().await.record_failure();
@@ -278,10 +278,16 @@ impl PeerWorker {
     }
 
     async fn send_lora_serial_raw(&mut self, datagram: &[u8]) -> bool {
-        self.send_lora_serial_raw_with_meta(datagram, false, None).await
+        self.send_lora_serial_raw_with_meta(datagram, false, None)
+            .await
     }
 
-    async fn send_lora_serial_raw_with_meta(&mut self, datagram: &[u8], is_critical: bool, alert_id: Option<&str>) -> bool {
+    async fn send_lora_serial_raw_with_meta(
+        &mut self,
+        datagram: &[u8],
+        is_critical: bool,
+        alert_id: Option<&str>,
+    ) -> bool {
         let framed = slip_encode(datagram);
         let mod_params = LoraModulation {
             spreading_factor: self.node.spreading_factor.unwrap_or(9),
@@ -325,12 +331,18 @@ impl PeerWorker {
                 }
                 let _ = port.flush().await;
                 if let Some(id) = alert_id {
-                    info!("✅ [LoRa Serial] Dispatched alert [{}] over {} ({:.1}ms air-time)", id, dev_path, air_time_ms);
+                    info!(
+                        "✅ [LoRa Serial] Dispatched alert [{}] over {} ({:.1}ms air-time)",
+                        id, dev_path, air_time_ms
+                    );
                 }
                 true
             }
             Err(e) => {
-                debug!("Physical LoRa serial device '{}' not accessible ({}). Simulating virtual RF dispatch.", dev_path, e);
+                debug!(
+                    "Physical LoRa serial device '{}' not accessible ({}). Simulating virtual RF dispatch.",
+                    dev_path, e
+                );
                 true
             }
         }
@@ -360,7 +372,9 @@ impl PeerWorker {
 
         debug!(
             "📻 [LoRa Burst] Emitting {} burst transmissions to {} (datagram: {}B)",
-            burst_count, target_addr, datagram.len()
+            burst_count,
+            target_addr,
+            datagram.len()
         );
 
         let mut burst_succeeded = false;
@@ -372,7 +386,9 @@ impl PeerWorker {
                 Err(e) => {
                     warn!(
                         "⚠️ LoRa send_to failure on attempt {}/{}: {}",
-                        attempt + 1, burst_count, e
+                        attempt + 1,
+                        burst_count,
+                        e
                     );
                     self.cb.write().await.record_failure();
                     self.spool_alert(alert).await;
@@ -428,7 +444,9 @@ impl PeerWorker {
             if let Err(e) = self.socket.send_to(&datagram, target_addr).await {
                 warn!(
                     "⚠️ UDP send error to '{}' (attempt {}): {}",
-                    self.node.name, attempt + 1, e
+                    self.node.name,
+                    attempt + 1,
+                    e
                 );
                 let mut waiters = self.ack_waiters.lock().await;
                 waiters.remove(&fp);
@@ -447,7 +465,9 @@ impl PeerWorker {
                 Ok(Ok(())) => {
                     debug!(
                         "✅ [ARQ Verified] Received ACK from '{}' for fingerprint 0x{:016x} on attempt {}",
-                        self.node.name, fp, attempt + 1
+                        self.node.name,
+                        fp,
+                        attempt + 1
                     );
                     delivered = true;
                     self.cb.write().await.record_success();
@@ -456,7 +476,10 @@ impl PeerWorker {
                 _ => {
                     warn!(
                         "⏱️ [ARQ Timeout] No ACK from '{}' for alert [{}] (attempt {}/{})",
-                        self.node.name, alert.alert_id, attempt + 1, max_attempts + 1
+                        self.node.name,
+                        alert.alert_id,
+                        attempt + 1,
+                        max_attempts + 1
                     );
                     let mut waiters = self.ack_waiters.lock().await;
                     waiters.remove(&fp);
@@ -467,7 +490,9 @@ impl PeerWorker {
         if !delivered {
             warn!(
                 "🚨 ARQ exhausted all {} retries to '{}'. Spooling alert [{}]",
-                max_attempts + 1, self.node.name, alert.alert_id
+                max_attempts + 1,
+                self.node.name,
+                alert.alert_id
             );
             self.cb.write().await.record_failure();
             self.spool_alert(alert).await;
@@ -479,11 +504,14 @@ impl PeerWorker {
             let fp = alert.fingerprint_u64();
             let packet = PeeringPacket::Alert(AlertPacket::from_alert(alert, FLAG_SPOOLED));
             if let Ok(serialized) = packet.serialize()
-                && let Ok(id) = storage.spool_peering_packet(&self.node.name, fp, &serialized).await {
-                    info!(
-                        "💾 Spooled alert [{}] to SQLite peering_spool (id: {}, peer: '{}')",
-                        alert.alert_id, id, self.node.name
-                    );
+                && let Ok(id) = storage
+                    .spool_peering_packet(&self.node.name, fp, &serialized)
+                    .await
+            {
+                info!(
+                    "💾 Spooled alert [{}] to SQLite peering_spool (id: {}, peer: '{}')",
+                    alert.alert_id, id, self.node.name
+                );
             }
         }
     }
@@ -520,21 +548,25 @@ impl PeerWorker {
                     desc: None,
                 });
                 if let Ok(ser) = canary.serialize()
-                    && let Ok(datagram) = encrypt_datagram(&self.key, &ser) {
-                        match self.socket.send_to(&datagram, target_addr).await {
-                            Ok(_) => {
-                                info!(
-                                    "✅ [Radio Optimistic Check] Local interface accepted canary packet for '{}'. Restoring CLOSED",
-                                    self.node.name
-                                );
-                                self.cb.write().await.record_success();
-                            }
-                            Err(e) => {
-                                warn!("⚠️ [Radio Optimistic Check] Socket error for '{}': {}", self.node.name, e);
-                                self.cb.write().await.record_failure();
-                            }
+                    && let Ok(datagram) = encrypt_datagram(&self.key, &ser)
+                {
+                    match self.socket.send_to(&datagram, target_addr).await {
+                        Ok(_) => {
+                            info!(
+                                "✅ [Radio Optimistic Check] Local interface accepted canary packet for '{}'. Restoring CLOSED",
+                                self.node.name
+                            );
+                            self.cb.write().await.record_success();
+                        }
+                        Err(e) => {
+                            warn!(
+                                "⚠️ [Radio Optimistic Check] Socket error for '{}': {}",
+                                self.node.name, e
+                            );
+                            self.cb.write().await.record_failure();
                         }
                     }
+                }
             }
             PeeringLinkType::Lan | PeeringLinkType::Vpn => {
                 // Canary ARQ probe
@@ -551,39 +583,40 @@ impl PeerWorker {
                 });
 
                 if let Ok(ser) = canary.serialize()
-                    && let Ok(datagram) = encrypt_datagram(&self.key, &ser) {
-                        self.cb.write().await.mark_canary_dispatched();
-                        let (ack_tx, ack_rx) = oneshot::channel();
-                        {
-                            let mut waiters = self.ack_waiters.lock().await;
-                            waiters.insert(canary_fp, ack_tx);
-                        }
-
-                        if self.socket.send_to(&datagram, target_addr).await.is_ok() {
-                            match tokio::time::timeout(canary_timeout, ack_rx).await {
-                                Ok(Ok(())) => {
-                                    info!(
-                                        "✅ [Canary ARQ Success] Peer '{}' acknowledged probe! Circuit RESTORED to CLOSED",
-                                        self.node.name
-                                    );
-                                    self.cb.write().await.record_success();
-                                }
-                                _ => {
-                                    warn!(
-                                        "🛑 [Canary ARQ Timeout] Peer '{}' failed to ACK canary probe",
-                                        self.node.name
-                                    );
-                                    let mut waiters = self.ack_waiters.lock().await;
-                                    waiters.remove(&canary_fp);
-                                    self.cb.write().await.record_failure();
-                                }
-                            }
-                        } else {
-                            let mut waiters = self.ack_waiters.lock().await;
-                            waiters.remove(&canary_fp);
-                            self.cb.write().await.record_failure();
-                        }
+                    && let Ok(datagram) = encrypt_datagram(&self.key, &ser)
+                {
+                    self.cb.write().await.mark_canary_dispatched();
+                    let (ack_tx, ack_rx) = oneshot::channel();
+                    {
+                        let mut waiters = self.ack_waiters.lock().await;
+                        waiters.insert(canary_fp, ack_tx);
                     }
+
+                    if self.socket.send_to(&datagram, target_addr).await.is_ok() {
+                        match tokio::time::timeout(canary_timeout, ack_rx).await {
+                            Ok(Ok(())) => {
+                                info!(
+                                    "✅ [Canary ARQ Success] Peer '{}' acknowledged probe! Circuit RESTORED to CLOSED",
+                                    self.node.name
+                                );
+                                self.cb.write().await.record_success();
+                            }
+                            _ => {
+                                warn!(
+                                    "🛑 [Canary ARQ Timeout] Peer '{}' failed to ACK canary probe",
+                                    self.node.name
+                                );
+                                let mut waiters = self.ack_waiters.lock().await;
+                                waiters.remove(&canary_fp);
+                                self.cb.write().await.record_failure();
+                            }
+                        }
+                    } else {
+                        let mut waiters = self.ack_waiters.lock().await;
+                        waiters.remove(&canary_fp);
+                        self.cb.write().await.record_failure();
+                    }
+                }
             }
         }
     }
@@ -593,14 +626,18 @@ impl PeerWorker {
             return;
         };
 
-        if let Ok(spooled) = storage.get_spooled_peering_packets(&self.node.name, 5).await {
+        if let Ok(spooled) = storage
+            .get_spooled_peering_packets(&self.node.name, 5)
+            .await
+        {
             if spooled.is_empty() {
                 return;
             }
 
             info!(
                 "📦 Draining {} spooled peering packet(s) for recovering peer '{}'...",
-                spooled.len(), self.node.name
+                spooled.len(),
+                self.node.name
             );
 
             for (id, _fp, payload) in spooled {
@@ -613,7 +650,10 @@ impl PeerWorker {
 
                     if send_ok {
                         let _ = storage.mark_peering_spool_delivered(id).await;
-                        debug!("✅ Spool packet id {} delivered to '{}'", id, self.node.name);
+                        debug!(
+                            "✅ Spool packet id {} delivered to '{}'",
+                            id, self.node.name
+                        );
                     } else {
                         let _ = storage.increment_peering_spool_retry(id).await;
                         break;

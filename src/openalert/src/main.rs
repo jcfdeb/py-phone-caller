@@ -14,7 +14,7 @@ use openalertd::peering::PeeringService;
 use openalertd::{SmsService, Storage};
 use std::env;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn print_usage() {
@@ -24,20 +24,39 @@ fn print_usage() {
     println!("    openalertd [COMMAND] [OPTIONS]");
     println!();
     println!("COMMANDS:");
-    println!("    check [config_path]       Validate syntax & consistency of configuration file (alias: check-config)");
+    println!(
+        "    check [config_path]       Validate syntax & consistency of configuration file (alias: check-config)"
+    );
     println!("    status [--url <api_url>]  Query live operational status from running daemon");
     println!("    peers  [--url <api_url>]  Query live peering link states and circuit breakers");
     println!("    spool  [--url <api_url>]  Query persistent peering spool backlog count");
-    println!("    hash-password <password>  Generate SHA-256 hash for dashboard configuration (alias: hash)");
-    println!("    generate-key              Generate 256-bit hex key for peering or Nostr encryption (alias: gen-key)");
+    println!(
+        "    hash-password <password>  Generate SHA-256 hash for dashboard configuration (alias: hash)"
+    );
+    println!(
+        "    generate-key              Generate 256-bit hex key for peering or Nostr encryption (alias: gen-key)"
+    );
+    println!(
+        "    generate-keypair          Generate full Nostr Secp256k1 keypair (nsec/npub/hex) (alias: gen-keypair, gen-id)"
+    );
+    println!(
+        "    convert-key <npub|nsec|hex> Convert Nostr Bech32 to hex or hex to npub (alias: convert)"
+    );
+    println!(
+        "    convert-sms <text|ucs2_hex> Convert between UTF-8 text and SMS UCS-2 hex (alias: sms-codec)"
+    );
     println!("    run   [config_path]       Explicitly start daemon in foreground (default)");
     println!("    help                      Display this help information");
     println!();
     println!("OPTIONS:");
-    println!("    --url <api_url>           Base URL of daemon REST API (default: http://127.0.0.1:8090)");
+    println!(
+        "    --url <api_url>           Base URL of daemon REST API (default: http://127.0.0.1:8090)"
+    );
     println!();
     println!("DEFAULT BEHAVIOR:");
-    println!("    Running 'openalertd' without subcommands boots the daemon with config/openalertd.toml");
+    println!(
+        "    Running 'openalertd' without subcommands boots the daemon with config/openalertd.toml"
+    );
 }
 
 fn extract_url(args: &[String]) -> String {
@@ -63,10 +82,16 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         "check" | "check-config" => {
-            let config_path = args.get(2).map(|s| s.as_str()).unwrap_or("config/openalertd.toml");
+            let config_path = args
+                .get(2)
+                .map(|s| s.as_str())
+                .unwrap_or("config/openalertd.toml");
             match cli::validate_config(config_path) {
                 Ok(summary) => {
-                    println!("✅ Configuration file '{}' is VALID:\n{}", config_path, summary);
+                    println!(
+                        "✅ Configuration file '{}' is VALID:\n{}",
+                        config_path, summary
+                    );
                     std::process::exit(0);
                 }
                 Err(e) => {
@@ -129,6 +154,100 @@ async fn main() -> Result<()> {
             println!("============================================================");
             std::process::exit(0);
         }
+        "generate-keypair" | "gen-keypair" | "gen-id" => {
+            let id = cli::generate_keypair();
+            println!("============================================================");
+            println!(" 🔑 Generated Nostr Secp256k1 Identity (NIP-01 / NIP-19)");
+            println!("============================================================");
+            println!("Public Key (npub - 0xChat Shareable):");
+            println!("  {}", id.npub);
+            println!("  Hex: {}", id.pub_hex);
+            println!();
+            println!("Private Key (nsec - Keep Secret):");
+            println!("  {}", id.nsec);
+            println!("  Hex: {}", id.priv_hex);
+            println!();
+            println!("Quick Configuration Snippet for openalertd.toml:");
+            println!();
+            println!("[nostr]");
+            println!("private_key = \"{}\"", id.priv_hex);
+            println!();
+            println!("[nostr.oxchat]");
+            println!("enabled = true");
+            println!("mode = \"dm\"");
+            println!("recipients = [\"{}\"]", id.pub_hex);
+            println!("c2_authorized_operators = [\"{}\"]", id.pub_hex);
+            println!("============================================================");
+            std::process::exit(0);
+        }
+        "convert-key" | "convert" => {
+            let key_input = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            if key_input.is_empty() {
+                eprintln!("❌ Error: Missing key argument.");
+                println!("Usage: openalertd convert-key <npub1...|nsec1...|hex_key>");
+                std::process::exit(1);
+            }
+            match cli::convert_key(key_input) {
+                Ok(res) => {
+                    println!("============================================================");
+                    println!(" 🔑 OpenAlert Nostr Key Converter (NIP-19)");
+                    println!("============================================================");
+                    println!("Input Format:   {}", res.input_format);
+                    println!("Hex Value:      {}", res.hex_value);
+                    println!("Bech32 String:  {}", res.bech32_value);
+                    if let Some((pub_hex, npub)) = res.derived_public {
+                        println!();
+                        println!("Derived Public Key (BIP-340 / NIP-19):");
+                        println!("  npub: {}", npub);
+                        println!("  Hex:  {}", pub_hex);
+                    }
+                    println!();
+                    println!("Configuration Snippet for openalertd.toml:");
+                    println!();
+                    if res.input_format.starts_with("nsec") {
+                        println!("[nostr]");
+                        println!("private_key = \"{}\"", res.hex_value);
+                    } else {
+                        println!("[nostr.oxchat]");
+                        println!("recipients = [");
+                        println!("    \"{}\"", res.hex_value);
+                        println!("]");
+                        println!("c2_authorized_operators = [");
+                        println!("    \"{}\"", res.hex_value);
+                        println!("]");
+                    }
+                    println!("============================================================");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("❌ Conversion error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        "convert-sms" | "sms-codec" => {
+            let payload = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            if payload.is_empty() {
+                eprintln!("❌ Error: Missing payload argument.");
+                println!("Usage: openalertd convert-sms <text_to_encode | ucs2_hex_to_decode>");
+                std::process::exit(1);
+            }
+            match cli::convert_sms_codec(payload) {
+                Ok((operation, result)) => {
+                    println!("============================================================");
+                    println!(" 📱 OpenAlert Cellular SMS Codec Converter");
+                    println!("============================================================");
+                    println!("Operation:  {}", operation);
+                    println!("Result:     {}", result);
+                    println!("============================================================");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("❌ SMS Codec error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
         "hash-password" | "hash" => {
             let password = args.get(2).map(|s| s.as_str()).unwrap_or("");
             if password.is_empty() {
@@ -155,7 +274,9 @@ async fn main() -> Result<()> {
     }
 
     let config_path = if subcommand == "run" {
-        args.get(2).cloned().unwrap_or_else(|| "config/openalertd.toml".to_string())
+        args.get(2)
+            .cloned()
+            .unwrap_or_else(|| "config/openalertd.toml".to_string())
     } else if !subcommand.is_empty() && !subcommand.starts_with('-') {
         subcommand.to_string()
     } else {
@@ -165,9 +286,8 @@ async fn main() -> Result<()> {
     let config = AppConfig::load(&config_path)?;
 
     // Configure logging subscriber: systemd mode (without timestamps) vs default mode (with ISO-8601 timestamps)
-    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
-        format!("openalertd={},tower_http=debug", config.daemon.log_level)
-    });
+    let log_filter = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| format!("openalertd={},tower_http=debug", config.daemon.log_level));
     let env_filter = tracing_subscriber::EnvFilter::new(log_filter);
 
     if config.daemon.is_systemd_logging() {
@@ -185,9 +305,14 @@ async fn main() -> Result<()> {
     info!(
         "Starting OpenAlert Daemon (openalertd) [Config: {}, Logging: {}]",
         config_path,
-        if config.daemon.is_systemd_logging() { "systemd" } else { "default" }
+        if config.daemon.is_systemd_logging() {
+            "systemd"
+        } else {
+            "default"
+        }
     );
     let engine = Arc::new(AlertEngine::new(config.clone())?);
+    engine.set_config_path(config_path.clone()).await;
 
     // If storage recovery is enabled, re-route pending alerts from previous session
     if config.storage.enabled && config.storage.recover_pending_on_startup {
@@ -197,6 +322,17 @@ async fn main() -> Result<()> {
     // Start background sliding-window pruning task
     if config.storage.enabled {
         engine.clone().start_background_pruning();
+    }
+
+    // Start embedded Nostr micro-relay if enabled in configuration
+    if config.nostr.relay_server.enabled {
+        let relay = openalertd::EmbeddedNostrRelay::new(
+            config.nostr.relay_server.clone(),
+            engine.storage().cloned(),
+        );
+        if let Err(e) = relay.start().await {
+            error!("Failed to bind embedded Nostr micro-relay on {}: {}", config.nostr.relay_server.bind_address, e);
+        }
     }
 
     let nostr_sub = Arc::new(NostrSubscriber::new(config.nostr.clone(), engine.clone()));
@@ -241,12 +377,7 @@ async fn main() -> Result<()> {
         )
     });
     let sms_service = Arc::new(
-        SmsService::new(
-            config.sms.clone(),
-            storage_for_sms,
-            Arc::downgrade(&engine),
-        )
-        .await,
+        SmsService::new(config.sms.clone(), storage_for_sms, Arc::downgrade(&engine)).await,
     );
     engine.set_sms_service(sms_service.clone()).await;
     sms_service.start_worker();

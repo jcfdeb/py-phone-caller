@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![HRF Grant](https://img.shields.io/badge/supported%20by-HRF%20Bitcoin%20Dev%20Fund-f7931a.svg)](https://x.com/gladstein/status/2092304843037884677)
-[![Tests](https://img.shields.io/badge/tests-65%20passed-success.svg)]()
+[![Tests](https://img.shields.io/badge/tests-82%20passed-success.svg)]()
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg)]()
 
 > **OpenAlert** is a decentralized, resilient alerting daemon designed to bridge emergency notifications across isolated networks and physical air gaps. Developed with the support of a grant from the **[Human Rights Foundation (HRF) Bitcoin Development Fund](https://x.com/gladstein/status/2092304843037884677)**, `openalertd` ensures that life-safety alarms, disaster advisories, and critical infrastructure telemetries reach first responders even under total internet blackouts, grid collapses, or adversarial censorship.
@@ -41,6 +41,13 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 ---
 
 ## 2. Core Capabilities
+
+### 📱 0xChat Mobile Integration & Embedded Nostr Micro-Relay
+* **Tactical In-Process Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server embedded directly in `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, SQLite persistence).
+* **Modern E2EE Onion Encryption:** Dual-mode encrypted DM engine wrapping notifications in NIP-59 / NIP-17 Gift Wraps (`Kind 1059` Wrap $\rightarrow$ `Kind 13` Seal $\rightarrow$ `Kind 14` Rumor) using NIP-44 v2 ChaCha20-Poly1305 authenticated encryption.
+* **Interactive Tactical C2 & Thread-Aware Replies:** Real-time authenticated C2 parsing (`status`, `ping`, `mesh <msg>`, `sms <num> <msg>`, `ack`, `help`) with prefix flexibility (`!`, `/`, or bare verbs). Thread-aware parent resolution enables instant 1-tap `ack`/`ok` by replying directly to alert cards in 0xChat.
+* **Multi-Bearer Cross-Bridging:** Seamless translation across 0xChat (Nostr) $\longleftrightarrow$ BitChat (BLE Mesh) $\longleftrightarrow$ Cellular (4G LTE SMS).
+* **Dual SSL / TLS Strategy:** Production deployments delegate WSS termination to reverse proxies (Caddy, Nginx). For single-box air-gapped field kits, `openalertd` features battle-ready native TLS (`[nostr.relay_server.tls]`) via `tokio-rustls` for direct `wss://` sockets without external services.
 
 ### 📡 Decentralized & Hybrid Transport Transceivers
 * **Nostr Pub/Sub Mesh:** Publishes cryptographically signed BIP-340 Schnorr events (Kind 30000 / Kind 1) across multi-relay pools with NIP-20 delivery confirmation and dynamic relay health scoring.
@@ -146,7 +153,7 @@ cargo build --release
 ```
 
 ### Running the Test Suite
-`openalertd` maintains a comprehensive automated test suite of 52 unit and integration tests covering all encryption routines, routing algorithms, codecs, and API endpoints:
+`openalertd` maintains a comprehensive automated test suite of 80 unit and integration tests covering all encryption routines, routing algorithms, codecs, and API endpoints:
 
 ```bash
 # Run all unit and integration tests
@@ -250,13 +257,26 @@ By default, dashboard access is open with zero setup friction. To require authen
 
 `openalertd` serves an embedded, dependency-free single-page control plane directly on `/`:
 
-* **Live Status Hero Panels:** Node identifier, uptime counter, software version, and real-time link states.
+* **Day / Night High-Contrast Theme Engine:** 1-click tactical toggle between **Midnight NOC** (deep dark obsidian glass with cyan/violet glowing indicators) and **Day Mode** (crisp high-contrast slate & titanium white with bold legible text designed for harsh outdoor sunlight on mobile field devices). Persisted seamlessly in `localStorage`.
+* **Zero-Dependency Web Audio Emergency Alarms (Muted by Default):** Pure HTML5 Web Audio API synthesized acoustic cues without external sound files. Operators can toggle **Sound ON / Muted** with 1 click. Distinctive frequencies for emergency sirens (880Hz/587Hz alternating warble), warnings, and soft chimes.
+* **Active Incident Strobe Banner & 1-Tap Acknowledge (ACK):** High-severity critical alarms drop an animated pulsating red banner directly below the header with an instant **"Acknowledge & Silence"** trigger that suppresses audio, logs the operator ACK, and notifies the mesh.
+* **Live Status Hero Panels:** Node identifier, uptime counter, software version, real-time link states, and a visual **LoRa Duty-Cycle Progress Meter** tracking against the 1.0% ETSI EN 300 220 airtime ceiling.
 * **Persistent Spool Backlog Monitor:** Displays real-time flash backlog count with an interactive **Purge** button to drop spooled test datagrams.
 * **Peer Link & Circuit Breakers:** Interactive table displaying peer names, transport classifications, consecutive failures, backlog counts, and an interactive **Reset** button to force circuits back to `Closed`.
 * **Dynamic Distance-Vector Routing Table:** Displays learned destination nodes, next-hop neighbors, path metrics, and hop counts.
 * **Nostr Relays Quorum:** Displays active relay URLs, M-of-N consensus scores, latency figures, and healthy/degraded badges.
 * **Live Event Feed:** Streaming alert timeline updated dynamically over Server-Sent Events (SSE).
 * **Test Alert Dispatcher:** Built-in modal dialog to fire test emergency alerts across the mesh directly from the browser.
+* **💻 Interactive Console & Live Log Terminal:** Dedicated streaming terminal with real-time log filtering (by text or level: `ALL`, `INFO`, `WARN`, `ERROR`), auto-scroll locking, 1-click clipboard export, and buffer clearance.
+* **🛠️ Operational Tools Tab:** Full parity with CLI tools accessible directly in the browser:
+  * **Nostr Keypair Generator:** BIP-340 Secp256k1 key generation (`npub`, `nsec`, 64-char hex) with 1-click clipboard copy.
+  * **Nostr Key Converter & Deriver:** Auto-detects Bech32 or Hex, validates BIP-340 checksums, and derives public keys from `nsec`.
+  * **SMS UCS-2 Hex Codec:** Bi-directional translator between UTF-8 (accents/emojis) and GSM modem UCS-2 Big-Endian hex.
+  * **Cryptographic PSK & Password Hasher:** Random 256-bit PSK generator and instant SHA-256 password hasher for `[dashboard.auth]`.
+* **⚙️ Configuration & Access Control Tab:**
+  * **Nostr 0xChat Operators (ACL):** Visual management of C2 authorized operators and alert DM recipients. Automatically accepts `npub1...` or hex, converts format, and persists to the running config.
+  * **Cellular SMS Senders & Recipients:** Interactive form to update authorized inbound numbers and outbound emergency contacts with instant SQLite persistence.
+  * **In-Browser TOML Config Editor:** Complete `openalertd.toml` editor with syntax validation (`/api/v1/config/validate`), automatic timestamped backup generation (`.bak.<timestamp>`), and safe disk persistence.
 
 ---
 
@@ -272,8 +292,11 @@ openalertd [COMMAND] [OPTIONS]
 | Command | Alias | Description |
 | :--- | :--- | :--- |
 | `check [config_path]` | `check-config` | Validates syntax, directories, templates, and consistency of configuration |
+| `generate-keypair` | `gen-keypair`, `gen-id` | Generates full Nostr Secp256k1 identity (`nsec`/`npub`/hex) with ready-to-paste TOML |
+| `convert-key <key>` | `convert` | Converts Nostr Bech32 (`npub`/`nsec`) to hex or 32-byte hex to `npub`, auto-deriving pubkeys |
+| `convert-sms <data>` | `sms-codec` | Bi-directional codec: encodes UTF-8 text to UCS-2 hex & decodes raw UCS-2 modem hex to UTF-8 |
+| `generate-key` | `gen-key` | Generates a 256-bit random hex key for peering or Nostr group privacy |
 | `hash-password <secret>` | `hash` | Computes a SHA-256 hash formatted for `[dashboard.auth]` |
-| `generate-key` | `gen-key` | Generates a 256-bit hex key for peering or Nostr group privacy |
 | `status [--url <api>]` | — | Queries live uptime, health status, and configured routes from running daemon |
 | `peers [--url <api>]` | — | Queries live peering link states and circuit breaker counters |
 | `spool [--url <api>]` | — | Queries persistent peering spool backlog count |
@@ -291,6 +314,26 @@ All HTTP endpoints bind to unprivileged ports ($\ge 1024$), default `8090`.
   Returns `{ "status": "ok", "version": "0.1.0", "uptime_seconds": 124 }`. Unauthenticated.
 * **`GET /metrics`**  
   Prometheus exposition format (`openalert_alerts_received_total`, `openalert_alerts_routed_total`, `openalert_peering_spool_backlog`, etc.).
+
+### Operational Tools & Configuration Endpoints
+* **`GET /api/v1/config`**  
+  Returns the active runtime configuration (JSON object, raw TOML string, and file path).
+* **`POST /api/v1/config`**  
+  Validates syntax, writes an automatic timestamped backup (`.bak.<ts>`), and saves updated TOML to disk.
+* **`POST /api/v1/config/validate`**  
+  Dry-run syntax validation of arbitrary TOML configuration strings without modifying disk.
+* **`POST /api/v1/nostr/oxchat`**  
+  Updates `c2_authorized_operators` and `recipients` lists directly within the active config file.
+* **`POST /api/v1/tools/generate-keypair`**  
+  Generates a fresh Secp256k1 Nostr keypair (`npub`, `pub_hex`, `nsec`, `priv_hex`).
+* **`POST /api/v1/tools/convert-key`**  
+  Accepts `{ "key": "..." }`, detects Bech32 (`npub`/`nsec`) or hex, derives public keys, and returns all representations.
+* **`POST /api/v1/tools/convert-sms`**  
+  Accepts `{ "payload": "..." }`, auto-detects text vs UCS-2 hex, and returns translated output.
+* **`POST /api/v1/tools/hash-password`**  
+  Accepts `{ "password": "..." }` and returns the SHA-256 hash.
+* **`POST /api/v1/tools/generate-key`**  
+  Returns a cryptographically secure 256-bit random hex string.
 
 ### Alert Ingestion
 * **`POST /api/v1/alerts`**  

@@ -76,6 +76,7 @@ flowchart TB
 | `generate_audio` | Text-to-speech audio generation for call playback. | [README](src/generate_audio/README.md) |
 | `py_phone_caller_ui` | Web UI for operations, scheduling, and users. | [README](src/py_phone_caller_ui/README.md) |
 | `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, and telemetry. | [README](src/py-phone-caller-utils/README.md) |
+| `openalertd` | Decentralized Nostr (0xChat E2EE, embedded micro-relay) and BitChat BLE mesh gateway bridging air-gapped field alerts. | [README](src/openalert/README.md) |
 
 ## Prerequisites & Requirements (What You Need to Run)
 
