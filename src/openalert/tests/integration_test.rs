@@ -7,8 +7,8 @@
 
 use openalertd::bitchat::BitChatService;
 use openalertd::config::{
-    AppConfig, PeeringLinkType, PeeringNodeConfig, PyPhoneCallerConfig, StorageConfig,
-    WebhookEndpointConfig, WebhookStrategy,
+    AppConfig, PeeringLinkType, PeeringNodeConfig, PyPhoneCallerConfig, RestAuthConfig, StorageConfig,
+    WebhookAuthConfig, WebhookEndpointConfig, WebhookStrategy,
 };
 use openalertd::egress::{BitChatEgress, PrometheusWebhookDispatcher};
 use openalertd::engine::AlertEngine;
@@ -28,9 +28,10 @@ fn test_config() -> AppConfig {
 
 #[tokio::test]
 async fn test_template_rendering() {
-    let template_engine =
+    let template_engine = Arc::new(
         TemplateEngine::new("templates", "prometheus_alertmanager.json.tera".to_string())
-            .expect("Failed to initialize template engine");
+            .expect("Failed to initialize template engine"),
+    );
 
     let alert = Alert {
         alert_id: "test-alert-01".to_string(),
@@ -582,6 +583,41 @@ async fn spawn_mock_webhook_server(
     (url, handle)
 }
 
+async fn spawn_mock_webhook_server_with_auth(
+    expected_auth: String,
+    counter: Arc<AtomicUsize>,
+) -> (String, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let url = format!("http://127.0.0.1:{}/alerts", port);
+
+    let app = axum::Router::new().route(
+        "/alerts",
+        axum::routing::post(move |headers: axum::http::HeaderMap| {
+            let counter = counter.clone();
+            let exp = expected_auth.clone();
+            async move {
+                let actual = headers
+                    .get(axum::http::header::AUTHORIZATION)
+                    .and_then(|h| h.to_str().ok())
+                    .unwrap_or_default();
+                if actual == exp {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    axum::http::StatusCode::OK
+                } else {
+                    axum::http::StatusCode::UNAUTHORIZED
+                }
+            }
+        }),
+    );
+
+    let handle = tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    (url, handle)
+}
+
 #[test]
 fn test_multi_webhook_config_parsing_and_priority_normalization() {
     let toml_str = r#"
@@ -661,6 +697,7 @@ async fn test_multi_webhook_cascade_failover() {
                 max_retries: 1,
                 delay: 1, // 1 second delay before cascade for fast test
                 priority: Some(0),
+                auth: None,
             },
             WebhookEndpointConfig {
                 url: s2_url,
@@ -668,6 +705,7 @@ async fn test_multi_webhook_cascade_failover() {
                 max_retries: 1,
                 delay: 1,
                 priority: Some(10),
+                auth: None,
             },
         ],
         ..Default::default()
@@ -733,6 +771,7 @@ async fn test_multi_webhook_broadcast_and_roundrobin() {
                     max_retries: 1,
                     delay: 0,
                     priority: Some(0),
+                    auth: None,
                 },
                 WebhookEndpointConfig {
                     url: s2_url.clone(),
@@ -740,6 +779,7 @@ async fn test_multi_webhook_broadcast_and_roundrobin() {
                     max_retries: 1,
                     delay: 0,
                     priority: Some(10),
+                    auth: None,
                 },
             ],
             ..Default::default()
@@ -782,6 +822,7 @@ async fn test_multi_webhook_broadcast_and_roundrobin() {
                     max_retries: 1,
                     delay: 0,
                     priority: Some(0),
+                    auth: None,
                 },
                 WebhookEndpointConfig {
                     url: s2_url.clone(),
@@ -789,6 +830,7 @@ async fn test_multi_webhook_broadcast_and_roundrobin() {
                     max_retries: 1,
                     delay: 0,
                     priority: Some(10),
+                    auth: None,
                 },
             ],
             ..Default::default()
@@ -867,6 +909,7 @@ async fn test_circuit_breaker_tripping_and_fast_failover() {
                 max_retries: 0,
                 delay: 0,
                 priority: Some(0),
+                auth: None,
             },
             WebhookEndpointConfig {
                 url: s2_url.clone(),
@@ -874,6 +917,7 @@ async fn test_circuit_breaker_tripping_and_fast_failover() {
                 max_retries: 0,
                 delay: 0,
                 priority: Some(10),
+                auth: None,
             },
         ],
     };
@@ -932,6 +976,101 @@ async fn test_circuit_breaker_tripping_and_fast_failover() {
         "✅ Circuit breaker tripped to OPEN after 2 failures and fast-skipped dead endpoint in {:?}",
         duration
     );
+}
+
+#[tokio::test]
+async fn test_multi_webhook_egress_auth_basic_and_bearer() {
+    let template_engine = Arc::new(
+        TemplateEngine::new("templates", "prometheus_alertmanager.json.tera".to_string())
+            .expect("Failed to initialize template engine"),
+    );
+
+    let s1_counter = Arc::new(AtomicUsize::new(0));
+    let s2_counter = Arc::new(AtomicUsize::new(0));
+
+    // Endpoint 1 expects HTTP Basic Auth: "Basic <base64(admin_user:secret_env_pass)>"
+    use base64::Engine;
+    let expected_b64 = base64::engine::general_purpose::STANDARD.encode(b"admin_user:secret_env_pass");
+    let (s1_url, _h1) = spawn_mock_webhook_server_with_auth(
+        format!("Basic {}", expected_b64),
+        s1_counter.clone(),
+    )
+    .await;
+
+    // Endpoint 2 expects HTTP Bearer Auth: "Bearer env_token_xyz"
+    let (s2_url, _h2) = spawn_mock_webhook_server_with_auth(
+        "Bearer env_token_xyz".to_string(),
+        s2_counter.clone(),
+    )
+    .await;
+
+    // Set environment variables for expansion
+    unsafe {
+        std::env::set_var("PY_PHONE_CALLER_USER_1", "admin_user");
+        std::env::set_var("PY_PHONE_CALLER_PASS_1", "secret_env_pass");
+        std::env::set_var("PY_PHONE_CALLER_TOK_2", "env_token_xyz");
+    }
+
+    let webhook_cfg = PyPhoneCallerConfig {
+        strategy: WebhookStrategy::Broadcast,
+        webhook_url: None,
+        timeout_seconds: 2.0,
+        max_retries: 1,
+        webhooks: vec![
+            WebhookEndpointConfig {
+                url: s1_url,
+                timeout_seconds: 2.0,
+                max_retries: 1,
+                delay: 0,
+                priority: Some(0),
+                auth: Some(WebhookAuthConfig {
+                    auth_type: Some("basic".to_string()),
+                    username: Some("${PY_PHONE_CALLER_USER_1}".to_string()),
+                    password: Some("${PY_PHONE_CALLER_PASS_1}".to_string()),
+                    token: None,
+                }),
+            },
+            WebhookEndpointConfig {
+                url: s2_url,
+                timeout_seconds: 2.0,
+                max_retries: 1,
+                delay: 0,
+                priority: Some(10),
+                auth: Some(WebhookAuthConfig {
+                    auth_type: Some("bearer".to_string()),
+                    username: None,
+                    password: None,
+                    token: Some("${PY_PHONE_CALLER_TOK_2}".to_string()),
+                }),
+            },
+        ],
+        ..Default::default()
+    };
+
+    let dispatcher = PrometheusWebhookDispatcher::new(webhook_cfg, template_engine, None);
+
+    let alert = Alert {
+        alert_id: "auth-test-alert-01".to_string(),
+        severity: AlertSeverity::Critical,
+        summary: "Perimeter Breach".to_string(),
+        description: Some("Sensor triggered at north gate".to_string()),
+        source: AlertSource::Rest,
+        sender: None,
+        node: None,
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["webhook".to_string()],
+        origin_peer: None,
+        hop: 0,
+    };
+
+    let res = dispatcher.dispatch(&alert).await;
+    assert!(res.is_ok(), "Broadcast dispatch with auth must succeed: {:?}", res.err());
+
+    // Both servers received their expected headers
+    assert_eq!(s1_counter.load(Ordering::SeqCst), 1, "S1 Basic Auth endpoint must receive alert");
+    assert_eq!(s2_counter.load(Ordering::SeqCst), 1, "S2 Bearer Auth endpoint must receive alert");
+
+    println!("✅ Multi-webhook egress authentication (Basic with env var + Bearer with env var) verified!");
 }
 
 #[tokio::test]
@@ -1367,6 +1506,112 @@ async fn test_rest_ingress_bearer_and_hmac_security() {
     .await;
     assert_eq!(accepted_resp.status(), axum::http::StatusCode::ACCEPTED);
     println!("✅ REST ingress Bearer and HMAC-SHA256 security tests passed successfully!");
+}
+
+#[tokio::test]
+async fn test_rest_ingress_hashed_basic_and_bearer_auth() {
+    let mut config = test_config();
+    config.rest.auth_token = None;
+    config.rest.webhook_secret = None; // Disable HMAC requirement to isolate credential auth
+
+    // 1. Test Ingress Basic Auth with SHA-256 hashed password
+    let password = "MyIngressPassword99";
+    use sha2::{Digest, Sha256};
+    let pass_hash = hex::encode(Sha256::digest(password.as_bytes()));
+
+    config.rest.auth = Some(RestAuthConfig {
+        auth_type: Some("basic".to_string()),
+        username: Some("operator".to_string()),
+        password_hash: Some(format!("sha256:{}", pass_hash)),
+        token_hash: None,
+    });
+
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("Engine creation failed"));
+    let state = openalertd::ingress::rest::AppState {
+        engine: engine.clone(),
+        config: config.rest.clone(),
+    };
+
+    // Unauthenticated request -> 401
+    let unauth_resp = openalertd::ingress::rest::status_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+    )
+    .await;
+    assert_eq!(unauth_resp.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    // Valid Basic Auth credentials -> 200 OK
+    use base64::Engine;
+    let b64_creds = base64::engine::general_purpose::STANDARD.encode(format!("operator:{}", password).as_bytes());
+    let mut valid_basic_hdr = axum::http::HeaderMap::new();
+    valid_basic_hdr.insert(
+        axum::http::header::AUTHORIZATION,
+        axum::http::HeaderValue::from_str(&format!("Basic {}", b64_creds)).unwrap(),
+    );
+    let ok_resp = openalertd::ingress::rest::status_handler(
+        valid_basic_hdr,
+        axum::extract::State(state.clone()),
+    )
+    .await;
+    assert_eq!(ok_resp.status(), axum::http::StatusCode::OK);
+
+    // Invalid Basic Auth password -> 401
+    let bad_b64 = base64::engine::general_purpose::STANDARD.encode(b"operator:WrongPass");
+    let mut bad_basic_hdr = axum::http::HeaderMap::new();
+    bad_basic_hdr.insert(
+        axum::http::header::AUTHORIZATION,
+        axum::http::HeaderValue::from_str(&format!("Basic {}", bad_b64)).unwrap(),
+    );
+    let bad_resp = openalertd::ingress::rest::status_handler(
+        bad_basic_hdr,
+        axum::extract::State(state.clone()),
+    )
+    .await;
+    assert_eq!(bad_resp.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    // 2. Test Ingress Bearer Auth with SHA-256 hashed token
+    let token = "my-secure-bearer-ingress-tok";
+    let tok_hash = hex::encode(Sha256::digest(token.as_bytes()));
+
+    config.rest.auth = Some(RestAuthConfig {
+        auth_type: Some("bearer".to_string()),
+        username: None,
+        password_hash: None,
+        token_hash: Some(format!("sha256:{}", tok_hash)),
+    });
+
+    let state2 = openalertd::ingress::rest::AppState {
+        engine,
+        config: config.rest.clone(),
+    };
+
+    // Valid Bearer token -> 200 OK
+    let mut valid_bearer_hdr = axum::http::HeaderMap::new();
+    valid_bearer_hdr.insert(
+        axum::http::header::AUTHORIZATION,
+        axum::http::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
+    let bearer_ok_resp = openalertd::ingress::rest::status_handler(
+        valid_bearer_hdr,
+        axum::extract::State(state2.clone()),
+    )
+    .await;
+    assert_eq!(bearer_ok_resp.status(), axum::http::StatusCode::OK);
+
+    // Invalid Bearer token -> 401
+    let mut bad_bearer_hdr = axum::http::HeaderMap::new();
+    bad_bearer_hdr.insert(
+        axum::http::header::AUTHORIZATION,
+        axum::http::HeaderValue::from_static("Bearer bad_tok"),
+    );
+    let bearer_bad_resp = openalertd::ingress::rest::status_handler(
+        bad_bearer_hdr,
+        axum::extract::State(state2),
+    )
+    .await;
+    assert_eq!(bearer_bad_resp.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    println!("✅ REST Ingress SHA-256 hashed password (Basic) and hashed token (Bearer) security verified!");
 }
 
 #[tokio::test]
@@ -2600,4 +2845,44 @@ async fn test_logo_endpoint_day_and_night() {
         openalertd::ingress::dashboard::LOGO_PNG.len(),
         openalertd::ingress::dashboard::LOGO_DAY_PNG.len()
     );
+}
+
+#[tokio::test]
+async fn test_dynaconf_style_environment_overrides() {
+    // Pick an ephemeral port for testing
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let ephemeral_port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    unsafe {
+        std::env::set_var("OPENALERT_REST__LISTEN_PORT", ephemeral_port.to_string());
+        std::env::set_var("OPENALERT_ROUTING__DEDUP_CACHE_SIZE", "9999");
+        std::env::set_var("OPENALERT_REST__ENABLE_CORS", "false");
+    }
+
+    let config = openalertd::config::AppConfig::load("config/openalertd.toml")
+        .expect("Layered configuration loading must succeed");
+
+    unsafe {
+        std::env::remove_var("OPENALERT_REST__LISTEN_PORT");
+        std::env::remove_var("OPENALERT_ROUTING__DEDUP_CACHE_SIZE");
+        std::env::remove_var("OPENALERT_REST__ENABLE_CORS");
+    }
+
+    assert_eq!(config.rest.listen_port, ephemeral_port);
+    assert_eq!(config.routing.dedup_cache_size, 9999);
+    assert!(!config.rest.enable_cors);
+
+    // Verify initializing the engine with the environment-overridden config works cleanly
+    let engine = openalertd::engine::AlertEngine::new(config.clone())
+        .expect("AlertEngine initialization with env overrides failed");
+    let state = openalertd::ingress::rest::AppState {
+        engine: std::sync::Arc::new(engine),
+        config: config.rest.clone(),
+    };
+
+    let health_resp = openalertd::ingress::rest::health_check(axum::extract::State(state)).await;
+    assert_eq!(health_resp.status(), axum::http::StatusCode::OK);
+
+    println!("✅ Dynaconf-style environment variable overrides (OPENALERT_<SECTION>__<KEY>) verified in integration test!");
 }

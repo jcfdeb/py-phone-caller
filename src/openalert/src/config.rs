@@ -5,26 +5,31 @@
 
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::Path;
 
 /// Root daemon configuration encapsulating all subsystem settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     /// General daemon settings (node name, logging).
+    #[serde(default)]
     pub daemon: DaemonConfig,
     /// Ingress HTTP REST API server settings.
+    #[serde(default)]
     pub rest: RestConfig,
     /// Nostr relay connection and event handling settings.
+    #[serde(default)]
     pub nostr: NostrConfig,
     /// BitChat BLE mesh and GATT configuration.
+    #[serde(default)]
     pub bitchat: BitChatConfig,
     /// Alert routing and deduplication policies.
+    #[serde(default)]
     pub routing: RoutingConfig,
     /// Egress connection parameters for the `py-phone-caller` Prometheus webhook.
     #[serde(default)]
     pub py_phone_caller: PyPhoneCallerConfig,
     /// Dynamic payload templating settings.
+    #[serde(default)]
     pub templates: TemplateConfig,
     /// Embedded database storage and sliding window retention settings.
     #[serde(default)]
@@ -41,10 +46,52 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    /// Loads and parses the TOML configuration file from the specified filesystem path.
+    /// Loads configuration by layering:
+    /// 1. Base TOML configuration file (if present)
+    /// 2. Environment variables prefixed with `OPENALERT_` or `OPENALERTD_`
+    ///    using double underscore `__` for nested sections (e.g. `OPENALERT_REST__LISTEN_PORT=9099`).
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = fs::read_to_string(path.as_ref())?;
-        let config: AppConfig = toml::from_str(&content)?;
+        Self::load_layered(Some(path))
+    }
+
+    /// Loads configuration purely from environment variables (`OPENALERT_` / `OPENALERTD_`)
+    /// and built-in defaults without requiring an on-disk configuration file.
+    pub fn load_from_env() -> Result<Self> {
+        Self::load_layered(None::<&Path>)
+    }
+
+    /// Layers an optional configuration file and environment variable overrides.
+    pub fn load_layered<P: AsRef<Path>>(path: Option<P>) -> Result<Self> {
+        let mut builder = config::Config::builder();
+
+        if let Some(p) = path {
+            let p_ref = p.as_ref();
+            if !p_ref.as_os_str().is_empty() {
+                let is_default = p_ref == Path::new("config/openalertd.toml");
+                builder = builder.add_source(
+                    config::File::from(p_ref)
+                        .format(config::FileFormat::Toml)
+                        .required(!is_default),
+                );
+            }
+        }
+
+        builder = builder
+            .add_source(
+                config::Environment::with_prefix("OPENALERT")
+                    .prefix_separator("_")
+                    .separator("__")
+                    .try_parsing(true),
+            )
+            .add_source(
+                config::Environment::with_prefix("OPENALERTD")
+                    .prefix_separator("_")
+                    .separator("__")
+                    .try_parsing(true),
+            );
+
+        let cfg = builder.build()?;
+        let config: AppConfig = cfg.try_deserialize()?;
         Ok(config)
     }
 }
@@ -69,6 +116,16 @@ impl DaemonConfig {
     pub fn is_systemd_logging(&self) -> bool {
         self.logging.trim().eq_ignore_ascii_case("systemd")
             || self.logging.trim().eq_ignore_ascii_case("journald")
+    }
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            name: default_node_name(),
+            log_level: default_log_level(),
+            logging: default_logging_mode(),
+        }
     }
 }
 
@@ -103,14 +160,20 @@ pub struct TlsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestConfig {
     /// Interface IP to bind for HTTP listeners.
+    #[serde(default = "default_rest_host")]
     pub listen_host: String,
     /// Port number for HTTP REST listeners.
+    #[serde(default = "default_rest_port")]
     pub listen_port: u16,
     /// Whether to permit cross-origin requests.
+    #[serde(default = "default_rest_cors")]
     pub enable_cors: bool,
     /// Optional bearer token for authenticating HTTP REST / API requests.
     #[serde(default)]
     pub auth_token: Option<String>,
+    /// Optional structured authentication settings (Basic or Bearer with SHA-256 hashes).
+    #[serde(default)]
+    pub auth: Option<RestAuthConfig>,
     /// Optional shared secret for verifying HMAC-SHA256 signatures on inbound webhooks.
     #[serde(default)]
     pub webhook_secret: Option<String>,
@@ -124,6 +187,57 @@ pub struct RestConfig {
 
 fn default_webhook_max_skew_seconds() -> u64 {
     60
+}
+
+fn default_rest_host() -> String {
+    "0.0.0.0".to_string()
+}
+fn default_rest_port() -> u16 {
+    8090
+}
+fn default_rest_cors() -> bool {
+    true
+}
+
+impl Default for RestConfig {
+    fn default() -> Self {
+        Self {
+            listen_host: default_rest_host(),
+            listen_port: default_rest_port(),
+            enable_cors: default_rest_cors(),
+            auth_token: None,
+            auth: None,
+            webhook_secret: None,
+            webhook_max_skew_seconds: default_webhook_max_skew_seconds(),
+            tls: TlsConfig::default(),
+        }
+    }
+}
+
+/// Authentication configuration for the REST ingress server.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct RestAuthConfig {
+    /// Authentication type: "basic", "bearer", or "none" (default: "none").
+    #[serde(rename = "type", default)]
+    pub auth_type: Option<String>,
+    /// Username for HTTP Basic Auth.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// SHA-256 hash of the password for HTTP Basic Auth (with or without 'sha256:' prefix).
+    #[serde(default)]
+    pub password_hash: Option<String>,
+    /// SHA-256 hash of the Bearer token (with or without 'sha256:' prefix).
+    #[serde(default)]
+    pub token_hash: Option<String>,
+}
+
+impl RestAuthConfig {
+    pub fn is_active(&self) -> bool {
+        matches!(
+            self.auth_type.as_deref().map(|s| s.to_lowercase()).as_deref(),
+            Some("basic") | Some("bearer")
+        )
+    }
 }
 
 /// Optional dashboard authentication settings.
@@ -262,13 +376,16 @@ impl OxChatConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrConfig {
     /// List of WebSocket URLs pointing to Nostr relays.
+    #[serde(default)]
     pub relays: Vec<String>,
     /// Optional 64-hex private key (nsec) for deterministic bot identity across restarts.
     #[serde(default)]
     pub private_key: Option<String>,
     /// Default Nostr event kind to publish and subscribe (e.g., 30000).
+    #[serde(default = "default_nostr_kind")]
     pub kind: u64,
     /// Whether to launch the persistent inbound WebSocket subscriber.
+    #[serde(default)]
     pub enable_subscriber: bool,
     /// Event kinds to subscribe to from configured relays.
     #[serde(default)]
@@ -404,6 +521,29 @@ fn default_nip20_timeout_secs() -> u64 {
     5
 }
 
+fn default_nostr_kind() -> u64 {
+    30000
+}
+
+impl Default for NostrConfig {
+    fn default() -> Self {
+        Self {
+            relays: Vec::new(),
+            private_key: None,
+            kind: 30000,
+            enable_subscriber: false,
+            subscription_filter_kinds: vec![30000],
+            alert_ttl_seconds: default_alert_ttl_seconds(),
+            subscription_lookback_seconds: default_subscription_lookback_seconds(),
+            quorum_min_relays: default_quorum_min_relays(),
+            nip20_timeout_secs: default_nip20_timeout_secs(),
+            privacy: NostrPrivacyConfig::default(),
+            oxchat: OxChatConfig::default(),
+            relay_server: NostrRelayServerConfig::default(),
+        }
+    }
+}
+
 fn default_alert_ttl_seconds() -> u64 {
     3600
 }
@@ -416,6 +556,7 @@ fn default_subscription_lookback_seconds() -> u64 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitChatConfig {
     /// Whether BitChat BLE mesh functionality is enabled.
+    #[serde(default)]
     pub enabled: bool,
     /// Linux HCI Bluetooth adapter name (e.g. `hci0`).
     #[serde(default = "default_ble_device")]
@@ -449,14 +590,32 @@ fn default_service_uuid() -> String {
     "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c".to_string()
 }
 
+impl Default for BitChatConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            device: default_ble_device(),
+            node_name: default_ble_node_name(),
+            service_uuid: default_service_uuid(),
+            listen_host: None,
+            listen_port: None,
+            advertiser_script: None,
+        }
+    }
+}
+
+
 /// Alert routing and deduplication settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutingConfig {
     /// Default egress destinations applied if an alert specifies none.
+    #[serde(default = "default_routing_destinations")]
     pub default_destinations: Vec<String>,
     /// Maximum number of alert fingerprints held in the deduplication cache.
+    #[serde(default = "default_routing_cache_size")]
     pub dedup_cache_size: usize,
     /// Deduplication window duration in seconds.
+    #[serde(default = "default_routing_ttl_seconds")]
     pub dedup_ttl_seconds: u64,
     /// Last-resort fallback channels triggered when primary destinations fail or trip circuit breakers.
     #[serde(default)]
@@ -464,6 +623,27 @@ pub struct RoutingConfig {
 }
 
 /// Dispatch strategy for multiple py-phone-caller webhook instances.
+fn default_routing_destinations() -> Vec<String> {
+    vec!["nostr".to_string()]
+}
+fn default_routing_cache_size() -> usize {
+    1000
+}
+fn default_routing_ttl_seconds() -> u64 {
+    3600
+}
+
+impl Default for RoutingConfig {
+    fn default() -> Self {
+        Self {
+            default_destinations: default_routing_destinations(),
+            dedup_cache_size: default_routing_cache_size(),
+            dedup_ttl_seconds: default_routing_ttl_seconds(),
+            failover_destinations: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum WebhookStrategy {
@@ -558,6 +738,66 @@ where
     deserializer.deserialize_option(PriorityVisitor)
 }
 
+/// Authentication configuration for an outbound py-phone-caller webhook endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct WebhookAuthConfig {
+    /// Authentication type: "basic", "bearer", or "none" (default: "none").
+    #[serde(rename = "type", default)]
+    pub auth_type: Option<String>,
+    /// Username for HTTP Basic Auth.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// Password for HTTP Basic Auth (supports ${ENV_VAR} syntax).
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Bearer token (supports ${ENV_VAR} syntax).
+    #[serde(default)]
+    pub token: Option<String>,
+}
+
+impl WebhookAuthConfig {
+    /// Helper to expand an environment variable formatted as `${VAR_NAME}`.
+    /// If not wrapped in `${...}`, returns the string trimmed as-is.
+    pub fn expand_value(val: &str) -> String {
+        let trimmed = val.trim();
+        if trimmed.starts_with("${") && trimmed.ends_with("}") && trimmed.len() > 3 {
+            let var_name = &trimmed[2..trimmed.len() - 1];
+            match std::env::var(var_name) {
+                Ok(v) => v,
+                Err(_) => {
+                    tracing::warn!("⚠️ Webhook auth env var '{}' not set; using literal fallback", var_name);
+                    trimmed.to_string()
+                }
+            }
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    /// Resolves the HTTP Authorization header string, or None if disabled/unsupported.
+    pub fn resolve_authorization_header(&self) -> Option<String> {
+        match self.auth_type.as_deref().map(|s| s.to_lowercase()).as_deref() {
+            Some("basic") => {
+                let user = self.username.as_deref().map(Self::expand_value).unwrap_or_default();
+                let pass = self.password.as_deref().map(Self::expand_value).unwrap_or_default();
+                use base64::Engine;
+                let credentials = format!("{}:{}", user, pass);
+                let encoded = base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes());
+                Some(format!("Basic {}", encoded))
+            }
+            Some("bearer") => {
+                let tok = self.token.as_deref().map(Self::expand_value).unwrap_or_default();
+                if tok.is_empty() {
+                    None
+                } else {
+                    Some(format!("Bearer {}", tok))
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Configuration for a single py-phone-caller Prometheus webhook endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookEndpointConfig {
@@ -575,6 +815,22 @@ pub struct WebhookEndpointConfig {
     /// Priority order (e.g. 0, 10, 20). Formatted with 2 digits in logs. Auto-assigned if omitted.
     #[serde(default, deserialize_with = "deserialize_priority")]
     pub priority: Option<u32>,
+    /// Optional outgoing authentication credentials (basic or bearer).
+    #[serde(default)]
+    pub auth: Option<WebhookAuthConfig>,
+}
+
+impl Default for WebhookEndpointConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            timeout_seconds: default_webhook_timeout_seconds(),
+            max_retries: default_webhook_max_retries(),
+            delay: default_webhook_delay_seconds(),
+            priority: None,
+            auth: None,
+        }
+    }
 }
 
 /// Egress connection parameters for the `py-phone-caller` Prometheus webhook.
@@ -634,6 +890,7 @@ impl PyPhoneCallerConfig {
                 max_retries: self.max_retries,
                 delay: default_webhook_delay_seconds(),
                 priority: Some(0),
+                auth: None,
             });
         }
 
@@ -716,9 +973,27 @@ impl Default for StorageConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateConfig {
     /// Filesystem directory containing `.tera` templates.
+    #[serde(default = "default_template_dir")]
     pub template_dir: String,
     /// Default template filename rendered for outbound webhooks.
+    #[serde(default = "default_template_filename")]
     pub default_template: String,
+}
+
+fn default_template_dir() -> String {
+    "templates".to_string()
+}
+fn default_template_filename() -> String {
+    "prometheus_alertmanager.json.tera".to_string()
+}
+
+impl Default for TemplateConfig {
+    fn default() -> Self {
+        Self {
+            template_dir: default_template_dir(),
+            default_template: default_template_filename(),
+        }
+    }
 }
 
 /// Physical link layer profile for a federated peer.
@@ -1013,5 +1288,161 @@ impl Default for SmsConfig {
             poll_interval_seconds: default_sms_poll_interval(),
             ttl_minutes: default_sms_ttl_minutes(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn test_webhook_auth_basic_and_bearer_resolution() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        // 1. Basic auth with literal values
+        let basic_cfg = WebhookAuthConfig {
+            auth_type: Some("basic".to_string()),
+            username: Some("my_user".to_string()),
+            password: Some("my_pass".to_string()),
+            token: None,
+        };
+        let hdr = basic_cfg.resolve_authorization_header().expect("Should resolve header");
+        assert_eq!(hdr, "Basic bXlfdXNlcjpteV9wYXNz"); // base64 of "my_user:my_pass"
+
+        // 2. Basic auth with env var expansion ${VAR_NAME}
+        unsafe { std::env::set_var("TEST_WEBHOOK_USER", "admin_ops"); }
+        unsafe { std::env::set_var("TEST_WEBHOOK_PASS", "super_secret_env_pass"); }
+        let basic_env_cfg = WebhookAuthConfig {
+            auth_type: Some("basic".to_string()),
+            username: Some("${TEST_WEBHOOK_USER}".to_string()),
+            password: Some("${TEST_WEBHOOK_PASS}".to_string()),
+            token: None,
+        };
+        let env_hdr = basic_env_cfg.resolve_authorization_header().expect("Should resolve header");
+        use base64::Engine;
+        let expected_b64 = base64::engine::general_purpose::STANDARD.encode(b"admin_ops:super_secret_env_pass");
+        assert_eq!(env_hdr, format!("Basic {}", expected_b64));
+
+        // 3. Bearer auth with env var expansion
+        unsafe { std::env::set_var("TEST_WEBHOOK_TOKEN", "bearer_secret_tok_99"); }
+        let bearer_env_cfg = WebhookAuthConfig {
+            auth_type: Some("bearer".to_string()),
+            username: None,
+            password: None,
+            token: Some("${TEST_WEBHOOK_TOKEN}".to_string()),
+        };
+        let bearer_hdr = bearer_env_cfg.resolve_authorization_header().expect("Should resolve header");
+        assert_eq!(bearer_hdr, "Bearer bearer_secret_tok_99");
+
+        // 4. Auth disabled or unrecognized type
+        let disabled_cfg = WebhookAuthConfig {
+            auth_type: Some("none".to_string()),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
+            token: None,
+        };
+        assert!(disabled_cfg.resolve_authorization_header().is_none());
+
+        let invalid_cfg = WebhookAuthConfig {
+            auth_type: Some("oauth2".to_string()),
+            ..Default::default()
+        };
+        assert!(invalid_cfg.resolve_authorization_header().is_none());
+    }
+
+    #[test]
+    fn test_rest_auth_config_activity() {
+        let none_auth = RestAuthConfig {
+            auth_type: Some("none".to_string()),
+            ..Default::default()
+        };
+        assert!(!none_auth.is_active());
+
+        let basic_auth = RestAuthConfig {
+            auth_type: Some("basic".to_string()),
+            ..Default::default()
+        };
+        assert!(basic_auth.is_active());
+
+        let bearer_auth = RestAuthConfig {
+            auth_type: Some("bearer".to_string()),
+            ..Default::default()
+        };
+        assert!(bearer_auth.is_active());
+    }
+
+    #[test]
+    fn test_layered_config_env_overrides() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        // Set environment variables using OPENALERT_<SECTION>__<KEY> format (Dynaconf style)
+        unsafe {
+            std::env::set_var("OPENALERT_DAEMON__NAME", "env-injected-node");
+            std::env::set_var("OPENALERT_DAEMON__LOG_LEVEL", "debug");
+            std::env::set_var("OPENALERT_REST__LISTEN_PORT", "9988");
+            std::env::set_var("OPENALERT_REST__ENABLE_CORS", "false");
+            std::env::set_var("OPENALERT_STORAGE__PATH", ":memory:");
+        }
+
+        let cfg = AppConfig::load("config/openalertd.toml").expect("Failed to load layered configuration");
+
+        // Clean up environment variables immediately to avoid polluting other tests
+        unsafe {
+            std::env::remove_var("OPENALERT_DAEMON__NAME");
+            std::env::remove_var("OPENALERT_DAEMON__LOG_LEVEL");
+            std::env::remove_var("OPENALERT_REST__LISTEN_PORT");
+            std::env::remove_var("OPENALERT_REST__ENABLE_CORS");
+            std::env::remove_var("OPENALERT_STORAGE__PATH");
+        }
+
+        assert_eq!(cfg.daemon.name, "env-injected-node");
+        assert_eq!(cfg.daemon.log_level, "debug");
+        assert_eq!(cfg.rest.listen_port, 9988);
+        assert!(!cfg.rest.enable_cors);
+        assert_eq!(cfg.storage.path, ":memory:");
+    }
+
+    #[test]
+    fn test_layered_config_alias_prefix_overrides() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        // Test OPENALERTD_ alias prefix
+        unsafe {
+            std::env::set_var("OPENALERTD_DAEMON__NAME", "openalertd-alias-node");
+            std::env::set_var("OPENALERTD_REST__LISTEN_PORT", "8899");
+        }
+
+        let cfg = AppConfig::load("config/openalertd.toml").expect("Failed to load layered configuration");
+
+        unsafe {
+            std::env::remove_var("OPENALERTD_DAEMON__NAME");
+            std::env::remove_var("OPENALERTD_REST__LISTEN_PORT");
+        }
+
+        assert_eq!(cfg.daemon.name, "openalertd-alias-node");
+        assert_eq!(cfg.rest.listen_port, 8899);
+    }
+
+    #[test]
+    fn test_load_pure_from_environment_and_defaults() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        // Pure load without any file on disk, overriding specific parameters
+        unsafe {
+            std::env::set_var("OPENALERT_REST__LISTEN_PORT", "7777");
+            std::env::set_var("OPENALERT_DAEMON__NAME", "pure-cloud-pod");
+        }
+
+        let cfg = AppConfig::load_from_env().expect("Failed to load from pure env and defaults");
+
+        unsafe {
+            std::env::remove_var("OPENALERT_REST__LISTEN_PORT");
+            std::env::remove_var("OPENALERT_DAEMON__NAME");
+        }
+
+        assert_eq!(cfg.rest.listen_port, 7777);
+        assert_eq!(cfg.daemon.name, "pure-cloud-pod");
+        // Check default fallbacks for unconfigured sections
+        assert_eq!(cfg.templates.default_template, "prometheus_alertmanager.json.tera");
+        assert_eq!(cfg.storage.path, "data/openalert.db");
     }
 }

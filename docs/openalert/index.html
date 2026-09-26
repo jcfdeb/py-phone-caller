@@ -543,7 +543,7 @@
         <nav class="top-nav">
             <div class="nav-badges">
                 <span class="badge badge-frozen">❄️ Feature Frozen v0.1.0</span>
-                <span class="badge badge-tests">🛡️ 83/83 Tests Passed</span>
+                <span class="badge badge-tests">🛡️ 92/92 Tests Passed</span>
                 <span class="badge badge-rust">🦀 Pure Rust 2024</span>
             </div>
             <div>
@@ -781,6 +781,25 @@
                     <span class="tag">Dry-run Check</span>
                 </div>
             </div>
+
+            <!-- Cloud-Native & Dynaconf-Style Configuration -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">☁️</div>
+                        <div class="card-title">Cloud-Native Layered Configuration</div>
+                    </div>
+                    <div class="card-body">
+                        Strict parity with <code>py-phone-caller</code>'s Python Dynaconf engine powered by Rust's <code>config</code> crate. Multi-tier precedence supports static TOML files, turnkey deployment profiles (<code>edge-sensor</code>, <code>mesh-repeater</code>, <code>central-gateway</code>), and 12-Factor container environment overrides (<code>OPENALERT_&lt;SEC&gt;__&lt;KEY&gt;</code>). Enables pure ephemeral container execution with zero disk mounts.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">Dynaconf Parity</span>
+                    <span class="tag">12-Factor App</span>
+                    <span class="tag">Container Ready</span>
+                    <span class="tag">Turnkey Profiles</span>
+                </div>
+            </div>
         </div>
 
         <!-- Quickstart Guide -->
@@ -794,7 +813,7 @@
 <span class="code-cmd">git clone</span> https://github.com/jcfdeb/py-phone-caller.git
 <span class="code-cmd">cd</span> py-phone-caller/src/openalert
 
-<span class="code-comment"># 2. Run the comprehensive test suite (41 unit + 42 integration tests)</span>
+<span class="code-comment"># 2. Run the comprehensive test suite (47 unit + 45 integration tests)</span>
 <span class="code-cmd">cargo test</span>
 
 <span class="code-comment"># 3. Build optimized release binary</span>
@@ -875,7 +894,7 @@
 
         <div class="feature-grid">
             <div class="card" style="border-left: 4px solid var(--success);">
-                <div class="card-title" style="color: var(--success);">🛡️ 83/83 Automated Tests</div>
+                <div class="card-title" style="color: var(--success);">🛡️ 92/92 Automated Tests</div>
                 <div class="card-body">
                     Zero test failures. Comprehensive test matrix covers multi-node dynamic mesh forwarding, split-horizon suppression, replay-attack prevention, NIP-04/44/59 onion wrapping, modem AT command parsing, and live SSE streaming.
                 </div>

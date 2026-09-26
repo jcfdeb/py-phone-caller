@@ -1,3 +1,14 @@
+# ==============================================================================
+# OpenAlert Gateway Daemon Configuration (openalertd)
+#
+# Multi-Layered Configuration Support:
+# Any setting in this file can be overridden via 12-Factor environment variables
+# using the Dynaconf convention: OPENALERT_<SECTION>__<KEY>
+# (e.g., OPENALERT_REST__LISTEN_PORT=8080, OPENALERT_DAEMON__LOG_LEVEL=debug)
+# For container deployments, openalertd can run purely from environment variables
+# without mounting a TOML configuration file.
+# ==============================================================================
+
 [daemon]
 name = "openalertd-hub"
 log_level = "info"
@@ -8,6 +19,19 @@ logging = "default"
 listen_host = "0.0.0.0"
 listen_port = 8090
 enable_cors = true
+
+# Optional Inbound REST & Webhook Ingress Authentication
+# Protects inbound API endpoints (/api/v1/alert, /api/v1/status, /webhook/prometheus, etc.)
+# Supports "none" (default), "basic", or "bearer".
+# Passwords and tokens are verified via constant-time SHA-256 comparison and NEVER stored in plaintext.
+# Generate hashes using: openalertd hash-password "<secret>"
+[rest.auth]
+type = "none" # Options: "none", "basic", "bearer"
+# For type = "basic":
+username = "operator"
+password_hash = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+# For type = "bearer":
+# token_hash = "sha256:..." 
 
 [dashboard.auth]
 # Web Mission Control dashboard authentication.
@@ -98,6 +122,14 @@ timeout_seconds = 5.0
 max_retries = 3
 delay = 30
 priority = 0
+# Optional Outgoing Webhook Authentication
+# Supports "none" (default), "basic", or "bearer".
+# Credentials support environment variable expansion via ${VAR_NAME} syntax.
+[py_phone_caller.webhooks.auth]
+type = "none" # "none", "basic", or "bearer"
+# username = "webhook_user"
+# password = "${PY_PHONE_CALLER_WEBHOOK_PASS}"
+# token = "${PY_PHONE_CALLER_WEBHOOK_TOKEN}" 
 
 # Secondary backup webhook instance (Priority 10)
 [[py_phone_caller.webhooks]]

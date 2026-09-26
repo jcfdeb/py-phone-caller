@@ -219,10 +219,19 @@ impl PrometheusWebhookDispatcher {
             )));
         }
 
-        info!(
-            "Dispatching alert [{}] to py-phone-caller webhook [priority: {:02}] at [{}]",
-            alert_id, priority_val, endpoint.url
-        );
+        let auth_hdr = endpoint.auth.as_ref().and_then(|a| a.resolve_authorization_header());
+        if auth_hdr.is_some() {
+            let auth_type = endpoint.auth.as_ref().and_then(|a| a.auth_type.as_deref()).unwrap_or("unknown");
+            info!(
+                "Dispatching alert [{}] to py-phone-caller webhook [priority: {:02}] at [{}] (auth: {})",
+                alert_id, priority_val, endpoint.url, auth_type
+            );
+        } else {
+            info!(
+                "Dispatching alert [{}] to py-phone-caller webhook [priority: {:02}] at [{}]",
+                alert_id, priority_val, endpoint.url
+            );
+        }
 
         let mut attempts = 0;
         let mut last_error = None;
@@ -236,12 +245,18 @@ impl PrometheusWebhookDispatcher {
                     .inc();
             }
 
-            match self
+            let mut req = self
                 .client
                 .post(&endpoint.url)
                 .timeout(Duration::from_secs_f64(endpoint.timeout_seconds))
                 .header("Content-Type", "application/json")
-                .header("User-Agent", "openalertd/0.1.0")
+                .header("User-Agent", "openalertd/0.1.0");
+
+            if let Some(ref h) = auth_hdr {
+                req = req.header("Authorization", h);
+            }
+
+            match req
                 .body(payload_json.to_string())
                 .send()
                 .await

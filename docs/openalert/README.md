@@ -21,7 +21,9 @@ OpenAlert is fundamentally bidirectional, acting as both a listener and a broadc
 
 ### REST, Nostr, and Alertmanager Interfaces
 * **Inbound (Receive):** The gateway listens for incoming JSON payloads via standard REST webhooks (compatible with existing IT watchdogs). Simultaneously, it monitors the Nostr network via persistent WebSocket connections to a configured relay pool.
-* **Outbound (Send):** Upon processing an incoming decentralized event (from Nostr or BitChat), the system standardizes the payload into a Prometheus Alertmanager webhook and POSTs it to a configured local or remote endpoint. Alternatively, when ingesting a local IT alert, it can cryptographically sign and broadcast the alert globally as a Nostr event.
+  - **Ingress Authentication (`[rest.auth]`):** Inbound alert endpoints (`/api/v1/alert`, `/webhook/prometheus`, status, and management APIs) support HTTP Basic (`username` + SHA-256 hashed password) or Bearer token (`token_hash`) authentication. Credentials are verified using timing-safe constant-time comparisons (`subtle::ConstantTimeEq`) and are stored exclusively as hashes generated via `openalertd hash-password`.
+* **Outbound (Send):** Upon processing an incoming decentralized event (from Nostr or BitChat), the system standardizes the payload into a Prometheus Alertmanager webhook and POSTs it to configured local or remote `py-phone-caller` endpoints.
+  - **Per-Endpoint Webhook Authentication (`[py_phone_caller.webhooks.auth]`):** Each webhook instance supports dedicated HTTP Basic (`username` + `password`) or Bearer token (`token`) authentication. Passwords and tokens support `${ENV_VAR}` expansion syntax to prevent storing cleartext credentials in configuration files.
 
 ### 0xChat & Embedded Nostr Tactical Micro-Relay
 To provide secure, human-in-the-loop mobile alerting and Command & Control (C2) without cloud dependencies:
@@ -115,3 +117,18 @@ Pre-configured, production-ready configuration profiles are located in `config/p
 * `config/profiles/edge-sensor.toml`: Minimal footprint off-grid sensor (LoRa serial + BitChat BLE only; REST on `127.0.0.1:8091`).
 * `config/profiles/mesh-repeater.toml`: Hilltop tower relay bridging RF LoRa clusters to LAN backhaul routers.
 * `config/profiles/central-gateway.toml`: NOC / Datacenter gateway with protected Web UI, Asterisk telephony egress, Nostr quorum, and WireGuard VPN peering.
+
+---
+
+## 6. Multi-Layered Configuration & Cloud-Native 12-Factor Setup
+
+OpenAlert provides a flexible multi-layered configuration engine powered by the Rust [`config`](https://docs.rs/config/latest/config/) crate and Serde, offering complete feature parity with `py-phone-caller`'s Python Dynaconf ecosystem.
+
+Operators have 4 distinct ways to configure the daemon:
+1. **TOML Configuration File:** Standard static configuration in `config/openalertd.toml`.
+2. **Turnkey Deployment Profiles:** Modular hardware profiles in `config/profiles/` (`edge-sensor.toml`, `mesh-repeater.toml`, `central-gateway.toml`).
+3. **12-Factor Environment Variables:** Cloud-native overrides via `OPENALERT_<SECTION>__<KEY>` (e.g. `OPENALERT_REST__LISTEN_PORT=8080`, `OPENALERT_DAEMON__LOG_LEVEL=debug`, `OPENALERT_STORAGE__PATH=":memory:"`) allowing **pure container execution with zero disk files mounted**.
+4. **Dynamic Web UI & REST API:** Live in-process configuration inspection, syntax validation, automated `.bak` backups, and hot-reloading from the browser.
+
+> [!TIP]
+> For the comprehensive configuration guide, full environment variable mapping table, and Kubernetes / Docker Compose manifests, see the [OpenAlert Configuration Guide](CONFIGURATION_GUIDE.md).

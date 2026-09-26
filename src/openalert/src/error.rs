@@ -12,6 +12,10 @@ pub enum OpenAlertError {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    /// Layered configuration builder or deserialization error.
+    #[error("Configuration build error: {0}")]
+    ConfigBuilder(#[from] config::ConfigError),
+
     /// TOML parsing or deserialization error.
     #[error("TOML decode error: {0}")]
     Toml(#[from] toml::de::Error),

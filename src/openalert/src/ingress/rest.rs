@@ -156,33 +156,129 @@ pub fn verify_hmac_sha256(secret: &[u8], payload: &[u8], signature_hex: &str) ->
     mac.verify_slice(&expected_sig).is_ok()
 }
 
-/// Validates Bearer token authorization if configured.
+/// Validates Bearer token or HTTP Basic authorization according to RestConfig.
+pub fn check_rest_auth(
+    headers: &HeaderMap,
+    config: &RestConfig,
+) -> std::result::Result<(), (StatusCode, Json<serde_json::Value>)> {
+    let auth_configured = config.auth.as_ref().map(|a| a.is_active()).unwrap_or(false)
+        || config.auth_token.is_some();
+
+    if !auth_configured {
+        return Ok(());
+    }
+
+    let auth_header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok());
+
+    let Some(auth_val) = auth_header else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Missing Authorization header"
+            })),
+        ));
+    };
+
+    if let Some(ref auth) = config.auth {
+        match auth.auth_type.as_deref().map(|s| s.to_lowercase()).as_deref() {
+            Some("basic") => {
+                if let Some(encoded) = auth_val.strip_prefix("Basic ") {
+                    use base64::Engine;
+                    if let Some((username, password)) = base64::engine::general_purpose::STANDARD
+                        .decode(encoded.trim())
+                        .ok()
+                        .and_then(|d| String::from_utf8(d).ok())
+                        .and_then(|creds| {
+                            creds
+                                .split_once(':')
+                                .map(|(u, p)| (u.to_string(), p.to_string()))
+                        })
+                    {
+                        use sha2::{Digest, Sha256};
+                        let given_hash = hex::encode(Sha256::digest(password.as_bytes()));
+                        let expected_user = auth.username.as_deref().unwrap_or_default();
+                        let raw_expected_hash = auth
+                            .password_hash
+                            .as_deref()
+                            .unwrap_or_default()
+                            .trim()
+                            .to_lowercase();
+                        let clean_expected = raw_expected_hash
+                            .strip_prefix("sha256:")
+                            .unwrap_or(&raw_expected_hash);
+
+                        let user_match = verify_constant_time(username.trim(), expected_user);
+                        let pass_match = verify_constant_time(&given_hash, clean_expected);
+
+                        if user_match && pass_match {
+                            return Ok(());
+                        }
+                    }
+                }
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({
+                        "status": "error",
+                        "message": "Invalid HTTP Basic credentials"
+                    })),
+                ));
+            }
+            Some("bearer") => {
+                if let Some(token) = auth_val.strip_prefix("Bearer ") {
+                    use sha2::{Digest, Sha256};
+                    let token_hash = hex::encode(Sha256::digest(token.trim().as_bytes()));
+                    let raw_expected_hash = auth
+                        .token_hash
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_lowercase();
+                    let clean_expected = raw_expected_hash
+                        .strip_prefix("sha256:")
+                        .unwrap_or(&raw_expected_hash);
+
+                    if verify_constant_time(&token_hash, clean_expected) {
+                        return Ok(());
+                    }
+                }
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({
+                        "status": "error",
+                        "message": "Invalid Bearer authorization token"
+                    })),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if config.auth_token.as_deref().is_some_and(|expected| {
+        auth_val
+            .strip_prefix("Bearer ")
+            .is_some_and(|token| verify_constant_time(token.trim(), expected))
+    }) {
+        return Ok(());
+    }
+
+    Err((
+        StatusCode::UNAUTHORIZED,
+        Json(serde_json::json!({
+            "status": "error",
+            "message": "Invalid or missing Bearer authorization token"
+        })),
+    ))
+}
+
+/// Validates Bearer token or HTTP Basic authorization if configured (alias to `check_rest_auth`).
 pub fn check_bearer_auth(
     headers: &HeaderMap,
     config: &RestConfig,
 ) -> std::result::Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let Some(ref expected_token) = config.auth_token else {
-        return Ok(());
-    };
-
-    let is_valid = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|val| val.strip_prefix("Bearer "))
-        .map(|token| verify_constant_time(token.trim(), expected_token))
-        .unwrap_or(false);
-
-    if is_valid {
-        Ok(())
-    } else {
-        Err((
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Invalid or missing Bearer authorization token"
-            })),
-        ))
-    }
+    check_rest_auth(headers, config)
 }
 
 /// Validates webhook timestamp anti-replay window and HMAC-SHA256 signature.
@@ -1192,6 +1288,7 @@ mod tests {
             listen_port: 8080,
             enable_cors: false,
             auth_token: Some("secret123".to_string()),
+            auth: None,
             webhook_secret: None,
             webhook_max_skew_seconds: 60,
             tls: Default::default(),
@@ -1252,6 +1349,7 @@ mod tests {
             listen_port: 8080,
             enable_cors: false,
             auth_token: None,
+            auth: None,
             webhook_secret: None,
             webhook_max_skew_seconds: 60,
             tls: Default::default(),
@@ -1283,5 +1381,99 @@ mod tests {
             HeaderValue::from_str(&future.to_string()).unwrap(),
         );
         assert!(check_webhook_security(&headers, body, &config).is_err());
+    }
+
+    #[test]
+    fn test_rest_auth_basic_and_bearer_hashed() {
+        use crate::config::RestAuthConfig;
+        use base64::Engine;
+
+        // 1. Basic Auth with SHA-256 password hash
+        let password = "SuperSecretPassword42";
+        use sha2::{Digest, Sha256};
+        let hash = hex::encode(Sha256::digest(password.as_bytes()));
+
+        let mut config = RestConfig {
+            listen_host: "127.0.0.1".to_string(),
+            listen_port: 8080,
+            enable_cors: false,
+            auth_token: None,
+            auth: Some(RestAuthConfig {
+                auth_type: Some("basic".to_string()),
+                username: Some("alertmanager".to_string()),
+                password_hash: Some(format!("sha256:{}", hash)),
+                token_hash: None,
+            }),
+            webhook_secret: None,
+            webhook_max_skew_seconds: 60,
+            tls: Default::default(),
+        };
+
+        // Missing header -> 401
+        assert!(check_bearer_auth(&HeaderMap::new(), &config).is_err());
+
+        // Correct Basic Auth credentials -> OK
+        let creds = format!("{}:{}", "alertmanager", password);
+        let encoded = base64::engine::general_purpose::STANDARD.encode(creds.as_bytes());
+        let mut valid_headers = HeaderMap::new();
+        valid_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Basic {}", encoded)).unwrap(),
+        );
+        assert!(check_bearer_auth(&valid_headers, &config).is_ok());
+
+        // Incorrect password -> 401
+        let bad_creds = format!("{}:{}", "alertmanager", "WrongPassword");
+        let bad_encoded = base64::engine::general_purpose::STANDARD.encode(bad_creds.as_bytes());
+        let mut bad_headers = HeaderMap::new();
+        bad_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Basic {}", bad_encoded)).unwrap(),
+        );
+        assert!(check_bearer_auth(&bad_headers, &config).is_err());
+
+        // Incorrect username -> 401
+        let bad_user = format!("{}:{}", "wrong_user", password);
+        let bad_user_encoded = base64::engine::general_purpose::STANDARD.encode(bad_user.as_bytes());
+        let mut bad_user_headers = HeaderMap::new();
+        bad_user_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Basic {}", bad_user_encoded)).unwrap(),
+        );
+        assert!(check_bearer_auth(&bad_user_headers, &config).is_err());
+
+        // 2. Bearer Auth with SHA-256 token hash
+        let token = "my-secure-bearer-token-99";
+        let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
+
+        config.auth = Some(RestAuthConfig {
+            auth_type: Some("bearer".to_string()),
+            username: None,
+            password_hash: None,
+            token_hash: Some(format!("sha256:{}", token_hash)),
+        });
+
+        // Valid token -> OK
+        let mut bearer_headers = HeaderMap::new();
+        bearer_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+        );
+        assert!(check_bearer_auth(&bearer_headers, &config).is_ok());
+
+        // Invalid token -> 401
+        let mut bad_bearer_headers = HeaderMap::new();
+        bad_bearer_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer wrong-token-xyz"),
+        );
+        assert!(check_bearer_auth(&bad_bearer_headers, &config).is_err());
+
+        // 3. Disabled auth -> OK
+        config.auth = Some(RestAuthConfig {
+            auth_type: Some("none".to_string()),
+            ..Default::default()
+        });
+        assert!(check_bearer_auth(&HeaderMap::new(), &config).is_ok());
     }
 }
