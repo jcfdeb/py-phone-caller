@@ -18,6 +18,7 @@ members = [
     "py-phone-caller-utils",
     "py-phone-caller-workspace",
 ]
+build-constraints = [{ name = "cython", specifier = "<3.1" }]
 
 [[package]]
 name = "addict"

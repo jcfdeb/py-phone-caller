@@ -1,0 +1,13 @@
+---
+# Install with:
+#   ansible-galaxy collection install -r requirements.yml
+collections:
+  # asterisk_py_phone_caller
+  - name: community.general
+    version: ">=8.0.0"
+  # deploy_py-phone-caller: synchronize and firewalld
+  - name: ansible.posix
+    version: ">=1.5.0"
+  # deploy_py-phone-caller: PostgreSQL provisioning
+  - name: community.postgresql
+    version: ">=3.0.0"

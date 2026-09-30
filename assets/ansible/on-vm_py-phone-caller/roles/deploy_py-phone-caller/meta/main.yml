@@ -1,0 +1,36 @@
+---
+galaxy_info:
+  role_name: deploy_py_phone_caller
+  namespace: py_phone_caller
+  author: py-phone-caller team
+  description: >-
+    Deploys the py-phone-caller microservice stack as systemd units behind a
+    Caddy reverse proxy, with PostgreSQL and Redis/Valkey provisioning.
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+    - name: EL
+      versions:
+        - "9"
+        - "10"
+  galaxy_tags:
+    - asterisk
+    - alerting
+    - monitoring
+    - systemd
+    - voip
+
+dependencies: []
+
+collections:
+  - ansible.posix
+  - community.general
+  - community.postgresql

@@ -1,4 +1,4 @@
-[py-phone-caller]
+[{{ asterisk_context }}]
 ; Primary Extension
 exten => {{ asterisk_extension }},1,Noop(Py-Phone-Caller Start)
  same => n,Playback(greeting-message)

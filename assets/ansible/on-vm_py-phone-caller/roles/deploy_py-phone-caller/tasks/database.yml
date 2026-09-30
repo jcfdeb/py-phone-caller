@@ -1,146 +1,108 @@
 ---
-- name: Configure pg_hba.conf to use md5 for local connections (RHEL/Rocky)
-  replace:
-    path: /var/lib/pgsql/data/pg_hba.conf
-    regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+ident'
-    replace: 'host    all             all             127.0.0.1/32            md5'
-  become: yes
-  when:
-    - ansible_facts['os_family'] == "RedHat"
-    - py_phone_caller_manage_local_postgres | bool
-  notify: Reload PostgreSQL
+# Two provisioning paths:
+#
+#   local  - PostgreSQL runs on this host; connect over the unix socket as the
+#            "postgres" system user (peer authentication, no admin password).
+#   remote - connect over TCP as py_phone_caller_db_admin_user.
+#
+# validate.yml already refused the remote path without an admin password.
 
-- name: Flush handlers to ensure PostgreSQL is reloaded
-  meta: flush_handlers
+- name: Locate pg_hba.conf
+  ansible.builtin.command:
+    cmd: psql -tAc "SHOW hba_file"
+  become: true
+  become_user: postgres
+  register: _ppc_hba
+  changed_when: false
   when: py_phone_caller_manage_local_postgres | bool
 
-# ------------------------------------------------------------------------------
-# 1. Unattended / Authenticated Provisioning (when admin credentials provided)
-# ------------------------------------------------------------------------------
-- name: Create PostgreSQL user (authenticated admin)
+# RHEL ships "ident" for TCP connections from localhost, which rejects the
+# password the services authenticate with. Debian already allows passwords.
+- name: Allow password authentication from loopback
+  community.postgresql.postgresql_pg_hba:
+    dest: "{{ _ppc_hba.stdout | trim }}"
+    contype: host
+    databases: all
+    users: all
+    address: "{{ item }}"
+    method: "{{ py_phone_caller_pg_hba_method }}"
+    state: present
+  loop:
+    - "127.0.0.1/32"
+    - "::1/128"
+  register: _ppc_pg_hba
+  when: py_phone_caller_manage_local_postgres | bool
+
+# Reloaded inline rather than through a handler: flushing handlers here would
+# also fire the service restart, and on a first run the units do not exist yet.
+- name: Reload PostgreSQL
+  ansible.builtin.service:
+    name: "{{ py_phone_caller_postgres_service }}"
+    state: reloaded
+  when:
+    - py_phone_caller_manage_local_postgres | bool
+    - _ppc_pg_hba is changed
+
+- name: Create the application role
   community.postgresql.postgresql_user:
     name: "{{ py_phone_caller_final_config.database.db_user }}"
     password: "{{ py_phone_caller_final_config.database.db_password }}"
-    role_attr_flags: NOSUPERUSER,CREATEDB,LOGIN
-    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
-    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
-    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
-    login_password: "{{ py_phone_caller_db_admin_password }}"
-  when:
-    - py_phone_caller_manage_database | bool
-    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+    role_attr_flags: NOSUPERUSER,NOCREATEDB,LOGIN
+    login_host: "{{ _ppc_db_login.host }}"
+    login_port: "{{ _ppc_db_login.port }}"
+    login_user: "{{ _ppc_db_login.user }}"
+    login_password: "{{ _ppc_db_login.password }}"
+    login_unix_socket: "{{ _ppc_db_login.socket }}"
+  become: "{{ py_phone_caller_manage_local_postgres | bool }}"
+  become_user: postgres
+  no_log: "{{ py_phone_caller_db_no_log | bool }}"
 
-- name: Create PostgreSQL database (authenticated admin)
+- name: Create the application database
   community.postgresql.postgresql_db:
     name: "{{ py_phone_caller_final_config.database.db_name }}"
     owner: "{{ py_phone_caller_final_config.database.db_user }}"
     encoding: UTF8
-    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
-    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
-    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
-    login_password: "{{ py_phone_caller_db_admin_password }}"
-  when:
-    - py_phone_caller_manage_database | bool
-    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+    login_host: "{{ _ppc_db_login.host }}"
+    login_port: "{{ _ppc_db_login.port }}"
+    login_user: "{{ _ppc_db_login.user }}"
+    login_password: "{{ _ppc_db_login.password }}"
+    login_unix_socket: "{{ _ppc_db_login.socket }}"
+  become: "{{ py_phone_caller_manage_local_postgres | bool }}"
+  become_user: postgres
+  no_log: "{{ py_phone_caller_db_no_log | bool }}"
 
-- name: Grant schema public privileges (authenticated admin)
+# PostgreSQL 15 revoked CREATE on schema public from PUBLIC, so the Piccolo
+# migrations caller_register runs at startup need it granted explicitly.
+- name: Grant the application role full rights on schema public
   community.postgresql.postgresql_privs:
-    database: "{{ py_phone_caller_final_config.database.db_name }}"
-    role: "{{ py_phone_caller_final_config.database.db_user }}"
+    login_db: "{{ py_phone_caller_final_config.database.db_name }}"
+    roles: "{{ py_phone_caller_final_config.database.db_user }}"
     type: schema
     objs: public
     privs: ALL
-    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
-    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
-    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
-    login_password: "{{ py_phone_caller_db_admin_password }}"
-  when:
-    - py_phone_caller_manage_database | bool
-    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
+    login_host: "{{ _ppc_db_login.host }}"
+    login_port: "{{ _ppc_db_login.port }}"
+    login_user: "{{ _ppc_db_login.user }}"
+    login_password: "{{ _ppc_db_login.password }}"
+    login_unix_socket: "{{ _ppc_db_login.socket }}"
+  become: "{{ py_phone_caller_manage_local_postgres | bool }}"
+  become_user: postgres
+  no_log: "{{ py_phone_caller_db_no_log | bool }}"
 
-- name: Ensure uuid-ossp extension is enabled (authenticated admin)
+# caller_register issues CREATE EXTENSION at startup too, but it connects as
+# the unprivileged application role and cannot create extensions itself.
+- name: Enable the required extensions
   community.postgresql.postgresql_ext:
-    name: "uuid-ossp"
-    db: "{{ py_phone_caller_final_config.database.db_name }}"
-    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
-    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
-    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
-    login_password: "{{ py_phone_caller_db_admin_password }}"
-  when:
-    - py_phone_caller_manage_database | bool
-    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
-
-- name: Ensure pgcrypto extension is enabled (authenticated admin)
-  community.postgresql.postgresql_ext:
-    name: "pgcrypto"
-    db: "{{ py_phone_caller_final_config.database.db_name }}"
-    login_host: "{{ py_phone_caller_final_config.database.db_host }}"
-    login_port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
-    login_user: "{{ py_phone_caller_db_admin_user | default('postgres') }}"
-    login_password: "{{ py_phone_caller_db_admin_password }}"
-  when:
-    - py_phone_caller_manage_database | bool
-    - py_phone_caller_db_admin_password is defined and py_phone_caller_db_admin_password | length > 0
-
-# ------------------------------------------------------------------------------
-# 2. Local Peer Authentication Provisioning (local PostgreSQL with become postgres)
-# ------------------------------------------------------------------------------
-- name: Create PostgreSQL user (local peer auth)
-  community.postgresql.postgresql_user:
-    name: "{{ py_phone_caller_final_config.database.db_user }}"
-    password: "{{ py_phone_caller_final_config.database.db_password }}"
-    role_attr_flags: NOSUPERUSER,CREATEDB,LOGIN
-  become: yes
+    name: "{{ item }}"
+    login_db: "{{ py_phone_caller_final_config.database.db_name }}"
+    login_host: "{{ _ppc_db_login.host }}"
+    login_port: "{{ _ppc_db_login.port }}"
+    login_user: "{{ _ppc_db_login.user }}"
+    login_password: "{{ _ppc_db_login.password }}"
+    login_unix_socket: "{{ _ppc_db_login.socket }}"
+  loop:
+    - "uuid-ossp"
+    - "pgcrypto"
+  become: "{{ py_phone_caller_manage_local_postgres | bool }}"
   become_user: postgres
-  when:
-    - py_phone_caller_manage_database | bool
-    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
-    - py_phone_caller_manage_local_postgres | bool
-
-- name: Create PostgreSQL database (local peer auth)
-  community.postgresql.postgresql_db:
-    name: "{{ py_phone_caller_final_config.database.db_name }}"
-    owner: "{{ py_phone_caller_final_config.database.db_user }}"
-    encoding: UTF8
-  become: yes
-  become_user: postgres
-  when:
-    - py_phone_caller_manage_database | bool
-    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
-    - py_phone_caller_manage_local_postgres | bool
-
-- name: Grant schema public privileges (local peer auth)
-  community.postgresql.postgresql_privs:
-    database: "{{ py_phone_caller_final_config.database.db_name }}"
-    role: "{{ py_phone_caller_final_config.database.db_user }}"
-    type: schema
-    objs: public
-    privs: ALL
-  become: yes
-  become_user: postgres
-  when:
-    - py_phone_caller_manage_database | bool
-    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
-    - py_phone_caller_manage_local_postgres | bool
-
-- name: Ensure uuid-ossp extension is enabled (local peer auth)
-  community.postgresql.postgresql_ext:
-    name: "uuid-ossp"
-    db: "{{ py_phone_caller_final_config.database.db_name }}"
-  become: yes
-  become_user: postgres
-  when:
-    - py_phone_caller_manage_database | bool
-    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
-    - py_phone_caller_manage_local_postgres | bool
-
-- name: Ensure pgcrypto extension is enabled (local peer auth)
-  community.postgresql.postgresql_ext:
-    name: "pgcrypto"
-    db: "{{ py_phone_caller_final_config.database.db_name }}"
-  become: yes
-  become_user: postgres
-  when:
-    - py_phone_caller_manage_database | bool
-    - (py_phone_caller_db_admin_password is not defined or py_phone_caller_db_admin_password | length == 0)
-    - py_phone_caller_manage_local_postgres | bool
+  no_log: "{{ py_phone_caller_db_no_log | bool }}"

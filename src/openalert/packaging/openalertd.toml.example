@@ -1,0 +1,202 @@
+# ==============================================================================
+# OpenAlert Gateway Daemon Configuration (openalertd)
+#
+# Multi-Layered Configuration Support:
+# Any setting in this file can be overridden via 12-Factor environment variables
+# using the Dynaconf convention: OPENALERT_<SECTION>__<KEY>
+# (e.g., OPENALERT_REST__LISTEN_PORT=8080, OPENALERT_DAEMON__LOG_LEVEL=debug)
+# For container deployments, openalertd can run purely from environment variables
+# without mounting a TOML configuration file.
+# ==============================================================================
+
+[daemon]
+name = "openalertd-hub"
+log_level = "info"
+# Logging format: "default" (terminal with ISO-8601 timestamps) or "systemd" (without timestamps for journald)
+logging = "default"
+
+[rest]
+listen_host = "0.0.0.0"
+listen_port = 8090
+enable_cors = true
+
+# Optional Inbound REST & Webhook Ingress Authentication
+# Protects inbound API endpoints (/api/v1/alert, /api/v1/status, /webhook/prometheus, etc.)
+# Supports "none" (default), "basic", or "bearer".
+# Passwords and tokens are verified via constant-time SHA-256 comparison and NEVER stored in plaintext.
+# Generate hashes using: openalertd hash-password "<secret>"
+[rest.auth]
+type = "none" # Options: "none", "basic", "bearer"
+# For type = "basic":
+username = "operator"
+password_hash = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+# For type = "bearer":
+# token_hash = "sha256:..." 
+
+[dashboard.auth]
+# Web Mission Control dashboard authentication.
+# Default: disabled (zero-friction open access on localhost / trusted LAN).
+# To enable authentication, set enabled = true, pick a username, and generate a SHA-256 hash using:
+#   openalertd hash-password "<your-password>"
+enabled = false
+username = "admin"
+password_hash = ""
+
+[templates]
+template_dir = "templates"
+default_template = "prometheus_alertmanager.json.tera"
+
+[storage]
+# Embedded SQLite persistence layer
+enabled = true
+# Database file path on disk, or ":memory:" for RAM-only
+path = "data/openalert.db"
+# Sliding window retention in seconds (900s = 15 minutes)
+retention_seconds = 900
+# Re-route pending / unacknowledged alerts found in storage on startup
+recover_pending_on_startup = true
+# Background pruning interval in seconds
+prune_interval_seconds = 60
+
+[nostr]
+# Full Mesh Relays + Single Node
+relays = [
+    "ws://127.0.0.1:8080",
+    "ws://127.0.0.1:8081",
+    "ws://127.0.0.1:8082",
+    "ws://127.0.0.1:8083",
+    "ws://127.0.0.1:8084",
+    "ws://127.0.0.1:8085"
+]
+# Kind 30000 (Alerts / Ephemeral Replaceable)
+kind = 30000
+# Subscribe to incoming alerts from the mesh
+enable_subscriber = true
+subscription_filter_kinds = [30000, 1]
+# Alert validity / time-to-live in seconds (NIP-40 expiration tag & stale alert filtering)
+alert_ttl_seconds = 3600
+# Historical catch-up lookback in seconds on startup (0 = only live events, 300 = past 5 minutes)
+subscription_lookback_seconds = 300
+
+[nostr.privacy]
+# Nostr alert privacy and group encryption.
+# Mode options:
+#   "public"    - Cleartext event content and human-readable tags (default).
+#   "encrypted" - Authenticated AEAD encryption (XChaCha20-Poly1305). Public relays and observers
+#                 cannot read the alert summary, description, severity, or node details.
+mode = "public"
+# 256-bit pre-shared hex key (required when mode = "encrypted").
+# Generate a secure key using: `openalertd generate-key`
+shared_key = ""
+# Optional list of authorized sender public keys (hex). If empty, any sender possessing the key is accepted.
+authorized_senders = []
+# When mode is "encrypted", whether to accept unencrypted public alerts. Default: false.
+allow_unencrypted_fallback = false
+
+[bitchat]
+# Native Bluetooth Low Energy (BlueZ D-Bus GATT peripheral & advertising)
+enabled = true
+device = "hci0"
+node_name = "OpenAlert-Mesh"
+service_uuid = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c"
+
+[routing]
+# Routing destinations: "nostr", "webhook", "bitchat", "peering"
+default_destinations = ["nostr", "webhook", "bitchat"]
+# Emergency failover destinations when primary egress channels collapse
+failover_destinations = ["peering"]
+dedup_cache_size = 10000
+dedup_ttl_seconds = 3600
+
+[py_phone_caller]
+# Balancing strategy: "cascade" (failover), "roundrobin", "random", or "broadcast"
+strategy = "cascade"
+circuit_breaker_enabled = true
+circuit_breaker_failure_threshold = 3
+circuit_breaker_cooldown_seconds = 60
+
+# Primary webhook instance (Priority 00)
+[[py_phone_caller.webhooks]]
+url = "http://127.0.0.1:9099/alerts"
+timeout_seconds = 5.0
+max_retries = 3
+delay = 30
+priority = 0
+# Optional Outgoing Webhook Authentication
+# Supports "none" (default), "basic", or "bearer".
+# Credentials support environment variable expansion via ${VAR_NAME} syntax.
+[py_phone_caller.webhooks.auth]
+type = "none" # "none", "basic", or "bearer"
+# username = "webhook_user"
+# password = "${PY_PHONE_CALLER_WEBHOOK_PASS}"
+# token = "${PY_PHONE_CALLER_WEBHOOK_TOKEN}" 
+
+# Secondary backup webhook instance (Priority 10)
+[[py_phone_caller.webhooks]]
+url = "http://127.0.0.1:9097/alerts"
+timeout_seconds = 5.0
+max_retries = 3
+delay = 30
+priority = 10
+
+[peering]
+# Decentralized UDP peering, radio backhaul, and emergency failover subsystem
+enabled = false
+listen_addr = "0.0.0.0:19876"
+# 256-bit Pre-Shared Key (hex-encoded 32 bytes) for AEAD (XChaCha20-Poly1305)
+shared_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+clock_skew_tolerance_secs = 300
+dedup_ttl_seconds = 3600
+
+[peering.circuit_breaker]
+failure_threshold = 3
+base_cooldown_secs = 60
+max_cooldown_secs = 1800
+canary_timeout_ms = 3500
+
+[peering.retry]
+max_ip_retries = 4
+base_timeout_ms = 250
+max_timeout_ms = 8000
+
+# Example Node: LoRa Edge Stub
+# [[peering.nodes]]
+# name = "lora-node-01"
+# addr = "10.0.0.2:19876"
+# link_type = "lora"
+# burst_retries = 3
+# burst_interval_ms = 500
+# burst_jitter_ms = 150
+
+# Example Node: VPN / LAN Gateway
+# [[peering.nodes]]
+# name = "vpn-hub"
+# addr = "192.168.1.10:19876"
+# link_type = "lan"
+# max_ip_retries = 3
+# base_timeout_ms = 200
+
+[sms]
+# Cellular GSM/LTE AT Modem Subsystem (SMS Gateway)
+# Disabled by default. Set enabled = true when a USB GSM/LTE modem (e.g. SIM7600, SIM7100) is attached.
+enabled = false
+
+# Serial AT command port (e.g. /dev/ttyUSB2 for SIMCom Cat-1/Cat-4 modem AT port)
+port = "/dev/ttyUSB2"
+
+# Serial baud rate (standard 115200)
+baud_rate = 115200
+
+# SIM inbound polling interval in seconds
+poll_interval_seconds = 10
+
+# SQLite message retention TTL in minutes (1440 = 24 hours, 0 = never delete)
+ttl_minutes = 1440
+
+# Pre-configured phone numbers to notify on outbound alerts (E.164 format)
+# Note: Can also be dynamically viewed and edited via the Web UI NOC Dashboard and REST API.
+recipients = []
+
+# Authorized sender phone numbers permitted to trigger alerts via incoming SMS.
+# If empty, all incoming SMS from any sender are accepted and routed into OpenAlert.
+authorized_senders = []

@@ -1,0 +1,77 @@
+# ==============================================================================
+# OpenAlert Profile: Edge Sensor Node (LoRa + BitChat BLE Only)
+# Use Case: Off-grid solar/battery IoT sensors, weather probes, perimeter monitors
+# ==============================================================================
+
+[daemon]
+name = "openalertd-edge-sensor"
+log_level = "info"
+logging = "default"
+
+[rest]
+listen_host = "127.0.0.1"
+listen_port = 8091
+enable_cors = false
+
+[dashboard.auth]
+enabled = false
+
+[templates]
+template_dir = "templates"
+default_template = "prometheus_alertmanager.json.tera"
+
+[storage]
+enabled = true
+path = "data/edge_sensor.db"
+retention_seconds = 900
+recover_pending_on_startup = true
+prune_interval_seconds = 60
+
+[nostr]
+relays = []
+kind = 30000
+enable_subscriber = false
+alert_ttl_seconds = 3600
+subscription_lookback_seconds = 0
+
+[bitchat]
+# Local Bluetooth Low Energy mesh for operator smartphone interaction
+enabled = true
+device = "hci0"
+node_name = "EdgeSensor-01"
+service_uuid = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c"
+
+[routing]
+default_destinations = ["peering", "bitchat"]
+failover_destinations = ["peering"]
+dedup_cache_size = 2048
+dedup_ttl_seconds = 3600
+
+[peering]
+# Sub-GHz LoRa physical transmission to mountain repeater or central gateway
+enabled = true
+listen_addr = "0.0.0.0:19876"
+shared_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+clock_skew_tolerance_secs = 600
+dedup_ttl_seconds = 3600
+
+[peering.circuit_breaker]
+failure_threshold = 3
+base_cooldown_secs = 30
+max_cooldown_secs = 600
+canary_timeout_ms = 5000
+
+[[peering.nodes]]
+name = "mountain-repeater"
+addr = "192.168.10.1:19876"
+link_type = "lora_serial"
+serial_device = "/dev/ttyUSB0"
+baud_rate = 115200
+spreading_factor = 9
+bandwidth_khz = 125
+duty_cycle_percent = 1.0
+burst_retries = 3
+burst_interval_ms = 400
+burst_jitter_ms = 80
+failure_threshold = 3
+base_cooldown_secs = 60

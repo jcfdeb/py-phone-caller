@@ -1,0 +1,119 @@
+---
+# Post-deployment check. Read-only; safe to run at any time.
+#
+#   ansible-playbook verify.yml
+
+- name: Verify the py-phone-caller deployment
+  hosts: app_servers
+  gather_facts: true
+
+  vars:
+    py_phone_caller_verify_settle_seconds: 20
+    # aiohttp services expose /health from py_phone_caller_utils.telemetry.
+    py_phone_caller_verify_endpoints:
+      - {name: asterisk_caller, port: 8081}
+      - {name: generate_audio, port: 8082}
+      - {name: caller_register, port: 8083}
+      - {name: caller_prometheus_webhook, port: 8084}
+      - {name: caller_sms, port: 8085}
+      - {name: caller_scheduler, port: 8086}
+      - {name: caller_address_book, port: 8087}
+
+  tasks:
+    - name: Collect the installed units
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: "py-phone-caller-*.service"
+      register: _units
+
+    - name: Fail when nothing is installed
+      ansible.builtin.assert:
+        that:
+          - _units.files | length > 0
+        fail_msg: "No py-phone-caller-*.service units found. Run deploy_py-phone-caller.yml first."
+        quiet: true
+
+    - name: Give the units a moment to settle
+      ansible.builtin.wait_for:
+        timeout: "{{ py_phone_caller_verify_settle_seconds }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Read the unit states
+      ansible.builtin.command:
+        cmd: "systemctl is-active {{ item.path | basename }}"
+      loop: "{{ _units.files | sort(attribute='path') }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: _states
+      changed_when: false
+      failed_when: false
+
+    - name: Show which units are not active
+      ansible.builtin.debug:
+        msg: "{{ _inactive }}"
+      vars:
+        _inactive: >-
+          {{ _states.results | rejectattr('stdout', 'equalto', 'active')
+             | map(attribute='item.path') | map('basename') | list }}
+      when: _inactive | length > 0
+
+    - name: Fail when a unit is not active
+      ansible.builtin.assert:
+        that:
+          - _states.results | selectattr('stdout', 'equalto', 'active') | list | length
+            == _states.results | length
+        fail_msg: >-
+          Some units are not active. Inspect them with:
+          journalctl -u <unit> -n 100 --no-pager
+        quiet: true
+
+    - name: Probe the service health endpoints
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ item.port }}/health"
+        status_code: [200]
+        timeout: 5
+      loop: "{{ py_phone_caller_verify_endpoints }}"
+      loop_control:
+        label: "{{ item.name }}:{{ item.port }}"
+      register: _health
+      retries: 6
+      delay: 5
+      until: _health is succeeded
+
+    - name: Probe the web UI directly
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ py_phone_caller_config.py_phone_caller_ui.ui_listen_on_port | default(5000) }}/"
+        status_code: [200, 302, 401]
+        timeout: 10
+      register: _ui_direct
+      retries: 6
+      delay: 5
+      until: _ui_direct is succeeded
+
+    # By name, not by IP: Caddy serves this as a TLS virtual host and
+    # "tls internal" needs SNI to pick the certificate, so a Host header
+    # against https://127.0.0.1/ fails the handshake. The name is resolved
+    # through the /etc/hosts block the role manages.
+    - name: Probe the web UI through Caddy
+      ansible.builtin.uri:
+        url: "https://{{ caddy_domain_name | default('py-phone-caller.lan') }}/"
+        validate_certs: false
+        status_code: [200, 302, 401]
+        timeout: 10
+      register: _ui
+      retries: 6
+      delay: 5
+      until: _ui is succeeded
+      when: py_phone_caller_manage_caddy | default(true) | bool
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "units active: {{ _states.results | length }}"
+          - "health endpoints OK: {{ py_phone_caller_verify_endpoints | length }}"
+          - "web UI direct: HTTP {{ _ui_direct.status }}"
+          - >-
+            web UI via Caddy:
+            {{ _ui.status | default('skipped - Caddy not managed here') }}

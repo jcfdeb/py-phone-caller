@@ -1,86 +1,107 @@
 ---
-- name: Install Caddy dependencies (Debian)
-  apt:
+# Caddy can bind :80 and :443 and still never receive a packet: a NAT
+# REDIRECT/DNAT rule installed by another proxy (a rootless Podman container
+# publishing 8080/8443, for example) diverts the traffic first, loopback
+# included. The result looks healthy from systemd and fails only at the TLS
+# handshake, so check before installing rather than after.
+
+- name: Read the NAT table
+  ansible.builtin.command:
+    cmd: iptables -t nat -S
+  register: _ppc_nat
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read the current listeners
+  ansible.builtin.command:
+    cmd: ss -ltnp
+  register: _ppc_listeners
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Refuse to install a second reverse proxy
+  ansible.builtin.assert:
+    that:
+      - _ppc_nat_diversions | length == 0
+      - _ppc_foreign_listeners | length == 0
+    fail_msg: >-
+      Something else already owns the Caddy ports on this host, so Caddy would
+      install, start, and never receive a request.
+      {% if _ppc_nat_diversions %}
+      NAT rules diverting them: {{ _ppc_nat_diversions | join(' | ') }}.
+      {% endif %}
+      {% if _ppc_foreign_listeners %}
+      Listeners: {{ _ppc_foreign_listeners | join(' | ') }}.
+      {% endif %}
+      Either set py_phone_caller_manage_caddy=false and point the existing
+      proxy at {{ _ppc_ui_upstream_host }}:{{ _ppc_ui_port }}, or remove the
+      other proxy. Set py_phone_caller_caddy_force=true to install anyway.
+    quiet: true
+  vars:
+    _ppc_nat_diversions: >-
+      {{ _ppc_nat.stdout_lines | default([])
+         | select('search', '--dport (80|443) ')
+         | select('search', '-j (REDIRECT|DNAT)') | list }}
+    _ppc_foreign_listeners: >-
+      {{ _ppc_listeners.stdout_lines | default([])
+         | select('search', ':(80|443)\s')
+         | reject('search', 'caddy') | list }}
+  when: not (py_phone_caller_caddy_force | bool)
+
+- name: Install the Caddy repository prerequisites (Debian)
+  ansible.builtin.apt:
     name:
       - debian-keyring
       - debian-archive-keyring
       - apt-transport-https
+      - gnupg
     state: present
   when: ansible_facts['os_family'] == "Debian"
-  tags: caddy
 
-- name: Download Caddy GPG key (Debian)
-  get_url:
+- name: Install the Caddy signing key (Debian)
+  ansible.builtin.get_url:
     url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
-    dest: /tmp/caddy.gpg.key
+    dest: /etc/apt/keyrings/caddy-stable.asc
+    owner: root
+    group: root
+    mode: "0644"
   when: ansible_facts['os_family'] == "Debian"
-  tags: caddy
 
-- name: Dearmor Caddy GPG key (Debian)
-  command: gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg /tmp/caddy.gpg.key
-  args:
-    creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  when: ansible_facts['os_family'] == "Debian"
-  tags: caddy
-
-- name: Add Caddy repository (Debian)
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
+- name: Add the Caddy repository (Debian)
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/caddy-stable.asc]
+      https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
     state: present
     filename: caddy-stable
+    update_cache: true
   when: ansible_facts['os_family'] == "Debian"
-  tags: caddy
 
-- name: Install Caddy (Debian)
-  apt:
+- name: Enable the Caddy COPR repository (RHEL/Rocky)
+  ansible.builtin.command:
+    cmd: dnf -y copr enable @caddy/caddy
+    creates: "/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:group_caddy:caddy.repo"
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Install Caddy
+  ansible.builtin.package:
     name: caddy
     state: present
-    update_cache: yes
-  when: ansible_facts['os_family'] == "Debian"
-  tags: caddy
-
-- name: Install 'dnf-command(copr)' (RedHat)
-  dnf:
-    name: "dnf-command(copr)"
-    state: present
-  when: ansible_facts['os_family'] == "RedHat"
-  tags: caddy
-
-- name: Enable Caddy COPR repository (RedHat)
-  command: dnf copr enable -y @caddy/caddy
-  when: ansible_facts['os_family'] == "RedHat"
-  register: copr_result
-  changed_when: "'Enabled copr' in copr_result.stdout"
-  failed_when: false
-  tags: caddy
-
-- name: Install Caddy (RedHat)
-  dnf:
-    name: caddy
-    state: present
-  when: ansible_facts['os_family'] == "RedHat"
-  tags: caddy
-
-- name: Ensure Caddy config directory exists
-  file:
-    path: /etc/caddy
-    state: directory
-    owner: caddy
-    group: caddy
-    mode: '0755'
-  ignore_errors: yes
-  tags: caddy
 
 - name: Configure Caddy
-  template:
+  ansible.builtin.template:
     src: Caddyfile.j2
     dest: /etc/caddy/Caddyfile
+    owner: root
+    group: caddy
+    mode: "0640"
+    validate: "caddy validate --adapter caddyfile --config %s"
   notify: Reload Caddy
-  tags: caddy
 
 - name: Enable and start Caddy
-  service:
+  ansible.builtin.service:
     name: caddy
     state: started
-    enabled: yes
-  tags: caddy
+    enabled: true

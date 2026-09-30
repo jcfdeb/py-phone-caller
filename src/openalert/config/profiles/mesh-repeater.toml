@@ -1,0 +1,87 @@
+# ==============================================================================
+# OpenAlert Profile: Mesh Repeater Node (LoRa Serial + LAN Dynamic Router)
+# Use Case: Hilltop towers, mast repeaters, bridge between RF and backhaul Ethernet
+# ==============================================================================
+
+[daemon]
+name = "openalertd-repeater-01"
+log_level = "info"
+logging = "systemd"
+
+[rest]
+listen_host = "127.0.0.1"
+listen_port = 8092
+enable_cors = false
+
+[dashboard.auth]
+enabled = false
+
+[templates]
+template_dir = "templates"
+default_template = "prometheus_alertmanager.json.tera"
+
+[storage]
+enabled = true
+path = "data/repeater_spool.db"
+retention_seconds = 1800
+recover_pending_on_startup = true
+prune_interval_seconds = 60
+
+[nostr]
+relays = []
+kind = 30000
+enable_subscriber = false
+alert_ttl_seconds = 3600
+subscription_lookback_seconds = 0
+
+[bitchat]
+# Off-grid hilltop tower has no local BLE clients
+enabled = false
+device = "hci0"
+node_name = "Repeater-01"
+service_uuid = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c"
+
+[routing]
+default_destinations = ["peering"]
+failover_destinations = ["peering"]
+dedup_cache_size = 8192
+dedup_ttl_seconds = 7200
+
+[peering]
+enabled = true
+listen_addr = "0.0.0.0:19876"
+shared_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+clock_skew_tolerance_secs = 300
+dedup_ttl_seconds = 7200
+
+[peering.circuit_breaker]
+failure_threshold = 3
+base_cooldown_secs = 45
+max_cooldown_secs = 900
+canary_timeout_ms = 3500
+
+# Link 1: Sub-GHz LoRa RF Transceiver for off-grid edge sensors
+[[peering.nodes]]
+name = "edge-sensor-cluster"
+addr = "127.0.0.1:19875"
+link_type = "lora_serial"
+serial_device = "/dev/ttyUSB0"
+baud_rate = 115200
+spreading_factor = 9
+bandwidth_khz = 125
+duty_cycle_percent = 1.0
+burst_retries = 3
+burst_interval_ms = 300
+burst_jitter_ms = 50
+failure_threshold = 4
+base_cooldown_secs = 60
+
+# Link 2: Microwave / Fiber LAN Trunk to Central Gateway
+[[peering.nodes]]
+name = "central-gateway"
+addr = "10.0.1.10:19876"
+link_type = "lan"
+max_ip_retries = 3
+base_timeout_ms = 150
+failure_threshold = 3
+base_cooldown_secs = 30

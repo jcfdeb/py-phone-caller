@@ -1,0 +1,39 @@
+{
+  "receiver": "webhook",
+  "status": "{{ status | default(value="firing") }}",
+  "alerts": [
+    {
+      "status": "{{ status | default(value="firing") }}",
+      "labels": {
+        "alertname": "{{ alert_id }}",
+        "instance": "{{ instance | default(value="openalertd:8443") }}",
+        "job": "openalertd",
+        "severity": "{{ severity | default(value="critical") }}",
+        "source": "{{ source | default(value="openalert_bus") }}",
+        "sender": "{{ sender | default(value="openalert-node") }}"
+      },
+      "annotations": {
+        "summary": "{{ summary }}",
+        "description": "{{ description | default(value=summary) }}"
+      },
+      "startsAt": "{{ starts_at }}",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "{{ generator_url | default(value="openalert://mesh") }}"
+    }
+  ],
+  "groupLabels": {
+    "alertname": "{{ alert_id }}"
+  },
+  "commonLabels": {
+    "alertname": "{{ alert_id }}",
+    "severity": "{{ severity | default(value="critical") }}",
+    "source": "{{ source | default(value="openalert_bus") }}"
+  },
+  "commonAnnotations": {
+    "summary": "{{ summary }}",
+    "description": "{{ description | default(value=summary) }}"
+  },
+  "externalURL": "http://openalert.local",
+  "version": "4",
+  "groupKey": "{}:{alertname=\"{{ alert_id }}\"}"
+}

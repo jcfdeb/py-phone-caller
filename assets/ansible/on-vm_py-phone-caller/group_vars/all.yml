@@ -1,0 +1,113 @@
+---
+# Deployment-level settings for the [app_servers] hosts.
+#
+# Application settings (everything that ends up in settings.toml) do NOT
+# belong here: they come from src/config/*.toml through
+#   assets/ansible/tools/toml_to_ansible_vars.py
+# which writes group_vars/app_servers/{config,secrets}.yml.
+#
+# This file holds the knobs that have no equivalent in settings.toml.
+
+# --- Deployment topology -----------------------------------------------------
+# `openalert` is an all-in-one host: PostgreSQL, Redis/Valkey, Asterisk and the
+# eleven Python services all live on it.
+#
+# settings.toml names its dependencies pbx.lan / postgresql.lan / redis.lan so
+# that the container and development stacks keep working. Those names are
+# redirected to loopback here instead of being changed in settings.toml, so
+# regenerating group_vars/app_servers/ never clobbers the topology.
+#
+# py_phone_caller_config_overrides is merged last, after the generated
+# app_servers/config.yml and app_servers/secrets.yml.
+py_phone_caller_config_overrides:
+  commons:
+    asterisk_host: "127.0.0.1"
+  database:
+    db_host: "127.0.0.1"
+  queue:
+    queue_host: "127.0.0.1"
+    queue_url: "redis://127.0.0.1:6379/7"
+
+# --- Reverse proxy -----------------------------------------------------------
+# This host already runs Nginx Proxy Manager (rootless Podman, published on
+# 8080/8181/8443, with iptables REDIRECT sending 80/443 to it). Caddy would
+# bind 80/443 and never receive a packet - the NAT rules divert them first,
+# loopback included - so the role's Caddy support is off and NPM stays the
+# single edge proxy.
+#
+# In NPM, add a proxy host forwarding to http://host.containers.internal:5000
+# (169.254.1.2 inside rootless Podman - verified returning 200 from the npm
+# container). 127.0.0.1 does not work from the container network, and the
+# bridge/public addresses are blocked by ufw.
+#
+# The role refuses to install Caddy here anyway; see the "Refuse to install a
+# second reverse proxy" task.
+py_phone_caller_manage_caddy: false
+
+# Still used for the /etc/hosts alias below and by verify.yml.
+caddy_domain_name: "py-phone-caller.lan"
+caddy_email: ""
+
+# --- Firewall ----------------------------------------------------------------
+# Left enabled deliberately. The aiohttp services bind 0.0.0.0 on 8081-8087
+# (the *_host values in settings.toml are how the services address each other,
+# not bind addresses), so ufw is the only thing keeping them off the network;
+# turning this off would publish all seven. The role only adds 80/443 and
+# OpenSSH, which does not disturb the rules NPM needs.
+py_phone_caller_manage_firewall: true
+
+# Ports to publish in addition to 80/443, for example 8084 so a remote
+# Alertmanager can post to the webhook.
+py_phone_caller_firewall_extra_ports: []
+
+# --- Where the application code comes from -----------------------------------
+# deploy_py-phone-caller.yml points py_phone_caller_local_src_path at this
+# repository, so the control node's checkout is what gets deployed. To deploy
+# from Git instead, set py_phone_caller_git_repo/py_phone_caller_git_version
+# and clear py_phone_caller_local_src_path.
+
+# --- Database ----------------------------------------------------------------
+# The role provisions the role/database/extensions itself.
+#
+#  * database.db_host (in settings.toml) is 127.0.0.1 or localhost
+#    -> PostgreSQL is installed on the target and provisioned over the unix
+#       socket as the "postgres" system user. No admin password needed.
+#
+#  * database.db_host points somewhere else
+#    -> only the role/database are created, over TCP, and an admin password is
+#       required. Put it in group_vars/app_servers.secrets.yml (vault it).
+#
+# py_phone_caller_db_admin_user: "postgres"
+# py_phone_caller_db_admin_password: "{{ vault_pg_admin_password }}"
+#
+# Set to false to manage PostgreSQL entirely outside Ansible.
+# py_phone_caller_manage_database: true
+
+# --- Queue -------------------------------------------------------------------
+# Installs and starts Redis (Debian) or Valkey (RHEL 10+) on the target.
+# Set to false when queue.queue_host points at another machine.
+# py_phone_caller_manage_queue: true
+
+# --- Name resolution ---------------------------------------------------------
+# py_phone_caller_config_overrides above already points the services at
+# loopback. These aliases are a safety net so that any .lan name still left in
+# a configuration file resolves locally instead of failing DNS. The role keeps
+# them inside one marked block in /etc/hosts; empty the list to remove it.
+#
+# caddy_domain_name is included so the host can reach its own web UI by name.
+# Caddy serves it as a TLS virtual host, and "tls internal" needs SNI, so
+# https://127.0.0.1/ with a Host header does not work - the name has to
+# resolve.
+py_phone_caller_hosts_entries:
+  - address: "127.0.0.1"
+    names:
+      - "{{ caddy_domain_name }}"
+      - pbx.lan
+      - postgresql.lan
+      - redis.lan
+
+# --- First boot --------------------------------------------------------------
+# Set to true for one run to have py_phone_caller_ui generate the initial admin
+# password; read it from "journalctl -u py-phone-caller-py-phone-caller-ui",
+# then set it back to false.
+py_phone_caller_ui_reset_password: false

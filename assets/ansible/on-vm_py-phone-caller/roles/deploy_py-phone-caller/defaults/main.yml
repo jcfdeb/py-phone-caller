@@ -1,47 +1,206 @@
 ---
+# ---------------------------------------------------------------------------
+# Identity and filesystem layout
+#
+# The repository layout is preserved on the target so that the uv workspace
+# (declared in the root pyproject.toml as "src/<member>") resolves exactly as
+# it does on a developer machine. Do not rename or symlink "src": uv installs
+# workspace members as editable and records these paths in the virtualenv.
+# ---------------------------------------------------------------------------
 py_phone_caller_user: py-phone-caller
 py_phone_caller_group: py-phone-caller
+py_phone_caller_service_prefix: "py-phone-caller-"
+
 py_phone_caller_install_dir: /opt/py-phone-caller
-py_phone_caller_config_dir: "{{ py_phone_caller_install_dir }}/app/config"
-py_phone_caller_config_source_file: "{{ py_phone_caller_config_dir }}/settings.source.toml"
-py_phone_caller_env_file: "{{ py_phone_caller_config_dir }}/py-phone-caller.env"
-py_phone_caller_ui_reset_password: false
+py_phone_caller_src_dir: "{{ py_phone_caller_install_dir }}/src"
+py_phone_caller_config_dir: "{{ py_phone_caller_src_dir }}/config"
+py_phone_caller_settings_file: "{{ py_phone_caller_config_dir }}/settings.toml"
+py_phone_caller_secrets_file: "{{ py_phone_caller_config_dir }}/.secrets.toml"
 py_phone_caller_venv_dir: "{{ py_phone_caller_install_dir }}/venv"
-py_phone_caller_uv_bin: "{{ py_phone_caller_install_dir }}/bin/uv"
-py_phone_caller_uv_python_install_dir: "{{ py_phone_caller_install_dir }}/.uv/python"
 py_phone_caller_log_dir: /var/log/py-phone-caller
+
+# ---------------------------------------------------------------------------
+# Python toolchain (uv)
+# ---------------------------------------------------------------------------
+py_phone_caller_python_version: "3.14"
+py_phone_caller_uv_dir: "{{ py_phone_caller_install_dir }}/bin"
+py_phone_caller_uv_bin: "{{ py_phone_caller_uv_dir }}/uv"
+py_phone_caller_uv_installer_url: "https://astral.sh/uv/install.sh"
+py_phone_caller_uv_python_install_dir: "{{ py_phone_caller_install_dir }}/.uv/python"
+py_phone_caller_uv_cache_dir: "{{ py_phone_caller_install_dir }}/.uv/cache"
+# Set for air-gapped sites that mirror PyPI. Left empty, uv talks to PyPI.
+py_phone_caller_uv_extra_index_url: ""
+py_phone_caller_uv_insecure_host: ""
+# Fail the play (rather than start crash-looping units) when uv sync fails.
+py_phone_caller_uv_sync_timeout: 3600
+
+# ---------------------------------------------------------------------------
+# Source delivery: either clone from Git, or rsync a local checkout.
+# ---------------------------------------------------------------------------
+py_phone_caller_git_repo: ""
+py_phone_caller_git_version: main
+py_phone_caller_local_src_path: ""
+
+# ansible.posix.synchronize runs rsync over SSH as the connection user. When
+# that user is not root it needs "--rsync-path=sudo rsync", which the module
+# adds only when the task itself uses become.
+py_phone_caller_sync_become: "{{ (ansible_user | default('')) != 'root' }}"
+
+# One-shot repair for a tree left root-owned by an older role version. Walks
+# the whole installation including the virtualenv, so it is off by default.
+py_phone_caller_force_chown: false
+
+# rsync filters applied when syncing the local checkout. Paths starting with
+# "/" are anchored at the installation directory.
+#
+# openalert is a separate Rust daemon with its own packaging under
+# src/openalert/packaging; it is deliberately not part of this deployment.
+py_phone_caller_sync_excludes:
+  # Development noise that must never reach the server.
+  - "/.git/"
+  - "/.github/"
+  - "/.idea/"
+  - "/.junie/"
+  - "/.fleet/"
+  - "/.venv/"
+  - "/.pytest_cache/"
+  - "/.ruff_cache/"
+  - "/.sonarlint/"
+  - "/assets/"
+  - "/docs/"
+  - "/test/"
+  - "/tmp/"
+  - "/pytest.ini"
+  - "/verify_deployment.py"
+  - "__pycache__/"
+  - "*.pyc"
+  - "*.egg-info/"
+  - ".ruff_cache/"
+  # Container build inputs: this role deploys to systemd, not to a runtime.
+  - "/src/.dockerignore"
+  - "/src/build_all_images.sh"
+  - "Dockerfile"
+  - "Containerfile"
+  # openalertd ships separately.
+  - "/src/openalert/"
+  # Cargo build artifacts: 1.4 GB, rebuilt on the target, and not in git
+  # (rsync does not read .gitignore).
+  - "target/"
+
+# Paths that exist only on the target and must survive "rsync --delete".
+# Anything listed here is neither uploaded nor removed.
+py_phone_caller_sync_protected:
+  - "/venv/"
+  - "/bin/"
+  - "/.uv/"
+  - "/.cache/"
+  - "/.local/"
+  - "/.config/"
+  # cargo's registry cache, populated when the native SMS engine is built.
+  - "/.cargo/"
+  - "/.rustup/"
+  # Runtime state created inside the installation directory, which is also
+  # the service account's HOME: gunicorn's control file, and Ansible's own
+  # remote_tmp for become. Without these, --delete removes them every run.
+  - "/.gunicorn/"
+  - "/.ansible/"
+  # Rendered by this role from py_phone_caller_final_config. The whole
+  # directory is excluded, not just the two files: rsync would otherwise keep
+  # resetting its mode, since config.yml deliberately makes it 0750 while the
+  # checkout has it 0755.
+  - "/src/config/"
+  # Downloaded TTS models and the generated audio cache; re-downloading these
+  # costs hundreds of megabytes on every run.
+  - "/src/generate_audio/pre_trained_models/"
+  - "/src/generate_audio/audio/"
+
+# ---------------------------------------------------------------------------
+# Feature switches
+# ---------------------------------------------------------------------------
+py_phone_caller_manage_queue: true
+py_phone_caller_manage_database: true
+py_phone_caller_manage_caddy: true
+# Install Caddy even when another proxy already owns :80/:443. Off by default:
+# a NAT REDIRECT from another proxy silently swallows every request, and the
+# only symptom is a TLS handshake failure.
+py_phone_caller_caddy_force: false
+py_phone_caller_manage_firewall: true
+py_phone_caller_manage_services: true
+# Uninstall compilers once the venv is built. Off by default: it makes the next
+# run unable to rebuild native wheels and "apt/dnf autoremove" can cascade.
+py_phone_caller_remove_build_deps: false
+# Ask py_phone_caller_ui to (re)generate the initial admin password on start.
+py_phone_caller_ui_reset_password: false
+
+# ---------------------------------------------------------------------------
+# PostgreSQL provisioning
+#
+# When db_host resolves to this machine the role installs and manages a local
+# PostgreSQL. Otherwise it only creates the role/database over the network,
+# which needs py_phone_caller_db_admin_password.
+# ---------------------------------------------------------------------------
+py_phone_caller_local_db_hosts:
+  - "127.0.0.1"
+  - "::1"
+  - "localhost"
+py_phone_caller_manage_local_postgres: >-
+  {{ py_phone_caller_final_config.database.db_host in py_phone_caller_local_db_hosts }}
+py_phone_caller_db_admin_user: "postgres"
+py_phone_caller_db_admin_password: ""
+# Leave empty to let libpq use its compiled-in socket directory.
+py_phone_caller_pg_unix_socket: ""
+# pg_hba method for loopback connections. "md5" negotiates SCRAM automatically
+# when the stored verifier is SCRAM (PostgreSQL 10+), so it works on every
+# supported server; RHEL 9 still ships PostgreSQL 13, whose default
+# password_encryption is md5. Set to "scram-sha-256" to require SCRAM.
+py_phone_caller_pg_hba_method: "md5"
+# Credentials are passed to the postgresql_* modules; set to false while
+# debugging a provisioning failure to see the module output.
+py_phone_caller_db_no_log: true
+
+# ---------------------------------------------------------------------------
+# Reverse proxy
+# ---------------------------------------------------------------------------
 caddy_domain_name: "py-phone-caller.lan"
 caddy_email: ""
+
+# ---------------------------------------------------------------------------
+# Firewall. The aiohttp services actually bind 0.0.0.0 on 8081-8087 (the
+# *_host values in settings.toml are how the services address each other, not
+# bind addresses), so the firewall is what keeps them private: only the proxy
+# ports are opened. Add ports here to publish a service directly, for example
+# 8084 for a remote Alertmanager.
+# ---------------------------------------------------------------------------
+py_phone_caller_firewall_ports:
+  - 80
+  - 443
+py_phone_caller_firewall_extra_ports: []
+
+# ---------------------------------------------------------------------------
+# Optional /etc/hosts aliases for labs without DNS.
+# Each entry: {address: "10.0.0.5", names: ["pbx.lan", "redis.lan"]}
+# ---------------------------------------------------------------------------
+py_phone_caller_hosts_entries: []
+
+# ---------------------------------------------------------------------------
+# Convenience knobs referenced by py_phone_caller_config_defaults below.
+# In normal use you override py_phone_caller_config instead (generate it with
+# assets/ansible/tools/toml_to_ansible_vars.py).
+# ---------------------------------------------------------------------------
 py_phone_caller_service_host: "127.0.0.1"
 py_phone_caller_pbx_host: "127.0.0.1"
 py_phone_caller_database_host: "127.0.0.1"
 py_phone_caller_queue_host: "127.0.0.1"
-py_phone_caller_queue_port: 6379
-py_phone_caller_queue_db: 7
-py_phone_caller_hosts_entries: []
 
-# PostgreSQL management and unattended provisioning settings
-py_phone_caller_manage_database: true
-py_phone_caller_manage_local_postgres: "{{ py_phone_caller_database_host in ['127.0.0.1', 'localhost'] }}"
-py_phone_caller_db_admin_user: "postgres"
-py_phone_caller_db_admin_password: ""
-py_phone_caller_db_admin_port: 5432
-
-# Git configuration (optional if source is copied)
-py_phone_caller_git_repo: "" # If empty, it assumes source is copied or available locally
-py_phone_caller_git_version: main
-
-# Local repository root path (for development/testing)
-# If set, and source is missing on target, it will be copied from here.
-py_phone_caller_local_src_path: ""
-
-# Configuration for settings.toml
-# These defaults mirror the provided settings.toml
+# ---------------------------------------------------------------------------
+# Baseline configuration, mirroring src/config/settings.toml.
+# Precedence: defaults < py_phone_caller_config < py_phone_caller_config_secrets
+# ---------------------------------------------------------------------------
 py_phone_caller_config_defaults:
   commons:
     asterisk_user: "py-phone-caller"
     asterisk_pass: "change_me"
-    asterisk_ami_secret: "secret"
+    asterisk_ami_secret: "change_me"
     asterisk_host: "{{ py_phone_caller_pbx_host }}"
     asterisk_web_port: "8088"
     sms_db_path: "sqlite:///tmp/sms.db"
@@ -118,7 +277,7 @@ py_phone_caller_config_defaults:
     prometheus_webhook_app_route_sms_only: "sms_only"
     prometheus_webhook_app_route_sms_before_call: "sms_before_call"
     prometheus_webhook_app_route_call_and_sms: "call_and_sms"
-    prometheus_webhook_receivers: ["+39123456789"]
+    prometheus_webhook_receivers: []
 
   caller_sms:
     caller_sms_http_scheme: "http"
@@ -128,20 +287,12 @@ py_phone_caller_config_defaults:
     sms_before_call_wait_seconds: 120
     caller_sms_carrier: "twilio"
     twilio_sms_from: "+1234567890"
-    twilio_account_sid: "ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-    twilio_auth_token: "your_auth_token"
+    twilio_account_sid: "change_me"
+    twilio_auth_token: "change_me"
     on_premise_sms_db: "/tmp/sms.db"
     on_premise_sms_db_retry_records: 5
     sms_strategy: "round_robin"
-    modems:
-      - id: "primary_carrier"
-        port: "/dev/ttyUSB2"
-        baud_rate: 115200
-        priority: 1
-      - id: "backup_carrier"
-        port: "/dev/ttyUSB3"
-        baud_rate: 115200
-        priority: 2
+    modems: []
 
   scheduled_calls:
     scheduled_calls_http_scheme: "http"
@@ -153,24 +304,24 @@ py_phone_caller_config_defaults:
   queue:
     queue_scheme: "redis"
     queue_host: "{{ py_phone_caller_queue_host }}"
-    queue_port: "{{ py_phone_caller_queue_port }}"
-    queue_url: "redis://{{ py_phone_caller_queue_host }}:{{ py_phone_caller_queue_port }}/{{ py_phone_caller_queue_db }}"
+    queue_port: 6379
+    queue_url: "redis://{{ py_phone_caller_queue_host }}:6379/7"
 
   database:
     db_host: "{{ py_phone_caller_database_host }}"
     db_port: 5432
     db_name: "py_phone_caller"
     db_user: "py_phone_caller"
-    db_password: "py_phone_caller_password"
+    db_password: "change_me"
     db_max_size: 50
     db_max_inactive_connection_lifetime: 30.0
 
   py_phone_caller_ui:
     ui_session_protection: "strong"
-    ui_listen_on_host: "0.0.0.0"
+    ui_listen_on_host: "127.0.0.1"
     ui_listen_on_port: 5000
     ui_admin_user: "admin@py-phone-caller.link"
-    ui_secret_key: "change_me_in_production_ui_secret_key"
+    ui_secret_key: "change_me"
     min_password_length: 17
 
   logs:
@@ -198,43 +349,66 @@ py_phone_caller_config_defaults:
     caller_address_book_service_export: "contacts_export_csv"
     caller_address_book_service_import: "contacts_import_csv"
 
-  # Add other sections as needed, merging with the template
-
+# Generated from src/config/*.toml by:
+#   assets/ansible/tools/toml_to_ansible_vars.py
 py_phone_caller_config: {}
+py_phone_caller_config_secrets: {}
 
+# Host-specific last word, applied after the generated files. This is where
+# "on this machine PostgreSQL is on loopback" belongs, so that regenerating
+# the vars from settings.toml never overwrites the deployment topology.
+py_phone_caller_config_overrides: {}
+
+# Dotted paths written to .secrets.toml (0600) instead of settings.toml (0640).
+py_phone_caller_secret_paths:
+  - commons.asterisk_pass
+  - commons.asterisk_ami_secret
+  - caller_sms.twilio_account_sid
+  - caller_sms.twilio_auth_token
+  - database.db_password
+  - py_phone_caller_ui.ui_secret_key
+
+# ---------------------------------------------------------------------------
+# systemd units. "module" runs "python -m <module>"; "gunicorn" and "celery"
+# use the matching console script from the venv.
+#
+# caller_register applies the Piccolo migrations on start, so every other unit
+# is ordered after it.
+# ---------------------------------------------------------------------------
 py_phone_caller_services:
-  - name: asterisk_caller
-    cmd: "-m asterisk_caller.asterisk_caller"
-    description: "Asterisk Caller Service"
-  - name: asterisk_recaller
-    cmd: "-m asterisk_recaller.asterisk_recaller"
-    description: "Asterisk Recaller Service"
-  - name: asterisk_ws_monitor
-    cmd: "-m asterisk_ws_monitor.asterisk_ws_monitor"
-    description: "Asterisk WebSocket Monitor Service"
-  - name: caller_address_book
-    cmd: "-m caller_address_book.caller_address_book"
-    description: "Caller Address Book Service"
-  - name: caller_prometheus_webhook
-    cmd: "-m caller_prometheus_webhook.caller_prometheus_webhook"
-    description: "Caller Prometheus Webhook Service"
   - name: caller_register
-    cmd: "-m caller_register.caller_register"
-    description: "Caller Register Service"
+    description: "py-phone-caller: call event registration and DB migrations"
+    module: "caller_register.caller_register"
+    first: true
+  - name: asterisk_caller
+    description: "py-phone-caller: outbound call placement"
+    module: "asterisk_caller.asterisk_caller"
+  - name: asterisk_recaller
+    description: "py-phone-caller: call retries and backup callees"
+    module: "asterisk_recaller.asterisk_recaller"
+  - name: asterisk_ws_monitor
+    description: "py-phone-caller: Asterisk WebSocket event monitor"
+    module: "asterisk_ws_monitor.asterisk_ws_monitor"
+  - name: caller_address_book
+    description: "py-phone-caller: contact management API"
+    module: "caller_address_book.caller_address_book"
+  - name: caller_prometheus_webhook
+    description: "py-phone-caller: Prometheus Alertmanager webhook"
+    module: "caller_prometheus_webhook.caller_prometheus_webhook"
   - name: caller_scheduler
-    cmd: "-m caller_scheduler.caller_scheduler"
-    description: "Caller Scheduler Service"
+    description: "py-phone-caller: scheduled call management"
+    module: "caller_scheduler.caller_scheduler"
   - name: caller_sms
-    cmd: "-m caller_sms.caller_sms"
-    description: "Caller SMS Service"
+    description: "py-phone-caller: SMS gateway"
+    module: "caller_sms.caller_sms"
   - name: generate_audio
-    cmd: "-m generate_audio.generate_audio"
-    description: "Generate Audio Service"
+    description: "py-phone-caller: text-to-speech audio generation"
+    module: "generate_audio.generate_audio"
   - name: py_phone_caller_ui
-    cmd: "-w 4 -b 0.0.0.0:5000 py_phone_caller_ui.app:app"
+    description: "py-phone-caller: web dashboard"
     type: gunicorn
-    description: "Py Phone Caller UI Service"
+    workers: 4
   - name: celery_worker
-    cmd: "-A py_phone_caller_utils.tasks.celery_task worker --loglevel=info"
+    description: "py-phone-caller: Celery background worker"
     type: celery
-    description: "Celery Worker Service"
+    celery_app: "py_phone_caller_utils.tasks.celery_task"

@@ -1,37 +1,73 @@
 ---
-- name: Deploy Asterisk PBX
-  hosts: all
-  become: yes
+# Full single-VM stack: Asterisk PBX, then the py-phone-caller services.
+#
+#   cd assets/ansible/deploy_all
+#   ansible-galaxy collection install -r requirements.yml
+#   ../tools/toml_to_ansible_vars.py
+#   ansible-playbook deploy_py-phone-caller_stack.yml
+#
+# ansible.cfg points this directory at ../on-vm_py-phone-caller/inventory, so
+# both plays read the same group_vars: the generated app_servers/config.yml
+# and app_servers/secrets.yml, plus the topology in all.yml.
+#
+# The Asterisk role is fed from that same configuration, so the ARI user, the
+# Stasis application, the dialplan context/extension and the callback URL can
+# never drift from what the Python services expect.
+
+- name: Deploy Asterisk for py-phone-caller
+  hosts: app_servers
+  gather_facts: true
+
   vars:
-    # Define these with Ansible Vault, inventory/group_vars, or --extra-vars.
-    ari_password: "{{ vault_ari_password }}"
-    sip_username: "{{ vault_sip_username }}"
-    sip_password: "{{ vault_sip_password }}"
+    _ppc_cfg: >-
+      {{ py_phone_caller_config
+         | combine(py_phone_caller_config_secrets | default({}), recursive=True)
+         | combine(py_phone_caller_config_overrides | default({}), recursive=True) }}
+
+    # --- Wired to src/config/settings.toml ---
+    ari_username: "{{ _ppc_cfg.commons.asterisk_user }}"
+    ari_password: "{{ _ppc_cfg.commons.asterisk_pass }}"
+    ari_app_name: "{{ _ppc_cfg.asterisk_ws_monitor.asterisk_stasis_app }}"
+    asterisk_http_bindport: "{{ _ppc_cfg.commons.asterisk_web_port }}"
+    asterisk_context: "{{ _ppc_cfg.asterisk_call.asterisk_context }}"
+    asterisk_extension: "{{ _ppc_cfg.asterisk_call.asterisk_extension }}"
+    callback_service_url: >-
+      {{ _ppc_cfg.call_register.call_register_http_scheme }}://127.0.0.1:{{ _ppc_cfg.call_register.call_register_port }}
+
+    # --- Site specific: the upstream SIP trunk and any local handsets. ---
+    # Override in group_vars/all.yml or an ansible-vault file; there is no
+    # equivalent in settings.toml.
+    sip_provider_host: "{{ pbx_sip_provider_host | default('sip.messagenet.it') }}"
+    sip_provider_port: "{{ pbx_sip_provider_port | default(5061) }}"
+    sip_username: "{{ pbx_sip_username | default('CHANGE_ME') }}"
+    sip_password: "{{ pbx_sip_password | default('CHANGE_ME') }}"
+    sip_contact_user: "{{ pbx_sip_contact_user | default(pbx_sip_username | default('CHANGE_ME')) }}"
+
+    local_sip: "{{ pbx_local_sip | default(false) }}"
+    local_sip_exten: "{{ pbx_local_sip_exten | default(2500) }}"
+    local_sip_pass: "{{ pbx_local_sip_pass | default('change_me') }}"
+    local_iax: "{{ pbx_local_iax | default(false) }}"
+    local_iax_exten: "{{ pbx_local_iax_exten | default(2600) }}"
+    local_iax_pass: "{{ pbx_local_iax_pass | default('change_me') }}"
+
+  pre_tasks:
+    # ari_password comes from py_phone_caller_config_secrets, which lives in
+    # the group_vars/app_servers/ directory. Ansible ignores a plain
+    # "app_servers.secrets.yml" silently, so assert on the variable, not the
+    # file.
+    - name: Check that the generated group_vars are loaded
+      ansible.builtin.assert:
+        that:
+          - py_phone_caller_config | default({}) | length > 0
+          - py_phone_caller_config_secrets | default({}) | length > 0
+        fail_msg: >-
+          py_phone_caller_config / py_phone_caller_config_secrets are empty.
+          Generate them with assets/ansible/tools/toml_to_ansible_vars.py, and
+          make sure they land in group_vars/app_servers/ (a directory).
+        quiet: true
+
   roles:
     - asterisk_py_phone_caller
 
-- name: Deploy Py-Phone-Caller Stack
-  hosts: all
-  become: yes
-  vars:
-    # Path to local repository root relative to this playbook
-    py_phone_caller_local_src_path: "{{ playbook_dir }}/../../.."
-
-    # PostgreSQL administrative credentials for unattended provisioning
-    py_phone_caller_db_admin_user: "{{ vault_db_admin_user | default('postgres') }}"
-    py_phone_caller_db_admin_password: "{{ vault_db_admin_password | default('') }}"
-
-    # Configuration overrides
-    py_phone_caller_config:
-      commons:
-        asterisk_host: "127.0.0.1"
-        asterisk_user: "py-phone-caller"
-        asterisk_pass: "{{ vault_ari_password }}"
-      database:
-        db_host: "127.0.0.1"
-        db_password: "{{ vault_db_password }}"
-      queue:
-        queue_host: "127.0.0.1"
-        queue_url: "redis://127.0.0.1:6379/7"
-  roles:
-    - deploy_py-phone-caller
+- name: Deploy the py-phone-caller services
+  ansible.builtin.import_playbook: ../on-vm_py-phone-caller/deploy_py-phone-caller.yml

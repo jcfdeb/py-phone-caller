@@ -1,73 +1,161 @@
 ---
-- name: Ensure uv installation directory exists
-  file:
-    path: "{{ py_phone_caller_uv_bin | dirname }}"
+- name: Check for an existing uv
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_uv_bin }}"
+  register: _ppc_uv
+
+# The installer's settings go through the task environment rather than an
+# "env ... sh" in the pipeline: a folded YAML scalar keeps the newline of a
+# more-indented continuation line, which would split the pipeline into
+# "env VAR=x" (prints the environment, exits 0) followed by a bare "sh" with
+# no stdin left - a silent no-op that still reports success.
+- name: Install uv
+  ansible.builtin.shell:
+    cmd: "set -o pipefail && curl -LsSf {{ py_phone_caller_uv_installer_url | quote }} | sh"
+    creates: "{{ py_phone_caller_uv_bin }}"
+    executable: /bin/bash
+  environment:
+    HOME: "{{ py_phone_caller_install_dir }}"
+    UV_INSTALL_DIR: "{{ py_phone_caller_uv_dir }}"
+    UV_NO_MODIFY_PATH: "1"
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  when: not _ppc_uv.stat.exists
+
+- name: Confirm uv landed where the role expects it
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_uv_bin }}"
+  register: _ppc_uv_installed
+
+- name: Fail when uv is missing
+  ansible.builtin.assert:
+    that:
+      - _ppc_uv_installed.stat.exists
+      - _ppc_uv_installed.stat.executable
+    fail_msg: >-
+      The uv installer reported success but {{ py_phone_caller_uv_bin }} is
+      missing. Re-run with -vvv to see the installer output, or install uv by
+      hand into {{ py_phone_caller_uv_dir }}.
+    quiet: true
+
+- name: Create the uv state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
     state: directory
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
-    mode: '0755'
-  become: yes
+    mode: "0755"
+  loop:
+    - "{{ py_phone_caller_uv_python_install_dir }}"
+    - "{{ py_phone_caller_uv_cache_dir }}"
 
-- name: Install uv
-  shell: "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR={{ py_phone_caller_uv_bin | dirname }} sh"
-  args:
-    creates: "{{ py_phone_caller_uv_bin }}"
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
-
-- name: Check if virtual environment already exists
-  stat:
-    path: "{{ py_phone_caller_venv_dir }}/bin/python"
-  register: venv_python_stat
-
-- name: Sync uv workspace with production dependencies (offline first)
-  command: "{{ py_phone_caller_uv_bin }} sync --frozen --all-packages --no-dev --python 3.14 --offline"
-  args:
+# --frozen keeps uv honest about uv.lock: it never silently re-resolves.
+# --all-packages installs every workspace member, --no-dev leaves the test
+# tooling out. A failure here is fatal on purpose: starting the units against
+# a half-built virtualenv only produces a crash loop that is harder to read.
+#
+# --inexact when the native SMS engine is in play: it is compiled here and
+# installed straight into the virtualenv, so it is not in uv.lock and an
+# exact sync would uninstall it on every run - which then rebuilt it, and
+# restarted every service, forever.
+- name: Build the virtualenv from uv.lock
+  ansible.builtin.command:
+    cmd: >-
+      {{ py_phone_caller_uv_bin }} sync
+      --frozen --all-packages --no-dev
+      {{ '--inexact' if _ppc_sms_on_premise else '' }}
+      --python {{ py_phone_caller_python_version }}
     chdir: "{{ py_phone_caller_install_dir }}"
-  environment:
-    UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
-    UV_PYTHON_INSTALL_DIR: "{{ py_phone_caller_uv_python_install_dir }}"
-  become: yes
+  environment: "{{ _ppc_uv_env }}"
+  become: true
   become_user: "{{ py_phone_caller_user }}"
-  failed_when: false
-  register: uv_sync_offline
-  when: not venv_python_stat.stat.exists
+  register: _ppc_uv_sync
+  # uv reports "Audited N packages" when there is nothing to do.
+  changed_when: >-
+    'Installed' in (_ppc_uv_sync.stdout ~ _ppc_uv_sync.stderr) or
+    'Uninstalled' in (_ppc_uv_sync.stdout ~ _ppc_uv_sync.stderr)
+  timeout: "{{ py_phone_caller_uv_sync_timeout }}"
+  notify: Restart py-phone-caller services
 
-- name: Sync uv workspace with production dependencies (online fallback)
-  command: "{{ py_phone_caller_uv_bin }} sync --frozen --all-packages --no-dev --python 3.14"
-  args:
-    chdir: "{{ py_phone_caller_install_dir }}"
-  environment:
-    UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
-    UV_PYTHON_INSTALL_DIR: "{{ py_phone_caller_uv_python_install_dir }}"
-    UV_EXTRA_INDEX_URL: "http://artifacts.py-phone-caller.lan:8080/simple"
-    UV_INSECURE_HOST: "artifacts.py-phone-caller.lan"
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
-  when: not venv_python_stat.stat.exists and uv_sync_offline.rc != 0
-  ignore_errors: yes
-
-- name: Build Rust SMS engine for on-premise deployments
-  command: "{{ py_phone_caller_uv_bin }} run --with maturin maturin develop --manifest-path app/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/Cargo.toml"
-  args:
-    chdir: "{{ py_phone_caller_install_dir }}"
-  environment:
-    UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
-    UV_PYTHON_INSTALL_DIR: "{{ py_phone_caller_uv_python_install_dir }}"
-    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
-  become: yes
-  become_user: "{{ py_phone_caller_user }}"
-  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
-
-- name: Ensure venv ownership
-  command: chown -R {{ py_phone_caller_user }}:{{ py_phone_caller_group }} {{ py_phone_caller_venv_dir }}
-  become: yes
+# The Rust engine drives the GSM modems directly; it is only needed when the
+# on-premise SMS carrier is selected.
+#
+# It is built as a wheel and then installed explicitly, rather than with
+# "maturin develop": "uv run --with maturin" builds an ephemeral overlay
+# environment and points VIRTUAL_ENV at it, so "develop" installs the module
+# into a directory that is deleted moments later. The service then starts
+# happily and logs "Rust SMS engine not found" at runtime. Building a wheel
+# does not depend on VIRTUAL_ENV at all, and the import check below turns any
+# remaining silent failure into a failed play.
+- name: Decide whether the native SMS engine needs building
+  ansible.builtin.shell:
+    # The wheel installs a package directory (rust_engine/ containing
+    # rust_engine.cpython-*.so), so ask the interpreter where the extension
+    # actually is instead of guessing a path. Exit 0 = up to date.
+    cmd: |
+      set -o pipefail
+      so=$({{ py_phone_caller_venv_dir }}/bin/python -c \
+             'import importlib.util as u; s = u.find_spec("rust_engine"); print(s.origin if s else "")' \
+           2>/dev/null) || exit 1
+      [ -n "$so" ] && [ -e "$so" ] || exit 1
+      if find {{ _ppc_sms_engine_dir }} -path '*/target' -prune -o -type f -newer "$so" -print -quit | grep -q .; then
+        exit 1
+      fi
+      exit 0
+    executable: /bin/bash
+  register: _ppc_engine_current
   changed_when: false
+  failed_when: false
+  when: _ppc_sms_on_premise
 
-- name: Ensure log directory exists
-  file:
+- name: Build and install the native SMS engine
+  when:
+    - _ppc_sms_on_premise
+    - _ppc_engine_current.rc | default(1) != 0
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  environment: "{{ _ppc_uv_env | combine({'PYO3_USE_ABI3_FORWARD_COMPATIBILITY': '1'}) }}"
+  notify: Restart py-phone-caller services
+  block:
+    - name: Build the native SMS engine wheel
+      ansible.builtin.command:
+        cmd: >-
+          {{ py_phone_caller_uv_bin }} tool run --from maturin
+          maturin build --release
+          --manifest-path {{ _ppc_sms_engine_dir }}/Cargo.toml
+          --interpreter {{ py_phone_caller_venv_dir }}/bin/python
+          --out {{ _ppc_sms_wheel_dir }}
+        chdir: "{{ py_phone_caller_install_dir }}"
+      register: _ppc_maturin
+      changed_when: true
+
+    - name: Install the native SMS engine into the virtualenv
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          {{ py_phone_caller_uv_bin }} pip install --python {{ py_phone_caller_venv_dir }}
+          --reinstall {{ _ppc_sms_wheel_dir }}/*.whl
+        executable: /bin/bash
+      register: _ppc_engine_install
+      changed_when: "'Installed' in (_ppc_engine_install.stdout ~ _ppc_engine_install.stderr)"
+
+- name: Confirm the native SMS engine imports
+  ansible.builtin.command:
+    cmd: "{{ py_phone_caller_venv_dir }}/bin/python -c 'import rust_engine'"
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  changed_when: false
+  register: _ppc_engine_import
+  failed_when: _ppc_engine_import.rc != 0
+  when: _ppc_sms_on_premise
+
+# Everything above ran as the service account, so the virtualenv and the uv
+# state are already owned correctly; no recursive chown over ~50k torch files.
+
+- name: Create the log directory
+  ansible.builtin.file:
     path: "{{ py_phone_caller_log_dir }}"
     state: directory
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
-    mode: '0755'
+    mode: "0755"

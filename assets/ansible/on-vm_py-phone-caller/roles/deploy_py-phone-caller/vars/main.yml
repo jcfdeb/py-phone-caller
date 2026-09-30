@@ -1,0 +1,55 @@
+---
+# Internal role variables. Override the public knobs in defaults/main.yml
+# instead of these.
+
+# Environment shared by every uv invocation. become_user does not give the
+# task the target user's HOME, so it is set explicitly: uv would otherwise
+# write its cache and managed interpreters into root's home.
+_ppc_uv_env_base:
+  HOME: "{{ py_phone_caller_install_dir }}"
+  PATH: "{{ py_phone_caller_uv_dir }}:/usr/local/bin:/usr/bin:/bin"
+  UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
+  UV_PYTHON_INSTALL_DIR: "{{ py_phone_caller_uv_python_install_dir }}"
+  UV_CACHE_DIR: "{{ py_phone_caller_uv_cache_dir }}"
+  UV_NO_PROGRESS: "1"
+
+_ppc_uv_index_env: >-
+  {{ ({'UV_EXTRA_INDEX_URL': py_phone_caller_uv_extra_index_url}
+      if py_phone_caller_uv_extra_index_url | length > 0 else {})
+     | combine({'UV_INSECURE_HOST': py_phone_caller_uv_insecure_host}
+               if py_phone_caller_uv_insecure_host | length > 0 else {}) }}
+
+_ppc_uv_env: "{{ _ppc_uv_env_base | combine(_ppc_uv_index_env) }}"
+
+# Absolute unit paths this role owns, used to spot units left behind by a
+# previous py_phone_caller_services list.
+_ppc_wanted_units: "{{ py_phone_caller_services | map(attribute='name') | map('replace', '_', '-') | map('regex_replace', '^', '/etc/systemd/system/' ~ py_phone_caller_service_prefix) | map('regex_replace', '$', '.service') | list }}"
+_ppc_stale_units: "{{ (_ppc_present_units.files | default([]) | map(attribute='path') | list) | difference(_ppc_wanted_units) }}"
+
+# Native SMS engine (only built when the on-premise carrier is selected).
+_ppc_sms_on_premise: >-
+  {{ py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise' }}
+_ppc_sms_engine_dir: "{{ py_phone_caller_src_dir }}/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine"
+_ppc_sms_wheel_dir: "{{ py_phone_caller_install_dir }}/.uv/sms-wheels"
+
+# Syntax check for the rendered TOML, run by the template module before the
+# file is moved into place. "%s" is substituted with the staged file.
+_ppc_toml_validate: >-
+  {{ py_phone_caller_venv_dir }}/bin/python -c
+  'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' %s
+
+# Connection settings for the PostgreSQL provisioning tasks. Empty strings are
+# the module defaults: no login_host means "use the unix socket", and an empty
+# login_unix_socket means "let libpq pick the compiled-in socket directory".
+_ppc_db_login:
+  host: "{{ '' if py_phone_caller_manage_local_postgres | bool else py_phone_caller_final_config.database.db_host }}"
+  port: "{{ py_phone_caller_final_config.database.db_port | default(5432) }}"
+  user: "{{ 'postgres' if py_phone_caller_manage_local_postgres | bool else py_phone_caller_db_admin_user }}"
+  password: "{{ '' if py_phone_caller_manage_local_postgres | bool else py_phone_caller_db_admin_password }}"
+  socket: "{{ py_phone_caller_pg_unix_socket }}"
+
+# Where the microservices' HTTP listeners live, used by the Caddyfile.
+_ppc_ui_host: "{{ py_phone_caller_final_config.py_phone_caller_ui.ui_listen_on_host | default('127.0.0.1') }}"
+_ppc_ui_port: "{{ py_phone_caller_final_config.py_phone_caller_ui.ui_listen_on_port | default(5000) }}"
+# 0.0.0.0 is a bind address, not a destination: Caddy must dial loopback.
+_ppc_ui_upstream_host: "{{ '127.0.0.1' if _ppc_ui_host in ['0.0.0.0', '::', ''] else _ppc_ui_host }}"

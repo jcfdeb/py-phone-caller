@@ -1,41 +1,111 @@
 ---
-- name: Merge configuration
-  set_fact:
-    py_phone_caller_final_config: "{{ py_phone_caller_config_defaults | combine(py_phone_caller_config, recursive=True) }}"
+# Every include carries "apply: tags:" as well as its own "tags:".
+#
+# A tag on an include_tasks applies only to the include statement; the tasks
+# inside inherit nothing. Without "apply", "--tags config" runs the include
+# and then filters out everything it included - the play reports ok=N,
+# changed=0 and quietly does nothing at all.
+
+- name: Load OS-family variables
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
   tags: always
 
-- name: Include prerequisites tasks
-  include_tasks: prereqs.yml
+- name: Fail on unsupported platforms
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['Debian', 'RedHat']
+    fail_msg: >-
+      deploy_py-phone-caller supports Debian/Ubuntu and RHEL/Rocky only;
+      this host reports os_family={{ ansible_facts['os_family'] }}.
+  tags: always
 
-- name: Include user creation tasks
-  include_tasks: user.yml
+- name: Build the effective configuration
+  ansible.builtin.set_fact:
+    py_phone_caller_final_config: >-
+      {{ py_phone_caller_config_defaults
+         | combine(py_phone_caller_config, recursive=True)
+         | combine(py_phone_caller_config_secrets, recursive=True)
+         | combine(py_phone_caller_config_overrides, recursive=True) }}
+  tags: always
 
-- name: Include source code tasks
-  include_tasks: source.yml
+- name: Validate the effective configuration
+  ansible.builtin.include_tasks:
+    file: validate.yml
+    apply:
+      tags: [always]
+  tags: always
+
+- name: Install system prerequisites
+  ansible.builtin.include_tasks:
+    file: prereqs.yml
+    apply:
+      tags: [prereqs]
+  tags: prereqs
+
+- name: Create the service account
+  ansible.builtin.include_tasks:
+    file: user.yml
+    apply:
+      tags: [user]
+  tags: user
+
+- name: Deliver the application source
+  ansible.builtin.include_tasks:
+    file: source.yml
+    apply:
+      tags: [source]
   tags: source
 
-- name: Include installation tasks
-  include_tasks: install.yml
+- name: Build the Python environment
+  ansible.builtin.include_tasks:
+    file: install.yml
+    apply:
+      tags: [install]
+  tags: install
 
-- name: Include database setup tasks
-  include_tasks: database.yml
+- name: Provision PostgreSQL
+  ansible.builtin.include_tasks:
+    file: database.yml
+    apply:
+      tags: [database]
+  when: py_phone_caller_manage_database | bool
   tags: database
 
-- name: Include configuration tasks
-  import_tasks: config.yml
+- name: Render the runtime configuration
+  ansible.builtin.include_tasks:
+    file: config.yml
+    apply:
+      tags: [config]
   tags: config
 
-- name: Include Caddy tasks
-  import_tasks: caddy.yml
+- name: Configure the Caddy reverse proxy
+  ansible.builtin.include_tasks:
+    file: caddy.yml
+    apply:
+      tags: [caddy]
+  when: py_phone_caller_manage_caddy | bool
   tags: caddy
 
-- name: Include firewall tasks
-  include_tasks: firewall.yml
+- name: Configure the firewall
+  ansible.builtin.include_tasks:
+    file: firewall.yml
+    apply:
+      tags: [firewall]
+  when: py_phone_caller_manage_firewall | bool
   tags: firewall
 
-- name: Include systemd service tasks
-  import_tasks: systemd.yml
+- name: Install the systemd units
+  ansible.builtin.include_tasks:
+    file: systemd.yml
+    apply:
+      tags: [systemd]
+  when: py_phone_caller_manage_services | bool
   tags: systemd
 
-- name: Include cleanup tasks
-  include_tasks: cleanup.yml
+- name: Remove build dependencies
+  ansible.builtin.include_tasks:
+    file: cleanup.yml
+    apply:
+      tags: [cleanup]
+  when: py_phone_caller_remove_build_deps | bool
+  tags: cleanup

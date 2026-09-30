@@ -1,16 +1,26 @@
 ---
-- name: Restart py-phone-caller services
-  systemd:
-    name: "py-phone-caller-{{ item.name | replace('_', '-') }}"
-    state: restarted
-  loop: "{{ py_phone_caller_services }}"
+# Restarting is driven by what is actually installed rather than by
+# py_phone_caller_services, so that a config-only run (--tags config) on a host
+# whose units were never created does not fail on a missing unit.
 
-- name: Reload PostgreSQL
-  service:
-    name: postgresql
-    state: reloaded
+- name: Find the installed py-phone-caller units
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: "{{ py_phone_caller_service_prefix }}*.service"
+  register: _ppc_units_to_restart
+  listen: Restart py-phone-caller services
+
+- name: Restart the installed py-phone-caller units
+  ansible.builtin.systemd_service:
+    name: "{{ item.path | basename }}"
+    state: restarted
+    daemon_reload: true
+  loop: "{{ _ppc_units_to_restart.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  listen: Restart py-phone-caller services
 
 - name: Reload Caddy
-  service:
+  ansible.builtin.service:
     name: caddy
     state: reloaded

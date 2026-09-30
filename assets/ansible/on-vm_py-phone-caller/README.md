@@ -1,404 +1,280 @@
-# 📱 Ansible Role: Deploy py-phone-caller
+# Deploying py-phone-caller on a VM
 
-This role deploys the complete **py-phone-caller** microservices stack on Linux systems, providing an emergency alert and notification platform with SMS, voice calls, and web interface capabilities.
+Installs the eleven py-phone-caller microservices as systemd units behind a
+Caddy reverse proxy, with PostgreSQL and Redis/Valkey provisioning, on
+Debian/Ubuntu or RHEL/Rocky.
 
-It handles the full deployment lifecycle from system dependencies to service configuration and is designed to be **OS-Agnostic** (supporting Ubuntu/Debian and RHEL/Rocky Linux) and **Production-Ready** with proper security, firewall, and service management.
-
-## 📋 Requirements
-
-* **Ansible:** 2.9 or higher.
-* **Target OS:**
-    * Ubuntu 22.04 LTS / 24.04 LTS (**Recommended** / Fully Supported)
-    * Red Hat Enterprise Linux (RHEL) 9 / Rocky Linux 9 (**Recommended** / Fully Supported)
-    * RHEL/Rocky 8 (Legacy / Supported)
-* **System Resources:**
-    * **RAM:** 2GB+ (Required for PyTorch and TTS model compilation)
-    * **Storage:** 5GB+ free space for dependencies and models
-    * **CPU:** 2+ cores recommended for audio processing
-* **Network:** Internet access required for PyPI packages and HuggingFace model downloads
-* **Access:** SSH with `sudo` privileges on the target machine
-
-> [!TIP]
-> **Performance Note:** The initial deployment downloads large machine learning models (~500MB+) and compiles PyTorch. This process can take 10-15 minutes depending on your server specs and internet connection.
+`openalertd` (`src/openalert/`) is **not** part of this deployment; it ships
+separately through `src/openalert/packaging/`.
 
 ---
 
-## 🚀 Installation
+## Layout
 
-There are two ways to install this role into your project.
-
-### Option A: Local Directory (Recommended for Dev)
-Simply copy the entire folder `deploy_py-phone-caller` into your project's `roles/` directory.
-
-Project structure:
-```text
-my-project/
-├── inventory
-├── py-phone-caller_deploy.yml
-└── roles/
-    └── deploy_py-phone-caller/
-        ├── defaults/
-        ├── tasks/
-        ├── templates/
-        ├── handlers/
-        └── ...
+```
+on-vm_py-phone-caller/
+├── ansible.cfg                        inventory, roles_path, become, ssh
+├── inventory                          [app_servers]
+├── requirements.yml                   required collections
+├── deploy_py-phone-caller.yml         the deployment
+├── verify.yml                         post-deployment checks
+├── render_check.yml                   render templates locally, no target
+├── group_vars/
+│   ├── all.yml                        deployment topology (in git)
+│   └── app_servers/                   generated, git-ignored
+│       ├── config.yml                 from src/config/settings.toml
+│       └── secrets.yml                from src/config/.secrets.toml
+├── examples/                          committed samples of the two above
+└── roles/deploy_py-phone-caller/
 ```
 
-### Option B: Via `requirements.yml` (Best for Git Ops)
-If you host this role in a separate Git repository, add it to your `requirements.yml`:
+`group_vars/app_servers/` is a **directory**, not two `app_servers*.yml`
+files. Ansible reads every file inside a `group_vars/<group>/` directory, but
+auto-loads a plain file only when its stem is exactly the group name — a
+`group_vars/app_servers.secrets.yml` is skipped without a warning.
+
+Its contents are git-ignored: they mirror the live configuration, credentials
+and phone numbers included.
+
+---
+
+## Requirements
+
+**Control node**
+
+* `ansible-core` 2.15+ and the collections in `requirements.yml`
+* `rsync` (the role ships the code with `ansible.posix.synchronize`)
+* Python 3.11+ for `../tools/toml_to_ansible_vars.py`
+
+**Target**
+
+* Debian 12+/Ubuntu 22.04+ or RHEL/Rocky 9+
+* SSH as `root`, or as a user with **passwordless** sudo — `synchronize` runs
+  rsync over SSH as the connection user
+* `rsync` and `sudo` installed
+* 2 GB RAM and ~6 GB free disk: the workspace pulls in PyTorch and the TTS
+  models
+* Outbound HTTPS for PyPI, astral.sh (uv) and Hugging Face, unless you point
+  `py_phone_caller_uv_extra_index_url` at an internal mirror
+
+---
+
+## Configuration flow
+
+`src/config/*.toml` is the single source of truth. Nothing is retyped into
+Ansible by hand:
+
+```
+src/config/settings.toml   ──┐
+src/config/.secrets.toml   ──┴─▶ tools/toml_to_ansible_vars.py
+                                          │
+            group_vars/app_servers/config.yml   (py_phone_caller_config)
+            group_vars/app_servers/secrets.yml  (py_phone_caller_config_secrets)
+                                          │
+                                 deploy_py-phone-caller.yml
+                                          │
+                    /opt/py-phone-caller/src/config/settings.toml   (0640)
+                    /opt/py-phone-caller/src/config/.secrets.toml   (0600)
+```
+
+Four layers are merged, later wins:
+
+| Layer | Where | For |
+| --- | --- | --- |
+| `py_phone_caller_config_defaults` | `roles/.../defaults/main.yml` | fallbacks for every key |
+| `py_phone_caller_config` | `group_vars/app_servers/config.yml` | generated from `settings.toml` |
+| `py_phone_caller_config_secrets` | `group_vars/app_servers/secrets.yml` | generated from `.secrets.toml` |
+| `py_phone_caller_config_overrides` | `group_vars/all.yml` | facts about *this* host |
+
+The overrides layer is what keeps regeneration safe: `settings.toml` can keep
+saying `postgresql.lan` for the container stack while `all.yml` redirects the
+VM to loopback.
+
+At runtime each unit gets `CALLER_CONFIG_DIR=/opt/py-phone-caller/src/config`,
+so Dynaconf reads exactly those two files — no guessing from `__file__` or the
+working directory.
+
+---
+
+## Deploying
+
+```bash
+cd assets/ansible/on-vm_py-phone-caller
+
+# 1. Collections (once)
+ansible-galaxy collection install -r requirements.yml
+
+# 2. Configuration -> group_vars
+../tools/toml_to_ansible_vars.py
+
+# 3. Optional: check the rendering without touching the server
+ansible-playbook -i localhost, -c local render_check.yml
+
+# 4. Reachability
+ansible app_servers -m ping
+
+# 5. Deploy
+ansible-playbook deploy_py-phone-caller.yml
+
+# 6. Check
+ansible-playbook verify.yml
+```
+
+To encrypt the credentials:
+
+```bash
+ansible-vault encrypt group_vars/app_servers/secrets.yml
+ansible-playbook deploy_py-phone-caller.yml --ask-vault-pass
+```
+
+### Tags
+
+| Tag | Does |
+| --- | --- |
+| `prereqs` | OS packages, Redis/Valkey, PostgreSQL server |
+| `user` | service account and directories |
+| `source` | rsync the code to `/opt/py-phone-caller` |
+| `install` | `uv sync`, native SMS engine |
+| `database` | role, database, schema grants, extensions |
+| `config` | render `settings.toml` and `.secrets.toml` |
+| `caddy` | reverse proxy |
+| `firewall` | firewalld / ufw |
+| `systemd` | unit files, enable and start |
+| `cleanup` | remove build dependencies (opt-in) |
+
+A configuration-only push:
+
+```bash
+../tools/toml_to_ansible_vars.py
+ansible-playbook deploy_py-phone-caller.yml --tags config
+```
+
+### First admin password
+
+```bash
+ansible-playbook deploy_py-phone-caller.yml -e py_phone_caller_ui_reset_password=true
+ssh openalert journalctl -u py-phone-caller-py-phone-caller-ui -n 50
+```
+
+Then run again without the flag.
+
+---
+
+## On the target
+
+```
+/opt/py-phone-caller/
+├── pyproject.toml, uv.lock      uv workspace root
+├── src/                         workspace members, installed editable
+│   ├── config/                  settings.toml, .secrets.toml
+│   └── generate_audio/          audio/ and pre_trained_models/ live here
+├── venv/                        the virtualenv uv builds
+├── bin/uv
+└── .uv/                         managed interpreters and cache
+```
+
+The repository layout is reproduced verbatim, and `src/` is a real directory.
+`uv sync` installs the workspace members as editable and records those paths
+inside the virtualenv, so renaming `src/` or replacing it with a symlink
+breaks every import. `rsync --delete` protects `venv/`, `bin/`, `.uv/`, the
+rendered configuration and the downloaded TTS models
+(`py_phone_caller_sync_protected`).
+
+Units are `py-phone-caller-<name>.service`:
+
+```
+caller-register        asterisk-caller        asterisk-recaller
+asterisk-ws-monitor    caller-address-book    caller-prometheus-webhook
+caller-scheduler       caller-sms             generate-audio
+py-phone-caller-ui     celery-worker
+```
+
+`caller-register` applies the Piccolo migrations at startup, so every other
+unit is ordered `After=` it.
+
+---
+
+## Networking
+
+The aiohttp microservices bind `0.0.0.0` on ports 8081-8087 regardless of the
+`*_host` values in `settings.toml` — those are the addresses the services use
+to call *each other*, not bind addresses. The UI binds whatever
+`py_phone_caller_ui.ui_listen_on_host` says.
+
+What keeps them private is therefore the firewall, not the bind address: only
+80 and 443 are opened, and Caddy terminates TLS and proxies to the UI. If you
+turn off `py_phone_caller_manage_firewall`, those ports are exposed.
+
+To expose a service directly — for example so a remote Alertmanager can post
+to the webhook — add its port:
 
 ```yaml
-# requirements.yml
-roles:
-  - src: https://github.com/your-org/deploy_py-phone-caller.git
-    scm: git
-    version: main
-    name: deploy_py-phone-caller
+# group_vars/all.yml
+py_phone_caller_firewall_extra_ports: [8084]
 ```
 
-Then install it:
-```bash
-ansible-galaxy install -r requirements.yml -p ./roles
-```
+A `caddy_domain_name` ending in `.lan`, `.local`, `.internal` or `.test` gets
+Caddy's internal CA. Anything else goes to Let's Encrypt and needs
+`caddy_email` plus reachable ports 80 and 443.
+
+### Fronting with an existing reverse proxy
+
+If the host already has one, set `py_phone_caller_manage_caddy: false` and
+point that proxy at the UI. The role refuses to install Caddy alongside
+another proxy anyway: it checks for NAT rules diverting 80/443 and for
+foreign listeners on those ports, because Caddy would bind them, start
+cleanly, and never receive a packet — the only symptom being a TLS handshake
+failure.
+
+`openalert` is set up this way. It runs Nginx Proxy Manager as a rootless
+Podman container (published on 8080/8181/8443, with iptables `REDIRECT`
+sending 80/443 to it), so `py_phone_caller_manage_caddy` is `false` in
+`group_vars/all.yml` and the UI is published through NPM:
+
+| NPM proxy host field | Value |
+| --- | --- |
+| Domain | `py-phone-caller.lan` (or a real name) |
+| Scheme | `http` |
+| Forward hostname | `host.containers.internal` |
+| Forward port | `5000` |
+
+`host.containers.internal` resolves to `169.254.1.2` inside rootless Podman
+containers and reaches the host without any firewall change — verified
+returning HTTP 200 from inside the `npm` container. The container network
+cannot use `127.0.0.1`, and the bridge/public addresses are blocked by ufw.
+
+Keep `py_phone_caller_manage_firewall: true` in this setup. The services bind
+`0.0.0.0`, and on a host with a public address ufw is the only thing keeping
+8081-8087, 5000, 5432 and 6379 off the internet.
 
 ---
 
-## ⚙️ Configuration
+## Troubleshooting
 
-### 1. Core Variables
-These variables control the basic installation and runtime behavior. Override them in your `playbook`, `inventory`, or `group_vars`.
+```bash
+systemctl list-units 'py-phone-caller-*'
+journalctl -u py-phone-caller-caller-register -n 100 --no-pager
 
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| **Installation Paths** | | |
-| `py_phone_caller_user` | `"py-phone-caller"` | System user for running services. |
-| `py_phone_caller_group` | `"py-phone-caller"` | System group for running services. |
-| `py_phone_caller_install_dir` | `"/opt/py-phone-caller"` | Installation directory for the application. |
-| `py_phone_caller_log_dir` | `"/var/log/py-phone-caller"` | Log directory for all services. |
-| **Source Control** | | |
-| `py_phone_caller_git_repo` | `""` | Git repository URL (leave empty if deploying from local source). |
-| `py_phone_caller_git_version` | `"main"` | Git branch/tag to deploy. |
-| `py_phone_caller_local_src_path` | `""` | Local source path (for offline/development deployment). |
-| **Web Interface** | | |
-| `caddy_domain_name` | `"py-phone-caller.lan"` | Domain name for the web UI and API services. |
-| `caddy_email` | `""` | Email for Let's Encrypt (leave empty for local/self-signed). |
-| **Networking** | | |
-| `py_phone_caller_service_host` | `{{ caddy_domain_name }}` | Default hostname used by services to call each other. |
-| `py_phone_caller_pbx_host` | `"pbx.lan"` | Default Asterisk PBX hostname. |
-| `py_phone_caller_database_host` | `"postgresql.lan"` | Default PostgreSQL hostname. |
-| `py_phone_caller_queue_host` | `"redis.lan"` | Default Redis hostname. |
-| `py_phone_caller_hosts_entries` | `[]` | Optional managed `/etc/hosts` entries for lab or air-gapped environments without DNS. |
-
-### 2. Service Configuration
-The role configures multiple microservices. Key configuration options:
-
-| Section | Key Variables | Description |
-| :--- | :--- | :--- |
-| **Asterisk Integration** | `asterisk_host`, `asterisk_web_port`, `asterisk_user` | Connection settings for Asterisk PBX. |
-| **Database** | `db_host`, `db_port`, `db_name`, `db_user`, `db_password` | PostgreSQL connection settings. |
-| **Queue** | `queue_host`, `queue_port`, `queue_url` | Redis queue configuration. |
-| **SMS Service** | `caller_sms_carrier`, `modems`, `sms_strategy` | SMS carrier settings (on-premise or Twilio). |
-| **TTS Engine** | `tts_engine`, `kokoro_lang`, `piper_language_code` | Text-to-speech engine selection (kokoro_tts, piper, etc.). |
-| **Web UI** | `ui_listen_on_host`, `ui_listen_on_port`, `ui_admin_user` | Web interface configuration. |
-
-> [!NOTE]
-> All configuration options have sensible defaults defined in `defaults/main.yml`. For production deployments, you should override at minimum: database credentials, SMS settings, and domain names.
-
-### Optional `/etc/hosts` aliases
-
-The role does not force infrastructure names to `127.0.0.1`. Use DNS whenever possible. If the deployment target needs local host aliases, define them explicitly:
-
-```yaml
-py_phone_caller_hosts_entries:
-  - address: "<INFRA_SERVICES_IP>"
-    names:
-      - postgresql.lan
-      - pbx.lan
-      - redis.lan
-  - address: "<REVERSE_PROXY_IP>"
-    names:
-      - nginx.lab.local
+sudo -u py-phone-caller cat /opt/py-phone-caller/src/config/settings.toml
+sudo -u py-phone-caller /opt/py-phone-caller/venv/bin/python -c \
+  'from py_phone_caller_utils.config import settings; print(settings.database.db_host)'
 ```
 
-Keep `py_phone_caller_hosts_entries: []` when hostnames are already resolved by DNS or by externally managed `/etc/hosts` content.
-
-### 3. Deployed Services
-The role deploys the following systemd services:
-
-* `py-phone-caller-asterisk_caller.service` - Handles outbound call placement
-* `py-phone-caller-asterisk_recaller.service` - Manages call retries and backup callees
-* `py-phone-caller-asterisk_ws_monitor.service` - Monitors Asterisk WebSocket events
-* `py-phone-caller-caller_address_book.service` - Contact management API
-* `py-phone-caller-caller_prometheus_webhook.service` - Prometheus AlertManager integration
-* `py-phone-caller-caller_register.service` - Call event registration and tracking
-* `py-phone-caller-caller_scheduler.service` - Scheduled call management
-* `py-phone-caller-caller_sms.service` - SMS sending service
-* `py-phone-caller-generate_audio.service` - Text-to-speech audio generation
-* `py-phone-caller-py_phone_caller_ui.service` - Web interface (Gunicorn)
-* `py-phone-caller-celery_worker.service` - Celery background task worker
+| Symptom | Cause |
+| --- | --- |
+| `Placeholder credentials are still in place` | `.secrets.toml` still says `change_me`/`super_secure_password`; set real values and regenerate the group_vars |
+| `db_host ... is not local` | the database is remote, so set `py_phone_caller_db_admin_password` or `py_phone_caller_manage_database: false` |
+| PostgreSQL provisioning fails and the output is hidden | set `py_phone_caller_db_no_log: false` and re-run with `--tags database` |
+| `uv sync` fails offline | point `py_phone_caller_uv_extra_index_url` at your mirror, and `py_phone_caller_uv_insecure_host` if it is plain HTTP |
+| ffmpeg missing on RHEL | expected; only affects the TTS engines that post-process with pydub. Enable RPM Fusion and re-run `--tags prereqs` |
+| A unit restarts in a loop | check the database first: `journalctl -u py-phone-caller-caller-register` |
+| `https://<caddy_domain_name>/` fails on the target itself | the name has to resolve there: Caddy's `tls internal` needs SNI, so a `Host:` header against `https://127.0.0.1/` fails the handshake. Keep the domain in `py_phone_caller_hosts_entries`. |
 
 ---
 
-## 📖 Usage Examples
+## Also here
 
-### Scenario A: Development/Testing Deployment
-Use this configuration for local development or testing on a single machine.
-
-```yaml
-# py-phone-caller_deploy.yml
-- name: Deploy py-phone-caller (Development)
-  hosts: dev_servers
-  become: yes
-  roles:
-    - deploy_py-phone-caller
-  vars:
-    caddy_domain_name: "localhost"
-    py_phone_caller_config:
-      commons:
-        asterisk_host: "localhost"
-      database:
-        db_host: "localhost"
-        db_password: "{{ vault_dev_db_password }}"
-      queue:
-        queue_host: "localhost"
-```
-
-### Scenario B: Production Deployment (Distributed)
-Use this configuration for production with separate database and queue servers.
-
-```yaml
-# py-phone-caller_deploy.yml
-- name: Deploy py-phone-caller (Production)
-  hosts: app_servers
-  become: yes
-  roles:
-    - deploy_py-phone-caller
-  vars:
-    caddy_domain_name: "alerts.company.com"
-    caddy_email: "admin@company.com"
-    py_phone_caller_config:
-      commons:
-        asterisk_host: "pbx.internal.lan"
-        asterisk_ami_user: "{{ vault_ami_user }}"
-      database:
-        db_host: "postgres.internal.lan"
-        db_name: "py_phone_caller_prod"
-        db_user: "py_phone_caller"
-        db_password: "{{ vault_prod_db_password }}"
-      queue:
-        queue_host: "redis.internal.lan"
-        queue_url: "redis://redis.internal.lan:6379/7"
-      caller_sms:
-        caller_sms_carrier: "on_premise"
-        modems:
-          - id: "primary_gsm"
-            port: "/dev/ttyUSB0"
-            baud_rate: 115200
-            priority: 1
-          - id: "backup_gsm"
-            port: "/dev/ttyUSB1"
-            baud_rate: 115200
-            priority: 2
-      py_phone_caller_ui:
-        ui_admin_user: "{{ vault_admin_email }}"
-```
-
-### Scenario C: Air-Gapped/Offline Deployment
-Use this configuration for systems without internet access.
-
-```yaml
-# py-phone-caller_deploy.yml
-- name: Deploy py-phone-caller (Air-Gapped)
-  hosts: isolated_servers
-  become: yes
-  roles:
-    - deploy_py-phone-caller
-  vars:
-    # Deploy from local source (pre-downloaded)
-    py_phone_caller_local_src_path: "/mnt/usb/py-phone-caller"
-    caddy_domain_name: "py-phone-caller.local"
-
-    py_phone_caller_config:
-      commons:
-        asterisk_host: "192.168.1.10"
-      database:
-        db_host: "192.168.1.20"
-        db_password: "{{ vault_offline_db_password }}"
-      queue:
-        queue_host: "192.168.1.20"
-        queue_url: "redis://192.168.1.20:6379/7"
-      generate_audio:
-        tts_engine: "kokoro_tts"  # Lightweight offline TTS
-```
-
----
-
-## 🏃 How to Run
-
-### 1. Dry Run (Test)
-Check what changes will be made without applying them:
-```bash
-ansible-playbook -i inventory py-phone-caller_deploy.yml --check
-```
-
-### 2. Deploy
-Apply configuration and start all services:
-```bash
-ansible-playbook -i inventory py-phone-caller_deploy.yml
-```
-
-### 3. Deploy Specific Components
-Use tags to deploy only specific parts:
-```bash
-# Update configuration only
-ansible-playbook -i inventory py-phone-caller_deploy.yml --tags config
-
-# Update systemd services only
-ansible-playbook -i inventory py-phone-caller_deploy.yml --tags systemd
-
-# Update database schema
-ansible-playbook -i inventory py-phone-caller_deploy.yml --tags database
-```
-
----
-
-## ✅ Testing & Verification
-
-After the playbook finishes, verify the deployment on the target server using the following steps.
-
-### 1. Check Service Status
-Verify that all services are running:
-```bash
-systemctl status 'py-phone-caller-*'
-```
-*All services should show **active (running)** status.*
-
-### 2. Check Logs
-View logs for any service:
-```bash
-# View all service logs
-journalctl -u 'py-phone-caller-*' -f
-
-# View specific service logs
-journalctl -u py-phone-caller-asterisk_caller -n 50
-
-# Check log directory
-ls -lh /var/log/py-phone-caller/
-```
-
-### 3. Verify Web Interface
-Access the web UI and verify it's accessible:
-```bash
-# Test from the server
-curl -I http://localhost:5000
-
-# Or access from your browser
-# https://py-phone-caller.lan (or your configured domain)
-```
-
-### 4. Test Database Connectivity
-Verify database connection:
-```bash
-# Run as the py-phone-caller user
-sudo -u py-phone-caller /opt/py-phone-caller/venv/bin/python -c "
-from sqlalchemy import create_engine
-engine = create_engine('postgresql://py_phone_caller:password@localhost/py_phone_caller')
-with engine.connect() as conn:
-    print('Database connection successful!')
-"
-```
-
-### 5. Test API Endpoints
-Check that microservices are responding:
-```bash
-# Test Caller Register Service (port 8083)
-curl http://localhost:8083/health
-
-# Test Generate Audio Service (port 8082)
-curl http://localhost:8082/health
-
-# Test SMS Service (port 8085)
-curl http://localhost:8085/health
-
-# Test Address Book Service (port 8087)
-curl http://localhost:8087/health
-```
-
-### 6. Verify Configuration
-Check the deployed configuration:
-```bash
-sudo -u py-phone-caller cat /opt/py-phone-caller/app/config/settings.source.toml
-sudo -u py-phone-caller sed -n '1,80p' /opt/py-phone-caller/app/config/py-phone-caller.env
-```
-
----
-
-## 🧩 Architecture Notes
-
-* **Modular Design:** The role is split into logical task files (prereqs, user, source, install, database, config, caddy, firewall, systemd, cleanup) for maintainability.
-* **Python Virtual Environment:** All Python dependencies are installed in an isolated virtualenv at `/opt/py-phone-caller/venv`.
-* **Service Management:** Each microservice runs as a separate systemd unit under the dedicated `py-phone-caller` user.
-* **Reverse Proxy:** Caddy is configured to provide HTTPS termination and reverse proxy functionality for the web UI.
-* **Security:** The role configures firewall rules (firewalld/ufw), creates a dedicated system user, and sets proper file permissions.
-* **Idempotent:** The role can be run multiple times safely without causing issues.
-
----
-
-## 🛠 Troubleshooting
-
-### Service Won't Start
-If a service fails to start:
-```bash
-# Check service status and logs
-systemctl status py-phone-caller-asterisk_caller
-journalctl -u py-phone-caller-asterisk_caller -n 100
-
-# Verify configuration
-sudo -u py-phone-caller cat /opt/py-phone-caller/app/config/settings.source.toml
-sudo -u py-phone-caller sed -n '1,80p' /opt/py-phone-caller/app/config/py-phone-caller.env
-
-# Check file permissions
-ls -la /opt/py-phone-caller/
-```
-
-### Database Connection Errors
-If services can't connect to the database:
-1. **Verify Credentials:** Check `/opt/py-phone-caller/app/config/settings.source.toml` and `/opt/py-phone-caller/app/config/py-phone-caller.env` for correct database credentials
-2. **Test Connection:** Use `psql` to manually test the connection:
-   ```bash
-   psql -h localhost -U py_phone_caller -d py_phone_caller
-   ```
-3. **Check Firewall:** Ensure PostgreSQL port (5432) is accessible
-4. **Check PostgreSQL:** Verify PostgreSQL is running and accepting connections
-
-### TTS Audio Generation Fails
-If audio generation is failing:
-1. **Check Models:** Verify TTS models are downloaded in `/opt/py-phone-caller/pre_trained_models/`
-2. **Check Disk Space:** TTS models require significant disk space
-3. **Check Logs:** Review `generate_audio` service logs for specific errors
-4. **Verify Engine:** Ensure the configured `tts_engine` is supported and properly installed
-
-### Port Conflicts
-If services fail due to port conflicts:
-1. **Check Ports:** Verify no other services are using the required ports (5000, 8081-8087)
-   ```bash
-   netstat -tlnp | grep -E ':(5000|808[1-7])'
-   ```
-2. **Modify Config:** Override port numbers in your playbook variables if needed
-
----
-
-## 🔒 Security Considerations
-
-* **Credentials:** Always use Ansible Vault for sensitive data (database passwords, API keys):
-  ```bash
-  ansible-vault encrypt_string 'my_secret_password' --name 'vault_db_password'
-  ```
-* **Firewall:** The role configures firewall rules, but review them for your environment
-* **HTTPS:** Configure proper SSL certificates for production (set `caddy_email` for Let's Encrypt)
-* **User Permissions:** The role creates a dedicated unprivileged user; services do not run as root
-* **Database Access:** Restrict database access to only the application server IPs
-
----
-
-**Maintained by:** py-phone-caller team
+* `../asterisk_py-phone-caller/` — Asterisk PBX on its own
+* `../deploy_all/` — Asterisk **and** the services in one run, sharing this
+  inventory and these group_vars
+* `../tools/README.md` — the configuration converter

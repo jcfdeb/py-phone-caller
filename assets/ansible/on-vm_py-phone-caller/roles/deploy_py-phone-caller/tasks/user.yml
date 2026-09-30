@@ -1,14 +1,38 @@
 ---
-- name: Create py-phone-caller group
-  group:
+- name: Create the service group
+  ansible.builtin.group:
     name: "{{ py_phone_caller_group }}"
+    system: true
     state: present
 
-- name: Create py-phone-caller user
-  user:
+- name: Create the service account
+  ansible.builtin.user:
     name: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
     home: "{{ py_phone_caller_install_dir }}"
-    shell: /bin/bash
-    system: yes
-    create_home: yes
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+
+# caller_sms talks to GSM modems over /dev/ttyUSB*, which are owned by the
+# serial device group.
+- name: Grant access to serial devices for on-premise SMS
+  ansible.builtin.user:
+    name: "{{ py_phone_caller_user }}"
+    groups: "{{ py_phone_caller_modem_group }}"
+    append: true
+  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+  notify: Restart py-phone-caller services
+
+- name: Create the installation directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0755"
+  loop:
+    - "{{ py_phone_caller_install_dir }}"
+    - "{{ py_phone_caller_src_dir }}"
+    - "{{ py_phone_caller_uv_dir }}"
+    - "{{ py_phone_caller_log_dir }}"

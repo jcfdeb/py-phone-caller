@@ -1,0 +1,72 @@
+[Unit]
+Description=OpenAlert Daemon - Resilient Multi-Transport Alert Routing (BLE Mesh, Nostr, Prometheus)
+Documentation=https://github.com/jcfdeb/py-phone-caller
+After=network-online.target bluetooth.target dbus.service
+Wants=network-online.target bluetooth.target
+Requires=dbus.service
+
+[Service]
+Type=simple
+User=openalert
+Group=openalert
+DynamicUser=no
+WorkingDirectory=/var/lib/openalertd
+ExecStart=/usr/local/bin/openalertd /etc/openalertd/openalertd.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5s
+TimeoutStopSec=10s
+
+# Logging & Environment
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openalertd
+Environment=RUST_LOG=info
+Environment=RUST_BACKTRACE=1
+
+# Storage, Configuration & State Directories
+# systemd automatically creates these directories and grants ownership to User:Group
+ConfigurationDirectory=openalertd
+StateDirectory=openalertd
+RuntimeDirectory=openalertd
+LogsDirectory=openalertd
+
+# Linux Ambient & Bounding Capabilities
+# Unprivileged non-root execution while allowing low-level BLE HCI / network socket binds
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW
+
+# Advanced Linux Security Sandboxing & Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=no
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_BLUETOOTH
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @reboot
+SystemCallArchitectures=native
+
+# Resource Quotas & Hard Limits
+LimitNOFILE=65536
+LimitNPROC=4096
+LimitMEMLOCK=64M
+TasksMax=256
+CPUQuota=50%
+CPUWeight=100
+MemoryHigh=100M
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target

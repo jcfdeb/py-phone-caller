@@ -1,0 +1,14 @@
+---
+# Install with:
+#   ansible-galaxy collection install -r requirements.yml
+collections:
+  # synchronize (rsync-based source delivery) and firewalld
+  - name: ansible.posix
+    version: ">=1.5.0"
+  # ufw
+  - name: community.general
+    version: ">=8.0.0"
+  # postgresql_user / postgresql_db / postgresql_privs / postgresql_ext /
+  # postgresql_pg_hba
+  - name: community.postgresql
+    version: ">=3.0.0"
