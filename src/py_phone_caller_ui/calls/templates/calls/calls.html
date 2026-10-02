@@ -32,7 +32,7 @@
                         <input type="hidden" name="sort_by" value="{{ sort_by }}">
                         <input type="hidden" name="sort_order" value="{{ sort_order }}">
                         <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
                             <input class="form-control border-start-0 ps-0" type="search" placeholder="Search managed calls..."
                                    aria-label="Search" name="search" value="{{ search_query }}">
                             {% if search_query %}
@@ -80,7 +80,7 @@
                 <th>Channel</th>
                 <th class="text-center">
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='times_to_dial', sort_order='asc' if sort_by != 'times_to_dial' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
-                        To Dial
+                        To Dial <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Maximum number of call retry attempts') }}"></i>
                         {% if sort_by == 'times_to_dial' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -88,7 +88,7 @@
                 </th>
                 <th class="text-center">
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='dialed_times', sort_order='asc' if sort_by != 'dialed_times' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
-                        Dialed
+                        Dialed <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Number of dial attempts executed so far') }}"></i>
                         {% if sort_by == 'dialed_times' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -112,7 +112,7 @@
                 </th>
                 <th>
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='acknowledge_at', sort_order='asc' if sort_by != 'acknowledge_at' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Acknowledgement
+                        Acknowledgement <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Timestamp when receiver pressed DTMF 1 to acknowledge the alert') }}"></i>
                         {% if sort_by == 'acknowledge_at' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}

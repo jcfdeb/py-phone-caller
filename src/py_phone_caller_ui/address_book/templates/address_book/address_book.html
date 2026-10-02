@@ -21,6 +21,9 @@
                 </ul>
             </div>
             <input type="file" id="ab_import_file" class="d-none" accept=".csv,text/csv" onchange="handleABImport(event)">
+            <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#onCallHelpModal" title="{{ _('Learn how On-Call rotations and availability work') }}">
+                <i class="bi bi-question-circle me-1"></i> {{ _('On-Call Guide') }}
+            </button>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
                 <i class="bi bi-person-plus me-1"></i> Add Contact
             </button>
@@ -33,7 +36,7 @@
             <form class="row g-2" method="get" action="{{ address_book_url }}">
                 <div class="col-md-4">
                     <div class="input-group">
-                        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                        <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
                         <input class="form-control border-start-0 ps-0" type="text" name="search" value="{{ search_query }}" placeholder="Search contacts...">
                     </div>
                 </div>
@@ -70,9 +73,9 @@
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
             <tr>
-                <th>Contact Name</th>
-                <th>Phone Number</th>
-                <th class="text-center">Enabled</th>
+                <th>{{ _('Contact Name') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('First and last name of the responder') }}"></i></th>
+                <th>{{ _('Phone Number') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('E.164 formatted number dialed for voice calls and SMS') }}"></i></th>
+                <th class="text-center">{{ _('Status') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Only active contacts receive automated alerts') }}"></i></th>
                 <th>Created</th>
                 <th class="text-end">Actions</th>
             </tr>
@@ -150,7 +153,7 @@
                         <input id="add_surname" class="form-control" placeholder="Doe"/>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Phone Number</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Phone Number') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('International format starting with + (e.g. +393349246425)') }}"></i></label>
                         <input id="add_phone" class="form-control" placeholder="+39..."/>
                     </div>
                     <div class="col-md-6">
@@ -205,7 +208,7 @@
                                         <input type="time" id="avail_end_time" step="1" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">Priority</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('Priority') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Priority 0 is dialed first, followed by 1, 2, 3, 4') }}"></i></label>
                                         <select id="avail_priority" class="form-select form-select-sm">
                                             <option value="0">0 (Highest)</option>
                                             <option value="1">1</option>
@@ -220,7 +223,7 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="table-responsive bg-white rounded-3 border mb-2">
+                                <div class="table-responsive rounded-3 border mb-2">
                                     <table class="table table-sm table-hover mb-0">
                                         <thead class="table-light border-bottom">
                                             <tr>
@@ -271,7 +274,7 @@
                         <input id="edit_surname" class="form-control"/>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Phone Number</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Phone Number') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('International format starting with + (e.g. +393349246425)') }}"></i></label>
                         <input id="edit_phone" class="form-control"/>
                     </div>
                     <div class="col-md-6">
@@ -326,7 +329,7 @@
                                         <input type="time" id="edit_avail_end_time" step="1" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">Priority</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('Priority') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Priority 0 is dialed first, followed by 1, 2, 3, 4') }}"></i></label>
                                         <select id="edit_avail_priority" class="form-select form-select-sm">
                                             <option value="0">0 (Highest)</option>
                                             <option value="1">1</option>
@@ -341,7 +344,7 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="table-responsive bg-white rounded-3 border mb-2">
+                                <div class="table-responsive rounded-3 border mb-2">
                                     <table class="table table-sm table-hover mb-0">
                                         <thead class="table-light border-bottom">
                                             <tr>
@@ -367,6 +370,108 @@
             <div class="modal-footer bg-light border-0">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary px-4" onclick="saveEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- On-Call & Contacts Help Modal -->
+<div class="modal fade" id="onCallHelpModal" tabindex="-1" aria-labelledby="onCallHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-body-tertiary px-4 py-3 border-bottom">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="p-2 rounded-3 bg-info-subtle text-info fs-5 d-flex align-items-center justify-content-center">
+                        <i class="bi bi-info-circle-fill"></i>
+                    </span>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-body" id="onCallHelpModalLabel">
+                            {{ _('Address Book & On-Call Rotation Guide') }}
+                        </h5>
+                        <small class="text-secondary">{{ _('How contact availability, priority escalation, and calendar routing operate.') }}</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card h-100 border rounded-3 p-3 bg-body-tertiary">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-telephone-plus text-primary fs-5"></i>
+                                <h6 class="fw-bold mb-0">{{ _('Contact Details & Phone Numbers') }}</h6>
+                            </div>
+                            <p class="small text-secondary mb-2">
+                                {{ _('Contacts must include standard E.164 phone numbers (e.g. +393349246425) to dial properly through Asterisk ARI SIP trunks and GSM modems.') }}
+                            </p>
+                            <ul class="small text-secondary ps-3 mb-0">
+                                <li><strong>{{ _('Active') }}</strong>: {{ _('Eligible for automated incident calls and SMS.') }}</li>
+                                <li><strong>{{ _('Disabled') }}</strong>: {{ _('Excluded from on-call selection and escalation.') }}</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border rounded-3 p-3 bg-body-tertiary">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-clock-history text-info fs-5"></i>
+                                <h6 class="fw-bold mb-0">{{ _('Availability Windows & Timezones') }}</h6>
+                            </div>
+                            <p class="small text-secondary mb-2">
+                                {{ _('Availability is specified in your local browser timezone. The system automatically converts and stores windows in UTC for accurate global scheduling.') }}
+                            </p>
+                            <p class="small text-secondary mb-0">
+                                {{ _('Contacts without explicit windows are considered available 24/7 if enabled.') }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="card border rounded-3 p-3 bg-body-tertiary">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-sort-numeric-down text-warning fs-5"></i>
+                                <h6 class="fw-bold mb-0">{{ _('Priority Levels & Escalation Rules') }}</h6>
+                            </div>
+                            <p class="small text-secondary mb-3">
+                                {{ _('When an incident or scheduled call dispatches, the system queries contacts active right now and orders them by Priority:') }}
+                            </p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0 small">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>{{ _('Priority') }}</th>
+                                            <th>{{ _('Role') }}</th>
+                                            <th>{{ _('Dispatch Behavior') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><span class="badge bg-danger">0 (Highest)</span></td>
+                                            <td><strong>{{ _('Primary Responder') }}</strong></td>
+                                            <td>{{ _('First contact dialed when an alert triggers.') }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="badge bg-warning text-dark">1</span></td>
+                                            <td><strong>{{ _('Secondary Responder') }}</strong></td>
+                                            <td>{{ _('Contact dialed if Primary fails to answer or acknowledge with DTMF 1.') }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="badge bg-info text-dark">2 - 3</span></td>
+                                            <td><strong>{{ _('Tier 2 / Team Backup') }}</strong></td>
+                                            <td>{{ _('Escalation fallback for high-severity incidents.') }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="badge bg-secondary">4 (Lowest)</span></td>
+                                            <td><strong>{{ _('Duty Supervisor / Final Fallback') }}</strong></td>
+                                            <td>{{ _('Notified only when earlier tiers are exhausted.') }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-body-tertiary border-top px-4 py-3">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">{{ _('Got it') }}</button>
             </div>
         </div>
     </div>

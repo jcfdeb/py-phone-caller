@@ -73,6 +73,7 @@ async def broadcast_stasis_event(event_type: str, asterisk_chan: str, response_j
             "channel_state": response_json.get("channel", {}).get("state"),
         })
         await r.publish("telephony.stasis.events", payload)
+        await r.publish("py_phone_caller:events:telephony", payload)
         if asterisk_chan:
             await r.publish(f"stasis:events:{asterisk_chan}", payload)
         await r.aclose()

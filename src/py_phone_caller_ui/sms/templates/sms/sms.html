@@ -38,7 +38,7 @@
                         <input type="hidden" name="sort_by" value="{{ sort_by }}">
                         <input type="hidden" name="sort_order" value="{{ sort_order }}">
                         <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
                             <input class="form-control border-start-0 ps-0" type="search" placeholder="Search SMS by phone, message, carrier, status..."
                                    aria-label="Search" name="search" value="{{ search_query }}">
                             {% if search_query %}
@@ -91,7 +91,7 @@
                 <th style="min-width: 250px;">Message</th>
                 <th>
                     <a href="{{ url_for('sms_blueprint.sms', sort_by='carrier', sort_order='asc' if sort_by != 'carrier' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Carrier
+                        Carrier <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('SMS transmission gateway: Asterisk dongle, Gammu GSM modem, or cloud gateway') }}"></i>
                         {% if sort_by == 'carrier' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -99,7 +99,7 @@
                 </th>
                 <th class="text-center">
                     <a href="{{ url_for('sms_blueprint.sms', sort_by='status', sort_order='asc' if sort_by != 'status' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
-                        Status
+                        Status <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Delivery lifecycle: Pending, Sent, Delivered, or Failed') }}"></i>
                         {% if sort_by == 'status' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -280,6 +280,27 @@
                     </div>
                 </div>
 
+                <!-- Delivery Lifecycle Stepper / Breadcrumbs -->
+                <div class="mb-4">
+                    <label class="form-label small text-muted text-uppercase fw-semibold mb-2">Audit Lifecycle Progression</label>
+                    <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border small">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-success rounded-pill px-2 py-1"><i class="bi bi-check-lg"></i></span>
+                            <span class="fw-semibold">Ingested</span>
+                        </div>
+                        <div class="flex-grow-1 border-top border-2 mx-2" id="stepLine1"></div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge rounded-pill px-2 py-1" id="stepBadgeRouted"><i class="bi bi-broadcast"></i></span>
+                            <span class="fw-semibold" id="stepLabelRouted">Dispatched</span>
+                        </div>
+                        <div class="flex-grow-1 border-top border-2 mx-2" id="stepLine2"></div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge rounded-pill px-2 py-1" id="stepBadgeStatus"><i class="bi bi-flag"></i></span>
+                            <span class="fw-semibold" id="stepLabelStatus">Delivered</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label small text-muted text-uppercase fw-semibold mb-1">Message Content</label>
                     <div class="p-3 bg-light rounded border font-monospace text-break" style="white-space: pre-wrap;" id="modalSmsMessage"></div>
@@ -333,6 +354,19 @@
         document.getElementById('modalSmsStatus').textContent = status || '';
         document.getElementById('modalSmsCreatedAt').textContent = createdAt || 'No Data';
         document.getElementById('modalSmsMessage').textContent = message || '';
+
+        // Update Lifecycle Audit Stepper
+        const isSent = (status || '').toLowerCase() === 'sent';
+        const isFailed = (status || '').toLowerCase() === 'failed';
+        const bRouted = document.getElementById('stepBadgeRouted');
+        const bStatus = document.getElementById('stepBadgeStatus');
+        const lStatus = document.getElementById('stepLabelStatus');
+
+        if (bRouted) bRouted.className = 'badge rounded-pill px-2 py-1 ' + (isFailed ? 'bg-danger text-white' : 'bg-primary text-white');
+        if (bStatus) {
+            bStatus.className = 'badge rounded-pill px-2 py-1 ' + (isSent ? 'bg-success text-white' : (isFailed ? 'bg-danger text-white' : 'bg-secondary text-white'));
+            if (lStatus) lStatus.textContent = isSent ? 'Sent Confirmed' : (isFailed ? 'Transmission Failed' : 'Queued / Processing');
+        }
 
         const errorContainer = document.getElementById('modalSmsErrorContainer');
         const errorText = document.getElementById('modalSmsError');

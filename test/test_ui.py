@@ -482,3 +482,144 @@ async def test_get_noc_dashboard_metrics_calculation():
         assert metrics["sms_delivered"] == 2
         assert metrics["sms_failed"] == 1
         assert metrics["sms_rate"] == 66.7
+
+
+# =========================================================================
+# Phase 5 Tests: Domain Models, Wallboard, SSE, Dark Mode, & Diagnostics
+# =========================================================================
+
+def test_shared_domain_models():
+    from py_phone_caller_utils.models import (
+        AlertSeverity, PrometheusAlertItem, PrometheusWebhookPayload,
+        CallAlertRequest, ChannelState, CallEvent, DtmfAckPayload,
+        CallDispatchSpec, SmsStatus, SmsPayload, SmsRecordModel,
+        ContactModel, ContactCreatePayload, ContactUpdatePayload
+    )
+    # 1. Alert models
+    item = PrometheusAlertItem(labels={"alertname": "HostHighCpu", "severity": "critical"})
+    assert item.severity == AlertSeverity.CRITICAL
+    assert item.alert_name == "HostHighCpu"
+
+    webhook = PrometheusWebhookPayload(alerts=[item])
+    assert len(webhook.alerts) == 1
+
+    # 2. Call dispatch request validation
+    call_req = CallAlertRequest(text="Alert test message", phone="+393349246425", speed=1.2)
+    assert call_req.speed == 1.2
+    assert call_req.phone == "+393349246425"
+
+    # 3. SMS validation
+    sms_p = SmsPayload(phone="+39 334-924-6425", message="Test SMS")
+    assert sms_p.phone == "+393349246425"
+
+    # 4. Contact validation
+    contact = ContactCreatePayload(name="OnCall Lead", phone="+39 (334) 924 6425", group="devops")
+    assert contact.phone == "+393349246425"
+
+
+@patch("py_phone_caller_ui.home.get_noc_dashboard_metrics", new_callable=AsyncMock)
+def test_wallboard_view(mock_metrics, client):
+    import datetime
+    from datetime import timezone
+    mock_metrics.return_value = {
+        "total_calls": 50,
+        "ack_count": 45,
+        "ack_rate": 90.0,
+        "heard_count": 2,
+        "escalated_count": 3,
+        "in_flight_count": 0,
+        "total_sms": 20,
+        "sms_delivered": 19,
+        "sms_failed": 1,
+        "sms_rate": 95.0,
+        "is_gsm": True,
+        "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+    }
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        response = client.get("/wallboard")
+        assert response.status_code == 200
+        assert b"NOC Operations Center" in response.data
+        assert b"90.0%" in response.data
+        assert b"data-bs-theme=\"dark\"" in response.data
+
+
+def test_quick_diagnostics_validation(client):
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+
+        # Missing phone in SMS
+        res_sms = client.post("/api/diagnostics/test_sms", json={"phone": ""})
+        assert res_sms.status_code == 400
+
+        # Missing phone in Call
+        res_call = client.post("/api/diagnostics/test_call", json={"phone": ""})
+        assert res_call.status_code == 400
+
+
+@patch("aiohttp.ClientSession.post")
+def test_quick_diagnostics_dispatch_success(mock_post, client):
+    # Mock successful response
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value={"status": 200})
+    mock_context = AsyncMock()
+    mock_context.__aenter__.return_value = mock_resp
+    mock_context.__aexit__.return_value = None
+    mock_post.return_value = mock_context
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+
+        res_sms = client.post("/api/diagnostics/test_sms", json={"phone": "+393349246425", "message": "Test"})
+        assert res_sms.status_code == 200
+        assert res_sms.get_json()["success"] is True
+        assert res_sms.get_json()["service"] == "caller_sms"
+
+        res_call = client.post("/api/diagnostics/test_call", json={"phone": "+393349246425", "message": "Test"})
+        assert res_call.status_code == 200
+        assert res_call.get_json()["success"] is True
+        assert res_call.get_json()["service"] == "asterisk_caller"
+
+
+@patch("py_phone_caller_ui.home.get_noc_dashboard_metrics", new_callable=AsyncMock)
+def test_dark_mode_and_modal_present_in_base(mock_metrics, client):
+    mock_metrics.return_value = {
+        "total_calls": 1,
+        "ack_count": 1,
+        "ack_rate": 100.0,
+        "heard_count": 0,
+        "escalated_count": 0,
+        "in_flight_count": 0,
+        "total_sms": 1,
+        "sms_delivered": 1,
+        "sms_failed": 0,
+        "sms_rate": 100.0,
+        "is_gsm": True,
+        "timestamp": "2026-10-02T12:00:00Z",
+    }
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        response = client.get("/")
+        assert response.status_code == 200
+        assert b"data-bs-theme" in response.data
+        assert b"themeToggleBtn" in response.data
+        assert b"quickDiagnosticsModal" in response.data
+        assert b"toggleDarkMode" in response.data
+        assert b"wallboard" in response.data

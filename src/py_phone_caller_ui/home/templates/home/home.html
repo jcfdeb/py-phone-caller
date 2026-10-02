@@ -35,7 +35,7 @@
 {% block content %}
 <div class="container main-container">
     <!-- NOC Live Telephony & Incident Dashboard Banner -->
-    <div class="card border-0 shadow-sm rounded-4 p-4 mb-5 bg-white">
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-5">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 pb-3 mb-4 border-bottom">
             <div>
                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill mb-2">
@@ -265,8 +265,84 @@
 </div>
 
 <script>
-    // Live NOC Telemetry Auto-refresh
+    function applyMetricsToUI(data) {
+        if (!data) return;
+        const total = data.total_calls || 0;
+        const totalEl = document.getElementById('kpi-total-calls');
+        if (totalEl) totalEl.innerText = total;
+        const ackRateEl = document.getElementById('kpi-ack-rate');
+        if (ackRateEl) ackRateEl.innerText = (data.ack_rate || 0) + '%';
+        const ackCountEl = document.getElementById('kpi-ack-count');
+        if (ackCountEl) ackCountEl.innerText = data.ack_count || 0;
+        const escEl = document.getElementById('kpi-escalated-calls');
+        if (escEl) escEl.innerText = data.escalated_count || 0;
+        const smsEl = document.getElementById('kpi-sms-delivered');
+        if (smsEl) smsEl.innerText = data.sms_delivered || 0;
+
+        const legAck = document.getElementById('legend-ack');
+        if (legAck) legAck.innerText = data.ack_count || 0;
+        const legHeard = document.getElementById('legend-heard');
+        if (legHeard) legHeard.innerText = data.heard_count || 0;
+        const legEsc = document.getElementById('legend-escalated');
+        if (legEsc) legEsc.innerText = data.escalated_count || 0;
+        const legFlight = document.getElementById('legend-flight');
+        if (legFlight) legFlight.innerText = data.in_flight_count || 0;
+
+        const denom = total > 0 ? total : 1;
+        const barAck = document.getElementById('bar-ack');
+        if (barAck) barAck.style.width = Math.round((data.ack_count || 0) / denom * 100) + '%';
+        const barHeard = document.getElementById('bar-heard');
+        if (barHeard) barHeard.style.width = Math.round((data.heard_count || 0) / denom * 100) + '%';
+        const barEsc = document.getElementById('bar-escalated');
+        if (barEsc) barEsc.style.width = Math.round((data.escalated_count || 0) / denom * 100) + '%';
+        const barFlight = document.getElementById('bar-flight');
+        if (barFlight) barFlight.style.width = Math.round((data.in_flight_count || 0) / denom * 100) + '%';
+
+        const lastUp = document.getElementById('noc-last-update');
+        if (lastUp) {
+            const now = new Date();
+            lastUp.innerText = 'Live SSE ' + now.toLocaleTimeString();
+        }
+    }
+
+    // Connect to Server-Sent Events (SSE) for Real-Time Telemetry Stream
+    (function initSSE() {
+        if (!window.EventSource) return;
+        const sseUrl = "{{ url_for('home_blueprint.telemetry_stream') }}";
+        const evtSource = new EventSource(sseUrl);
+
+        evtSource.addEventListener('metrics', function(e) {
+            try {
+                const data = JSON.parse(e.data);
+                applyMetricsToUI(data);
+            } catch(err) {}
+        });
+
+        evtSource.addEventListener('telephony_event', function(e) {
+            try {
+                const ev = JSON.parse(e.data);
+                if (ev && ev.event_type) {
+                    showToast('Telephony Event', ev.event_type + (ev.channel_state ? ' (' + ev.channel_state + ')' : ''), 'info');
+                }
+            } catch(err) {}
+        });
+
+        evtSource.onerror = function() {
+            // EventSource will auto-reconnect
+            console.debug('SSE disconnected, reconnecting in background...');
+        };
+    })();
+
+    // Fallback polling every 15s in case SSE is blocked by proxies
     async function refreshNocMetrics() {
+        try {
+            const res = await fetch("{{ url_for('home_blueprint.api_dashboard_metrics') }}");
+            if (!res.ok) return;
+            const data = await res.json();
+            applyMetricsToUI(data);
+        } catch(e) {}
+    }
+    setInterval(refreshNocMetrics, 15000);
         try {
             const res = await fetch("{{ url_for('home_blueprint.api_dashboard_metrics') }}");
             if (!res.ok) return;

@@ -1,8 +1,15 @@
 <!DOCTYPE html>
-<html lang="{{ current_locale|default('en') }}">
+<html lang="{{ current_locale|default('en') }}" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script>
+        // Synchronously initialize theme from localStorage to avoid flash of light mode
+        (function() {
+            const savedTheme = localStorage.getItem('py_phone_caller_theme') || 'light';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+        })();
+    </script>
     <!-- Google Fonts for Universal CJK (Chinese) and Devanagari (Hindi) Glyphs -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,11 +21,9 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body class="app-shell d-flex flex-column min-vh-100">
-<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/htmx.min.js') }}" defer></script>
 
 {% block navbar %}
-<nav class="navbar navbar-expand-lg navbar-light sticky-top app-navbar">
+<nav class="navbar navbar-expand-lg sticky-top app-navbar">
     <div class="container-fluid px-4 px-lg-5">
         <a class="navbar-brand d-flex align-items-center" href="{{ url_for('home_blueprint.home') }}">
             <span class="brand-mark me-2"><i class="bi bi-telephone-outbound-fill"></i></span>
@@ -66,10 +71,33 @@
                         <i class="bi bi-journal-bookmark me-1"></i>{{ _('Address Book') }}
                     </a>
                 </li>
+
+                <!-- Diagnostics & Quick Test Modal Trigger -->
+                <li class="nav-item">
+                    <a class="nav-link d-flex align-items-center" href="#" role="button" data-bs-toggle="modal" data-bs-target="#quickDiagnosticsModal" data-bs-placement="bottom" title="{{ _('Telephony & SMS Diagnostics Console: Test live SIP ARI calls and SMS dispatching.') }}">
+                        <i class="bi bi-wrench-adjustable text-warning me-1"></i>
+                        <span>{{ _('Diagnostics') }}</span>
+                    </a>
+                </li>
+
+                <!-- Help Center Drawer Trigger -->
+                <li class="nav-item">
+                    <button type="button" class="btn btn-link nav-link px-2" data-bs-toggle="offcanvas" data-bs-target="#helpOffcanvas" aria-controls="helpOffcanvas" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ _('Help Center: Press ? for documentation and operational guides.') }}">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </li>
+
+                <!-- Dark / Light Theme Toggle Button -->
+                <li class="nav-item">
+                    <button type="button" class="btn btn-link nav-link px-2" id="themeToggleBtn" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ _('Toggle Theme: Switch between light and dark night mode.') }}" onclick="toggleDarkMode()">
+                        <i class="bi bi-moon-stars" id="themeToggleIcon"></i>
+                    </button>
+                </li>
+
                 <!-- Locale Switcher Dropdown -->
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="navbarLocaleDropdown" role="button"
-                       data-bs-toggle="dropdown" aria-expanded="false" title="Switch Language">
+                       data-bs-toggle="dropdown" aria-expanded="false" title="{{ _('Switch Language: Select from 8 supported locales.') }}">
                         <span class="me-1">{{ current_locale_meta.flag if current_locale_meta else '🌐' }}</span>
                         <span class="d-none d-xl-inline">{{ current_locale_meta.name if current_locale_meta else 'Language' }}</span>
                     </a>
@@ -93,6 +121,8 @@
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0"
                         aria-labelledby="navbarDropdownMenuLink">
+                        <li><a class="dropdown-item" href="{{ url_for('home_blueprint.wallboard') }}" target="_blank"><i
+                                class="bi bi-display me-2 text-primary"></i>{{ _('NOC Wallboard (24/7)') }}</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('users_blueprint.users') }}"><i
                                 class="bi bi-people me-2"></i>{{ _('User Management') }}</a></li>
                         <li>
@@ -121,9 +151,326 @@
 </footer>
 {% endblock %}
 
+<!-- Diagnostic Quick Dispatch Modal -->
+<div class="modal fade" id="quickDiagnosticsModal" tabindex="-1" aria-labelledby="quickDiagnosticsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+            <!-- Modal Header -->
+            <div class="modal-header bg-body-tertiary px-4 py-3 border-bottom">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="p-2 rounded-3 bg-warning-subtle text-warning fs-5 d-flex align-items-center justify-content-center">
+                        <i class="bi bi-lightning-charge-fill"></i>
+                    </span>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-body" id="quickDiagnosticsModalLabel">
+                            {{ _('Telephony & SMS Diagnostics Console') }}
+                        </h5>
+                        <small class="text-secondary">{{ _('Trigger immediate test calls or SMS to verify PBX trunk and GSM modem gateways.') }}</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body p-4">
+                <!-- Tab Selector Buttons -->
+                <div class="d-flex p-1 bg-body-secondary rounded-pill mb-4 border" role="tablist">
+                    <button class="btn btn-sm flex-fill rounded-pill py-2 fw-semibold btn-primary" id="btnTabCall" type="button" onclick="switchDiagTab('call')">
+                        <i class="bi bi-telephone-outbound me-2"></i>{{ _('Outbound Test Call') }}
+                    </button>
+                    <button class="btn btn-sm flex-fill rounded-pill py-2 fw-semibold btn-outline-secondary border-0 text-body" id="btnTabSms" type="button" onclick="switchDiagTab('sms')">
+                        <i class="bi bi-chat-left-text me-2"></i>{{ _('Outbound Test SMS') }}
+                    </button>
+                </div>
+
+                <!-- Call Section -->
+                <div id="diagCallSection">
+                    <form id="diagCallForm" onsubmit="handleTestCallSubmit(event)">
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-body-secondary">
+                                <i class="bi bi-telephone me-1 text-primary"></i>{{ _('Destination Phone Number') }}
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-body-tertiary font-monospace"><i class="bi bi-phone"></i></span>
+                                <input type="tel" class="form-control font-monospace" id="diagCallPhone" placeholder="+393349246425" value="+393349246425" required>
+                            </div>
+                            <div class="form-text small">{{ _('E.164 international format (e.g. +393349246425).') }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-body-secondary">
+                                <i class="bi bi-soundwave me-1 text-info"></i>{{ _('Speech Audio Message') }}
+                            </label>
+                            <textarea class="form-control" id="diagCallMessage" rows="3" required>This is an automated diagnostic test call from py-phone-caller. Press 1 to acknowledge.</textarea>
+                            <div class="form-text small">{{ _('Synthesized into speech via Silero Neural TTS and played to the SIP channel.') }}</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold shadow-sm" id="diagCallBtn">
+                            <i class="bi bi-telephone-outbound me-2"></i>{{ _('Dispatch Test Call') }}
+                        </button>
+                    </form>
+                </div>
+
+                <!-- SMS Section -->
+                <div id="diagSmsSection" class="d-none">
+                    <form id="diagSmsForm" onsubmit="handleTestSmsSubmit(event)">
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-body-secondary">
+                                <i class="bi bi-telephone me-1 text-success"></i>{{ _('Destination Phone Number') }}
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-body-tertiary font-monospace"><i class="bi bi-phone"></i></span>
+                                <input type="tel" class="form-control font-monospace" id="diagSmsPhone" placeholder="+393349246425" value="+393349246425" required>
+                            </div>
+                            <div class="form-text small">{{ _('E.164 international format (e.g. +393349246425).') }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-body-secondary">
+                                <i class="bi bi-chat-dots me-1 text-success"></i>{{ _('SMS Message Text') }}
+                            </label>
+                            <textarea class="form-control" id="diagSmsMessage" rows="3" required>[TEST] py-phone-caller modem signal and gateway verification.</textarea>
+                            <div class="form-text small">{{ _('Dispatched via On-Premise GSM Modem (/dev/ttyUSB) with automatic Twilio fallback.') }}</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100 py-2 fw-semibold shadow-sm" id="diagSmsBtn">
+                            <i class="bi bi-chat-left-text me-2"></i>{{ _('Send Test SMS') }}
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Inline Live Response Container -->
+                <div id="diagResultContainer" class="mt-4 d-none">
+                    <div class="card border rounded-3 overflow-hidden shadow-sm" id="diagResultCard">
+                        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between small fw-bold" id="diagResultHeader">
+                            <span id="diagResultTitle"><i class="bi bi-info-circle me-1"></i>Dispatch Result</span>
+                            <span class="badge" id="diagResultBadge"></span>
+                        </div>
+                        <div class="card-body p-3">
+                            <p class="mb-2 small" id="diagResultMessage"></p>
+                            <div class="bg-body-tertiary rounded p-2 small font-monospace position-relative" style="max-height: 140px; overflow-y: auto;">
+                                <pre class="mb-0 text-break" id="diagResultJson" style="white-space: pre-wrap; font-size: 0.8rem;"></pre>
+                                <button type="button" class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-1 py-0 px-2" style="font-size: 0.75rem;" onclick="copyToClipboard(document.getElementById('diagResultJson').innerText)">
+                                    <i class="bi bi-clipboard"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer bg-body-tertiary px-4 py-2 border-top">
+                <small class="text-secondary me-auto">
+                    <i class="bi bi-shield-check text-success me-1"></i>Sovereign On-Premise Engine
+                </small>
+                <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">{{ _('Close') }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Omnipresent Help Floating Action Button (FAB) -->
+<button type="button" class="btn btn-primary help-fab shadow-lg" data-bs-toggle="offcanvas" data-bs-target="#helpOffcanvas" aria-controls="helpOffcanvas" title="{{ _('Help & Documentation') }}">
+    <i class="bi bi-question-lg"></i>
+</button>
+
+<!-- Omnipresent Contextual Help Offcanvas Drawer -->
+<div class="offcanvas offcanvas-end help-offcanvas bg-body" tabindex="-1" id="helpOffcanvas" aria-labelledby="helpOffcanvasLabel">
+    <div class="offcanvas-header bg-body-tertiary border-bottom px-4 py-3">
+        <div class="d-flex align-items-center gap-2">
+            <span class="p-2 rounded-3 bg-primary-subtle text-primary fs-5 d-flex align-items-center justify-content-center">
+                <i class="bi bi-book-half"></i>
+            </span>
+            <div>
+                <h5 class="offcanvas-title fw-bold text-body mb-0" id="helpOffcanvasLabel">{{ _('Help Center') }}</h5>
+                <small class="text-secondary">{{ _('Sovereign Voice & SMS Alerting') }}</small>
+            </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+
+    <div class="offcanvas-body p-4">
+        <!-- Search Help Topics -->
+        <div class="input-group mb-4 shadow-sm">
+            <span class="input-group-text bg-body-tertiary border-end-0"><i class="bi bi-search text-muted"></i></span>
+            <input type="search" class="form-control border-start-0 ps-0" id="helpSearchInput" placeholder="{{ _('Search help topics...') }}" oninput="filterHelpTopics()">
+        </div>
+
+        <!-- Dynamic Context Badge Banner -->
+        <div class="alert alert-primary d-flex align-items-center gap-2 py-2 px-3 mb-4 rounded-3 border-0" id="helpContextBanner">
+            <i class="bi bi-info-circle-fill fs-5"></i>
+            <div class="small">
+                <span>{{ _('Current section:') }}</span> <strong id="helpCurrentSectionName">{{ _('Overview') }}</strong>
+            </div>
+        </div>
+
+        <!-- Accordion for Topics -->
+        <div class="accordion" id="helpAccordion">
+
+            <!-- Address Book & On-Call -->
+            <div class="accordion-item border rounded-3 mb-2 overflow-hidden help-topic-item" data-section="address_book" data-keywords="address book on-call contacts escalation priority phone calendar rota">
+                <h2 class="accordion-header" id="headingOnCall">
+                    <button class="accordion-button collapsed fw-semibold text-body" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOnCall" aria-expanded="false" aria-controls="collapseOnCall">
+                        <i class="bi bi-journal-bookmark text-primary me-2"></i>{{ _('Address Book & On-Call') }}
+                    </button>
+                </h2>
+                <div id="collapseOnCall" class="accordion-collapse collapse" aria-labelledby="headingOnCall" data-bs-parent="#helpAccordion">
+                    <div class="accordion-body small text-secondary">
+                        <p class="mb-2"><strong>{{ _('E.164 Phone Numbers:') }}</strong> {{ _('Store phone numbers with country code (+39...) to dial properly through Asterisk ARI and send SMS.') }}</p>
+                        <p class="mb-2"><strong>{{ _('On-Call Availability:') }}</strong> {{ _('Define start/end schedule intervals. Active contacts in the current window are selected automatically.') }}</p>
+                        <p class="mb-2"><strong>{{ _('Escalation Priority:') }}</strong> {{ _('Priority 0 is Primary Responder, 1 is Secondary, 2-3 Backup, 4 Duty Supervisor.') }}</p>
+                        <p class="mb-0"><strong>{{ _('CSV Operations:') }}</strong> {{ _('Import or export entire contact databases at any time.') }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scheduled Calls -->
+            <div class="accordion-item border rounded-3 mb-2 overflow-hidden help-topic-item" data-section="schedule_call" data-keywords="scheduled calls scheduler cron audio tts silero synthesized calendar delay">
+                <h2 class="accordion-header" id="headingSchedule">
+                    <button class="accordion-button collapsed fw-semibold text-body" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSchedule" aria-expanded="false" aria-controls="collapseSchedule">
+                        <i class="bi bi-calendar-event text-info me-2"></i>{{ _('Scheduled Calls & Speech') }}
+                    </button>
+                </h2>
+                <div id="collapseSchedule" class="accordion-collapse collapse" aria-labelledby="headingSchedule" data-bs-parent="#helpAccordion">
+                    <div class="accordion-body small text-secondary">
+                        <p class="mb-2"><strong>{{ _('Neural TTS Engine:') }}</strong> {{ _('Message text is automatically synthesized into clear 8kHz/16kHz audio using Silero Neural TTS.') }}</p>
+                        <p class="mb-2"><strong>{{ _('Audio Caching:') }}</strong> {{ _('Synthesized audio is cached locally by message hash for instant zero-latency playback.') }}</p>
+                        <p class="mb-0"><strong>{{ _('Smart Recipient Picker:') }}</strong> {{ _('Choose a specific contact or select "Use current On-call" to resolve on-duty responders.') }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Managed Calls & ARI -->
+            <div class="accordion-item border rounded-3 mb-2 overflow-hidden help-topic-item" data-section="calls" data-keywords="calls live asterisk ari dtmf acknowledge playback retry channels dial">
+                <h2 class="accordion-header" id="headingCalls">
+                    <button class="accordion-button collapsed fw-semibold text-body" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCalls" aria-expanded="false" aria-controls="collapseCalls">
+                        <i class="bi bi-telephone-outbound text-success me-2"></i>{{ _('Managed Calls & DTMF') }}
+                    </button>
+                </h2>
+                <div id="collapseCalls" class="accordion-collapse collapse" aria-labelledby="headingCalls" data-bs-parent="#helpAccordion">
+                    <div class="accordion-body small text-secondary">
+                        <p class="mb-2"><strong>{{ _('Asterisk ARI Integration:') }}</strong> {{ _('Channels are initiated via Asterisk REST Interface and placed in Stasis bridge.') }}</p>
+                        <p class="mb-2"><strong>{{ _('DTMF 1 Acknowledgment:') }}</strong> {{ _('The recipient presses 1 to acknowledge the alert, marking it acknowledged and terminating retries.') }}</p>
+                        <p class="mb-0"><strong>{{ _('Automatic Retries:') }}</strong> {{ _('Unanswered calls automatically retry according to retry count and backoff configuration.') }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Managed SMS & GSM Gateway -->
+            <div class="accordion-item border rounded-3 mb-2 overflow-hidden help-topic-item" data-section="sms" data-keywords="sms modem serial gsm at twilio sim cellular gateway carrier">
+                <h2 class="accordion-header" id="headingSms">
+                    <button class="accordion-button collapsed fw-semibold text-body" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSms" aria-expanded="false" aria-controls="collapseSms">
+                        <i class="bi bi-chat-left-text text-warning me-2"></i>{{ _('SMS & GSM Modems') }}
+                    </button>
+                </h2>
+                <div id="collapseSms" class="accordion-collapse collapse" aria-labelledby="headingSms" data-bs-parent="#helpAccordion">
+                    <div class="accordion-body small text-secondary">
+                        <p class="mb-2"><strong>{{ _('On-Premise Hardware Modems:') }}</strong> {{ _('SMS is dispatched directly via serial AT commands (/dev/ttyUSB) without external dependencies.') }}</p>
+                        <p class="mb-2"><strong>{{ _('Carrier Failover:') }}</strong> {{ _('If GSM signal is lost or modem fails, failover to secondary gateway (e.g. Twilio) triggers automatically.') }}</p>
+                        <p class="mb-0"><strong>{{ _('Full Delivery Tracking:') }}</strong> {{ _('View outbound SMS logs, delivery statuses, carrier metadata, and timestamps in real time.') }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PBX Events & Monitoring -->
+            <div class="accordion-item border rounded-3 mb-2 overflow-hidden help-topic-item" data-section="ws_events" data-keywords="pbx events websocket stasis asterisk live stream log">
+                <h2 class="accordion-header" id="headingEvents">
+                    <button class="accordion-button collapsed fw-semibold text-body" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEvents" aria-expanded="false" aria-controls="collapseEvents">
+                        <i class="bi bi-activity text-danger me-2"></i>{{ _('PBX Events & Telephony Stream') }}
+                    </button>
+                </h2>
+                <div id="collapseEvents" class="accordion-collapse collapse" aria-labelledby="headingEvents" data-bs-parent="#helpAccordion">
+                    <div class="accordion-body small text-secondary">
+                        <p class="mb-2"><strong>{{ _('WebSocket Event Feed:') }}</strong> {{ _('Real-time feed of Asterisk ARI events including StasisStart, ChannelDtmfReceived, and ChannelDestroyed.') }}</p>
+                        <p class="mb-0"><strong>{{ _('Troubleshooting Audits:') }}</strong> {{ _('Use the event timeline to diagnose call setup delays, SIP trunk responses, and DTMF tones.') }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Prometheus Alertmanager & Webhooks -->
+            <div class="accordion-item border rounded-3 mb-2 overflow-hidden help-topic-item" data-section="home" data-keywords="prometheus alertmanager webhook grafana api curl dispatch json trigger">
+                <h2 class="accordion-header" id="headingProm">
+                    <button class="accordion-button collapsed fw-semibold text-body" type="button" data-bs-toggle="collapse" data-bs-target="#collapseProm" aria-expanded="false" aria-controls="collapseProm">
+                        <i class="bi bi-bell text-secondary me-2"></i>{{ _('Prometheus & Webhook Triggering') }}
+                    </button>
+                </h2>
+                <div id="collapseProm" class="accordion-collapse collapse" aria-labelledby="headingProm" data-bs-parent="#helpAccordion">
+                    <div class="accordion-body small text-secondary">
+                        <p class="mb-2"><strong>{{ _('Alertmanager Receiver:') }}</strong> {{ _('Configure Alertmanager to forward firing alerts to the webhook service:') }}</p>
+                        <div class="bg-body-tertiary p-2 rounded font-monospace small mb-2 text-break">
+                            POST http://localhost:8084/alert
+                        </div>
+                        <p class="mb-0">{{ _('Incoming alerts automatically resolve duty on-call contacts, synthesize speech, and initiate emergency phone calls.') }}</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Quick Diagnostics CTA Inside Drawer -->
+        <div class="card border-0 bg-body-tertiary rounded-3 p-3 mt-4 text-center">
+            <h6 class="fw-bold mb-1">{{ _('Need to test right now?') }}</h6>
+            <p class="small text-secondary mb-3">{{ _('Send a live test call or SMS from the diagnostics console.') }}</p>
+            <button type="button" class="btn btn-sm btn-outline-warning text-body fw-semibold" data-bs-toggle="modal" data-bs-target="#quickDiagnosticsModal" data-bs-dismiss="offcanvas">
+                <i class="bi bi-wrench-adjustable text-warning me-1"></i>{{ _('Open Diagnostics Console') }}
+            </button>
+        </div>
+    </div>
+</div>
+
+
 <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1060;"></div>
 
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/htmx.min.js') }}"></script>
 <script>
+    function updateThemeIcon(theme) {
+        const icon = document.getElementById('themeToggleIcon');
+        if (!icon) return;
+        if (theme === 'dark') {
+            icon.className = 'bi bi-sun text-warning';
+        } else {
+            icon.className = 'bi bi-moon-stars';
+        }
+    }
+
+    function toggleDarkMode() {
+        const current = document.documentElement.getAttribute('data-bs-theme') || 'light';
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-bs-theme', next);
+        localStorage.setItem('py_phone_caller_theme', next);
+        updateThemeIcon(next);
+        showToast('Theme Updated', 'Switched to ' + next + ' mode', 'info');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const current = document.documentElement.getAttribute('data-bs-theme') || 'light';
+        updateThemeIcon(current);
+        // Initialize all Bootstrap tooltips across pages and dynamic modals
+        initTooltips();
+        setupHelpCenter();
+    });
+
+    function initTooltips() {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+            const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"], [title]:not([data-bs-toggle="modal"]):not([data-bs-toggle="dropdown"])');
+            tooltipTriggerList.forEach(el => {
+                if (!el.getAttribute('title') && !el.getAttribute('data-bs-original-title')) return;
+                if (!bootstrap.Tooltip.getInstance(el)) {
+                    new bootstrap.Tooltip(el, {
+                        delay: { show: 150, hide: 100 },
+                        boundary: 'window'
+                    });
+                }
+            });
+        }
+    }
+
+    // Re-initialize tooltips if HTMX or dynamic DOM elements load
+    document.addEventListener('htmx:afterSwap', () => initTooltips());
+
     function showToast(title, message, type = 'info') {
         const container = document.querySelector('.toast-container');
         if (!container) return;
@@ -150,13 +497,123 @@
         }
     }
 
+    function switchDiagTab(tab) {
+        const btnCall = document.getElementById('btnTabCall');
+        const btnSms = document.getElementById('btnTabSms');
+        const secCall = document.getElementById('diagCallSection');
+        const secSms = document.getElementById('diagSmsSection');
+        const resBox = document.getElementById('diagResultContainer');
+        if (resBox) resBox.classList.add('d-none');
+
+        if (tab === 'call') {
+            btnCall.className = 'btn btn-sm flex-fill rounded-pill py-2 fw-semibold btn-primary';
+            btnSms.className = 'btn btn-sm flex-fill rounded-pill py-2 fw-semibold btn-outline-secondary border-0 text-body';
+            secCall.classList.remove('d-none');
+            secSms.classList.add('d-none');
+        } else {
+            btnSms.className = 'btn btn-sm flex-fill rounded-pill py-2 fw-semibold btn-success text-white';
+            btnCall.className = 'btn btn-sm flex-fill rounded-pill py-2 fw-semibold btn-outline-secondary border-0 text-body';
+            secSms.classList.remove('d-none');
+            secCall.classList.add('d-none');
+        }
+    }
+
+    function displayDiagResult(isSuccess, title, message, rawData) {
+        const resBox = document.getElementById('diagResultContainer');
+        const resCard = document.getElementById('diagResultCard');
+        const resHdr = document.getElementById('diagResultHeader');
+        const resTitle = document.getElementById('diagResultTitle');
+        const resBadge = document.getElementById('diagResultBadge');
+        const resMsg = document.getElementById('diagResultMessage');
+        const resJson = document.getElementById('diagResultJson');
+
+        if (!resBox) return;
+        resBox.classList.remove('d-none');
+
+        if (isSuccess) {
+            resCard.className = 'card border border-success-subtle rounded-3 overflow-hidden shadow-sm';
+            resHdr.className = 'card-header bg-success-subtle text-success py-2 px-3 d-flex align-items-center justify-content-between small fw-bold';
+            resTitle.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + title;
+            resBadge.className = 'badge bg-success';
+            resBadge.textContent = 'HTTP 200 OK';
+        } else {
+            resCard.className = 'card border border-danger-subtle rounded-3 overflow-hidden shadow-sm';
+            resHdr.className = 'card-header bg-danger-subtle text-danger py-2 px-3 d-flex align-items-center justify-content-between small fw-bold';
+            resTitle.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>' + title;
+            resBadge.className = 'badge bg-danger';
+            resBadge.textContent = 'DISPATCH FAILED';
+        }
+
+        resMsg.textContent = message;
+        resJson.textContent = typeof rawData === 'object' ? JSON.stringify(rawData, null, 2) : String(rawData);
+    }
+
+    async function handleTestCallSubmit(e) {
+        e.preventDefault();
+        const btn = document.getElementById('diagCallBtn');
+        const phone = document.getElementById('diagCallPhone').value.trim();
+        const message = document.getElementById('diagCallMessage').value.trim();
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Placing Call...';
+        try {
+            const resp = await fetch("{{ url_for('home_blueprint.test_call_dispatch') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phone, message})
+            });
+            const res = await resp.json();
+            if (res.success) {
+                showToast('Call Dispatched', 'Test call placed to ' + phone, 'success');
+                displayDiagResult(true, 'Test Call Dispatched Successfully', 'Asterisk ARI channel initiated for ' + phone, res.details || res);
+            } else {
+                showToast('Dispatch Error', res.error || 'Failed to place call', 'danger');
+                displayDiagResult(false, 'Call Dispatch Error', res.error || 'Failed to place call', res);
+            }
+        } catch (err) {
+            showToast('Network Error', String(err), 'danger');
+            displayDiagResult(false, 'Network Error', String(err), {error: String(err)});
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-telephone-outbound me-2"></i>Dispatch Test Call';
+        }
+    }
+
+    async function handleTestSmsSubmit(e) {
+        e.preventDefault();
+        const btn = document.getElementById('diagSmsBtn');
+        const phone = document.getElementById('diagSmsPhone').value.trim();
+        const message = document.getElementById('diagSmsMessage').value.trim();
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending SMS...';
+        try {
+            const resp = await fetch("{{ url_for('home_blueprint.test_sms_dispatch') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phone, message})
+            });
+            const res = await resp.json();
+            if (res.success) {
+                showToast('SMS Dispatched', 'Test SMS transmitted to ' + phone, 'success');
+                displayDiagResult(true, 'Test SMS Transmitted Successfully', 'SMS routed to modem gateway for ' + phone, res.details || res);
+            } else {
+                showToast('SMS Error', res.error || 'Failed to send SMS', 'danger');
+                displayDiagResult(false, 'SMS Transmission Failed', res.error || 'Failed to send SMS', res);
+            }
+        } catch (err) {
+            showToast('Network Error', String(err), 'danger');
+            displayDiagResult(false, 'Network Error', String(err), {error: String(err)});
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-chat-left-text me-2"></i>Send Test SMS';
+        }
+    }
+
     function copyToClipboard(text) {
         if (!text) return;
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(text).then(() => {
                 showToast('Copied', 'Copied to clipboard', 'success');
             }).catch(err => {
-                console.error('Clipboard copy failed: ', err);
                 fallbackCopyToClipboard(text);
             });
         } else {
@@ -182,10 +639,100 @@
                 showToast('Error', 'Could not copy to clipboard', 'danger');
             }
         } catch (err) {
-            console.error('Fallback copy failed: ', err);
             showToast('Error', 'Could not copy to clipboard', 'danger');
         }
     }
+
+    // Context-Aware Help Center Management
+    function setupHelpCenter() {
+        const offcanvasEl = document.getElementById('helpOffcanvas');
+        if (!offcanvasEl) return;
+
+        offcanvasEl.addEventListener('show.bs.offcanvas', function () {
+            // Determine active section based on URL pathname
+            const path = window.location.pathname.toLowerCase();
+            const sectionTitles = {
+                'home': "{{ _('Prometheus & Webhook Triggering') }}",
+                'address_book': "{{ _('Address Book & On-Call') }}",
+                'schedule_call': "{{ _('Scheduled Calls & Speech') }}",
+                'calls': "{{ _('Managed Calls & DTMF') }}",
+                'sms': "{{ _('SMS & GSM Modems') }}",
+                'ws_events': "{{ _('PBX Events & Telephony Stream') }}"
+            };
+
+            let activeKey = 'home';
+            if (path.includes('address_book')) activeKey = 'address_book';
+            else if (path.includes('schedule_call')) activeKey = 'schedule_call';
+            else if (path.includes('calls')) activeKey = 'calls';
+            else if (path.includes('sms')) activeKey = 'sms';
+            else if (path.includes('ws_events')) activeKey = 'ws_events';
+
+            let activeTitle = sectionTitles[activeKey] || "{{ _('Overview') }}";
+
+            const titleEl = document.getElementById('helpCurrentSectionName');
+            if (titleEl) titleEl.innerText = activeTitle;
+
+            // Expand matching topic item and collapse others
+            document.querySelectorAll('#helpAccordion .accordion-collapse').forEach(collapseEl => {
+                const item = collapseEl.closest('.help-topic-item');
+                if (item && item.getAttribute('data-section') === activeKey) {
+                    const bsCollapse = bootstrap.Collapse.getInstance(collapseEl) || new bootstrap.Collapse(collapseEl, { toggle: false });
+                    bsCollapse.show();
+                } else {
+                    const bsCollapse = bootstrap.Collapse.getInstance(collapseEl);
+                    if (bsCollapse) bsCollapse.hide();
+                }
+            });
+
+            // Reset search input
+            const searchInput = document.getElementById('helpSearchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                filterHelpTopics();
+            }
+        });
+    }
+
+
+    // Keyboard shortcut: Press '?' to toggle the Help Center drawer
+    document.addEventListener('keydown', function(e) {
+        // Do not trigger if typing in an input, textarea, or select
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) {
+            return;
+        }
+        if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+            e.preventDefault();
+            const offcanvasEl = document.getElementById('helpOffcanvas');
+            if (offcanvasEl) {
+                const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl) || new bootstrap.Offcanvas(offcanvasEl);
+                offcanvas.toggle();
+            }
+        }
+    });
+
+    function filterHelpTopics() {
+        const query = (document.getElementById('helpSearchInput')?.value || '').toLowerCase().trim();
+        const items = document.querySelectorAll('.help-topic-item');
+
+        items.forEach(item => {
+            const keywords = (item.getAttribute('data-keywords') || '').toLowerCase();
+            const text = (item.innerText || '').toLowerCase();
+            if (!query || keywords.includes(query) || text.includes(query)) {
+                item.style.display = '';
+                if (query) {
+                    const collapseEl = item.querySelector('.accordion-collapse');
+                    if (collapseEl) {
+                        const bsCollapse = bootstrap.Collapse.getInstance(collapseEl) || new bootstrap.Collapse(collapseEl, { toggle: false });
+                        bsCollapse.show();
+                    }
+                }
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
 </script>
 
 {% block extra_js %}{% endblock %}

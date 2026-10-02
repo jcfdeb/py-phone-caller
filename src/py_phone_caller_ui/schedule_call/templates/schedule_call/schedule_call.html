@@ -7,6 +7,9 @@
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
         <h2 class="page-header mb-0 text-start">Scheduled Calls</h2>
         <div class="d-flex gap-2 mt-2 mt-md-0">
+            <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#scheduleCallHelpModal" title="{{ _('Learn how scheduled calls and speech synthesis work') }}">
+                <i class="bi bi-question-circle me-1"></i> {{ _('Scheduler Guide') }}
+            </button>
             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#scheduleCallModal">
                 <i class="bi bi-calendar-plus me-1"></i> New Scheduled Call
             </button>
@@ -26,7 +29,7 @@
                         <input type="hidden" name="sort_by" value="{{ sort_by }}">
                         <input type="hidden" name="sort_order" value="{{ sort_order }}">
                         <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
                             <input class="form-control border-start-0 ps-0" type="search" placeholder="Search scheduled calls..."
                                    aria-label="Search" name="search" value="{{ search_query }}">
                             {% if search_query %}
@@ -162,16 +165,16 @@
                             <input type="time" class="form-control" id="scheduled_time" name="scheduled_time" required>
                         </div>
                         <div class="col-12">
-                            <label for="phone" class="form-label fw-bold small text-secondary">Phone Number</label>
+                            <label for="phone" class="form-label fw-bold small text-secondary">{{ _('Phone Number') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('E.164 format or select an active responder via Contacts button') }}"></i></label>
                             <div class="input-group">
                                 <input type="tel" class="form-control" id="phone" name="phone" placeholder="Enter number..." required>
-                                <button type="button" class="btn btn-outline-secondary d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#pickContactModal">
+                                <button type="button" class="btn btn-outline-secondary d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#pickContactModal" title="{{ _('Select from Address Book or auto-pick current On-call') }}">
                                     <i class="bi bi-book me-1"></i> Contacts
                                 </button>
                             </div>
                         </div>
                         <div class="col-12">
-                            <label for="message" class="form-label fw-bold small text-secondary">Message</label>
+                            <label for="message" class="form-label fw-bold small text-secondary">{{ _('Message') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Synthesized into voice audio and played when the recipient answers') }}"></i></label>
                             <textarea class="form-control" id="message" name="message" rows="3" placeholder="Enter the message to be read..." required></textarea>
                         </div>
                     </div>
@@ -195,7 +198,7 @@
             </div>
             <div class="modal-body p-4">
                 <div class="input-group mb-4">
-                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                    <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
                     <input type="text" class="form-control border-start-0 ps-0" id="pick_search" placeholder="Filter by name, surname or number..." oninput="filterPickContacts()">
                 </div>
                 
@@ -258,6 +261,88 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scheduled Calls Help Modal -->
+<div class="modal fade" id="scheduleCallHelpModal" tabindex="-1" aria-labelledby="scheduleCallHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-body-tertiary px-4 py-3 border-bottom">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="p-2 rounded-3 bg-info-subtle text-info fs-5 d-flex align-items-center justify-content-center">
+                        <i class="bi bi-info-circle-fill"></i>
+                    </span>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-body" id="scheduleCallHelpModalLabel">
+                            {{ _('Scheduled Calls & Voice Synthesis Guide') }}
+                        </h5>
+                        <small class="text-secondary">{{ _('Automated telephony job execution, TTS synthesis, and DTMF confirmation.') }}</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card h-100 border rounded-3 p-3 bg-body-tertiary">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-alarm text-primary fs-5"></i>
+                                <h6 class="fw-bold mb-0">{{ _('Timing & Job Execution') }}</h6>
+                            </div>
+                            <p class="small text-secondary mb-2">
+                                {{ _('Scheduled calls are stored and triggered asynchronously by Celery and Redis at the exact local date and time configured.') }}
+                            </p>
+                            <p class="small text-secondary mb-0">
+                                {{ _('Once reached, the system initiates an Asterisk Stasis application channel to the destination.') }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border rounded-3 p-3 bg-body-tertiary">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-soundwave text-info fs-5"></i>
+                                <h6 class="fw-bold mb-0">{{ _('Neural TTS Audio Generation') }}</h6>
+                            </div>
+                            <p class="small text-secondary mb-2">
+                                {{ _('Your message text is automatically synthesized into clear 8kHz/16kHz WAV audio using Silero Neural TTS.') }}
+                            </p>
+                            <p class="small text-secondary mb-0">
+                                {{ _('Audio is cached locally by message hash to ensure zero latency on repeated notifications.') }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border rounded-3 p-3 bg-body-tertiary">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-person-lines-fill text-success fs-5"></i>
+                                <h6 class="fw-bold mb-0">{{ _('Contact Picker & Live On-Call') }}</h6>
+                            </div>
+                            <p class="small text-secondary mb-2">
+                                {{ _('Click the Contacts button next to the phone field to pick any saved contact, or click "Use current On-call" to automatically resolve who is on duty right now.') }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border rounded-3 p-3 bg-body-tertiary">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-telephone-check text-warning fs-5"></i>
+                                <h6 class="fw-bold mb-0">{{ _('DTMF Acknowledgment & Retries') }}</h6>
+                            </div>
+                            <p class="small text-secondary mb-2">
+                                {{ _('When the recipient answers, the audio message plays continuously until they press DTMF 1 to acknowledge, or the maximum ring duration expires.') }}
+                            </p>
+                            <p class="small text-secondary mb-0">
+                                {{ _('Unacknowledged calls will retry according to your configured retry count and backoff interval.') }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-body-tertiary border-top px-4 py-3">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">{{ _('Got it') }}</button>
             </div>
         </div>
     </div>

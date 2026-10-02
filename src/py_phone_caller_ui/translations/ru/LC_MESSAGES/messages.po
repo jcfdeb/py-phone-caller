@@ -1,142 +1,835 @@
+
 msgid ""
 msgstr ""
-"Project-Id-Version: py-phone-caller 1.0
-"
-"Report-Msgid-Bugs-To: 
-"
-"POT-Creation-Date: 2026-10-02 12:00+0000
-"
-"PO-Revision-Date: 2026-10-02 12:00+0000
-"
-"Language: ru
-"
-"MIME-Version: 1.0
-"
-"Content-Type: text/plain; charset=UTF-8
-"
-"Content-Transfer-Encoding: 8bit
-"
+"Project-Id-Version: py-phone-caller 1.Report-Msgid-Bugs-ToPOT-Creation-"
+"Date: 2026-10-02 12:00+000PO-Revision-Date: 2026-10-02 12:00+000Language:"
+" rMIME-Version: 1.Content-Type: text/plain; charset=UTF-Content-Transfer-"
+"Encoding: 8bi\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-02 16:43+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
 
-msgid "Home"
-msgstr "Главная"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:24
+msgid "Learn how On-Call rotations and availability work"
+msgstr "Узнайте, как работают дежурства и доступность контактов"
 
-msgid "Managed Calls"
-msgstr "Управление звонками"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:25
+msgid "On-Call Guide"
+msgstr "Руководство по дежурству"
 
-msgid "Managed SMS"
-msgstr "Управление SMS"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "Contact Name"
+msgstr "Имя контакта"
 
-msgid "PBX Events"
-msgstr "События АТС"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "First and last name of the responder"
+msgstr "Имя и фамилия дежурного"
 
-msgid "Schedule Call"
-msgstr "Запланировать звонок"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "Phone Number"
+msgstr "Номер телефона"
 
-msgid "Address Book"
-msgstr "Адресная книга"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+msgid "E.164 formatted number dialed for voice calls and SMS"
+msgstr "Номер в формате E.164 для голосовых вызовов и SMS"
 
-msgid "Session"
-msgstr "Сеанс"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+msgid "Status"
+msgstr "Статус"
 
-msgid "User Management"
-msgstr "Управление пользователями"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+msgid "Only active contacts receive automated alerts"
+msgstr "Только активные контакты получают автоматические оповещения"
 
-msgid "Logout"
-msgstr "Выйти"
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+msgid "International format starting with + (e.g. +393349246425)"
+msgstr "Международный формат, начинающийся с + (например, +393349246425)"
 
-msgid "Offline-ready call orchestration."
-msgstr "Оркестрация звонков, готовая к работе офлайн."
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:440
+msgid "Priority"
+msgstr "Приоритет"
 
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+msgid "Priority 0 is dialed first, followed by 1, 2, 3, 4"
+msgstr "Приоритет 0 вызывается первым, затем 1, 2, 3, 4"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:389
+msgid "Address Book & On-Call Rotation Guide"
+msgstr "Руководство по адресной книге и дежурствам"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:391
+msgid ""
+"How contact availability, priority escalation, and calendar routing "
+"operate."
+msgstr ""
+"Принцип работы доступности контактов, эскалации приоритетов и "
+"маршрутизации по календарю."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:402
+msgid "Contact Details & Phone Numbers"
+msgstr "Данные контакта и номера телефонов"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:405
+msgid ""
+"Contacts must include standard E.164 phone numbers (e.g. +393349246425) "
+"to dial properly through Asterisk ARI SIP trunks and GSM modems."
+msgstr ""
+"Контакты должны содержать номера в формате E.164 (например, "
+"+393349246425) для корректного набора через транки Asterisk ARI SIP и "
+"GSM-модемы."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+msgid "Active"
+msgstr "Активен"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+msgid "Eligible for automated incident calls and SMS."
+msgstr "Участвует в автоматических экстренных звонках и SMS."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Disabled"
+msgstr "Отключен"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Excluded from on-call selection and escalation."
+msgstr "Исключен из выбора дежурных и цепочек эскалации."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:417
+msgid "Availability Windows & Timezones"
+msgstr "Окна доступности и часовые пояса"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:420
+msgid ""
+"Availability is specified in your local browser timezone. The system "
+"automatically converts and stores windows in UTC for accurate global "
+"scheduling."
+msgstr ""
+"Доступность указывается в локальном часовом поясе браузера. Система "
+"автоматически переводит и сохраняет интервалы в UTC для точного "
+"планирования."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:423
+msgid ""
+"Contacts without explicit windows are considered available 24/7 if "
+"enabled."
+msgstr ""
+"Контакты без явно заданных окон считаются доступными 24/7, если они "
+"включены."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:431
+msgid "Priority Levels & Escalation Rules"
+msgstr "Уровни приоритета и правила эскалации"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:434
+msgid ""
+"When an incident or scheduled call dispatches, the system queries "
+"contacts active right now and orders them by Priority:"
+msgstr ""
+"При отправке вызова по инциденту или расписанию система опрашивает "
+"активных в данный момент контактов и сортирует их по приоритету:"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:441
+msgid "Role"
+msgstr "Роль"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:442
+msgid "Dispatch Behavior"
+msgstr "Порядок вызова"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:448
+msgid "Primary Responder"
+msgstr "Основной дежурный"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:449
+msgid "First contact dialed when an alert triggers."
+msgstr "Первый контакт, набираемый при срабатывании оповещения."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:453
+msgid "Secondary Responder"
+msgstr "Второй дежурный"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:454
+msgid "Contact dialed if Primary fails to answer or acknowledge with DTMF 1."
+msgstr ""
+"Контакт, вызываемый, если основной не ответил или не подтвердил нажатием "
+"DTMF 1."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:458
+msgid "Tier 2 / Team Backup"
+msgstr "2-я линия / Резерв команды"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:459
+msgid "Escalation fallback for high-severity incidents."
+msgstr "Резервная эскалация для инцидентов высокой важности."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:463
+msgid "Duty Supervisor / Final Fallback"
+msgstr "Дежурный руководитель / Финальный резерв"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:464
+msgid "Notified only when earlier tiers are exhausted."
+msgstr "Оповещается только в случае, если предыдущие уровни не ответили."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:474
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:345
+msgid "Got it"
+msgstr "Понятно"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:83
+msgid "Maximum number of call retry attempts"
+msgstr "Максимальное количество попыток дозвона"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:91
+msgid "Number of dial attempts executed so far"
+msgstr "Количество уже выполненных попыток вызова"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:115
+msgid "Timestamp when receiver pressed DTMF 1 to acknowledge the alert"
+msgstr "Время нажатия абонентом кнопки DTMF 1 для подтверждения оповещения"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:42
 msgid "Live Telephony NOC Dashboard"
 msgstr "Панель NOC телефонии в реальном времени"
 
+#: src/py_phone_caller_ui/home/templates/home/home.html:44
 msgid "Mission-critical incident response & dispatch telemetry"
 msgstr "Телеметрия диспетчеризации и реагирования на критические инциденты"
 
-msgid "Total Calls Dispatched"
-msgstr "Всего отправлено звонков"
+#: src/py_phone_caller_ui/home/templates/home/home.html:45
+#: src/py_phone_caller_ui/templates/base.html:149
+msgid "Offline-ready call orchestration."
+msgstr "Оркестрация звонков, готовая к работе офлайн."
 
-msgid "DTMF Acknowledgment Rate"
-msgstr "Коэффициент подтверждения DTMF"
-
-msgid "Escalated Calls"
-msgstr "Эскалированные звонки"
-
-msgid "SMS Delivery Status"
-msgstr "Статус доставки SMS"
-
-msgid "Delivered"
-msgstr "Доставлено"
-
-msgid "Failed"
-msgstr "Сбой"
-
-msgid "Call Lifecycle Breakdown"
-msgstr "Структура жизненного цикла звонков"
-
-msgid "Acknowledged"
-msgstr "Подтверждено"
-
-msgid "Heard / Snoozed"
-msgstr "Прослушано / Отложено"
-
-msgid "Escalated"
-msgstr "Эскалировано"
-
-msgid "In Flight"
-msgstr "В процессе"
-
-msgid "Hardware Gateways & Engines"
-msgstr "Аппаратные шлюзы и движки"
-
-msgid "SMS Gateway"
-msgstr "Шлюз SMS"
-
+#: src/py_phone_caller_ui/home/templates/home/home.html:52
 msgid "Hardware GSM Modem"
 msgstr "Аппаратный GSM-модем"
 
+#: src/py_phone_caller_ui/home/templates/home/home.html:57
 msgid "SaaS Fallback"
 msgstr "Резерв SaaS"
 
-msgid "Telephony Engine"
-msgstr "Движок телефонии"
-
+#: src/py_phone_caller_ui/home/templates/home/home.html:62
 msgid "Asterisk ARI Connected"
 msgstr "Asterisk ARI подключен"
 
+#: src/py_phone_caller_ui/home/templates/home/home.html:73
+msgid "Total Calls Dispatched"
+msgstr "Всего отправлено звонков"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:80
+msgid "dispatched"
+msgstr "отправлено"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:89
+msgid "DTMF Acknowledgment Rate"
+msgstr "Коэффициент подтверждения DTMF"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:105
+msgid "Escalated Calls"
+msgstr "Эскалированные звонки"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:114
+msgid "backup callee"
+msgstr "резервный получатель"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:123
+msgid "SMS Delivery Status"
+msgstr "Статус доставки SMS"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:130
+msgid "Delivered"
+msgstr "Доставлено"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:132
+msgid "Failed"
+msgstr "Сбой"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:143
+msgid "Call Lifecycle Breakdown"
+msgstr "Структура жизненного цикла звонков"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:164
+msgid "Acknowledged"
+msgstr "Подтверждено"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:169
+msgid "Heard / Snoozed"
+msgstr "Прослушано / Отложено"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:174
+msgid "Escalated"
+msgstr "Эскалировано"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:179
+msgid "In Flight"
+msgstr "В процессе"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:195
+#: src/py_phone_caller_ui/templates/base.html:47
+msgid "Managed Calls"
+msgstr "Управление звонками"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:196
 msgid "Track and manage outgoing calls"
 msgstr "Отслеживание и управление исходящими звонками"
 
+#: src/py_phone_caller_ui/home/templates/home/home.html:210
+#: src/py_phone_caller_ui/templates/base.html:53
+msgid "Managed SMS"
+msgstr "Управление SMS"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:211
 msgid "Track and inspect SMS messages"
 msgstr "Отслеживание и просмотр сообщений SMS"
 
+#: src/py_phone_caller_ui/home/templates/home/home.html:226
+#: src/py_phone_caller_ui/templates/base.html:59
+msgid "PBX Events"
+msgstr "События АТС"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:227
 msgid "Real-time Asterisk events"
 msgstr "События Asterisk в реальном времени"
 
+#: src/py_phone_caller_ui/home/templates/home/home.html:242
+#: src/py_phone_caller_ui/templates/base.html:65
+msgid "Schedule Call"
+msgstr "Запланировать звонок"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:243
 msgid "Plan future call activities"
 msgstr "Планирование будущих вызовов"
 
+#: src/py_phone_caller_ui/home/templates/home/home.html:257
+#: src/py_phone_caller_ui/templates/base.html:71
+msgid "Address Book"
+msgstr "Адресная книга"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:258
 msgid "Manage your contacts"
 msgstr "Управление вашими контактами"
 
-msgid "Export CSV"
-msgstr "Экспорт в CSV"
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:10
+msgid "Learn how scheduled calls and speech synthesis work"
+msgstr "Узнайте, как работают запланированные звонки и синтез речи"
 
-msgid "Search"
-msgstr "Поиск"
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:11
+msgid "Scheduler Guide"
+msgstr "Руководство по планировщику"
 
-msgid "Auto refresh:"
-msgstr "Автообновление:"
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "E.164 format or select an active responder via Contacts button"
+msgstr "Формат E.164 или выбор активного дежурного через кнопку «Контакты»"
 
-msgid "Disable"
-msgstr "Отключить"
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:171
+msgid "Select from Address Book or auto-pick current On-call"
+msgstr "Выбрать из адресной книги или автоматически назначить текущего дежурного"
 
-msgid "Search managed calls..."
-msgstr "Поиск звонков..."
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:177
+msgid "Message"
+msgstr "Сообщение"
 
-msgid "Search contacts..."
-msgstr "Поиск контактов..."
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:177
+msgid "Synthesized into voice audio and played when the recipient answers"
+msgstr "Преобразуется в голос и воспроизводится при ответе абонента"
 
-msgid "Search SMS..."
-msgstr "Поиск SMS..."
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:280
+msgid "Scheduled Calls & Voice Synthesis Guide"
+msgstr "Руководство по запланированным звонкам и синтезу речи"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:282
+msgid "Automated telephony job execution, TTS synthesis, and DTMF confirmation."
+msgstr ""
+"Автоматическое выполнение телефонных заданий, синтез TTS и подтверждение "
+"DTMF."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:293
+msgid "Timing & Job Execution"
+msgstr "Время и выполнение заданий"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:296
+msgid ""
+"Scheduled calls are stored and triggered asynchronously by Celery and "
+"Redis at the exact local date and time configured."
+msgstr ""
+"Запланированные звонки сохраняются и асинхронно запускаются Celery и "
+"Redis в точно заданное локальное время."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:299
+msgid ""
+"Once reached, the system initiates an Asterisk Stasis application channel"
+" to the destination."
+msgstr ""
+"По наступлении времени система создает канал приложения Asterisk Stasis к"
+" месту назначения."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:307
+msgid "Neural TTS Audio Generation"
+msgstr "Нейронный синтез аудио TTS"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:310
+msgid ""
+"Your message text is automatically synthesized into clear 8kHz/16kHz WAV "
+"audio using Silero Neural TTS."
+msgstr ""
+"Текст вашего сообщения автоматически преобразуется в четкий WAV-звук 8 "
+"кГц/16 кГц с помощью Silero Neural TTS."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:313
+msgid ""
+"Audio is cached locally by message hash to ensure zero latency on "
+"repeated notifications."
+msgstr ""
+"Аудио кэшируется локально по хэшу сообщения для нулевой задержки при "
+"повторных уведомлениях."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:321
+msgid "Contact Picker & Live On-Call"
+msgstr "Выбор контактов и текущий дежурный"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:324
+msgid ""
+"Click the Contacts button next to the phone field to pick any saved "
+"contact, or click \"Use current On-call\" to automatically resolve who is"
+" on duty right now."
+msgstr ""
+"Нажмите кнопку «Контакты» рядом с полем телефона, чтобы выбрать "
+"сохраненный контакт, или «Использовать текущего дежурного», чтобы "
+"автоматически определить дежурного."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:332
+msgid "DTMF Acknowledgment & Retries"
+msgstr "Подтверждение DTMF и повторные попытки"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:335
+msgid ""
+"When the recipient answers, the audio message plays continuously until "
+"they press DTMF 1 to acknowledge, or the maximum ring duration expires."
+msgstr ""
+"Когда получатель отвечает, звуковое сообщение воспроизводится циклично до"
+" тех пор, пока он не нажмет кнопку DTMF 1 для подтверждения, либо не "
+"истечет тайм-аут звонка."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:338
+msgid ""
+"Unacknowledged calls will retry according to your configured retry count "
+"and backoff interval."
+msgstr ""
+"Неподтвержденные вызовы будут повторяться в соответствии с заданным "
+"количеством попыток и интервалом задержки."
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:94
+msgid ""
+"SMS transmission gateway: Asterisk dongle, Gammu GSM modem, or cloud "
+"gateway"
+msgstr "Шлюз отправки SMS: донгл Asterisk, GSM-модем Gammu или облачный сервис"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:102
+msgid "Delivery lifecycle: Pending, Sent, Delivered, or Failed"
+msgstr "Жизненный цикл доставки: Ожидание, Отправлено, Доставлено или Ошибка"
+
+#: src/py_phone_caller_ui/templates/base.html:41
+msgid "Home"
+msgstr "Главная"
+
+#: src/py_phone_caller_ui/templates/base.html:77
+msgid ""
+"Telephony & SMS Diagnostics Console: Test live SIP ARI calls and SMS "
+"dispatching."
+msgstr ""
+"Консоль диагностики телефонии и SMS: тестирование звонков SIP ARI и "
+"отправки SMS."
+
+#: src/py_phone_caller_ui/templates/base.html:79
+msgid "Diagnostics"
+msgstr "Диагностика"
+
+#: src/py_phone_caller_ui/templates/base.html:85
+msgid "Help Center: Press ? for documentation and operational guides."
+msgstr "Центр Помощи: Нажмите ?, чтобы открыть документацию и руководства."
+
+#: src/py_phone_caller_ui/templates/base.html:92
+msgid "Toggle Theme: Switch between light and dark night mode."
+msgstr "Переключить тему: переключение между светлым и темным ночным режимом."
+
+#: src/py_phone_caller_ui/templates/base.html:100
+msgid "Switch Language: Select from 8 supported locales."
+msgstr "Сменить язык: выбор из 8 поддерживаемых языков."
+
+#: src/py_phone_caller_ui/templates/base.html:120
+msgid "Session"
+msgstr "Сеанс"
+
+#: src/py_phone_caller_ui/templates/base.html:125
+msgid "NOC Wallboard (24/7)"
+msgstr "NOC Wallboard (24/7)"
+
+#: src/py_phone_caller_ui/templates/base.html:127
+msgid "User Management"
+msgstr "Управление пользователями"
+
+#: src/py_phone_caller_ui/templates/base.html:132
+msgid "Logout"
+msgstr "Выйти"
+
+#: src/py_phone_caller_ui/templates/base.html:166
+msgid "Telephony & SMS Diagnostics Console"
+msgstr "Консоль Диагностики Телефонии и SMS"
+
+#: src/py_phone_caller_ui/templates/base.html:168
+msgid ""
+"Trigger immediate test calls or SMS to verify PBX trunk and GSM modem "
+"gateways."
+msgstr ""
+"Запустите немедленные тестовые звонки или SMS для проверки транка PBX и "
+"шлюзов GSM-модемов."
+
+#: src/py_phone_caller_ui/templates/base.html:179
+msgid "Outbound Test Call"
+msgstr "Исходящий Тестовый Звонок"
+
+#: src/py_phone_caller_ui/templates/base.html:182
+msgid "Outbound Test SMS"
+msgstr "Исходящее Тестовое SMS"
+
+#: src/py_phone_caller_ui/templates/base.html:191
+#: src/py_phone_caller_ui/templates/base.html:219
+msgid "Destination Phone Number"
+msgstr "Телефонный Номер Получателя"
+
+#: src/py_phone_caller_ui/templates/base.html:197
+#: src/py_phone_caller_ui/templates/base.html:225
+msgid "E.164 international format (e.g. +393349246425)."
+msgstr "Международный формат E.164 (напр. +393349246425)."
+
+#: src/py_phone_caller_ui/templates/base.html:202
+msgid "Speech Audio Message"
+msgstr "Голосовое Аудиосообщение"
+
+#: src/py_phone_caller_ui/templates/base.html:205
+msgid ""
+"Synthesized into speech via Silero Neural TTS and played to the SIP "
+"channel."
+msgstr ""
+"Синтезируется в речь с помощью Silero Neural TTS и воспроизводится в "
+"канале SIP."
+
+#: src/py_phone_caller_ui/templates/base.html:209
+msgid "Dispatch Test Call"
+msgstr "Отправить Тестовый Звонок"
+
+#: src/py_phone_caller_ui/templates/base.html:230
+msgid "SMS Message Text"
+msgstr "Текст SMS-Сообщения"
+
+#: src/py_phone_caller_ui/templates/base.html:233
+msgid ""
+"Dispatched via On-Premise GSM Modem (/dev/ttyUSB) with automatic Twilio "
+"fallback."
+msgstr ""
+"Отправляется через локальный GSM-модем (/dev/ttyUSB) с автоматическим "
+"переключением на Twilio."
+
+#: src/py_phone_caller_ui/templates/base.html:237
+msgid "Send Test SMS"
+msgstr "Отправить Тестовое SMS"
+
+#: src/py_phone_caller_ui/templates/base.html:267
+msgid "Close"
+msgstr "Закрыть"
+
+#: src/py_phone_caller_ui/templates/base.html:275
+msgid "Help & Documentation"
+msgstr "Помощь и Документация"
+
+#: src/py_phone_caller_ui/templates/base.html:287
+msgid "Help Center"
+msgstr "Центр Помощи"
+
+#: src/py_phone_caller_ui/templates/base.html:288
+msgid "Sovereign Voice & SMS Alerting"
+msgstr "Суверенное голосовое и SMS оповещение"
+
+#: src/py_phone_caller_ui/templates/base.html:298
+msgid "Search help topics..."
+msgstr "Поиск тем справки..."
+
+#: src/py_phone_caller_ui/templates/base.html:305
+msgid "Current section:"
+msgstr "Текущий раздел:"
+
+#: src/py_phone_caller_ui/templates/base.html:305
+msgid "Overview"
+msgstr "Обзор"
+
+#: src/py_phone_caller_ui/templates/base.html:316
+msgid "Address Book & On-Call"
+msgstr "Адресная Книга и Дежурства (On-Call)"
+
+#: src/py_phone_caller_ui/templates/base.html:321
+msgid "E.164 Phone Numbers:"
+msgstr "Телефонные Номера E.164:"
+
+#: src/py_phone_caller_ui/templates/base.html:321
+msgid ""
+"Store phone numbers with country code (+39...) to dial properly through "
+"Asterisk ARI and send SMS."
+msgstr ""
+"Сохраняйте номера с кодом страны (+39...) для корректного набора через "
+"Asterisk ARI и отправки SMS."
+
+#: src/py_phone_caller_ui/templates/base.html:322
+msgid "On-Call Availability:"
+msgstr "Доступность Дежурных:"
+
+#: src/py_phone_caller_ui/templates/base.html:322
+msgid ""
+"Define start/end schedule intervals. Active contacts in the current "
+"window are selected automatically."
+msgstr ""
+"Задайте интервалы расписания начало/конец. Активные контакты в текущем "
+"окне выбираются автоматически."
+
+#: src/py_phone_caller_ui/templates/base.html:323
+msgid "Escalation Priority:"
+msgstr "Приоритет Эскалации:"
+
+#: src/py_phone_caller_ui/templates/base.html:323
+msgid ""
+"Priority 0 is Primary Responder, 1 is Secondary, 2-3 Backup, 4 Duty "
+"Supervisor."
+msgstr ""
+"Приоритет 0 — Основной сотрудник, 1 — Вторичный, 2-3 Резерв, 4 Дежурный "
+"руководитель."
+
+#: src/py_phone_caller_ui/templates/base.html:324
+msgid "CSV Operations:"
+msgstr "Операции с CSV:"
+
+#: src/py_phone_caller_ui/templates/base.html:324
+msgid "Import or export entire contact databases at any time."
+msgstr "Импортируйте или экспортируйте полные базы контактов в любое время."
+
+#: src/py_phone_caller_ui/templates/base.html:333
+msgid "Scheduled Calls & Speech"
+msgstr "Запланированные Звонки и Речь"
+
+#: src/py_phone_caller_ui/templates/base.html:338
+msgid "Neural TTS Engine:"
+msgstr "Нейронный Движок TTS:"
+
+#: src/py_phone_caller_ui/templates/base.html:338
+msgid ""
+"Message text is automatically synthesized into clear 8kHz/16kHz audio "
+"using Silero Neural TTS."
+msgstr ""
+"Текст сообщения автоматически синтезируется в чистый звук 8 кГц/16 кГц с "
+"помощью Silero Neural TTS."
+
+#: src/py_phone_caller_ui/templates/base.html:339
+msgid "Audio Caching:"
+msgstr "Кэширование Аудио:"
+
+#: src/py_phone_caller_ui/templates/base.html:339
+msgid ""
+"Synthesized audio is cached locally by message hash for instant zero-"
+"latency playback."
+msgstr ""
+"Синтезированный звук кэшируется локально по хэшу сообщения для "
+"мгновенного воспроизведения без задержек."
+
+#: src/py_phone_caller_ui/templates/base.html:340
+msgid "Smart Recipient Picker:"
+msgstr "Умный Выбор Получателей:"
+
+#: src/py_phone_caller_ui/templates/base.html:340
+msgid ""
+"Choose a specific contact or select \"Use current On-call\" to resolve "
+"on-duty responders."
+msgstr ""
+"Выберите конкретный контакт или выберите «Использовать текущее дежурство»"
+" для адресации ответственным сотрудникам."
+
+#: src/py_phone_caller_ui/templates/base.html:349
+msgid "Managed Calls & DTMF"
+msgstr "Управляемые Звонки и DTMF"
+
+#: src/py_phone_caller_ui/templates/base.html:354
+msgid "Asterisk ARI Integration:"
+msgstr "Интеграция Asterisk ARI:"
+
+#: src/py_phone_caller_ui/templates/base.html:354
+msgid ""
+"Channels are initiated via Asterisk REST Interface and placed in Stasis "
+"bridge."
+msgstr ""
+"Каналы инициируются через интерфейс Asterisk REST (ARI) и помещаются в "
+"мост Stasis."
+
+#: src/py_phone_caller_ui/templates/base.html:355
+msgid "DTMF 1 Acknowledgment:"
+msgstr "Подтверждение DTMF 1:"
+
+#: src/py_phone_caller_ui/templates/base.html:355
+msgid ""
+"The recipient presses 1 to acknowledge the alert, marking it acknowledged"
+" and terminating retries."
+msgstr ""
+"Получатель нажимает 1 для подтверждения оповещения, что отмечает его "
+"подтвержденным и завершает повторные вызовы."
+
+#: src/py_phone_caller_ui/templates/base.html:356
+msgid "Automatic Retries:"
+msgstr "Автоматические Повторы:"
+
+#: src/py_phone_caller_ui/templates/base.html:356
+msgid ""
+"Unanswered calls automatically retry according to retry count and backoff"
+" configuration."
+msgstr ""
+"Неотвеченные звонки автоматически повторяются в соответствии с лимитом "
+"попыток и настройками задержки."
+
+#: src/py_phone_caller_ui/templates/base.html:365
+msgid "SMS & GSM Modems"
+msgstr "SMS и GSM Модемы"
+
+#: src/py_phone_caller_ui/templates/base.html:370
+msgid "On-Premise Hardware Modems:"
+msgstr "Локальные Аппаратные Модемы:"
+
+#: src/py_phone_caller_ui/templates/base.html:370
+msgid ""
+"SMS is dispatched directly via serial AT commands (/dev/ttyUSB) without "
+"external dependencies."
+msgstr ""
+"SMS отправляются напрямую через последовательные AT-команды (/dev/ttyUSB)"
+" без внешних зависимостей."
+
+#: src/py_phone_caller_ui/templates/base.html:371
+msgid "Carrier Failover:"
+msgstr "Отказоустойчивость Оператора:"
+
+#: src/py_phone_caller_ui/templates/base.html:371
+msgid ""
+"If GSM signal is lost or modem fails, failover to secondary gateway (e.g."
+" Twilio) triggers automatically."
+msgstr ""
+"При потере сигнала GSM или сбое модема автоматически активируется "
+"переключение на резервный шлюз (напр. Twilio)."
+
+#: src/py_phone_caller_ui/templates/base.html:372
+msgid "Full Delivery Tracking:"
+msgstr "Полное Отслеживание Доставки:"
+
+#: src/py_phone_caller_ui/templates/base.html:372
+msgid ""
+"View outbound SMS logs, delivery statuses, carrier metadata, and "
+"timestamps in real time."
+msgstr ""
+"Просматривайте журналы исходящих SMS, статусы доставки, метаданные "
+"оператора и временные метки в реальном времени."
+
+#: src/py_phone_caller_ui/templates/base.html:381
+msgid "PBX Events & Telephony Stream"
+msgstr "События PBX и Поток Телефонии"
+
+#: src/py_phone_caller_ui/templates/base.html:386
+msgid "WebSocket Event Feed:"
+msgstr "Лента Событий WebSocket:"
+
+#: src/py_phone_caller_ui/templates/base.html:386
+msgid ""
+"Real-time feed of Asterisk ARI events including StasisStart, "
+"ChannelDtmfReceived, and ChannelDestroyed."
+msgstr ""
+"Лента событий Asterisk ARI в реальном времени, включая StasisStart, "
+"ChannelDtmfReceived и ChannelDestroyed."
+
+#: src/py_phone_caller_ui/templates/base.html:387
+msgid "Troubleshooting Audits:"
+msgstr "Аудит и Устранение Неполадок:"
+
+#: src/py_phone_caller_ui/templates/base.html:387
+msgid ""
+"Use the event timeline to diagnose call setup delays, SIP trunk "
+"responses, and DTMF tones."
+msgstr ""
+"Используйте хронологию событий для диагностики задержек соединения, "
+"ответов SIP-транков и тонов DTMF."
+
+#: src/py_phone_caller_ui/templates/base.html:396
+msgid "Prometheus & Webhook Triggering"
+msgstr "Prometheus и Триггеры Webhook"
+
+#: src/py_phone_caller_ui/templates/base.html:401
+msgid "Alertmanager Receiver:"
+msgstr "Приемник Alertmanager:"
+
+#: src/py_phone_caller_ui/templates/base.html:401
+msgid "Configure Alertmanager to forward firing alerts to the webhook service:"
+msgstr "Настройте Alertmanager для пересылки активных алертов на сервис вебхуков:"
+
+#: src/py_phone_caller_ui/templates/base.html:405
+msgid ""
+"Incoming alerts automatically resolve duty on-call contacts, synthesize "
+"speech, and initiate emergency phone calls."
+msgstr ""
+"Входящие алерты автоматически определяют дежурных сотрудников, "
+"синтезируют голосовое сообщение и запускают экстренные телефонные звонки."
+
+#: src/py_phone_caller_ui/templates/base.html:414
+msgid "Need to test right now?"
+msgstr "Нужно протестировать прямо сейчас?"
+
+#: src/py_phone_caller_ui/templates/base.html:415
+msgid "Send a live test call or SMS from the diagnostics console."
+msgstr "Отправьте тестовый звонок или SMS из консоли диагностики."
+
+#: src/py_phone_caller_ui/templates/base.html:417
+msgid "Open Diagnostics Console"
+msgstr "Открыть Консоль Диагностики"
+
+#~ msgid "Hardware Gateways & Engines"
+#~ msgstr "Аппаратные шлюзы и движки"
+
+#~ msgid "SMS Gateway"
+#~ msgstr "Шлюз SMS"
+
+#~ msgid "Telephony Engine"
+#~ msgstr "Движок телефонии"
+
+#~ msgid "Export CSV"
+#~ msgstr "Экспорт в CSV"
+
+#~ msgid "Search"
+#~ msgstr "Поиск"
+
+#~ msgid "Disable"
+#~ msgstr "Отключить"
+
+#~ msgid "Search managed calls..."
+#~ msgstr "Поиск звонков..."
+
+#~ msgid "Search contacts..."
+#~ msgstr "Поиск контактов..."
+
+#~ msgid "Search SMS..."
+#~ msgstr "Поиск SMS..."
 

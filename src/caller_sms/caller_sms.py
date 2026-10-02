@@ -162,6 +162,16 @@ async def send_the_sms(request):
             status=status,
             error=error_msg,
         )
+        try:
+            from py_phone_caller_utils.event_bus import publish_event
+            await publish_event("sms_dispatched", {
+                "phone": phone,
+                "carrier": carrier,
+                "status": status,
+                "error": error_msg,
+            })
+        except Exception:
+            pass
     except Exception as db_err:
         logging.error(f"Error recording SMS in database: {db_err}")
 
