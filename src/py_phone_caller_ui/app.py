@@ -35,6 +35,8 @@ from py_phone_caller_ui.ws_events import ws_events_blueprint
 from py_phone_caller_ui.address_book import address_book_blueprint
 from py_phone_caller_ui.sms import sms_blueprint
 
+from py_phone_caller_utils.env_validator import run_startup_health_banner
+run_startup_health_banner('py_phone_caller_ui')
 from py_phone_caller_utils.login.user import User
 from py_phone_caller_utils.py_phone_caller_db.db_user import (
     ensure_admin_user_exists,

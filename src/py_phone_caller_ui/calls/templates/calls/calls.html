@@ -15,7 +15,15 @@
 <div class="container-fluid main-container px-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
         <h2 class="page-header mb-0 text-start">Managed Calls</h2>
-        <div class="d-flex gap-2 mt-2 mt-md-0">
+        <div class="d-flex gap-2 mt-2 mt-md-0 align-items-center">
+            <div id="bulkActionsBar" class="d-none me-2">
+                <button type="button" class="btn btn-warning shadow-sm fw-bold" onclick="executeBulkAck()">
+                    <i class="bi bi-check2-all me-1"></i> Bulk Acknowledge (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+            <a href="{{ url_for('calls_blueprint.audit_report') }}" target="_blank" class="btn btn-outline-primary">
+                <i class="bi bi-file-earmark-pdf me-1"></i> Incident Audit Report
+            </a>
             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#exportModal">
                 <i class="bi bi-file-earmark-excel me-1"></i> Export CSV
             </button>
@@ -65,6 +73,9 @@
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
             <tr>
+                <th style="width: 40px;" class="text-center">
+                    <input class="form-check-input" type="checkbox" id="selectAllCalls" title="Select All Active Calls">
+                </th>
                 <th>
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='element', sort_order='asc' if sort_by != 'element' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
                         Element
@@ -125,6 +136,11 @@
             {% for element in paginated_data %}
             {% set call = table_data[element] %}
             <tr>
+                <td class="text-center">
+                    <input class="form-check-input call-row-check" type="checkbox" 
+                           data-chan="{{ call.get('asterisk_chan') }}" 
+                           {% if call.get("cycle_done") == True %}disabled{% endif %}>
+                </td>
                 <td><span class="badge bg-light text-dark border">{{ element }}</span></td>
                 <td><code class="small">{{ call.get("id") }}</code></td>
                 <td><span class="fw-bold text-primary">{{ call.get("phone") }}</span></td>
@@ -136,7 +152,19 @@
                         <span class="badge bg-warning-subtle text-warning border border-warning-subtle" title="Backup call">Backup</span>
                     {% endif %}
                 </td>
-                <td class="text-wrap small">{{ call.get("message") }}</td>
+                <td class="text-wrap small">
+                    <div class="d-flex align-items-center justify-content-between gap-2">
+                        <span>{{ call.get("message") }}</span>
+                        {% if call.get("msg_chk_sum") %}
+                        <button type="button" class="btn btn-outline-info btn-sm p-1 rounded-circle flex-shrink-0" 
+                                style="width: 28px; height: 28px; line-height: 1;" 
+                                onclick="playTtsAudio('{{ call.get('msg_chk_sum') }}.wav', this)"
+                                title="Play Synthesized Neural Alert Audio">
+                            <i class="bi bi-play-fill"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
                 <td class="small text-muted">{{ call.get("asterisk_chan") }}</td>
                 <td class="text-center"><span class="badge bg-secondary rounded-pill">{{ call.get("times_to_dial") }}</span></td>
                 <td class="text-center"><span class="badge bg-{{ 'success' if call.get('dialed_times') >= call.get('times_to_dial') else 'info' }} rounded-pill">{{ call.get("dialed_times") }}</span></td>
@@ -169,7 +197,7 @@
             {% endfor %}
             {% if paginated_data|length == 0 %}
             <tr>
-                <td colspan="12" class="text-center py-5 text-muted">
+                <td colspan="13" class="text-center py-5 text-muted">
                     <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                     No managed calls found{% if search_query %} for "{{ search_query }}"{% endif %}
                 </td>
@@ -235,9 +263,12 @@
                         <input type="month" class="form-control form-control-lg" id="export-month" name="export_month" required>
                         <div class="form-text mt-2">Data is exported one month at a time for optimal performance.</div>
                     </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-lg">
                             <i class="bi bi-download me-2"></i>Download CSV
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="window.open('{{ url_for('calls_blueprint.audit_report') }}?export_month=' + encodeURIComponent(document.getElementById('export-month').value), '_blank')">
+                            <i class="bi bi-file-earmark-pdf me-2"></i>View / Print Monthly Audit Report
                         </button>
                     </div>
                 </form>
@@ -339,5 +370,106 @@
             });
         });
     })();
+
+    // Audio Player helper
+    let currentAudio = null;
+    let currentPlayBtn = null;
+    function playTtsAudio(filename, btn) {
+        if (currentAudio && !currentAudio.paused) {
+            currentAudio.pause();
+            if (currentPlayBtn) currentPlayBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+            if (currentPlayBtn === btn) {
+                currentAudio = null;
+                currentPlayBtn = null;
+                return;
+            }
+        }
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        const url = `/api/audio_proxy/${encodeURIComponent(filename)}`;
+        currentAudio = new Audio(url);
+        currentPlayBtn = btn;
+        currentAudio.onplay = () => {
+            btn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+            btn.classList.add('btn-info');
+            btn.classList.remove('btn-outline-info');
+        };
+        currentAudio.onended = () => {
+            btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+            btn.classList.remove('btn-info');
+            btn.classList.add('btn-outline-info');
+            currentAudio = null;
+            currentPlayBtn = null;
+        };
+        currentAudio.onerror = () => {
+            showToast('Audio Preview', 'Audio not generated or still being synthesized', 'warning');
+            btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+            btn.classList.remove('btn-info');
+            btn.classList.add('btn-outline-info');
+            currentAudio = null;
+            currentPlayBtn = null;
+        };
+        currentAudio.play().catch(err => {
+            showToast('Audio Preview', 'Unable to play: ' + err.message, 'danger');
+            btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+        });
+    }
+
+    // Bulk selection and acknowledge
+    function updateBulkSelection() {
+        const checkboxes = document.querySelectorAll('.call-row-check:checked');
+        const count = checkboxes.length;
+        const bar = document.getElementById('bulkActionsBar');
+        const countEl = document.getElementById('selectedCount');
+        if (countEl) countEl.innerText = count;
+        if (bar) {
+            if (count > 0) bar.classList.remove('d-none');
+            else bar.classList.add('d-none');
+        }
+    }
+
+    document.getElementById('selectAllCalls')?.addEventListener('change', function() {
+        const checked = this.checked;
+        document.querySelectorAll('.call-row-check:not(:disabled)').forEach(cb => {
+            cb.checked = checked;
+        });
+        updateBulkSelection();
+    });
+
+    document.addEventListener('change', function(e) {
+        if (e.target && e.target.classList.contains('call-row-check')) {
+            updateBulkSelection();
+        }
+    });
+
+    async function executeBulkAck() {
+        const checkboxes = document.querySelectorAll('.call-row-check:checked');
+        const channels = Array.from(checkboxes).map(cb => cb.getAttribute('data-chan')).filter(Boolean);
+        if (channels.length === 0) return;
+
+        if (!confirm(`Are you sure you want to acknowledge ${channels.length} selected call(s)?`)) return;
+
+        const btn = document.querySelector('#bulkActionsBar button');
+        if (btn) btn.disabled = true;
+
+        try {
+            const resp = await fetch('/calls/api/bulk_acknowledge', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({channels})
+            });
+            const res = await resp.json();
+            if (res.status === 200) {
+                showToast('Bulk ACK Complete', `Acknowledged ${res.acknowledged} of ${res.total} calls`, 'success');
+                setTimeout(() => window.location.reload(), 800);
+            } else {
+                showToast('Bulk ACK Error', res.message || 'Failed to acknowledge', 'danger');
+            }
+        } catch (err) {
+            showToast('Error', 'Communication error with server: ' + err.message, 'danger');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
 </script>
 {% endblock %}

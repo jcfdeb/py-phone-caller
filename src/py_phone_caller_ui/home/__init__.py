@@ -178,3 +178,167 @@ async def home():
         address_book_url=url_for("address_book_blueprint.address_book"),
         logout_url=url_for("home_blueprint.logout"),
     )
+
+@home_blueprint.route("/api/audio_proxy/<filename>")
+@login_required
+async def api_audio_proxy(filename: str):
+    """
+    Proxies TTS audio preview requests from the browser to the generate_audio service.
+    Avoids CORS issues and ensures LAN services remain protected.
+    """
+    import re
+    # Validate filename to prevent path traversal
+    if not re.match(r"^[a-zA-Z0-9_\-.]+\.wav$", filename):
+        return jsonify({"error": "Invalid audio filename"}), 400
+
+    audio_host = settings.get("generate_audio.generate_audio_host") or "127.0.0.1"
+    audio_port = settings.get("generate_audio.generate_audio_port") or 8082
+    if audio_host in ("192.168.101.17", "192.168.101.111"):
+        audio_host = "127.0.0.1"
+
+    target_url = f"http://{audio_host}:{audio_port}/audio/{filename}"
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4)) as session:
+            async with session.get(target_url) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    return Response(data, mimetype="audio/wav")
+                return jsonify({"error": "Audio file not found or still generating", "status": resp.status}), resp.status
+    except Exception as exc:
+        logger.warning(f"Audio proxy connection failed for {target_url}: {exc}")
+        return jsonify({"error": f"Audio service unreachable: {exc}"}), 502
+
+
+@home_blueprint.route("/api/global_search")
+@login_required
+async def api_global_search():
+    """
+    Universal search API for Command Palette (Ctrl+K).
+    Returns matches across Contacts, Calls, and Navigation targets.
+    """
+    query = request.args.get("q", "").strip().lower()
+    results = []
+
+    # 1. Navigation Targets
+    nav_links = [
+        {"title": "NOC Dashboard", "category": "Navigation", "icon": "bi-speedometer2", "url": url_for("home_blueprint.home")},
+        {"title": "24/7 Wallboard", "category": "Navigation", "icon": "bi-display", "url": url_for("home_blueprint.wallboard")},
+        {"title": "Managed Calls", "category": "Navigation", "icon": "bi-telephone-inbound", "url": url_for("calls_blueprint.calls")},
+        {"title": "Incident Audit Report", "category": "Navigation", "icon": "bi-shield-check", "url": url_for("calls_blueprint.audit_report")},
+        {"title": "Schedule Call", "category": "Navigation", "icon": "bi-calendar-plus", "url": url_for("schedule_call_blueprint.schedule_call")},
+        {"title": "Address Book & Duty Roster", "category": "Navigation", "icon": "bi-journal-bookmark", "url": url_for("address_book_blueprint.address_book")},
+        {"title": "SMS Gateway & Logs", "category": "Navigation", "icon": "bi-chat-dots", "url": url_for("sms_blueprint.sms")},
+        {"title": "Asterisk WS Events", "category": "Navigation", "icon": "bi-broadcast-pin", "url": url_for("ws_events_blueprint.ws_events")},
+        {"title": "User Management", "category": "Navigation", "icon": "bi-people", "url": url_for("users_blueprint.users")},
+    ]
+
+    for item in nav_links:
+        if not query or query in item["title"].lower():
+            results.append(item)
+
+    # 2. Search Address Book Contacts
+    try:
+        from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import AddressBook
+        contacts = await AddressBook.select()
+        for c in contacts:
+            name = f"{c.get('name', '')} {c.get('surname', '')}".strip()
+            phone = c.get('phone_number', '') or ''
+            city = c.get('city', '') or ''
+            searchable = f"{name} {phone} {city}".lower()
+            if query and query in searchable:
+                results.append({
+                    "title": name or phone,
+                    "subtitle": f"{phone} ({city})" if city else phone,
+                    "category": "Address Book",
+                    "icon": "bi-person-badge",
+                    "url": f"{url_for('address_book_blueprint.address_book')}?search={phone}",
+                })
+    except Exception as exc:
+        logger.debug(f"Search contacts failed: {exc}")
+
+    # 3. Search Calls
+    try:
+        from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import Calls
+        calls = await Calls.select().order_by(Calls.first_dial, ascending=False).limit(20)
+        for c in calls:
+            phone = c.get('phone', '') or ''
+            msg = c.get('message', '') or ''
+            chan = c.get('asterisk_chan', '') or ''
+            searchable = f"{phone} {msg} {chan}".lower()
+            if query and query in searchable:
+                results.append({
+                    "title": f"Call to {phone}",
+                    "subtitle": (msg[:60] + "...") if len(msg) > 60 else msg,
+                    "category": "Calls",
+                    "icon": "bi-telephone-outbound",
+                    "url": f"{url_for('calls_blueprint.calls')}?search={phone}",
+                })
+    except Exception as exc:
+        logger.debug(f"Search calls failed: {exc}")
+
+    return jsonify({"results": results[:15]})
+
+
+@home_blueprint.route("/api/quick_oncall_status")
+@login_required
+async def api_quick_oncall_status():
+    """
+    Returns current active on-call responders and enables rapid toggle.
+    """
+    from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import AddressBook
+    from datetime import UTC, datetime
+    now_utc = datetime.now(UTC)
+
+    active_contacts = []
+    all_contacts = []
+    try:
+        contacts = await AddressBook.select()
+        for c in contacts:
+            cid = str(c.get("id"))
+            name = f"{c.get('name', '')} {c.get('surname', '')}".strip() or "Unnamed"
+            phone = c.get("phone_number", "")
+            enabled = bool(c.get("enabled", False))
+            all_contacts.append({
+                "id": cid,
+                "name": name,
+                "phone": phone,
+                "enabled": enabled,
+            })
+            if enabled:
+                active_contacts.append({
+                    "id": cid,
+                    "name": name,
+                    "phone": phone,
+                })
+    except Exception as exc:
+        logger.debug(f"Failed to fetch oncall status: {exc}")
+
+    return jsonify({
+        "active_count": len(active_contacts),
+        "active_contacts": active_contacts,
+        "contacts": all_contacts,
+    })
+
+
+@home_blueprint.route("/api/quick_oncall_toggle", methods=["POST"])
+@login_required
+async def api_quick_oncall_toggle():
+    """
+    Toggles a contact's enabled status directly from the header dropdown.
+    """
+    from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import AddressBook
+    from py_phone_caller_utils.py_phone_caller_db.db_address_book import modify_contact
+
+    data = request.get_json(silent=True) or {}
+    contact_id = data.get("contact_id")
+    enabled = data.get("enabled")
+
+    if not contact_id or enabled is None:
+        return jsonify({"success": False, "error": "Missing contact_id or enabled flag"}), 400
+
+    try:
+        await modify_contact(contact_id, {"enabled": bool(enabled)})
+        return jsonify({"success": True, "contact_id": contact_id, "enabled": bool(enabled)})
+    except Exception as exc:
+        logger.exception("Failed to toggle contact enabled: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
