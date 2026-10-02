@@ -103,3 +103,30 @@ def test_ui_flask_app_health():
     data = resp.get_json()
     assert data["status"] == "healthy"
     assert data["service"] == "py_phone_caller_ui"
+
+
+def test_w3c_trace_context_propagation():
+    from py_phone_caller_utils.telemetry import inject_trace_context, extract_trace_context
+    headers = {}
+    injected = inject_trace_context(headers)
+    assert isinstance(injected, dict)
+    extracted = extract_trace_context(injected)
+    assert extracted is not None
+
+
+@pytest.mark.asyncio
+async def test_asterisk_ws_monitor_event_broadcaster():
+    from src.asterisk_ws_monitor.asterisk_ws_monitor import broadcast_stasis_event
+    from unittest.mock import patch, AsyncMock
+    with patch("redis.asyncio.from_url") as mock_redis_from_url:
+        mock_r = AsyncMock()
+        mock_redis_from_url.return_value = mock_r
+        await broadcast_stasis_event(
+            event_type="StasisStart",
+            asterisk_chan="PJSIP/100-00000001",
+            response_json={"timestamp": "2026-10-01T12:00:00Z", "channel": {"state": "Up"}}
+        )
+        mock_r.publish.assert_called_once()
+        args, kwargs = mock_r.publish.call_args
+        assert args[0] == "telephony.stasis.events"
+        assert "StasisStart" in args[1]

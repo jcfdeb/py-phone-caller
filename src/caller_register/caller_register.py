@@ -52,6 +52,8 @@ from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.piccol
 from piccolo.apps.migrations.tables import Migration
 from piccolo.querystring import QueryString
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
+from py_phone_caller_utils.web.readiness import ReadinessRegistry, check_database_pool
 
 from caller_register.constants import (
     SECONDS_TO_FORGET,
@@ -269,6 +271,22 @@ async def _repair_existing_schema():
             """
         )
         logging.info("Ensured SMS table exists")
+
+        await DB.run_ddl(
+            """
+            CREATE TABLE IF NOT EXISTS dead_letter_queue (
+                id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+                task_id varchar(128) DEFAULT '' NOT NULL,
+                task_name varchar(128) DEFAULT '' NOT NULL,
+                queue varchar(64) DEFAULT 'telephony.dlq' NOT NULL,
+                payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+                exception varchar(2048) DEFAULT '' NOT NULL,
+                traceback varchar(4096) DEFAULT '' NOT NULL,
+                created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+            );
+            """
+        )
+        logging.info("Ensured DeadLetterQueue table exists")
         return True
     except Exception as e:
         logging.error(f"Error repairing existing database schema: {e}")
@@ -377,29 +395,18 @@ async def present_or_not_logger(phone, first_dial_time, message):
 
 async def get_request_parameters(request):
     """
-    Extracts the 'phone', 'message', 'asterisk_chan', 'oncall', and 'backup_callee' parameters from the incoming request.
-
-    This asynchronous function retrieves query parameters from the request and raises an HTTP error if required ones are missing.
-
-    Args:
-        request: The incoming HTTP request containing query parameters.
-
-    Returns:
-        tuple: A tuple containing the phone, message, asterisk_chan, oncall, and backup_callee values.
-
-    Raises:
-        web.HTTPBadRequest: If any required parameter is missing from the request.
+    Extracts 'phone', 'message', 'asterisk_chan', 'oncall', and 'backup_callee' parameters with dual-mode JSON/query support.
     """
-    try:
-        phone = request.rel_url.query["phone"]
-        message = request.rel_url.query["message"]
-        asterisk_chan = request.rel_url.query["asterisk_chan"]
-        oncall = request.rel_url.query.get("oncall", "false").lower() == "true"
-        backup_callee = (
-            request.rel_url.query.get("backup_callee", "false").lower() == "true"
-        )
-        return phone, message, asterisk_chan, oncall, backup_callee
-    except KeyError as err:
+    params = await extract_params(request)
+    phone = params.get("phone")
+    message = params.get("message")
+    asterisk_chan = params.get("asterisk_chan")
+    oncall_raw = params.get("oncall", False)
+    oncall = (str(oncall_raw).lower() == "true") if not isinstance(oncall_raw, bool) else oncall_raw
+    backup_raw = params.get("backup_callee", False)
+    backup_callee = (str(backup_raw).lower() == "true") if not isinstance(backup_raw, bool) else backup_raw
+
+    if not phone or not message or not asterisk_chan:
         logging.exception(
             f"No 'phone', 'message' or 'asterisk_chan' parameters passed on: '{request.rel_url}'"
         )
@@ -408,7 +415,8 @@ async def get_request_parameters(request):
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
+    return phone, message, asterisk_chan, oncall, backup_callee
 
 
 async def new_call_attempt(
@@ -653,10 +661,9 @@ async def acknowledge(request):
     Raises:
         web.HTTPBadRequest: If the 'asterisk_chan' parameter is missing from the request.
     """
-    try:
-        asterisk_chan = request.rel_url.query["asterisk_chan"]
-    except KeyError as err:
-        asterisk_chan = None
+    params = await extract_params(request)
+    asterisk_chan = params.get("asterisk_chan")
+    if not asterisk_chan:
         logging.exception(
             f"No 'asterisk_chan' parameter passed on: '{request.rel_url}'"
         )
@@ -665,7 +672,7 @@ async def acknowledge(request):
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
 
     acknowledged = await update_acknowledgement(asterisk_chan)
 
@@ -696,16 +703,15 @@ async def heard(request):
     Raises:
         web.HTTPBadRequest: If the 'asterisk_chan' parameter is missing from the request.
     """
-    try:
-        asterisk_chan = request.rel_url.query["asterisk_chan"]
-    except KeyError as err:
-        asterisk_chan = None
+    params = await extract_params(request)
+    asterisk_chan = params.get("asterisk_chan")
+    if not asterisk_chan:
         logging.exception(
             f"No 'asterisk_chan' parameter passed on: '{request.rel_url}'"
         )
         raise web.HTTPBadRequest(
             reason=HEARD_ERROR, body=None, text=None, content_type=None
-        ) from err
+        )
 
     await update_heard_at(asterisk_chan)
 
@@ -727,10 +733,9 @@ async def voice_message(request):
     Raises:
         web.HTTPBadRequest: If the 'asterisk_chan' parameter is missing from the request.
     """
-    try:
-        asterisk_chan = request.rel_url.query["asterisk_chan"]
-    except KeyError as err:
-        asterisk_chan = None
+    params = await extract_params(request)
+    asterisk_chan = params.get("asterisk_chan")
+    if not asterisk_chan:
         logging.exception(
             f"No 'asterisk_chan' parameter passed on: '{request.rel_url}'"
         )
@@ -739,7 +744,7 @@ async def voice_message(request):
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
 
     try:
         message, msg_chk_sum = await get_msg_chk_sum(asterisk_chan)
@@ -769,11 +774,11 @@ async def scheduled_call(request):
         web.HTTPBadRequest: If any required parameter is missing from the request.
     """
 
-    try:
-        phone = request.rel_url.query["phone"]
-        message = request.rel_url.query["message"]
-        scheduled_at_str = request.rel_url.query["scheduled_at"]
-    except KeyError as err:
+    params = await extract_params(request)
+    phone = params.get("phone")
+    message = params.get("message")
+    scheduled_at_str = params.get("scheduled_at")
+    if not phone or not message or not scheduled_at_str:
         logging.exception(
             f"No 'phone', 'message', or 'scheduled_at' parameter passed on: '{request.rel_url}'"
         )
@@ -782,7 +787,7 @@ async def scheduled_call(request):
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
 
     try:
         scheduled_at = parser.parse(scheduled_at_str)
@@ -826,6 +831,27 @@ async def init_app():
 
     instrument_aiohttp_app(app, "caller_register")
 
+    async def root_catalog(request):
+        catalog = create_service_catalog(
+            service_name="caller_register",
+            description="Call register and tracking service for py-phone-caller",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{CALL_REGISTER_APP_ROUTE_REGISTER_CALL}": "Registers an outbound call (JSON body or query params: phone, message, asterisk_chan)",
+                f"POST /{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}": "Retrieves voice message and checksum for channel (asterisk_chan)",
+                f"POST /{CALL_REGISTER_SCHEDULED_CALL_APP_ROUTE}": "Records scheduled call (phone, message, scheduled_at)",
+                f"GET /{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}": "Marks call as acknowledged (asterisk_chan)",
+                f"GET /{CALL_REGISTER_APP_ROUTE_HEARD}": "Marks call as heard (asterisk_chan)",
+                "GET /live": "Liveness health check",
+                "GET /ready": "Readiness probe",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_route("GET", "/", root_catalog)
     app.router.add_route(
         "POST", f"/{CALL_REGISTER_APP_ROUTE_REGISTER_CALL}", register_call
     )
@@ -837,6 +863,79 @@ async def init_app():
     )
     app.router.add_route("GET", f"/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}", acknowledge)
     app.router.add_route("GET", f"/{CALL_REGISTER_APP_ROUTE_HEARD}", heard)
+
+    registry = ReadinessRegistry("caller_register")
+    registry.register("postgres_pool", check_database_pool)
+
+    async def caller_register_ready(request):
+        all_ready, details = await registry.evaluate()
+        status_code = 200 if all_ready else 503
+        return web.json_response(details, status=status_code)
+
+    # Override /ready with service specific diagnostics
+    app.router.add_route("GET", "/ready", caller_register_ready)
+
+    setup_swagger_routes(
+        app=app,
+        service_name="caller_register",
+        description="Call registration, lifecycle tracking, and DTMF acknowledgment registry",
+        paths={
+            f"/{CALL_REGISTER_APP_ROUTE_REGISTER_CALL}": {
+                "post": {
+                    "summary": "Register call attempt",
+                    "description": "Registers or updates a phone call attempt in the Piccolo database.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "phone": {"type": "string", "example": "0039123456789"},
+                                        "message": {"type": "string", "example": "Alert payload"},
+                                        "asterisk_chan": {"type": "string", "example": "PJSIP/trunk-00000001"},
+                                        "oncall": {"type": "boolean", "default": False},
+                                        "backup_callee": {"type": "boolean", "default": False},
+                                    },
+                                    "required": ["phone", "message", "asterisk_chan"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "Call successfully registered"}},
+                }
+            },
+            f"/{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}": {
+                "post": {
+                    "summary": "Retrieve voice message for channel",
+                    "description": "Retrieves the alert message and checksum associated with an active Asterisk channel.",
+                    "responses": {"200": {"description": "Voice message details"}},
+                }
+            },
+            f"/{CALL_REGISTER_SCHEDULED_CALL_APP_ROUTE}": {
+                "post": {
+                    "summary": "Record scheduled call",
+                    "description": "Records a deferred call execution into the database.",
+                    "responses": {"200": {"description": "Call scheduled successfully"}},
+                }
+            },
+            f"/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}": {
+                "get": {
+                    "summary": "Mark call acknowledged",
+                    "description": "Updates the acknowledged_at timestamp for a given Asterisk channel.",
+                    "parameters": [{"name": "asterisk_chan", "in": "query", "required": True, "schema": {"type": "string"}}],
+                    "responses": {"200": {"description": "Acknowledged successfully"}},
+                }
+            },
+            f"/{CALL_REGISTER_APP_ROUTE_HEARD}": {
+                "get": {
+                    "summary": "Mark call heard",
+                    "description": "Updates the heard_at timestamp for a given Asterisk channel.",
+                    "parameters": [{"name": "asterisk_chan", "in": "query", "required": True, "schema": {"type": "string"}}],
+                    "responses": {"200": {"description": "Heard recorded successfully"}},
+                }
+            },
+        },
+    )
     return app
 
 
@@ -853,7 +952,10 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    loop.run_until_complete(init_database())
+    try:
+        loop.run_until_complete(init_database())
+    except Exception as db_err:
+        logging.error(f"Database initial connection failed: {db_err}. Service starting in degraded mode; /ready will report 503 until DB recovers.")
 
     app = loop.run_until_complete(init_app())
 

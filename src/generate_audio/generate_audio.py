@@ -38,6 +38,7 @@ from py_phone_caller_utils.py_phone_caller_voices.facebook_mms import (
 )
 from py_phone_caller_utils.py_phone_caller_voices.google_gtts import create_audio_file
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
 
 from generate_audio.constants import (
     GENERATE_AUDIO_APP_ROUTE,
@@ -438,16 +439,16 @@ async def is_audio_ready(request):
     Raises:
         web.HTTPBadRequest: If the 'msg_chk_sum' parameter is missing from the request.
     """
-    try:
-        msg_chk_sum = request.rel_url.query["msg_chk_sum"]
-    except KeyError as err:
+    params = await extract_params(request)
+    msg_chk_sum = params.get("msg_chk_sum")
+    if not msg_chk_sum:
         logging.exception(f"No 'msg_chk_sum' parameter passed on: '{request.rel_url}'")
         raise web.HTTPBadRequest(
             reason="Missing msg_chk_sum parameter",
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, f"{msg_chk_sum}.wav")
@@ -472,10 +473,10 @@ async def create_audio(request):
     Raises:
         web.HTTPBadRequest: If any required parameter is missing from the request.
     """
-    try:
-        message = request.rel_url.query["message"]
-        msg_chk_sum = request.rel_url.query["msg_chk_sum"]
-    except KeyError as err:
+    params = await extract_params(request)
+    message = params.get("message")
+    msg_chk_sum = params.get("msg_chk_sum")
+    if not message or not msg_chk_sum:
         logging.exception(
             f"No 'message' or 'msg_chk_sum' parameter passed on: '{request.rel_url}'"
         )
@@ -484,7 +485,7 @@ async def create_audio(request):
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, f"{msg_chk_sum}.wav")
@@ -647,6 +648,25 @@ async def init_app():
 
     await ensure_models_present()
 
+    async def root_catalog(request):
+        catalog = create_service_catalog(
+            service_name="generate_audio",
+            description="TTS Neural Audio Generation and Serving service for py-phone-caller",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{GENERATE_AUDIO_APP_ROUTE}": "Generates WAV audio from text (JSON body or query: message, msg_chk_sum)",
+                f"GET /{IS_AUDIO_READY_ENDPOINT}": "Checks if rendered audio file exists (msg_chk_sum)",
+                "GET /audio/": "Static file browser/server for rendered audio files",
+                "GET /live": "Liveness health check",
+                "GET /ready": "Readiness probe",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_route("GET", "/", root_catalog)
     app.router.add_route("POST", f"/{GENERATE_AUDIO_APP_ROUTE}", create_audio)
 
     app.router.add_route("GET", f"/{IS_AUDIO_READY_ENDPOINT}", is_audio_ready)
@@ -659,6 +679,42 @@ async def init_app():
             f"No '{path_to_static_folder}' folder present... I can't serve the audio files"
         )
         exit(1)
+
+    setup_swagger_routes(
+        app=app,
+        service_name="generate_audio",
+        description="Text-To-Speech Neural Audio Synthesis and Serving Service",
+        paths={
+            f"/{GENERATE_AUDIO_APP_ROUTE}": {
+                "post": {
+                    "summary": "Synthesize speech audio from text",
+                    "description": "Generates a 16-bit 8kHz/16kHz WAV audio file for Asterisk playback using Kokoro, Piper, or MMS.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {"type": "string", "example": "Fire alarm triggered"},
+                                        "msg_chk_sum": {"type": "string", "example": "a1b2c3d4"},
+                                    },
+                                    "required": ["message", "msg_chk_sum"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "Audio generation status"}},
+                }
+            },
+            f"/{IS_AUDIO_READY_ENDPOINT}": {
+                "get": {
+                    "summary": "Check if audio file exists on disk",
+                    "parameters": [{"name": "msg_chk_sum", "in": "query", "required": True, "schema": {"type": "string"}}],
+                    "responses": {"200": {"description": "Existence boolean"}},
+                }
+            },
+        },
+    )
 
     return app
 

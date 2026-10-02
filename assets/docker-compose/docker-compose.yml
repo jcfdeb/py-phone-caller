@@ -38,7 +38,7 @@ x-db-common-env: &db-common-env
 services:
   # --- Infrastructure ---
   db:
-    image: docker.io/library/postgres:17-alpine
+    image: docker.io/library/postgres:16-alpine
     container_name: py-phone-caller-db
     ports:
       - "5432:5432"
@@ -58,8 +58,11 @@ services:
   redis:
     image: docker.io/library/redis:7-alpine
     container_name: py-phone-caller-redis
+    command: redis-server --appendonly yes --appendfsync everysec
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -324,6 +327,7 @@ services:
       test: ["NONE"]
     extra_hosts:
       - "host.containers.internal:host-gateway"
+    command: ["-A", "py_phone_caller_utils.tasks.celery_task", "worker", "-B", "-Q", "telephony.p0,telephony.p2,telephony.dlq,celery", "--loglevel=info"]
     environment:
       <<: *db-common-env
       OTEL_SERVICE_NAME: celery-worker
@@ -336,7 +340,14 @@ services:
 
 volumes:
   pgdata:
+  redis_data:
   audio_data:
   caddy_data:
   caddy_config:
     
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.31.0.0/24

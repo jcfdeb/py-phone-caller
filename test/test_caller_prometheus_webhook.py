@@ -1,3 +1,4 @@
+import time
 import pytest
 from unittest.mock import patch, AsyncMock
 from src.caller_prometheus_webhook.caller_prometheus_webhook import (
@@ -6,6 +7,22 @@ from src.caller_prometheus_webhook.caller_prometheus_webhook import (
     start_the_asterisk_call,
     send_message_to_caller_sms,
 )
+
+@pytest.fixture(autouse=True)
+def reset_dedup(monkeypatch):
+    from src.caller_prometheus_webhook import caller_prometheus_webhook
+    caller_prometheus_webhook._LOCAL_DEDUP_CACHE.clear()
+    # Mock redis check in unit tests to use fresh memory
+    async def mock_is_duplicate_alert(message: str, ttl_seconds: int = 180) -> bool:
+        msg_hash = caller_prometheus_webhook.hashlib.sha256(message.strip().encode("utf-8")).hexdigest()[:16]
+        now = time.time()
+        last_seen = caller_prometheus_webhook._LOCAL_DEDUP_CACHE.get(msg_hash)
+        if last_seen and (now - last_seen) < ttl_seconds:
+            return True
+        caller_prometheus_webhook._LOCAL_DEDUP_CACHE[msg_hash] = now
+        return False
+    monkeypatch.setattr(caller_prometheus_webhook, "is_duplicate_alert", mock_is_duplicate_alert)
+
 from src.caller_prometheus_webhook.constants import (
     PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY,
     PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY,
@@ -90,3 +107,27 @@ async def test_start_the_asterisk_call_and_sms_network():
     with patch("aiohttp.ClientSession.post") as mock_post:
         await send_message_to_caller_sms("+393340000000", "Test SMS")
         assert mock_post.called
+
+
+@pytest.mark.asyncio
+async def test_alert_deduplication(cli):
+    payload = {
+        "alerts": [{"status": "firing", "annotations": {"description": "Deduplication Test Alert"}}]
+    }
+    with patch(
+        "src.caller_prometheus_webhook.caller_prometheus_webhook.producer"
+    ) as mock_producer:
+        # First post should trigger producer
+        resp1 = await cli.post(
+            f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}", json=payload
+        )
+        assert resp1.status == 200
+        assert mock_producer.call_count == 1
+
+        # Second post within sliding window should be suppressed by deduplicator
+        resp2 = await cli.post(
+            f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}", json=payload
+        )
+        assert resp2.status == 200
+        # Call count remains 1 because duplicate alert was discarded
+        assert mock_producer.call_count == 1

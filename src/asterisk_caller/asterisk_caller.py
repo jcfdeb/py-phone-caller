@@ -37,6 +37,7 @@ if src_dir not in sys.path:
 from aiohttp import ClientSession, ClientTimeout, client_exceptions, web
 
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
 
 from asterisk_caller.constants import (
     ASTERISK_ARI_CHANNELS,
@@ -437,11 +438,19 @@ async def place_call(request):
         aiohttp.web.Response: A JSON response indicating the status of the call initiation.
     """
 
-    phone = await validate_parameters(request.rel_url.query["phone"], request.rel_url)
-    message = await validate_parameters(
-        request.rel_url.query["message"], request.rel_url
-    )
-    backup_callee = request.rel_url.query.get("backup_callee", "false").lower()
+    params = await extract_params(request)
+    raw_phone = params.get("phone")
+    raw_message = params.get("message")
+    if not raw_phone or not raw_message:
+        logging.exception(
+            f"No 'phone' or 'message' parameters passed on: '{request.rel_url}'"
+        )
+        raise web.HTTPBadRequest(
+            reason=ASTERISK_CALL_ERROR, body=None, text=None, content_type=None
+        )
+    phone = await validate_parameters(raw_phone, request.rel_url)
+    message = await validate_parameters(raw_message, request.rel_url)
+    backup_callee = str(params.get("backup_callee", "false")).lower()
 
     try:
         call_resp = await asterisk_call_start(phone, message, backup_callee)
@@ -463,10 +472,18 @@ async def call_to_queue(request):
         aiohttp.web.Response: A JSON response indicating the status of the enqueue operation.
     """
 
-    phone = await validate_parameters(request.rel_url.query["phone"], request.rel_url)
-    message = await validate_parameters(
-        request.rel_url.query["message"], request.rel_url
-    )
+    params = await extract_params(request)
+    raw_phone = params.get("phone")
+    raw_message = params.get("message")
+    if not raw_phone or not raw_message:
+        logging.exception(
+            f"No 'phone' or 'message' parameters passed on: '{request.rel_url}'"
+        )
+        raise web.HTTPBadRequest(
+            reason=ASTERISK_CALL_ERROR, body=None, text=None, content_type=None
+        )
+    phone = await validate_parameters(raw_phone, request.rel_url)
+    message = await validate_parameters(raw_message, request.rel_url)
 
     try:
         CALL_QUEUE.put_nowait({"phone": phone, "message": message})
@@ -496,10 +513,10 @@ async def asterisk_play(request):
         web.HTTPBadRequest: If required parameters are missing or the connection to Asterisk fails.
     """
 
-    try:
-        asterisk_chan = request.rel_url.query["asterisk_chan"]
-        msg_chk_sum = request.rel_url.query["msg_chk_sum"]
-    except KeyError as err:
+    params = await extract_params(request)
+    asterisk_chan = params.get("asterisk_chan")
+    msg_chk_sum = params.get("msg_chk_sum")
+    if not asterisk_chan or not msg_chk_sum:
         logging.exception(
             f"No 'asterisk_chan' or 'msg_chk_sum' parameters passed on: '{request.rel_url}'"
         )
@@ -508,7 +525,7 @@ async def asterisk_play(request):
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
 
     generate_audio_url = f"{GENERATE_AUDIO_URL}/{SERVING_AUDIO_FOLDER}"
     asterisk_play_addr = (
@@ -560,11 +577,74 @@ async def init_app():
 
     instrument_aiohttp_app(app, "asterisk_caller")
 
+    async def root_catalog(request):
+        catalog = create_service_catalog(
+            service_name="asterisk_caller",
+            description="Asterisk Caller outbound telephony service for py-phone-caller",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}": "Initiates immediate outbound call via ARI (JSON body or query: phone, message, backup_callee)",
+                f"POST /{ASTERISK_CALL_APP_ROUTE_CALL_TO_QUEUE}": "Enqueues outbound call (JSON body or query: phone, message)",
+                f"POST /{ASTERISK_CALL_APP_ROUTE_PLAY}": "Plays audio to channel (JSON body or query: asterisk_chan, msg_chk_sum)",
+                "GET /live": "Liveness health check",
+                "GET /ready": "Readiness probe",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_route("GET", "/", root_catalog)
     app.router.add_route("POST", f"/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}", place_call)
     app.router.add_route(
         "POST", f"/{ASTERISK_CALL_APP_ROUTE_CALL_TO_QUEUE}", call_to_queue
     )
     app.router.add_route("POST", f"/{ASTERISK_CALL_APP_ROUTE_PLAY}", asterisk_play)
+
+    setup_swagger_routes(
+        app=app,
+        service_name="asterisk_caller",
+        description="Asterisk ARI Call Placement and Audio Dispatch Service",
+        paths={
+            f"/{ASTERISK_CALL_APP_ROUTE_PLACE_CALL}": {
+                "post": {
+                    "summary": "Place immediate call via ARI",
+                    "description": "Initiates an outbound phone call through Asterisk ARI.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "phone": {"type": "string", "example": "0039123456789"},
+                                        "message": {"type": "string", "example": "Critical alert"},
+                                        "backup_callee": {"type": "boolean", "default": False},
+                                    },
+                                    "required": ["phone", "message"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "Call successfully placed"}},
+                }
+            },
+            f"/{ASTERISK_CALL_APP_ROUTE_CALL_TO_QUEUE}": {
+                "post": {
+                    "summary": "Enqueue call for background dialing",
+                    "description": "Places call onto internal worker queue.",
+                    "responses": {"200": {"description": "Enqueued successfully"}},
+                }
+            },
+            f"/{ASTERISK_CALL_APP_ROUTE_PLAY}": {
+                "post": {
+                    "summary": "Play audio to active channel",
+                    "description": "Dispatches audio playback command to active channel in Stasis.",
+                    "responses": {"200": {"description": "Playback started"}},
+                }
+            },
+        },
+    )
 
     return app
 

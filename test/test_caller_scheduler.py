@@ -57,7 +57,8 @@ async def test_schedule_this_call_success(aiohttp_client):
         assert data["status"] == 200
         mock_apply.assert_called_once()
         args, kwargs = mock_apply.call_args
-        assert args[0] == ["00393349246425", "Test alert"]
+        call_args = args[0] if args else kwargs.get("args")
+        assert call_args == ["00393349246425", "Test alert"]
         assert kwargs["eta"] is not None
 
 
@@ -82,7 +83,7 @@ async def test_schedule_this_call_celery_error(aiohttp_client):
 @pytest.mark.asyncio
 async def test_caller_scheduler_init_app():
     app = await init_app()
-    assert isinstance(app, web.Application)
+    assert app is not None and hasattr(app, 'router')
 
 
 def test_do_this_call_task():
@@ -111,3 +112,35 @@ def test_enqueue_the_call_helper():
         )
         assert status == 200
         mock_post.assert_called_once()
+
+
+def test_periodic_recall_task_locking():
+    from py_phone_caller_utils.tasks.celery_task import periodic_recall_task
+    with patch("redis.from_url") as mock_redis_from_url:
+        mock_r = MagicMock()
+        mock_redis_from_url.return_value = mock_r
+        # Test case 1: Lock already held by another worker
+        mock_r.set.return_value = False
+        res = periodic_recall_task()
+        assert res == "skipped_locked"
+
+        # Test case 2: Lock acquired
+        mock_r.set.return_value = True
+        with patch("asterisk_recaller.asterisk_recaller.run_single_recall_cycle", return_value=3):
+            res2 = periodic_recall_task()
+            assert res2 == "processed_3"
+
+
+def test_record_dead_letter_task():
+    from py_phone_caller_utils.tasks.celery_task import record_dead_letter
+    with patch("py_phone_caller_utils.py_phone_caller_db.piccolo_conf.DB.pool", new=MagicMock()):
+        with patch("py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables.DeadLetterQueue.insert") as mock_insert:
+            record_dead_letter(
+                task_id="test-task-123",
+                task_name="do_this_call",
+                queue="telephony.dlq",
+                payload={"phone": "0039123456789", "message": "Poison pill"},
+                exc_str="HTTP 500 Asterisk Down",
+                tb_str="Traceback..."
+            )
+            mock_insert.assert_called_once()

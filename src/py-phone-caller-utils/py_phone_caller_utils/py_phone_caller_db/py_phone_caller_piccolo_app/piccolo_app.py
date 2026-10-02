@@ -14,6 +14,7 @@ from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables
     ScheduledCalls,
     Sms,
     Users,
+    DeadLetterQueue,
 )
 
 CURRENT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,7 @@ CURRENT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 APP_CONFIG = AppConfig(
     app_name="py_phone_caller_piccolo_app",
     migrations_folder_path=os.path.join(CURRENT_DIRECTORY, "piccolo_migrations"),
-    table_classes=[Calls, ScheduledCalls, AsteriskWsEvents, Users, AddressBook, Sms],
+    table_classes=[Calls, ScheduledCalls, AsteriskWsEvents, Users, AddressBook, Sms, DeadLetterQueue],
     migration_dependencies=[],
     commands=[],
 )

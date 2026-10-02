@@ -39,6 +39,8 @@ from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables
     AddressBook,
 )
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
+from py_phone_caller_utils.web.readiness import ReadinessRegistry, check_database_pool
 
 from caller_address_book.constants import (
     CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT,
@@ -524,11 +526,24 @@ async def init_app():
     various contact-related operations.
     """
 
-    await _ensure_db_pool()
+    try:
+        await _ensure_db_pool()
+    except Exception as db_err:
+        logging.error(f"Database initial pool setup failed: {db_err}. Service starting degraded; /ready will indicate 503.")
 
     app = web.Application()
 
     instrument_aiohttp_app(app, "caller_address_book")
+
+    registry = ReadinessRegistry("caller_address_book")
+    registry.register("postgres_pool", check_database_pool)
+
+    async def address_book_ready(request):
+        all_ready, details = await registry.evaluate()
+        status_code = 200 if all_ready else 503
+        return web.json_response(details, status=status_code)
+
+    app.router.add_route("GET", "/ready", address_book_ready)
 
     async def cleanup_db(app):
         if DB.pool is not None:
@@ -537,6 +552,28 @@ async def init_app():
 
     app.on_cleanup.append(cleanup_db)
 
+    async def root_catalog(request):
+        catalog = create_service_catalog(
+            service_name="caller_address_book",
+            description="Address book and on-call contact management service for py-phone-caller",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT}": "Adds new contact (JSON body)",
+                f"PUT /{CALLER_ADDRESS_BOOK_ROUTE_MODIFY_CONTACT}/{{id}}": "Modifies contact by ID (JSON body)",
+                f"DELETE /{CALLER_ADDRESS_BOOK_ROUTE_DELETE_CONTACT}": "Deletes contacts (JSON body: ids list)",
+                f"GET /{CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT}": "Retrieves current on-call contact phone",
+                "GET /contacts_export_csv": "Exports address book as CSV stream",
+                "POST /contacts_import_csv": "Imports contacts from CSV file or body",
+                "GET /live": "Liveness health check",
+                "GET /ready": "Readiness probe",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_route("GET", "/", root_catalog)
     app.router.add_route(
         "POST", f"/{CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT}", post_contact_add
     )
@@ -557,6 +594,34 @@ async def init_app():
     )
     app.router.add_route("GET", "/contacts_export_csv", get_contacts_export_csv)
     app.router.add_route("POST", "/contacts_import_csv", post_contacts_import_csv)
+
+    setup_swagger_routes(
+        app=app,
+        service_name="caller_address_book",
+        description="Address Book and On-Call Responder Directory Management Service",
+        paths={
+            f"/{CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT}": {
+                "post": {
+                    "summary": "Create new contact",
+                    "description": "Adds contact to Piccolo address book with on-call availability schedule.",
+                    "responses": {"200": {"description": "Contact created"}},
+                }
+            },
+            f"/{CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT}": {
+                "get": {
+                    "summary": "Resolve current on-call phone number",
+                    "responses": {"200": {"description": "Current on-call contact number"}},
+                }
+            },
+            "/contacts_export_csv": {
+                "get": {
+                    "summary": "Export contacts to CSV file",
+                    "responses": {"200": {"description": "CSV stream attachment"}},
+                }
+            },
+        },
+    )
+
     return app
 
 

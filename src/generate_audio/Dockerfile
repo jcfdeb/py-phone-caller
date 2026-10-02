@@ -79,11 +79,12 @@ WORKDIR /app
 COPY --from=builder /opt/uv-python /opt/uv-python
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/pre_trained_models /app/pre_trained_models
+COPY --from=builder /app/pre_trained_models /app/src/generate_audio/pre_trained_models
 COPY --from=builder /app/src/generate_audio /app/src/generate_audio
 COPY --from=builder /app/src/py-phone-caller-utils /app/src/py-phone-caller-utils
 
-RUN mkdir -p /app/audio && \
-    chown -R appuser:appuser /app
+RUN mkdir -p /app/audio /home/appuser/.cache && \
+    chown -R appuser:appuser /app /home/appuser
 
 USER appuser
 

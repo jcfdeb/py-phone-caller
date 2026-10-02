@@ -174,3 +174,6 @@ openalert.db*
 /tmp/openalert-data/*
 /assets/ansible/on-vm_py-phone-caller/group_vars/app_servers/secrets.yml
 /src/openalert/config/openalertd.toml
+
+# Downloaded TTS Models
+src/generate_audio/pre_trained_models/

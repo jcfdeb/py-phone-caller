@@ -21,7 +21,8 @@ if src_dir not in sys.path:
 
 
 from py_phone_caller_ui.calls import calls_blueprint
-from flask import Flask, render_template, url_for
+from flask import Flask, render_template, url_for, jsonify, Response
+from py_phone_caller_utils.web.swagger import generate_swagger_ui_html, build_openapi_schema
 from flask_login import LoginManager
 from py_phone_caller_ui.home import home_blueprint
 from py_phone_caller_ui.login import login_blueprint
@@ -128,6 +129,37 @@ app.register_blueprint(users_blueprint)
 app.register_blueprint(ws_events_blueprint)
 app.register_blueprint(address_book_blueprint)
 app.register_blueprint(sms_blueprint)
+
+# OpenAPI 3.0 /docs Swagger UI specification for the Web Dashboard
+@app.route("/docs")
+def ui_swagger_docs():
+    return Response(
+        generate_swagger_ui_html(
+            title="py-phone-caller Web UI API",
+            openapi_url="/docs/swagger.json",
+        ),
+        mimetype="text/html",
+    )
+
+@app.route("/docs/swagger.json")
+def ui_swagger_json():
+    schema = build_openapi_schema(
+        title="py-phone-caller Web UI",
+        description="Web dashboard, metrics visualization, and administrative REST endpoints",
+        version="1.0.0",
+        paths={
+            "/": {"get": {"summary": "Home dashboard with real-time KPI metrics and call resolution statistics"}},
+            "/calls/": {"get": {"summary": "Call registry log view"}},
+            "/address_book/": {"get": {"summary": "Address book contact manager"}},
+            "/sms/": {"get": {"summary": "SMS delivery history and message logs"}},
+            "/schedule_call/": {"get": {"summary": "Call scheduling interface"}},
+            "/users/": {"get": {"summary": "User management"}},
+            "/ws_events/": {"get": {"summary": "Live WebSocket Stasis call events view"}},
+            "/health": {"get": {"summary": "Application health check"}},
+            "/metrics": {"get": {"summary": "Prometheus metrics endpoint"}},
+        },
+    )
+    return jsonify(schema)
 
 
 async def _setup_admin_user_async():

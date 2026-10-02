@@ -110,6 +110,19 @@ def instrument_aiohttp_app(app, service_name: Optional[str] = None):
         app.router.add_get("/healthz", health_handler)
         app.router.add_get("/live", health_handler)
 
+        # Default ready handler if service does not attach a specialized ReadinessRegistry
+        async def default_ready_handler(request):
+            return web.json_response(
+                {
+                    "status": "ready",
+                    "service": service_name or "py-phone-caller",
+                    "ready": True,
+                    "checks": {},
+                }
+            )
+
+        app.router.add_get("/ready", default_ready_handler)
+
         async def metrics_handler(request):
             data = generate_latest()
             content_type = CONTENT_TYPE_LATEST.split(";")[0]
@@ -145,6 +158,16 @@ def instrument_flask_app(app, service_name: Optional[str] = "py_phone_caller_ui"
                 }
             )
 
+        @app.route("/ready")
+        def ready_view():
+            return jsonify(
+                {
+                    "status": "healthy",
+                    "service": service_name or "py_phone_caller_ui",
+                    "version": "1.0.0",
+                }
+            )
+
         @app.route("/metrics")
         def metrics_view():
             data = generate_latest()
@@ -167,3 +190,30 @@ def instrument_celery_app(app):
             CeleryInstrumentor().instrument()
     except Exception as e:
         logger.error(f"Failed to instrument Celery app: {e}")
+
+from opentelemetry.propagate import extract, inject
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+def inject_trace_context(headers: Optional[dict] = None) -> dict:
+    """
+    Injects W3C traceparent context into HTTP headers dictionary.
+    Ensures distributed traces propagate cleanly across microservices.
+    """
+    if headers is None:
+        headers = {}
+    try:
+        TraceContextTextMapPropagator().inject(headers)
+    except Exception as e:
+        logger.debug(f"Failed to inject trace context: {e}")
+    return headers
+
+
+def extract_trace_context(headers: dict):
+    """
+    Extracts W3C traceparent context from HTTP headers dictionary.
+    """
+    try:
+        return TraceContextTextMapPropagator().extract(carrier=headers)
+    except Exception as e:
+        logger.debug(f"Failed to extract trace context: {e}")
+        return None

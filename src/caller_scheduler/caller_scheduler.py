@@ -1,7 +1,8 @@
 """
 Caller Scheduler service.
 
-Provides an aiohttp endpoint to schedule calls for future execution using Celery.
+Provides an endpoint to schedule future automated calls, converting requested
+local times to UTC and enqueuing them via Celery background tasks with priority routing.
 """
 
 import asyncio
@@ -25,6 +26,8 @@ from aiohttp import web
 
 from py_phone_caller_utils.tasks.celery_task import do_this_call
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
+from py_phone_caller_utils.web.readiness import ReadinessRegistry, check_redis_broker
 
 from caller_scheduler.constants import (
     SCHEDULED_CALL_APP_ROUTE,
@@ -42,26 +45,14 @@ init_telemetry("caller_scheduler")
 
 async def schedule_this_call(request):
     """
-    Handles incoming requests to schedule a call at a specified time.
-
-    This asynchronous function extracts the required parameters from the request, converts the scheduled time to UTC,
-    enqueues the call task using Celery, and returns a JSON response indicating the status.
-
-    Args:
-        request: The incoming HTTP request containing 'phone', 'message', and 'scheduled_at' parameters.
-
-    Returns:
-        aiohttp.web.Response: A JSON response indicating the status of the scheduling operation.
-
-    Raises:
-        web.HTTPBadRequest: If any required parameter is missing from the request.
+    Schedules a call task to be executed at a specified date and time.
     """
-
-    try:
-        phone = request.rel_url.query["phone"]
-        message = request.rel_url.query["message"]
-        scheduled_at_str = request.rel_url.query["scheduled_at"]
-    except KeyError as err:
+    params = await extract_params(request)
+    phone = params.get("phone")
+    message = params.get("message")
+    scheduled_at_str = params.get("scheduled_at")
+    priority = int(params.get("priority", 5))
+    if not phone or not message or not scheduled_at_str:
         logging.exception(
             f"No 'phone', 'message' or 'scheduled_at' parameters passed on: '{request.rel_url}'"
         )
@@ -70,7 +61,7 @@ async def schedule_this_call(request):
             body=None,
             text=None,
             content_type=None,
-        ) from err
+        )
 
     logging.info(
         f"Received a new call to '{phone}' with the message '{message}' to be scheduled at '{scheduled_at_str}'."
@@ -94,7 +85,14 @@ async def schedule_this_call(request):
         return web.json_response({"status": 400, "message": str(err)})
 
     try:
-        do_this_call.apply_async([phone, message], eta=scheduled_at_utc)
+        queue_name = "telephony.p0" if priority >= 8 else "telephony.p2"
+        # Pass positional [phone, message] to maintain backward compatibility with mocks
+        do_this_call.apply_async(
+            [phone, message],
+            priority=priority,
+            queue=queue_name,
+            eta=scheduled_at_utc,
+        )
     except Exception as err:
         logging.exception(f"Unable to place the call due: {err}")
         return web.json_response({"status": 500, "message": str(err)})
@@ -105,17 +103,72 @@ async def schedule_this_call(request):
 async def init_app():
     """
     Initializes and configures the aiohttp web application for scheduling calls.
-
-    This asynchronous function sets up the web application and registers the route for scheduling calls.
-
-    Returns:
-        aiohttp.web.Application: The configured aiohttp web application instance.
     """
     app = web.Application()
 
     instrument_aiohttp_app(app, "caller_scheduler")
 
-    app.router.add_route("POST", f"/{SCHEDULED_CALL_APP_ROUTE}", schedule_this_call)
+    registry = ReadinessRegistry("caller_scheduler")
+    registry.register("redis_broker", check_redis_broker)
+
+    async def scheduler_ready(request):
+        all_ready, details = await registry.evaluate()
+        status_code = 200 if all_ready else 503
+        return web.json_response(details, status=status_code)
+
+    app.router.add_route("GET", "/ready", scheduler_ready)
+
+    async def root_catalog(request):
+        catalog = create_service_catalog(
+            service_name="caller_scheduler",
+            description="Call scheduling service backed by Celery background tasks",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{SCHEDULED_CALL_APP_ROUTE}": "Schedules an outbound call (JSON body or query params: phone, message, scheduled_at, priority)",
+                "GET /live": "Liveness health check",
+                "GET /ready": "Readiness probe",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_route("GET", "/", root_catalog)
+    app.router.add_route(
+        "POST", f"/{SCHEDULED_CALL_APP_ROUTE}", schedule_this_call
+    )
+
+    setup_swagger_routes(
+        app=app,
+        service_name="caller_scheduler",
+        description="Call Scheduler Service powered by Celery background tasks",
+        paths={
+            f"/{SCHEDULED_CALL_APP_ROUTE}": {
+                "post": {
+                    "summary": "Schedule a call for future dispatch",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "phone": {"type": "string", "example": "0039123456789"},
+                                        "message": {"type": "string", "example": "Scheduled notification"},
+                                        "scheduled_at": {"type": "string", "example": "2026-10-01 15:30:00"},
+                                        "priority": {"type": "integer", "default": 5, "description": "Priority 0-9 (>=8 routes to telephony.p0)"},
+                                    },
+                                    "required": ["phone", "message", "scheduled_at"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "Call scheduled successfully"}},
+                }
+            },
+        },
+    )
+
     return app
 
 

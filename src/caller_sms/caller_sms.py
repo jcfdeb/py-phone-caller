@@ -22,6 +22,8 @@ if src_dir not in sys.path:
 from aiohttp import web
 
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
+from py_phone_caller_utils.web.readiness import ReadinessRegistry, check_database_pool
 from py_phone_caller_utils.py_phone_caller_db.piccolo_conf import DB
 from py_phone_caller_utils.py_phone_caller_db.db_sms import insert_sms, select_sms
 import caller_sms.backend.twilio as twilio_backend
@@ -68,18 +70,16 @@ async def send_the_sms(request):
         web.HTTPBadRequest: If any required parameter is missing from the request.
     """
 
-    try:
-        message = request.rel_url.query["message"]
-        phone = request.rel_url.query["phone"]
-    except KeyError as err:
-        message = None
-        phone = None
+    params = await extract_params(request)
+    message = params.get("message")
+    phone = params.get("phone")
+    if not message or not phone:
         logging.exception(
             f"No 'message' or 'phone' parameter passed on: '{request.rel_url}'"
         )
         raise web.HTTPBadRequest(
             reason=CALLER_SMS_ERROR, body=None, text=None, content_type=None
-        ) from err
+        )
 
     carrier = CALLER_SMS_CARRIER
     status_code = 200
@@ -173,11 +173,24 @@ async def init_app():
     Returns:
         aiohttp.web.Application: The configured aiohttp web application instance.
     """
-    await _ensure_db_pool()
+    try:
+        await _ensure_db_pool()
+    except Exception as db_err:
+        logging.error(f"Database initial pool setup failed: {db_err}. Service starting degraded; /ready will indicate 503.")
 
     app = web.Application()
 
     instrument_aiohttp_app(app, "caller_sms")
+
+    registry = ReadinessRegistry("caller_sms")
+    registry.register("postgres_pool", check_database_pool)
+
+    async def caller_sms_ready(request):
+        all_ready, details = await registry.evaluate()
+        status_code = 200 if all_ready else 503
+        return web.json_response(details, status=status_code)
+
+    app.router.add_route("GET", "/ready", caller_sms_ready)
 
     if CALLER_SMS_CARRIER == "on_premise":
         await rust_on_premise.init_backend()
@@ -189,8 +202,73 @@ async def init_app():
 
     app.on_cleanup.append(cleanup_db)
 
+    async def root_catalog(request):
+        catalog = create_service_catalog(
+            service_name="caller_sms",
+            description="Caller SMS service for py-phone-caller",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{CALLER_SMS_APP_ROUTE}": "Dispatches SMS notification (JSON body or query params: phone, message)",
+                "GET /get_sms": "Retrieves recent SMS records (optional query params: limit, phone, status)",
+                "GET /live": "Liveness health check",
+                "GET /ready": "Readiness probe",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_route("GET", "/", root_catalog)
     app.router.add_route("POST", f"/{CALLER_SMS_APP_ROUTE}", send_the_sms)
     app.router.add_route("GET", "/get_sms", get_sms_records)
+
+    setup_swagger_routes(
+        app=app,
+        service_name="caller_sms",
+        description="Caller SMS emergency alert dispatch service for py-phone-caller",
+        paths={
+            f"/{CALLER_SMS_APP_ROUTE}": {
+                "post": {
+                    "summary": "Send an SMS message",
+                    "description": "Sends an SMS alert via configured carrier (Twilio or on-premise serial modem). Accepts JSON body or query parameters.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "phone": {"type": "string", "example": "0039123456789"},
+                                        "message": {"type": "string", "example": "Critical server room overheat"},
+                                    },
+                                    "required": ["phone", "message"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {"description": "SMS sent successfully"},
+                        "400": {"description": "Missing required phone or message parameter"},
+                        "500": {"description": "Carrier sending failure"},
+                    },
+                }
+            },
+            "/get_sms": {
+                "get": {
+                    "summary": "Retrieve SMS log records",
+                    "description": "Fetches recent SMS delivery records from Piccolo database.",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50}},
+                        {"name": "phone", "in": "query", "schema": {"type": "string"}},
+                        {"name": "status", "in": "query", "schema": {"type": "string"}},
+                    ],
+                    "responses": {
+                        "200": {"description": "List of SMS log records"},
+                    },
+                }
+            },
+        },
+    )
     return app
 
 

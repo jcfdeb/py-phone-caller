@@ -20,9 +20,13 @@ if src_dir not in sys.path:
     sys.path.append(src_dir)
 
 
+import hashlib
+import time
 from aiohttp import ClientSession, ClientTimeout, web
+from py_phone_caller_utils.config import settings
 
-from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
+from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app, inject_trace_context
+from py_phone_caller_utils.web import create_service_catalog, setup_swagger_routes
 
 from caller_prometheus_webhook.constants import (
     ASTERISK_CALL_URL,
@@ -44,6 +48,39 @@ from caller_prometheus_webhook.constants import (
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 
 init_telemetry("caller_prometheus_webhook")
+
+# Sliding-window in-memory and Redis-backed alert deduplication
+_LOCAL_DEDUP_CACHE = {}
+
+async def is_duplicate_alert(message: str, ttl_seconds: int = 180) -> bool:
+    msg_hash = hashlib.sha256(message.strip().encode("utf-8")).hexdigest()[:16]
+    now = time.time()
+
+    # Try Redis sliding-window check first
+    try:
+        import redis.asyncio as aioredis
+        queue_url = settings.get("QUEUE", {}).get("QUEUE_URL", "redis://redis:6379/7")
+        r = aioredis.from_url(queue_url, socket_connect_timeout=1)
+        key = f"alert:dedup:{msg_hash}"
+        was_set = await r.set(key, "1", ex=ttl_seconds, nx=True)
+        await r.aclose()
+        if was_set is None:
+            return True
+        return False
+    except Exception as redis_err:
+        logging.debug(f"Redis deduplication unreachable ({redis_err}), using in-memory window")
+
+    # Local fallback
+    last_seen = _LOCAL_DEDUP_CACHE.get(msg_hash)
+    if last_seen and (now - last_seen) < ttl_seconds:
+        return True
+    _LOCAL_DEDUP_CACHE[msg_hash] = now
+    if len(_LOCAL_DEDUP_CACHE) > 500:
+        cutoff = now - ttl_seconds
+        for k in list(_LOCAL_DEDUP_CACHE.keys()):
+            if _LOCAL_DEDUP_CACHE[k] < cutoff:
+                del _LOCAL_DEDUP_CACHE[k]
+    return False
 
 
 async def producer(payload, queue):
@@ -270,7 +307,7 @@ async def start_the_asterisk_call(phone, message):
                 url=asterisk_call_url,
                 params={"phone": formatted_phone, "message": message},
                 data=None,
-                headers=None,
+                headers=inject_trace_context(),
             )
     except Exception as e:
         logging.error(f"Error calling Asterisk call service: {e}")
@@ -298,7 +335,7 @@ async def send_message_to_caller_sms(phone, message):
                 url=caller_sms_url,
                 params={"phone": phone, "message": message},
                 data=None,
-                headers=None,
+                headers=inject_trace_context(),
             )
     except Exception as e:
         logging.error(f"Error calling Caller SMS service: {e}")
@@ -342,7 +379,13 @@ async def data_from_alert_manager(request, caller_func):
     payload = await request.json()
     some_messages = await the_alert_description(payload)
     if some_messages:
+        dedup_window = int(settings.get("DEDUPLICATION_WINDOW_SECONDS", 180))
         for the_message in some_messages:
+            if await is_duplicate_alert(the_message, ttl_seconds=dedup_window):
+                logging.info(
+                    f"Deduplicated repeating alert within {dedup_window}s window. Skipping duplicate calls."
+                )
+                continue
             await process_the_queue(the_message, PROMETHEUS_WEBHOOK_RECEIVERS, caller_func)
 
 
@@ -435,6 +478,26 @@ async def init_app():
 
     instrument_aiohttp_app(app, "caller_prometheus_webhook")
 
+    async def root_catalog(request):
+        catalog = create_service_catalog(
+            service_name="caller_prometheus_webhook",
+            description="Prometheus Alertmanager webhook receiver for py-phone-caller",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}": "Dispatches phone calls for firing Prometheus alerts",
+                f"POST /{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY}": "Dispatches SMS for firing Prometheus alerts",
+                f"POST /{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_BEFORE_CALL}": "Sends SMS first, then calls after configurable delay",
+                f"POST /{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_AND_SMS}": "Dispatches simultaneous call and SMS",
+                "GET /live": "Liveness health check",
+                "GET /ready": "Readiness probe",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_route("GET", "/", root_catalog)
     app.router.add_route(
         "POST", f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}", call_only
     )
@@ -449,6 +512,40 @@ async def init_app():
         f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_AND_SMS}",
         call_and_sms,
     )
+
+    setup_swagger_routes(
+        app=app,
+        service_name="caller_prometheus_webhook",
+        description="Prometheus Alertmanager Webhook Ingestion Service",
+        paths={
+            f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}": {
+                "post": {
+                    "summary": "Process alert for phone call dispatch",
+                    "description": "Receives standard Prometheus Alertmanager JSON payload and queues phone calls to configured receivers.",
+                    "responses": {"200": {"description": "Webhook received"}},
+                }
+            },
+            f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY}": {
+                "post": {
+                    "summary": "Process alert for SMS dispatch",
+                    "responses": {"200": {"description": "Webhook received"}},
+                }
+            },
+            f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_BEFORE_CALL}": {
+                "post": {
+                    "summary": "Process alert with SMS followed by call",
+                    "responses": {"200": {"description": "Webhook received"}},
+                }
+            },
+            f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_AND_SMS}": {
+                "post": {
+                    "summary": "Process alert with concurrent call and SMS",
+                    "responses": {"200": {"description": "Webhook received"}},
+                }
+            },
+        },
+    )
+
     return app
 
 

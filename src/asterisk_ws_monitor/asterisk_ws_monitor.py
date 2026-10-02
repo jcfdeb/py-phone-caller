@@ -29,7 +29,8 @@ from aiohttp import ClientSession, ClientTimeout, client_exceptions, web, web_ex
 from py_phone_caller_utils.py_phone_caller_db.db_asterisk_ws_monitor import (
     insert_ws_event,
 )
-from py_phone_caller_utils.telemetry import init_telemetry
+from py_phone_caller_utils.telemetry import init_telemetry, inject_trace_context
+from py_phone_caller_utils.config import settings
 
 from asterisk_ws_monitor.constants import (
     EVENT_TYPE,
@@ -55,6 +56,28 @@ logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 
 init_telemetry("asterisk_ws_monitor")
 
+async def broadcast_stasis_event(event_type: str, asterisk_chan: str, response_json: dict):
+    """
+    Decoupled Redis Pub/Sub event broadcaster.
+    Publishes real-time telephony and Stasis lifecycle events for external consumers
+    (Web UI, metrics, monitoring) without blocking active call playback or DTMF processing.
+    """
+    try:
+        import redis.asyncio as aioredis
+        queue_url = settings.get("QUEUE", {}).get("QUEUE_URL", "redis://redis.lan:6379/7")
+        r = aioredis.from_url(queue_url, socket_connect_timeout=0.5)
+        payload = json.dumps({
+            "event_type": event_type,
+            "asterisk_chan": asterisk_chan,
+            "timestamp": response_json.get("timestamp"),
+            "channel_state": response_json.get("channel", {}).get("state"),
+        })
+        await r.publish("telephony.stasis.events", payload)
+        await r.aclose()
+    except Exception as redis_err:
+        # Non-blocking: transient redis issues must never affect live call handling
+        logging.debug(f"Event broadcast skipped (Redis unavailable): {redis_err}")
+
 
 async def get_asterisk_chan(response_json):
     """
@@ -68,10 +91,13 @@ async def get_asterisk_chan(response_json):
     Returns:
         str: The identifier of the Asterisk channel.
     """
-    if response_json["type"] in ["PlaybackStarted", "PlaybackFinished"]:
-        return str(response_json.get("playback", {}).get("target_uri")).split(":")[1]
-    else:
-        return response_json.get("channel", {}).get("id")
+    if response_json.get("type") in ["PlaybackStarted", "PlaybackFinished"]:
+        target_uri = str(response_json.get("playback", {}).get("target_uri", ""))
+        return target_uri.split(":")[1] if ":" in target_uri else ""
+    channel = response_json.get("channel")
+    if isinstance(channel, dict):
+        return channel.get("id") or ""
+    return ""
 
 
 async def querying_call_register(asterisk_chan):
@@ -96,6 +122,7 @@ async def querying_call_register(asterisk_chan):
             call_register_resp = await call_register_session.post(
                 url=f"{CALL_REGISTER_URL}/{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}",
                 params={"asterisk_chan": asterisk_chan},
+                headers=inject_trace_context(),
                 data=None,
             )
             return json.loads(await call_register_resp.text())
@@ -128,6 +155,7 @@ async def generate_the_audio_file(response_data):
         ) as generate_audio_session:
             generate_audio_resp = await generate_audio_session.post(
                 url=f"{GENERATE_AUDIO_URL}/{GENERATE_AUDIO_APP_ROUTE}",
+                headers=inject_trace_context(),
                 params={
                     "message": response_data.get("message"),
                     "msg_chk_sum": response_data.get("msg_chk_sum"),
@@ -221,6 +249,7 @@ async def play_audio_to_channel(asterisk_chan, response_data):
         ) as asterisk_call_session:
             audio_play_resp = await asterisk_call_session.post(
                 url=f"{ASTERISK_CALL_URL}/{ASTERISK_CALL_APP_ROUTE_PLAY}",
+                headers=inject_trace_context(),
                 params={
                     "asterisk_chan": asterisk_chan,
                     "msg_chk_sum": response_data.get("msg_chk_sum"),
@@ -340,15 +369,24 @@ async def asterisk_ws_client():
                         await insert_ws_event(
                             asterisk_chan, event_type, json.dumps(response_json)
                         )
-
-                        await take_control_of_dialplan(
-                            event_type, response_json, asterisk_chan
-                        )
-
                     except Exception as err:
                         logging.exception(
                             f"Problem with the PostgreSQL connection: '{err}'"
                         )
+
+                    try:
+                        await take_control_of_dialplan(
+                            event_type, response_json, asterisk_chan
+                        )
+                    except Exception as dialplan_err:
+                        logging.exception(
+                            f"Error during dialplan control execution: '{dialplan_err}'"
+                        )
+
+                    # Broadcast stasis event asynchronously without blocking
+                    asyncio.create_task(
+                        broadcast_stasis_event(event_type, asterisk_chan, response_json)
+                    )
 
         except websockets.exceptions.ConnectionClosedError as err:
             logging.exception(f"Connection to the Asterisk PBX lost!: '{err}'")
