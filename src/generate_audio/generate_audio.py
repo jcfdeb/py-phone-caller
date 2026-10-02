@@ -39,6 +39,7 @@ from py_phone_caller_utils.py_phone_caller_voices.facebook_mms import (
 from py_phone_caller_utils.py_phone_caller_voices.google_gtts import create_audio_file
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
 from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
+from py_phone_caller_utils.config import settings
 
 from generate_audio.constants import (
     GENERATE_AUDIO_APP_ROUTE,
@@ -70,15 +71,6 @@ init_telemetry("generate_audio")
 class TTSEngine(Enum):
     """
     Enumeration of supported Text-to-Speech (TTS) engines for audio generation.
-
-    This enum provides a method to convert a string configuration value to a TTSEngine member.
-
-    Attributes:
-        GOOGLE_GTTS: Google Text-to-Speech engine.
-        FACEBOOK_MMS: Facebook MMS TTS engine.
-        PIPER: Piper TTS engine.
-        AWS_POLLY: Amazon Polly TTS engine.
-        KOKORO: Kokoro TTS engine (on-premise ONNX model).
     """
 
     GOOGLE_GTTS = "google_gtts"
@@ -89,20 +81,6 @@ class TTSEngine(Enum):
 
     @classmethod
     def from_string(cls, value: str):
-        """
-        Converts a string configuration value to a TTSEngine enum member.
-
-        This class method matches the provided string to a supported TTS engine, raising a ValueError if the value is invalid.
-
-        Args:
-            value (str): The string representation of the TTS engine.
-
-        Returns:
-            TTSEngine: The corresponding TTSEngine enum member.
-
-        Raises:
-            ValueError: If the provided value does not match any supported TTS engine.
-        """
         try:
             return next(engine for engine in cls if engine.value == value.lower())
         except StopIteration:
@@ -118,18 +96,19 @@ except ValueError as e:
     TTS_ENGINE = TTSEngine.GOOGLE_GTTS
 
 
+def resolve_audio_filename(msg_chk_sum: str, lang: str = None) -> str:
+    """
+    Returns filename for serving audio.
+    When lang is provided and not empty, returns '{msg_chk_sum}_{lang}.wav'.
+    Otherwise preserves exact backward-compatibility '{msg_chk_sum}.wav'.
+    """
+    clean_lang = str(lang).strip() if lang else ""
+    if clean_lang:
+        return f"{msg_chk_sum}_{clean_lang}.wav"
+    return f"{msg_chk_sum}.wav"
+
+
 async def create_audio_folder(folder_name):
-    """
-    Creates the specified folder for storing audio files if it does not already exist.
-
-    This asynchronous function attempts to create the folder and logs an exception if the operation fails.
-
-    Args:
-        folder_name (str): The path of the folder to create.
-
-    Returns:
-        None
-    """
     try:
         pathlib.Path(folder_name).mkdir(parents=True, exist_ok=True)
     except Exception as err:
@@ -137,84 +116,67 @@ async def create_audio_folder(folder_name):
 
 
 def generate_tts_audio(
-    message: str, output_path: str, engine: TTSEngine = None
+    message: str,
+    output_path: str,
+    engine: TTSEngine = None,
+    language: str = None,
+    speed: float = 1.0,
 ) -> None:
     """
-    Generate audio file using the specified TTS engine
-
-    Args:
-        message: Text to convert to speech
-        output_path: Path where to save the audio file
-        engine: TTS engine to use (defaults to configured TTS_ENGINE)
+    Generate audio file using the specified TTS engine, language, and speed.
+    Falls back gracefully to default language if requested language model is missing.
     """
     engine = engine or TTS_ENGINE
 
     if engine == TTSEngine.GOOGLE_GTTS:
-        msg_chk_sum = output_path.split("/")[-1].replace(".wav", "")
+        msg_chk_sum = os.path.basename(output_path).replace(".wav", "")
         create_audio_file(message, msg_chk_sum)
     elif engine == TTSEngine.FACEBOOK_MMS:
+        target_lang = language or FACEBOOK_MMS_LANGUAGE_CODE
         script_dir = os.path.dirname(os.path.abspath(__file__))
         model_dir = os.path.join(
             script_dir,
             PRE_TRAINED_MODELS_FOLDER,
             FACEBOOK_MMS_MODELS_FOLDER,
-            f"mms-tts-{FACEBOOK_MMS_LANGUAGE_CODE}",
+            f"mms-tts-{target_lang}",
         )
+        if not os.path.exists(model_dir) and target_lang != FACEBOOK_MMS_LANGUAGE_CODE:
+            logging.warning(
+                f"MMS language model for '{target_lang}' not found at {model_dir}. Falling back to default '{FACEBOOK_MMS_LANGUAGE_CODE}'"
+            )
+            target_lang = FACEBOOK_MMS_LANGUAGE_CODE
+            model_dir = os.path.join(
+                script_dir,
+                PRE_TRAINED_MODELS_FOLDER,
+                FACEBOOK_MMS_MODELS_FOLDER,
+                f"mms-tts-{target_lang}",
+            )
         text_to_speech_facebook_mms(
             message,
-            FACEBOOK_MMS_LANGUAGE_CODE,
+            target_lang,
             output_path,
-            model_path=model_dir,
+            model_path=model_dir if os.path.exists(model_dir) else None,
+            speed=speed,
         )
     elif engine == TTSEngine.PIPER:
-        text_to_speech_piper_tts(message, output_path)
+        text_to_speech_piper_tts(message, output_path, language=language, speed=speed)
     elif engine == TTSEngine.AWS_POLLY:
         aws_polly_text_to_wave(message, output_path)
     elif engine == TTSEngine.KOKORO:
-        text_to_speech_kokoro_tts(message, output_path)
+        text_to_speech_kokoro_tts(message, output_path, language=language, speed=speed)
     else:
         raise ValueError(f"Unsupported TTS engine: {engine}")
 
 
 def file_not_found_error(error_text, file_location):
-    """
-    Raises a FileNotFoundError with a formatted error message and logs the error.
-
-    This function constructs an error message from the provided text and file location, logs it, and raises the exception.
-
-    Args:
-        error_text (str): The error message prefix.
-        file_location (str): The file path or location related to the error.
-
-    Returns:
-        None
-
-    Raises:
-        FileNotFoundError: Always raised with the constructed error message.
-    """
     error_msg = f"{error_text}{file_location}"
     logging.error(error_msg)
     raise FileNotFoundError(error_msg)
 
 
-def text_to_speech_piper_tts(message, output_path):
-    """
-    Generates an audio file from text using the Piper TTS engine.
-
-    This function constructs the command to run the Piper TTS script with the appropriate model and configuration files,
-    executes the command, and logs the process. It raises an error if any required file is missing or if the TTS process fails.
-
-    Args:
-        message (str): The text to convert to speech.
-        output_path (str): The path where the generated audio file will be saved.
-
-    Returns:
-        None
-
-    Raises:
-        FileNotFoundError: If the Python interpreter, Piper script, model, or config file is missing.
-        RuntimeError: If the Piper TTS process fails to execute successfully.
-    """
+def text_to_speech_piper_tts(
+    message: str, output_path: str, language: str = None, speed: float = 1.0
+):
     python_interpreter = PIPER_PYTHON_INTERPRETER
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
     local_script = os.path.join(
@@ -245,11 +207,23 @@ def text_to_speech_piper_tts(message, output_path):
         file_not_found_error("Piper TTS script not found at: ", piper_script)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    target_lang = language or PIPER_LANGUAGE_CODE
     model_dir = os.path.join(
-        script_dir, PRE_TRAINED_MODELS_FOLDER, PIPER_MODELS_FOLDER, PIPER_LANGUAGE_CODE
+        script_dir, PRE_TRAINED_MODELS_FOLDER, PIPER_MODELS_FOLDER, target_lang
     )
-    model_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx")
-    config_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx.json")
+    model_path = os.path.join(model_dir, f"{target_lang}.onnx")
+    config_path = os.path.join(model_dir, f"{target_lang}.onnx.json")
+
+    if not os.path.exists(model_path) and target_lang != PIPER_LANGUAGE_CODE:
+        logging.warning(
+            f"Piper model for '{target_lang}' not found at {model_path}. Falling back to default '{PIPER_LANGUAGE_CODE}'"
+        )
+        target_lang = PIPER_LANGUAGE_CODE
+        model_dir = os.path.join(
+            script_dir, PRE_TRAINED_MODELS_FOLDER, PIPER_MODELS_FOLDER, target_lang
+        )
+        model_path = os.path.join(model_dir, f"{target_lang}.onnx")
+        config_path = os.path.join(model_dir, f"{target_lang}.onnx.json")
 
     if not os.path.exists(model_path):
         file_not_found_error("Piper model file not found at: ", model_path)
@@ -264,6 +238,8 @@ def text_to_speech_piper_tts(message, output_path):
         model_path,
         "--config",
         config_path,
+        "--speed",
+        str(speed),
         "--output",
         output_path,
     ]
@@ -287,35 +263,9 @@ def text_to_speech_piper_tts(message, output_path):
         raise RuntimeError(error_msg) from e
 
 
-def text_to_speech_kokoro_tts(message, output_path):
-    """
-    Generates an audio file from text using the Kokoro TTS engine.
-
-    This function constructs the command to run the Kokoro TTS script with the appropriate model and voices files,
-    executes the command, and logs the process. It raises an error if any required file is missing or if the TTS process fails.
-
-    Supported language codes (configured via kokoro_lang in settings.toml):
-        'a' => American English
-        'b' => British English
-        'e' => Spanish (es)
-        'f' => French (fr-fr)
-        'h' => Hindi (hi)
-        'i' => Italian (it)
-        'j' => Japanese (requires: pip install misaki[ja])
-        'p' => Brazilian Portuguese (pt-br)
-        'z' => Mandarin Chinese (requires: pip install misaki[zh])
-
-    Args:
-        message (str): The text to convert to speech.
-        output_path (str): The path where the generated audio file will be saved.
-
-    Returns:
-        None
-
-    Raises:
-        FileNotFoundError: If the Python interpreter, Kokoro script, model, or voices file is missing.
-        RuntimeError: If the Kokoro TTS process fails to execute successfully.
-    """
+def text_to_speech_kokoro_tts(
+    message: str, output_path: str, language: str = None, speed: float = 1.0
+):
     python_interpreter = KOKORO_PYTHON_INTERPRETER
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
     local_script = os.path.join(
@@ -335,7 +285,6 @@ def text_to_speech_kokoro_tts(message, output_path):
         if spec and spec.origin:
             kokoro_script = spec.origin
         else:
-            # Fallback to the old method
             kokoro_script = os.path.join(
                 site.getsitepackages()[0],
                 "py_phone_caller_utils",
@@ -346,19 +295,26 @@ def text_to_speech_kokoro_tts(message, output_path):
     if not os.path.exists(kokoro_script):
         file_not_found_error("Kokoro TTS script not found at: ", kokoro_script)
 
-    # Voice name mapping based on language code (matches get_kokoro_tts_model.py)
     voice_name_map = {
         "a": "af_heart",  # American English
-        "b": "bf_emma",  # British English
-        "e": "ef_dora",  # Spanish
+        "b": "bf_emma",   # British English
+        "e": "ef_dora",   # Spanish
         "f": "ff_siwis",  # French
         "h": "hf_alpha",  # Hindi
-        "i": "if_sara",  # Italian
+        "i": "if_sara",   # Italian
         "j": "jf_alpha",  # Japanese
-        "p": "pf_dora",  # Brazilian Portuguese
-        "z": "zf_xiaobei",  # Mandarin Chinese
+        "p": "pf_dora",   # Brazilian Portuguese
+        "z": "zf_xiaobei",# Mandarin Chinese
     }
-    voice_name = voice_name_map.get(KOKORO_LANG, "af_heart")
+
+    target_lang = language or KOKORO_LANG
+    if target_lang not in voice_name_map and target_lang != KOKORO_LANG:
+        logging.warning(
+            f"Kokoro language code '{target_lang}' unknown. Falling back to default '{KOKORO_LANG}'"
+        )
+        target_lang = KOKORO_LANG
+
+    voice_name = voice_name_map.get(target_lang, "af_heart")
     local_model_dir = os.path.join(
         current_file_dir,
         PRE_TRAINED_MODELS_FOLDER,
@@ -372,7 +328,9 @@ def text_to_speech_kokoro_tts(message, output_path):
         "--voice-name",
         voice_name,
         "--lang",
-        KOKORO_LANG,
+        target_lang,
+        "--speed",
+        str(speed),
         "--output",
         output_path,
     ]
@@ -399,14 +357,6 @@ def text_to_speech_kokoro_tts(message, output_path):
 
 
 def wave_file_exists(file_path: str) -> bool:
-    """
-    Check if a wave file exists and is valid
-
-    Args:
-        file_path: Path to the wave file
-    Returns:
-        bool: True if file exists and is valid
-    """
     try:
         if not os.path.isfile(file_path):
             return False
@@ -415,7 +365,7 @@ def wave_file_exists(file_path: str) -> bool:
             return False
 
         with open(file_path, "rb") as f:
-            header = f.read(44)  # Read WAV header
+            header = f.read(44)
             if len(header) < 44 or not header.startswith(b"RIFF"):
                 return False
 
@@ -425,22 +375,10 @@ def wave_file_exists(file_path: str) -> bool:
 
 
 async def is_audio_ready(request):
-    """
-    Checks if the audio file for the given message checksum exists and is ready to be served.
-
-    This asynchronous function retrieves the 'msg_chk_sum' parameter from the request, checks for the existence and validity of the corresponding audio file, and returns a JSON response.
-
-    Args:
-        request: The incoming HTTP request containing the 'msg_chk_sum' parameter.
-
-    Returns:
-        aiohttp.web.Response: A JSON response indicating whether the audio file exists.
-
-    Raises:
-        web.HTTPBadRequest: If the 'msg_chk_sum' parameter is missing from the request.
-    """
     params = await extract_params(request)
     msg_chk_sum = params.get("msg_chk_sum")
+    lang = params.get("lang") or params.get("language")
+
     if not msg_chk_sum:
         logging.exception(f"No 'msg_chk_sum' parameter passed on: '{request.rel_url}'")
         raise web.HTTPBadRequest(
@@ -451,31 +389,24 @@ async def is_audio_ready(request):
         )
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, f"{msg_chk_sum}.wav")
+    filename = resolve_audio_filename(msg_chk_sum, lang)
+    output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, filename)
     exists = await asyncio.to_thread(wave_file_exists, output_path)
 
     return web.json_response({"exists": exists})
 
 
 async def create_audio(request):
-    """
-    Handles incoming requests to generate an audio file from text using the configured TTS engine.
-
-    This asynchronous function extracts the message and checksum from the request, checks for an existing audio file,
-    generates the audio if needed, and returns a JSON response indicating the status and cache state.
-
-    Args:
-        request: The incoming HTTP request containing 'message' and 'msg_chk_sum' parameters.
-
-    Returns:
-        aiohttp.web.Response: A JSON response indicating the status and whether the audio was cached.
-
-    Raises:
-        web.HTTPBadRequest: If any required parameter is missing from the request.
-    """
     params = await extract_params(request)
     message = params.get("message")
     msg_chk_sum = params.get("msg_chk_sum")
+    lang = params.get("lang") or params.get("language")
+    raw_speed = params.get("speed", 1.0)
+    try:
+        speed = float(raw_speed) if raw_speed is not None else 1.0
+    except (ValueError, TypeError):
+        speed = 1.0
+
     if not message or not msg_chk_sum:
         logging.exception(
             f"No 'message' or 'msg_chk_sum' parameter passed on: '{request.rel_url}'"
@@ -488,17 +419,24 @@ async def create_audio(request):
         )
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, f"{msg_chk_sum}.wav")
+    filename = resolve_audio_filename(msg_chk_sum, lang)
+    output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, filename)
 
     exists = await asyncio.to_thread(wave_file_exists, output_path)
     if exists:
         logging.info(
-            f"Audio file already exists for message checksum {msg_chk_sum}, skipping generation"
+            f"Audio file already exists for {filename}, skipping generation"
         )
         return web.json_response({"status": 200, "cached": True})
 
     try:
-        await asyncio.to_thread(generate_tts_audio, message, output_path)
+        await asyncio.to_thread(
+            generate_tts_audio,
+            message,
+            output_path,
+            language=lang,
+            speed=speed,
+        )
         status_code = 200
     except Exception as err:
         status_code = 500
@@ -510,62 +448,58 @@ async def create_audio(request):
 
 
 async def ensure_models_present():
-    """
-    Ensures that the pre-trained models for the configured TTS engine are present.
-    If not, it attempts to download them.
-
-    Uses absolute paths based on the script's directory to ensure consistency
-    with the paths used by the TTS functions during audio generation.
-    """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     abs_pre_trained_models = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
 
+    preload_cfg = settings.get("generate_audio", {}).get("preload", {})
+
     try:
         if TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
-            model_name = f"mms-tts-{FACEBOOK_MMS_LANGUAGE_CODE}"
-            model_dir = os.path.join(
-                abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER, model_name
+            from py_phone_caller_utils.py_phone_caller_voices.get_fb_mms_language_model import (
+                download_mms_model_async,
             )
-            config_path = os.path.join(model_dir, "config.json")
-            if not os.path.exists(config_path):
-                logging.info(
-                    f"Facebook MMS model for '{FACEBOOK_MMS_LANGUAGE_CODE}' not found. Downloading..."
-                )
-                from py_phone_caller_utils.py_phone_caller_voices.get_fb_mms_language_model import (
-                    download_mms_model_async,
-                )
+            mms_langs = preload_cfg.get("facebook_mms", [FACEBOOK_MMS_LANGUAGE_CODE])
+            if FACEBOOK_MMS_LANGUAGE_CODE not in mms_langs:
+                mms_langs.append(FACEBOOK_MMS_LANGUAGE_CODE)
 
-                await download_mms_model_async(
-                    FACEBOOK_MMS_LANGUAGE_CODE,
-                    os.path.join(abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER),
+            for lang in mms_langs:
+                model_name = f"mms-tts-{lang}"
+                model_dir = os.path.join(
+                    abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER, model_name
                 )
-            else:
-                logging.info(
-                    f"Facebook MMS model for '{FACEBOOK_MMS_LANGUAGE_CODE}' is present at {model_dir}"
-                )
+                config_path = os.path.join(model_dir, "config.json")
+                if not os.path.exists(config_path):
+                    try:
+                        logging.info(f"Facebook MMS model for '{lang}' not found. Downloading...")
+                        await download_mms_model_async(
+                            lang,
+                            os.path.join(abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER),
+                        )
+                    except Exception as dl_err:
+                        logging.warning(f"Could not preload Facebook MMS model '{lang}': {dl_err}")
+                else:
+                    logging.info(f"Facebook MMS model for '{lang}' is present at {model_dir}")
 
         elif TTS_ENGINE == TTSEngine.PIPER:
-            model_dir = os.path.join(
-                abs_pre_trained_models, PIPER_MODELS_FOLDER, PIPER_LANGUAGE_CODE
+            from py_phone_caller_utils.py_phone_caller_voices.get_pipper_tts_language_model import (
+                download_piper_model_async,
             )
-            model_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx")
-            config_path = os.path.join(model_dir, f"{PIPER_LANGUAGE_CODE}.onnx.json")
+            piper_langs = preload_cfg.get("piper_tts", [PIPER_LANGUAGE_CODE])
+            if PIPER_LANGUAGE_CODE not in piper_langs:
+                piper_langs.append(PIPER_LANGUAGE_CODE)
 
-            if not os.path.exists(model_path) or not os.path.exists(config_path):
-                logging.info(
-                    f"Piper TTS model for '{PIPER_LANGUAGE_CODE}' not found. Downloading..."
+            for lang in piper_langs:
+                model_dir = os.path.join(
+                    abs_pre_trained_models, PIPER_MODELS_FOLDER, lang
                 )
-                from py_phone_caller_utils.py_phone_caller_voices.get_pipper_tts_language_model import (
-                    download_piper_model_async,
-                )
+                model_path = os.path.join(model_dir, f"{lang}.onnx")
+                config_path = os.path.join(model_dir, f"{lang}.onnx.json")
 
-                await download_piper_model_async(
-                    PIPER_LANGUAGE_CODE, abs_pre_trained_models
-                )
-            else:
-                logging.info(
-                    f"Piper TTS model for '{PIPER_LANGUAGE_CODE}' is present at {model_path}"
-                )
+                if not os.path.exists(model_path) or not os.path.exists(config_path):
+                    logging.info(f"Piper TTS model for '{lang}' not found. Downloading...")
+                    await download_piper_model_async(lang, abs_pre_trained_models)
+                else:
+                    logging.info(f"Piper TTS model for '{lang}' is present at {model_path}")
 
         elif TTS_ENGINE == TTSEngine.KOKORO:
             model_dir = os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER)
@@ -573,153 +507,43 @@ async def ensure_models_present():
             config_path = os.path.join(model_dir, "config.json")
 
             if not os.path.exists(model_path) or not os.path.exists(config_path):
-                logging.info(
-                    f"Kokoro TTS model not found in {model_dir}. Downloading..."
-                )
+                logging.info(f"Kokoro TTS model not found in {model_dir}. Downloading...")
                 from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
                     download_kokoro_model_async,
                 )
-
                 await download_kokoro_model_async(model_dir)
             else:
-                logging.info(
-                    f"Kokoro TTS model is present at {model_dir}"
-                )
+                logging.info(f"Kokoro TTS model is present at {model_dir}")
             logging.info("Kokoro TTS model check completed.")
     except Exception as e:
         logging.error(f"Failed to ensure models are present: {e}")
 
 
 async def init_app():
-    """
-    Initializes and configures the aiohttp web application for audio generation and serving.
-
-    This asynchronous function creates necessary folders, registers routes for audio generation and readiness checks,
-    and sets up static file serving for development purposes.
-
-    Uses absolute paths based on the script's directory to ensure consistency
-    regardless of the current working directory when the service starts.
-
-    Returns:
-        aiohttp.web.Application: The configured aiohttp web application instance.
-    """
-    app = web.Application()
-
-    instrument_aiohttp_app(app, "generate_audio")
-
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    abs_serving_audio = os.path.join(script_dir, SERVING_AUDIO_FOLDER)
-    abs_pre_trained_models = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
-
-    folders_to_create = [abs_serving_audio]
-
-    if TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
-        folders_to_create.extend(
-            [
-                abs_pre_trained_models,
-                os.path.join(abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER),
-                os.path.join(
-                    abs_pre_trained_models,
-                    FACEBOOK_MMS_MODELS_FOLDER,
-                    f"mms-tts-{FACEBOOK_MMS_LANGUAGE_CODE}",
-                ),
-            ]
-        )
-    elif TTS_ENGINE == TTSEngine.PIPER:
-        folders_to_create.extend(
-            [
-                abs_pre_trained_models,
-                os.path.join(abs_pre_trained_models, PIPER_MODELS_FOLDER),
-                os.path.join(
-                    abs_pre_trained_models, PIPER_MODELS_FOLDER, PIPER_LANGUAGE_CODE
-                ),
-            ]
-        )
-    elif TTS_ENGINE == TTSEngine.KOKORO:
-        folders_to_create.extend(
-            [
-                abs_pre_trained_models,
-                os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER),
-            ]
-        )
-
-    for folder in folders_to_create:
-        await create_audio_folder(folder)
-
+    abs_audio_folder = os.path.join(script_dir, SERVING_AUDIO_FOLDER)
+    await create_audio_folder(abs_audio_folder)
     await ensure_models_present()
 
-    async def root_catalog(request):
-        catalog = create_service_catalog(
-            service_name="generate_audio",
-            description="TTS Neural Audio Generation and Serving service for py-phone-caller",
-            version="1.0.0",
-            docs_url="/docs",
-            openapi_spec="/docs/swagger.json",
-            endpoints={
-                f"POST /{GENERATE_AUDIO_APP_ROUTE}": "Generates WAV audio from text (JSON body or query: message, msg_chk_sum)",
-                f"GET /{IS_AUDIO_READY_ENDPOINT}": "Checks if rendered audio file exists (msg_chk_sum)",
-                "GET /audio/": "Static file browser/server for rendered audio files",
-                "GET /live": "Liveness health check",
-                "GET /ready": "Readiness probe",
-                "GET /metrics": "Prometheus telemetry metrics",
-            },
-        )
-        return web.json_response(catalog)
+    app = web.Application()
 
-    app.router.add_route("GET", "/", root_catalog)
-    app.router.add_route("POST", f"/{GENERATE_AUDIO_APP_ROUTE}", create_audio)
+    app.router.add_post(f"/{GENERATE_AUDIO_APP_ROUTE}", create_audio)
+    app.router.add_get(f"/{IS_AUDIO_READY_ENDPOINT}", is_audio_ready)
 
-    app.router.add_route("GET", f"/{IS_AUDIO_READY_ENDPOINT}", is_audio_ready)
-
-    path_to_static_folder = abs_serving_audio
-    try:
-        app.router.add_static("/audio", path_to_static_folder, show_index=True)
-    except ValueError:
-        logging.exception(
-            f"No '{path_to_static_folder}' folder present... I can't serve the audio files"
-        )
-        exit(1)
-
-    setup_swagger_routes(
-        app=app,
-        service_name="generate_audio",
-        description="Text-To-Speech Neural Audio Synthesis and Serving Service",
-        paths={
-            f"/{GENERATE_AUDIO_APP_ROUTE}": {
-                "post": {
-                    "summary": "Synthesize speech audio from text",
-                    "description": "Generates a 16-bit 8kHz/16kHz WAV audio file for Asterisk playback using Kokoro, Piper, or MMS.",
-                    "requestBody": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {"type": "string", "example": "Fire alarm triggered"},
-                                        "msg_chk_sum": {"type": "string", "example": "a1b2c3d4"},
-                                    },
-                                    "required": ["message", "msg_chk_sum"],
-                                }
-                            }
-                        }
-                    },
-                    "responses": {"200": {"description": "Audio generation status"}},
-                }
-            },
-            f"/{IS_AUDIO_READY_ENDPOINT}": {
-                "get": {
-                    "summary": "Check if audio file exists on disk",
-                    "parameters": [{"name": "msg_chk_sum", "in": "query", "required": True, "schema": {"type": "string"}}],
-                    "responses": {"200": {"description": "Existence boolean"}},
-                }
-            },
-        },
+    app.router.add_static(
+        f"/{SERVING_AUDIO_FOLDER}/",
+        path=abs_audio_folder,
+        name=SERVING_AUDIO_FOLDER,
+        show_index=True,
     )
+
+    create_service_catalog(app, "generate_audio", GENERATE_AUDIO_PORT)
+    setup_swagger_routes(app, "generate_audio", "Generate Audio Service", "1.0.0")
+    instrument_aiohttp_app(app, "generate_audio")
 
     return app
 
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    app = loop.run_until_complete(init_app())
-    web.run_app(app, port=int(GENERATE_AUDIO_PORT))
+    app = init_app()
+    web.run_app(app, port=GENERATE_AUDIO_PORT)

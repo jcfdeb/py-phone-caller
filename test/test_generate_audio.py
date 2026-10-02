@@ -230,3 +230,96 @@ def test_kokoro_tts_audio_generation(tmp_path):
     assert os.path.exists(out_wav)
     assert os.path.getsize(out_wav) > 0
     assert wave_file_exists(out_wav) is True
+
+
+# =========================================================================
+# PHASE 3 TESTS: Multi-Language Audio Scoping, Speed & Fallbacks
+# =========================================================================
+
+def test_resolve_audio_filename():
+    from src.generate_audio.generate_audio import resolve_audio_filename
+    # No language -> backward compatibility
+    assert resolve_audio_filename("a1b2c3d4") == "a1b2c3d4.wav"
+    assert resolve_audio_filename("a1b2c3d4", None) == "a1b2c3d4.wav"
+    assert resolve_audio_filename("a1b2c3d4", "") == "a1b2c3d4.wav"
+    # With language
+    assert resolve_audio_filename("a1b2c3d4", "spa") == "a1b2c3d4_spa.wav"
+    assert resolve_audio_filename("a1b2c3d4", "it_IT") == "a1b2c3d4_it_IT.wav"
+
+
+@pytest.mark.asyncio
+async def test_make_audio_language_scoped_and_speed(cli):
+    with patch(
+        "src.generate_audio.generate_audio.wave_file_exists",
+        return_value=False,
+    ), patch("src.generate_audio.generate_audio.generate_tts_audio") as mock_gen:
+        resp = await cli.post(
+            f"/{GENERATE_AUDIO_APP_ROUTE}?message=Hola&msg_chk_sum=scoped123&lang=spa&speed=0.85"
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data == {"status": 200, "cached": False}
+        mock_gen.assert_called_once()
+        args, kwargs = mock_gen.call_args
+        assert "scoped123_spa.wav" in args[1]
+        assert kwargs.get("language") == "spa"
+        assert kwargs.get("speed") == 0.85
+
+
+@pytest.mark.asyncio
+async def test_is_audio_ready_language_scoped(cli):
+    with patch(
+        "src.generate_audio.generate_audio.wave_file_exists",
+        side_effect=lambda p: "scoped123_spa.wav" in p,
+    ):
+        # Querying with matching lang returns true
+        resp_spa = await cli.get(
+            f"/{IS_AUDIO_READY_ENDPOINT}?msg_chk_sum=scoped123&lang=spa"
+        )
+        assert resp_spa.status == 200
+        data_spa = await resp_spa.json()
+        assert data_spa["exists"] is True
+
+        # Querying with different lang returns false
+        resp_eng = await cli.get(
+            f"/{IS_AUDIO_READY_ENDPOINT}?msg_chk_sum=scoped123&lang=eng"
+        )
+        assert resp_eng.status == 200
+        data_eng = await resp_eng.json()
+        assert data_eng["exists"] is False
+
+
+def test_missing_model_fallback_piper():
+    with patch("os.path.exists") as mock_exists, patch("subprocess.run") as mock_run:
+        from src.generate_audio.constants import PIPER_LANGUAGE_CODE
+        def exists_side_effect(path):
+            if "de_DE" in str(path):
+                return False
+            return True
+        mock_exists.side_effect = exists_side_effect
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
+
+        from src.generate_audio.generate_audio import text_to_speech_piper_tts
+        text_to_speech_piper_tts("Hallo Welt", "/tmp/out.wav", language="de_DE")
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        # Should have fallen back to configured default PIPER_LANGUAGE_CODE
+        expected_model = f"{PIPER_LANGUAGE_CODE}.onnx"
+        assert any(expected_model in arg for arg in cmd)
+
+
+def test_missing_model_fallback_kokoro():
+    with patch("os.path.exists", return_value=True), patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
+
+        from src.generate_audio.generate_audio import text_to_speech_kokoro_tts
+        # Unknown language code 'xyz'
+        text_to_speech_kokoro_tts("Testing", "/tmp/out.wav", language="xyz", speed=0.9)
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert "--speed" in cmd
+        assert "0.9" in cmd
+        # Lang fell back to default KOKORO_LANG ('e')
+        assert "--lang" in cmd
+        idx = cmd.index("--lang")
+        assert cmd[idx + 1] == "e"

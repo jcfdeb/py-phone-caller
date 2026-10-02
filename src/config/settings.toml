@@ -79,6 +79,11 @@ serving_audio_folder = "audio"
 is_audio_ready_endpoint = "is_audio_ready"
 num_of_cpus = 2
 
+[generate_audio.preload]
+facebook_mms = ["spa", "eng", "ita"]
+piper_tts = ["it_IT", "en_US"]
+kokoro_tts = ["default"]
+
 [caller_prometheus_webhook]
 prometheus_webhook_port = 8084
 prometheus_webhook_app_route_call_only = "call_only"

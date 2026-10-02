@@ -174,7 +174,7 @@ def convert_numbers_in_string(text, lang="es"):
     return re.sub(pattern, replace_number, text)
 
 
-def text_to_speech_facebook_mms(text, lang_code=None, output_path=None, model_path=None):
+def text_to_speech_facebook_mms(text, lang_code=None, output_path=None, model_path=None, speed=1.0):
     """
     Generates speech audio from text using a Facebook MMS TTS model for the specified language.
 
@@ -208,13 +208,13 @@ def text_to_speech_facebook_mms(text, lang_code=None, output_path=None, model_pa
         numbers_in_text = text
 
     try:
-        create_audio_through_facebook_mms(resolved_path, numbers_in_text, output_path)
+        create_audio_through_facebook_mms(resolved_path, numbers_in_text, output_path, speed=speed)
     except Exception as e:
         logging.exception(f"MMS: an error occurred: {e}")
         raise RuntimeError(f"MMS audio generation failed: {e}") from e
 
 
-def create_audio_through_facebook_mms(model_path, text, output_path):
+def create_audio_through_facebook_mms(model_path, text, output_path, speed=1.0):
     """Generates speech audio from text using a Facebook MMS model.
 
     Loads a pre-trained Facebook MMS model, tokenizes the input text,
@@ -241,7 +241,12 @@ def create_audio_through_facebook_mms(model_path, text, output_path):
 
     logging.info("MMS: generating speech...")
     with torch.no_grad():
-        output_waveform = model(**inputs).waveform
+        # VitsModel supports speaking_rate / length_scale or resample adjustment
+        speaking_rate = float(speed) if speed and speed > 0 else 1.0
+        try:
+            output_waveform = model(**inputs, speaking_rate=speaking_rate).waveform
+        except (TypeError, ValueError):
+            output_waveform = model(**inputs).waveform
 
     waveform_np = output_waveform.squeeze().cpu().numpy()
 

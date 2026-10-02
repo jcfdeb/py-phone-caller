@@ -126,7 +126,7 @@ async def test_asterisk_ws_monitor_event_broadcaster():
             asterisk_chan="PJSIP/100-00000001",
             response_json={"timestamp": "2026-10-01T12:00:00Z", "channel": {"state": "Up"}}
         )
-        mock_r.publish.assert_called_once()
-        args, kwargs = mock_r.publish.call_args
-        assert args[0] == "telephony.stasis.events"
-        assert "StasisStart" in args[1]
+        assert mock_r.publish.call_count >= 1
+        published_channels = [c[0][0] for c in mock_r.publish.call_args_list]
+        assert "telephony.stasis.events" in published_channels
+        assert "stasis:events:PJSIP/100-00000001" in published_channels

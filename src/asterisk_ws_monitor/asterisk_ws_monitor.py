@@ -73,6 +73,8 @@ async def broadcast_stasis_event(event_type: str, asterisk_chan: str, response_j
             "channel_state": response_json.get("channel", {}).get("state"),
         })
         await r.publish("telephony.stasis.events", payload)
+        if asterisk_chan:
+            await r.publish(f"stasis:events:{asterisk_chan}", payload)
         await r.aclose()
     except Exception as redis_err:
         # Non-blocking: transient redis issues must never affect live call handling
@@ -150,16 +152,23 @@ async def generate_the_audio_file(response_data):
         web.HTTPBadRequest: If there is a connection error with the audio generation process.
     """
     try:
+        audio_params = {
+            "message": response_data.get("message"),
+            "msg_chk_sum": response_data.get("msg_chk_sum"),
+        }
+        target_lang = response_data.get("lang") or response_data.get("language")
+        if target_lang:
+            audio_params["lang"] = target_lang
+        if response_data.get("speed"):
+            audio_params["speed"] = response_data.get("speed")
+
         async with ClientSession(
             timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
         ) as generate_audio_session:
             generate_audio_resp = await generate_audio_session.post(
                 url=f"{GENERATE_AUDIO_URL}/{GENERATE_AUDIO_APP_ROUTE}",
                 headers=inject_trace_context(),
-                params={
-                    "message": response_data.get("message"),
-                    "msg_chk_sum": response_data.get("msg_chk_sum"),
-                },
+                params=audio_params,
             )
             generate_audio_resp_json = await generate_audio_resp.json()
 
@@ -170,9 +179,12 @@ async def generate_the_audio_file(response_data):
 
             while not audio_ready and retry_count < max_retries:
                 try:
+                    ready_params = {"msg_chk_sum": msg_chk_sum}
+                    if target_lang:
+                        ready_params["lang"] = target_lang
                     audio_ready_resp = await generate_audio_session.get(
                         url=f"{GENERATE_AUDIO_URL}/{IS_AUDIO_READY_ENDPOINT}",
-                        params={"msg_chk_sum": msg_chk_sum},
+                        params=ready_params,
                     )
                     audio_ready_json = await audio_ready_resp.json()
 
@@ -247,13 +259,17 @@ async def play_audio_to_channel(asterisk_chan, response_data):
         async with ClientSession(
             timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
         ) as asterisk_call_session:
+            play_params = {
+                "asterisk_chan": asterisk_chan,
+                "msg_chk_sum": response_data.get("msg_chk_sum"),
+            }
+            p_lang = response_data.get("lang") or response_data.get("language")
+            if p_lang:
+                play_params["lang"] = p_lang
             audio_play_resp = await asterisk_call_session.post(
                 url=f"{ASTERISK_CALL_URL}/{ASTERISK_CALL_APP_ROUTE_PLAY}",
                 headers=inject_trace_context(),
-                params={
-                    "asterisk_chan": asterisk_chan,
-                    "msg_chk_sum": response_data.get("msg_chk_sum"),
-                },
+                params=play_params,
                 data=None,
             )
             audio_play_resp_message = await audio_play_resp.text()

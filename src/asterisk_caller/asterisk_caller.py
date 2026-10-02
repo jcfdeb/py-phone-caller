@@ -561,6 +561,7 @@ async def asterisk_play(request):
     params = await extract_params(request)
     asterisk_chan = params.get("asterisk_chan")
     msg_chk_sum = params.get("msg_chk_sum")
+    lang = params.get("lang") or params.get("language")
     if not asterisk_chan or not msg_chk_sum:
         logging.exception(
             f"No 'asterisk_chan' or 'msg_chk_sum' parameters passed on: '{request.rel_url}'"
@@ -572,10 +573,11 @@ async def asterisk_play(request):
             content_type=None,
         )
 
+    audio_file = f"{msg_chk_sum}_{lang}.wav" if lang else f"{msg_chk_sum}.wav"
     generate_audio_url = f"{GENERATE_AUDIO_URL}/{SERVING_AUDIO_FOLDER}"
     asterisk_play_addr = (
             f"{ASTERISK_URL}/{ASTERISK_ARI_CHANNELS}/{asterisk_chan}/"
-            + f"{ASTERISK_ARI_PLAY}:{generate_audio_url}/{msg_chk_sum}.wav"
+            + f"{ASTERISK_ARI_PLAY}:{generate_audio_url}/{audio_file}"
     )
     headers = await gen_headers(f"{ASTERISK_USER}:{ASTERISK_PASS}")
 
