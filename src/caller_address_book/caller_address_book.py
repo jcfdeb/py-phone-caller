@@ -11,7 +11,10 @@ import io
 import csv
 import json
 import os
+import re
 import sys
+from typing import Any, List, Optional
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.dirname(current_dir)
@@ -55,6 +58,44 @@ from caller_address_book.constants import (
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 
 init_telemetry("caller_address_book")
+
+
+class ContactCSVRow(BaseModel):
+    """
+    Pydantic schema validator for CSV contact imports.
+    Guarantees strict data integrity, non-blank names, and dialable/E.164 phone formats.
+    """
+    id: Optional[str] = None
+    name: str = Field(..., min_length=1)
+    surname: Optional[str] = ""
+    address: Optional[str] = ""
+    zip_code: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    country: Optional[str] = ""
+    phone_number: str = Field(...)
+    enabled: Optional[bool] = None
+    annotations: Optional[str] = ""
+    on_call_availability: Optional[List[Any]] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        s = (v or "").strip()
+        if not s:
+            raise ValueError("Contact 'name' cannot be blank.")
+        return s
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        s = (v or "").strip()
+        clean = re.sub(r"[\s\-\(\)\.]", "", s)
+        if not re.match(r"^(\+|00)?[0-9]{5,18}$", clean):
+            raise ValueError(
+                f"Invalid phone number format '{s}'. Must be a dialable / E.164 number with 5-18 digits."
+            )
+        return clean
 
 
 async def _ensure_db_pool():
@@ -318,7 +359,7 @@ async def get_contacts_export_csv(request: web.Request) -> web.StreamResponse:
 async def post_contacts_import_csv(request: web.Request) -> web.Response:
     """
     Handles the import of contacts from a CSV file provided through a multipart/form-data request or
-    as raw text. Validates the CSV content, processes rows to update or create contact entries, and
+    as raw text. Validates the CSV content with Pydantic, processes rows to update or create contact entries, and
     returns a summary of results.
 
     :param request: The HTTP request containing the CSV data. It is either a multipart request with
@@ -340,7 +381,6 @@ async def post_contacts_import_csv(request: web.Request) -> web.Response:
         else:
             content = await request.text()
         reader = csv.DictReader(io.StringIO(content))
-        required = {"name", "phone_number"}
         processed = 0
         created = 0
         updated = 0
@@ -382,7 +422,7 @@ async def post_contacts_import_csv(request: web.Request) -> web.Response:
             try:
                 processed += 1
                 r = {k.strip().lower(): (v or "").strip() for k, v in row.items()}
-                cid = r.get("id") or ""
+                cid = r.get("id") or None
                 enabled_str = r.get("enabled", "").lower()
                 enabled = (
                     True
@@ -404,7 +444,10 @@ async def post_contacts_import_csv(request: web.Request) -> web.Response:
                     on_call_availability = val if isinstance(val, list) else []
                 except Exception:
                     on_call_availability = []
-                changes = {
+
+                # Pydantic schema validation
+                contact_raw_data = {
+                    "id": cid,
                     "name": r.get("name", ""),
                     "surname": r.get("surname", ""),
                     "address": r.get("address", ""),
@@ -413,13 +456,31 @@ async def post_contacts_import_csv(request: web.Request) -> web.Response:
                     "state": r.get("state", ""),
                     "country": r.get("country", ""),
                     "phone_number": r.get("phone_number", ""),
+                    "enabled": enabled,
                     "annotations": r.get("annotations", ""),
                     "on_call_availability": on_call_availability,
                 }
-                if enabled is not None:
-                    changes["enabled"] = enabled
-                if not changes.get("name") or not changes.get("phone_number"):
-                    raise ValueError("Missing required name or phone_number")
+                try:
+                    validated = ContactCSVRow(**contact_raw_data)
+                except ValidationError as val_err:
+                    err_msgs = "; ".join([f"{e['loc'][0]}: {e['msg']}" for e in val_err.errors()])
+                    errors.append({"row": idx, "error": f"Schema validation error: {err_msgs}"})
+                    continue
+
+                changes = {
+                    "name": validated.name,
+                    "surname": validated.surname,
+                    "address": validated.address,
+                    "zip_code": validated.zip_code,
+                    "city": validated.city,
+                    "state": validated.state,
+                    "country": validated.country,
+                    "phone_number": validated.phone_number,
+                    "annotations": validated.annotations,
+                    "on_call_availability": validated.on_call_availability,
+                }
+                if validated.enabled is not None:
+                    changes["enabled"] = validated.enabled
 
                 target_id = None
                 if cid and cid in existing_ids:

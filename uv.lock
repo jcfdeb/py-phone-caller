@@ -426,12 +426,14 @@ source = { editable = "src/caller_address_book" }
 dependencies = [
     { name = "aiohttp" },
     { name = "py-phone-caller-utils" },
+    { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "py-phone-caller-utils", editable = "src/py-phone-caller-utils" },
+    { name = "pydantic", specifier = ">=2.13.4" },
 ]
 
 [[package]]
@@ -962,6 +964,21 @@ wheels = [
 [package.optional-dependencies]
 async = [
     { name = "asgiref" },
+]
+
+[[package]]
+name = "flask-babel"
+version = "4.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "babel" },
+    { name = "flask" },
+    { name = "jinja2" },
+    { name = "pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/1a/4c65e3b90bda699a637bfb7fb96818b0a9bbff7636ea91aade67f6020a31/flask_babel-4.0.0.tar.gz", hash = "sha256:dbeab4027a3f4a87678a11686496e98e1492eb793cbdd77ab50f4e9a2602a593", size = 10178, upload-time = "2023-10-02T01:10:49.914Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/c2/e0ab5abe37882e118482884f2ec660cd06da644ddfbceccf5f88f546b574/flask_babel-4.0.0-py3-none-any.whl", hash = "sha256:638194cf91f8b301380f36d70e2034c77ee25b98cb5d80a1626820df9a6d4625", size = 9602, upload-time = "2023-10-02T01:10:48.58Z" },
 ]
 
 [[package]]
@@ -2415,6 +2432,7 @@ source = { editable = "src/py_phone_caller_ui" }
 dependencies = [
     { name = "asgiref" },
     { name = "flask", extra = ["async"] },
+    { name = "flask-babel" },
     { name = "flask-login" },
     { name = "flask-session" },
     { name = "gunicorn" },
@@ -2428,6 +2446,7 @@ requires-dist = [
     { name = "asgiref", specifier = ">=3.8.0" },
     { name = "flask", specifier = ">=3.0.0" },
     { name = "flask", extras = ["async"], specifier = ">=3.0.0" },
+    { name = "flask-babel", specifier = ">=4.0.0" },
     { name = "flask-login", specifier = ">=0.6.3" },
     { name = "flask-session", specifier = ">=0.8.0" },
     { name = "gunicorn", specifier = ">=21.2.0" },

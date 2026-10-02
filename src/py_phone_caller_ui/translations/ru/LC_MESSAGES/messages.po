@@ -1,0 +1,142 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: py-phone-caller 1.0
+"
+"Report-Msgid-Bugs-To: 
+"
+"POT-Creation-Date: 2026-10-02 12:00+0000
+"
+"PO-Revision-Date: 2026-10-02 12:00+0000
+"
+"Language: ru
+"
+"MIME-Version: 1.0
+"
+"Content-Type: text/plain; charset=UTF-8
+"
+"Content-Transfer-Encoding: 8bit
+"
+
+msgid "Home"
+msgstr "Главная"
+
+msgid "Managed Calls"
+msgstr "Управление звонками"
+
+msgid "Managed SMS"
+msgstr "Управление SMS"
+
+msgid "PBX Events"
+msgstr "События АТС"
+
+msgid "Schedule Call"
+msgstr "Запланировать звонок"
+
+msgid "Address Book"
+msgstr "Адресная книга"
+
+msgid "Session"
+msgstr "Сеанс"
+
+msgid "User Management"
+msgstr "Управление пользователями"
+
+msgid "Logout"
+msgstr "Выйти"
+
+msgid "Offline-ready call orchestration."
+msgstr "Оркестрация звонков, готовая к работе офлайн."
+
+msgid "Live Telephony NOC Dashboard"
+msgstr "Панель NOC телефонии в реальном времени"
+
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "Телеметрия диспетчеризации и реагирования на критические инциденты"
+
+msgid "Total Calls Dispatched"
+msgstr "Всего отправлено звонков"
+
+msgid "DTMF Acknowledgment Rate"
+msgstr "Коэффициент подтверждения DTMF"
+
+msgid "Escalated Calls"
+msgstr "Эскалированные звонки"
+
+msgid "SMS Delivery Status"
+msgstr "Статус доставки SMS"
+
+msgid "Delivered"
+msgstr "Доставлено"
+
+msgid "Failed"
+msgstr "Сбой"
+
+msgid "Call Lifecycle Breakdown"
+msgstr "Структура жизненного цикла звонков"
+
+msgid "Acknowledged"
+msgstr "Подтверждено"
+
+msgid "Heard / Snoozed"
+msgstr "Прослушано / Отложено"
+
+msgid "Escalated"
+msgstr "Эскалировано"
+
+msgid "In Flight"
+msgstr "В процессе"
+
+msgid "Hardware Gateways & Engines"
+msgstr "Аппаратные шлюзы и движки"
+
+msgid "SMS Gateway"
+msgstr "Шлюз SMS"
+
+msgid "Hardware GSM Modem"
+msgstr "Аппаратный GSM-модем"
+
+msgid "SaaS Fallback"
+msgstr "Резерв SaaS"
+
+msgid "Telephony Engine"
+msgstr "Движок телефонии"
+
+msgid "Asterisk ARI Connected"
+msgstr "Asterisk ARI подключен"
+
+msgid "Track and manage outgoing calls"
+msgstr "Отслеживание и управление исходящими звонками"
+
+msgid "Track and inspect SMS messages"
+msgstr "Отслеживание и просмотр сообщений SMS"
+
+msgid "Real-time Asterisk events"
+msgstr "События Asterisk в реальном времени"
+
+msgid "Plan future call activities"
+msgstr "Планирование будущих вызовов"
+
+msgid "Manage your contacts"
+msgstr "Управление вашими контактами"
+
+msgid "Export CSV"
+msgstr "Экспорт в CSV"
+
+msgid "Search"
+msgstr "Поиск"
+
+msgid "Auto refresh:"
+msgstr "Автообновление:"
+
+msgid "Disable"
+msgstr "Отключить"
+
+msgid "Search managed calls..."
+msgstr "Поиск звонков..."
+
+msgid "Search contacts..."
+msgstr "Поиск контактов..."
+
+msgid "Search SMS..."
+msgstr "Поиск SMS..."
+

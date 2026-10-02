@@ -1,0 +1,142 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: py-phone-caller 1.0
+"
+"Report-Msgid-Bugs-To: 
+"
+"POT-Creation-Date: 2026-10-02 12:00+0000
+"
+"PO-Revision-Date: 2026-10-02 12:00+0000
+"
+"Language: en
+"
+"MIME-Version: 1.0
+"
+"Content-Type: text/plain; charset=UTF-8
+"
+"Content-Transfer-Encoding: 8bit
+"
+
+msgid "Home"
+msgstr "Home"
+
+msgid "Managed Calls"
+msgstr "Managed Calls"
+
+msgid "Managed SMS"
+msgstr "Managed SMS"
+
+msgid "PBX Events"
+msgstr "PBX Events"
+
+msgid "Schedule Call"
+msgstr "Schedule Call"
+
+msgid "Address Book"
+msgstr "Address Book"
+
+msgid "Session"
+msgstr "Session"
+
+msgid "User Management"
+msgstr "User Management"
+
+msgid "Logout"
+msgstr "Logout"
+
+msgid "Offline-ready call orchestration."
+msgstr "Offline-ready call orchestration."
+
+msgid "Live Telephony NOC Dashboard"
+msgstr "Live Telephony NOC Dashboard"
+
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "Mission-critical incident response & dispatch telemetry"
+
+msgid "Total Calls Dispatched"
+msgstr "Total Calls Dispatched"
+
+msgid "DTMF Acknowledgment Rate"
+msgstr "DTMF Acknowledgment Rate"
+
+msgid "Escalated Calls"
+msgstr "Escalated Calls"
+
+msgid "SMS Delivery Status"
+msgstr "SMS Delivery Status"
+
+msgid "Delivered"
+msgstr "Delivered"
+
+msgid "Failed"
+msgstr "Failed"
+
+msgid "Call Lifecycle Breakdown"
+msgstr "Call Lifecycle Breakdown"
+
+msgid "Acknowledged"
+msgstr "Acknowledged"
+
+msgid "Heard / Snoozed"
+msgstr "Heard / Snoozed"
+
+msgid "Escalated"
+msgstr "Escalated"
+
+msgid "In Flight"
+msgstr "In Flight"
+
+msgid "Hardware Gateways & Engines"
+msgstr "Hardware Gateways & Engines"
+
+msgid "SMS Gateway"
+msgstr "SMS Gateway"
+
+msgid "Hardware GSM Modem"
+msgstr "Hardware GSM Modem"
+
+msgid "SaaS Fallback"
+msgstr "SaaS Fallback"
+
+msgid "Telephony Engine"
+msgstr "Telephony Engine"
+
+msgid "Asterisk ARI Connected"
+msgstr "Asterisk ARI Connected"
+
+msgid "Track and manage outgoing calls"
+msgstr "Track and manage outgoing calls"
+
+msgid "Track and inspect SMS messages"
+msgstr "Track and inspect SMS messages"
+
+msgid "Real-time Asterisk events"
+msgstr "Real-time Asterisk events"
+
+msgid "Plan future call activities"
+msgstr "Plan future call activities"
+
+msgid "Manage your contacts"
+msgstr "Manage your contacts"
+
+msgid "Export CSV"
+msgstr "Export CSV"
+
+msgid "Search"
+msgstr "Search"
+
+msgid "Auto refresh:"
+msgstr "Auto refresh:"
+
+msgid "Disable"
+msgstr "Disable"
+
+msgid "Search managed calls..."
+msgstr "Search managed calls..."
+
+msgid "Search contacts..."
+msgstr "Search contacts..."
+
+msgid "Search SMS..."
+msgstr "Search SMS..."
+

@@ -1,11 +1,12 @@
 """
 Home blueprint for the Py Phone Caller UI.
 
-Provides the landing page and logout functionality.
+Provides the landing page with NOC Telemetry dashboard and logout functionality.
 """
 
-from flask import Blueprint, redirect, render_template, url_for
+from flask import Blueprint, jsonify, redirect, render_template, url_for
 from flask_login import login_required, logout_user
+from .telemetry import get_noc_dashboard_metrics
 
 home_blueprint = Blueprint(
     "home_blueprint",
@@ -21,20 +22,31 @@ def logout():
     return redirect(url_for("login_blueprint.login"))
 
 
+@home_blueprint.route("/api/dashboard_metrics")
+@login_required
+async def api_dashboard_metrics():
+    """
+    Returns real-time telemetry metrics in JSON format for the NOC Dashboard auto-refresh.
+    """
+    metrics = await get_noc_dashboard_metrics()
+    return jsonify(metrics)
+
+
 @home_blueprint.route("/")
 @login_required
 async def home():
     """
-    Renders the home page for authenticated users, providing navigation links to all main sections.
-
-    This asynchronous view returns the rendered home.html template with context URLs for navigation.
+    Renders the NOC Dashboard home page for authenticated users,
+    providing telemetry KPIs, lifecycle breakdowns, gateway health, and navigation links.
 
     Returns:
         flask.Response: The rendered HTML home page.
     """
+    metrics = await get_noc_dashboard_metrics()
 
     return render_template(
         "home.html",
+        metrics=metrics,
         home_url=url_for("home_blueprint.home"),
         calls_url=url_for("calls_blueprint.calls"),
         ws_events_url=url_for("ws_events_blueprint.ws_events"),

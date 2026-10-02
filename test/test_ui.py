@@ -260,6 +260,10 @@ def test_sms_page_loads_for_authenticated_user(mock_select_sms, client):
         assert b"Test SMS message content" in response.data
         assert b"on_premise" in response.data
         assert b"Sent" in response.data
+        assert b'data-bs-target="#smsDetailModal"' in response.data
+        assert b'openSmsDetails' in response.data
+        assert b'id="smsDetailModal"' in response.data
+        assert b'showToast' in response.data
 
 
 @patch("py_phone_caller_ui.sms.select_sms", new_callable=AsyncMock)
@@ -330,3 +334,151 @@ def test_sms_export_csv(mock_select_sms, client):
         assert res_valid.headers["Content-Disposition"] == "attachment;filename=sms_2026-08.csv"
         assert b"ID,Phone,Message,Carrier,Status,Created At,Error" in res_valid.data
         assert b"Exportable message" in res_valid.data
+
+
+# =========================================================================
+# Phase 4 Tests: i18n Locales, Cookie Negotiation, & NOC Telemetry Dashboard
+# =========================================================================
+
+def test_set_locale_endpoint_and_cookie(client):
+    for lang in ["it", "es", "de", "fr", "ru", "zh", "hi", "en"]:
+        response = client.get(f"/set_locale/{lang}")
+        assert response.status_code == 302
+        cookie_header = response.headers.get("Set-Cookie", "")
+        assert f"locale={lang}" in cookie_header
+
+
+@patch("py_phone_caller_ui.home.get_noc_dashboard_metrics", new_callable=AsyncMock)
+def test_home_page_renders_noc_dashboard_with_translations(mock_metrics, client):
+    import datetime
+    from datetime import timezone
+    mock_metrics.return_value = {
+        "total_calls": 42,
+        "ack_count": 35,
+        "ack_rate": 83.3,
+        "heard_count": 4,
+        "escalated_count": 3,
+        "in_flight_count": 0,
+        "total_sms": 12,
+        "sms_delivered": 11,
+        "sms_failed": 1,
+        "sms_rate": 91.7,
+        "is_gsm": True,
+        "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+    }
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+        sess["locale"] = "it"
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        response = client.get("/")
+        assert response.status_code == 200
+        content = response.data.decode("utf-8")
+        assert "Chiamate gestite" in content
+        assert "42" in content
+        assert "83.3%" in content
+
+
+@patch("py_phone_caller_ui.home.get_noc_dashboard_metrics", new_callable=AsyncMock)
+def test_api_dashboard_metrics_json(mock_metrics, client):
+    import datetime
+    from datetime import timezone
+    mock_metrics.return_value = {
+        "total_calls": 10,
+        "ack_count": 8,
+        "ack_rate": 80.0,
+        "heard_count": 1,
+        "escalated_count": 1,
+        "in_flight_count": 0,
+        "total_sms": 5,
+        "sms_delivered": 5,
+        "sms_failed": 0,
+        "sms_rate": 100.0,
+        "is_gsm": True,
+        "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+    }
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        response = client.get("/api/dashboard_metrics")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["total_calls"] == 10
+        assert data["ack_rate"] == 80.0
+        assert data["ack_count"] == 8
+        assert data["sms_delivered"] == 5
+        assert data["is_gsm"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_noc_dashboard_metrics_calculation():
+    import datetime
+    from datetime import timezone
+    from py_phone_caller_ui.home.telemetry import get_noc_dashboard_metrics
+
+    fake_calls = [
+        {
+            "id": "1",
+            "acknowledge_at": datetime.datetime(2026, 10, 2, 10, 0, 0, tzinfo=timezone.utc),
+            "heard_at": datetime.datetime(2026, 10, 2, 9, 59, 0, tzinfo=timezone.utc),
+            "cycle_done": True,
+            "backup_callee": False,
+        },
+        {
+            "id": "2",
+            "acknowledge_at": datetime.datetime.min,
+            "heard_at": datetime.datetime(2026, 10, 2, 10, 1, 0, tzinfo=timezone.utc),
+            "cycle_done": True,
+            "backup_callee": False,
+        },
+        {
+            "id": "3",
+            "acknowledge_at": datetime.datetime.min,
+            "heard_at": datetime.datetime.min,
+            "cycle_done": True,
+            "backup_callee": True,
+        },
+        {
+            "id": "4",
+            "acknowledge_at": datetime.datetime.min,
+            "heard_at": datetime.datetime.min,
+            "cycle_done": False,
+            "backup_callee": False,
+        },
+    ]
+
+    fake_sms = [
+        {"id": "s1", "status": "sent"},
+        {"id": "s2", "status": "delivered"},
+        {"id": "s3", "status": "failed"},
+    ]
+
+    with patch("py_phone_caller_ui.home.telemetry.get_redis_client") as mock_redis,          patch("py_phone_caller_ui.home.telemetry.select_calls", new_callable=AsyncMock) as mock_sel_calls,          patch("py_phone_caller_ui.home.telemetry.select_sms", new_callable=AsyncMock) as mock_sel_sms:
+
+        mock_r = MagicMock()
+        mock_r.get = AsyncMock(return_value=None)
+        mock_r.setex = AsyncMock()
+        mock_redis.return_value = mock_r
+
+        mock_sel_calls.return_value = fake_calls
+        mock_sel_sms.return_value = fake_sms
+
+        metrics = await get_noc_dashboard_metrics()
+
+        assert metrics["total_calls"] == 4
+        assert metrics["ack_count"] == 1
+        assert metrics["heard_count"] == 1
+        assert metrics["escalated_count"] == 1
+        assert metrics["in_flight_count"] == 1
+        assert metrics["ack_rate"] == 25.0
+        assert metrics["total_sms"] == 3
+        assert metrics["sms_delivered"] == 2
+        assert metrics["sms_failed"] == 1
+        assert metrics["sms_rate"] == 66.7

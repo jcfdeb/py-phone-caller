@@ -1,0 +1,142 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: py-phone-caller 1.0
+"
+"Report-Msgid-Bugs-To: 
+"
+"POT-Creation-Date: 2026-10-02 12:00+0000
+"
+"PO-Revision-Date: 2026-10-02 12:00+0000
+"
+"Language: de
+"
+"MIME-Version: 1.0
+"
+"Content-Type: text/plain; charset=UTF-8
+"
+"Content-Transfer-Encoding: 8bit
+"
+
+msgid "Home"
+msgstr "Startseite"
+
+msgid "Managed Calls"
+msgstr "Verwaltete Anrufe"
+
+msgid "Managed SMS"
+msgstr "Verwaltete SMS"
+
+msgid "PBX Events"
+msgstr "PBX-Ereignisse"
+
+msgid "Schedule Call"
+msgstr "Anruf planen"
+
+msgid "Address Book"
+msgstr "Adressbuch"
+
+msgid "Session"
+msgstr "Sitzung"
+
+msgid "User Management"
+msgstr "Benutzerverwaltung"
+
+msgid "Logout"
+msgstr "Abmelden"
+
+msgid "Offline-ready call orchestration."
+msgstr "Offline-fähige Anruforchestrierung."
+
+msgid "Live Telephony NOC Dashboard"
+msgstr "Echtzeit-Telephonie-NOC-Dashboard"
+
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "Missionskritische Störungsreaktion & Dispatch-Telemetrie"
+
+msgid "Total Calls Dispatched"
+msgstr "Gesamte gesendete Anrufe"
+
+msgid "DTMF Acknowledgment Rate"
+msgstr "DTMF-Bestätigungsrate"
+
+msgid "Escalated Calls"
+msgstr "Eskalierte Anrufe"
+
+msgid "SMS Delivery Status"
+msgstr "SMS-Zustellungsstatus"
+
+msgid "Delivered"
+msgstr "Zugestellt"
+
+msgid "Failed"
+msgstr "Fehlgeschlagen"
+
+msgid "Call Lifecycle Breakdown"
+msgstr "Aufschlüsselung des Anruflebenszyklus"
+
+msgid "Acknowledged"
+msgstr "Bestätigt"
+
+msgid "Heard / Snoozed"
+msgstr "Gehört / Schlummern"
+
+msgid "Escalated"
+msgstr "Eskaliert"
+
+msgid "In Flight"
+msgstr "In Bearbeitung"
+
+msgid "Hardware Gateways & Engines"
+msgstr "Hardware-Gateways & Engines"
+
+msgid "SMS Gateway"
+msgstr "SMS-Gateway"
+
+msgid "Hardware GSM Modem"
+msgstr "Hardware-GSM-Modem"
+
+msgid "SaaS Fallback"
+msgstr "SaaS-Fallback"
+
+msgid "Telephony Engine"
+msgstr "Telefonie-Engine"
+
+msgid "Asterisk ARI Connected"
+msgstr "Asterisk ARI verbunden"
+
+msgid "Track and manage outgoing calls"
+msgstr "Ausgehende Anrufe verfolgen und verwalten"
+
+msgid "Track and inspect SMS messages"
+msgstr "SMS-Nachrichten verfolgen und überprüfen"
+
+msgid "Real-time Asterisk events"
+msgstr "Asterisk-Ereignisse in Echtzeit"
+
+msgid "Plan future call activities"
+msgstr "Zukünftige Anrufaktivitäten planen"
+
+msgid "Manage your contacts"
+msgstr "Verwalte deine Kontakte"
+
+msgid "Export CSV"
+msgstr "CSV exportieren"
+
+msgid "Search"
+msgstr "Suchen"
+
+msgid "Auto refresh:"
+msgstr "Automatische Aktualisierung:"
+
+msgid "Disable"
+msgstr "Deaktivieren"
+
+msgid "Search managed calls..."
+msgstr "Verwaltete Anrufe durchsuchen..."
+
+msgid "Search contacts..."
+msgstr "Kontakte durchsuchen..."
+
+msgid "Search SMS..."
+msgstr "SMS durchsuchen..."
+

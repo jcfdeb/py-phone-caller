@@ -119,8 +119,7 @@
             </thead>
             <tbody>
             {% if paginated_data %}
-                {% for key in paginated_data %}
-                {% set row = table_data[key] %}
+                {% for key in paginated_data %}{% set row = table_data[key] %}
                 <tr>
                     <td class="fw-semibold text-secondary">{{ key + 1 }}</td>
                     <td>
@@ -169,7 +168,16 @@
                     </td>
                     <td class="text-center">
                         <button type="button" class="btn btn-sm btn-outline-primary sms-detail-btn"
-                                onclick="openSmsDetails('{{ row.id }}', '{{ row.phone|escape }}', '{{ row.carrier|escape }}', '{{ row.status|escape }}', '{{ (row.created_at.strftime('%Y-%m-%d %H:%M:%S') if row.created_at else '')|escape }}', '{{ row.message|replace("'", "\\'")|replace('"', '\\"')|replace('\n', ' ')|escape }}', '{{ row.error|replace("'", "\\'")|replace('"', '\\"')|replace('\n', ' ')|escape }}')">
+                                data-bs-toggle="modal"
+                                data-bs-target="#smsDetailModal"
+                                data-id="{{ row.id }}"
+                                data-phone="{{ row.phone }}"
+                                data-carrier="{{ row.carrier or 'default' }}"
+                                data-status="{{ row.status or 'Unknown' }}"
+                                data-created-at="{{ row.created_at.strftime('%Y-%m-%d %H:%M:%S') if row.created_at else 'No Data' }}"
+                                data-message="{{ row.message|default('', true) }}"
+                                data-error="{{ row.error|default('', true) }}"
+                                onclick="openSmsDetails(this.getAttribute('data-id'), this.getAttribute('data-phone'), this.getAttribute('data-carrier'), this.getAttribute('data-status'), this.getAttribute('data-created-at'), this.getAttribute('data-message'), this.getAttribute('data-error'))">
                             <i class="bi bi-eye me-1"></i>Details
                         </button>
                     </td>
@@ -318,22 +326,13 @@
 
 {% block extra_js %}
 <script>
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            showToast('Copied', 'ID copied to clipboard', 'success');
-        }).catch(err => {
-            console.error('Failed to copy: ', err);
-            showToast('Error', 'Could not copy to clipboard', 'danger');
-        });
-    }
-
     function openSmsDetails(id, phone, carrier, status, createdAt, message, error) {
-        document.getElementById('modalSmsId').textContent = id;
-        document.getElementById('modalSmsPhone').textContent = phone;
+        document.getElementById('modalSmsId').textContent = id || '';
+        document.getElementById('modalSmsPhone').textContent = phone || '';
         document.getElementById('modalSmsCarrier').textContent = carrier || 'default';
-        document.getElementById('modalSmsStatus').textContent = status;
+        document.getElementById('modalSmsStatus').textContent = status || '';
         document.getElementById('modalSmsCreatedAt').textContent = createdAt || 'No Data';
-        document.getElementById('modalSmsMessage').textContent = message;
+        document.getElementById('modalSmsMessage').textContent = message || '';
 
         const errorContainer = document.getElementById('modalSmsErrorContainer');
         const errorText = document.getElementById('modalSmsError');
@@ -345,9 +344,31 @@
             errorContainer.classList.add('d-none');
         }
 
-        const modal = new bootstrap.Modal(document.getElementById('smsDetailModal'));
-        modal.show();
+        const modalEl = document.getElementById('smsDetailModal');
+        if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+            modal.show();
+        }
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const modalEl = document.getElementById('smsDetailModal');
+        if (modalEl) {
+            modalEl.addEventListener('show.bs.modal', function(event) {
+                const button = event.relatedTarget;
+                if (!button || !button.hasAttribute('data-id')) return;
+                openSmsDetails(
+                    button.getAttribute('data-id'),
+                    button.getAttribute('data-phone'),
+                    button.getAttribute('data-carrier'),
+                    button.getAttribute('data-status'),
+                    button.getAttribute('data-created-at'),
+                    button.getAttribute('data-message'),
+                    button.getAttribute('data-error')
+                );
+            });
+        }
+    });
 
     (function(){
         const STORAGE_KEY = 'sms_auto_refresh_seconds';

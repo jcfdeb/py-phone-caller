@@ -1,0 +1,142 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: py-phone-caller 1.0
+"
+"Report-Msgid-Bugs-To: 
+"
+"POT-Creation-Date: 2026-10-02 12:00+0000
+"
+"PO-Revision-Date: 2026-10-02 12:00+0000
+"
+"Language: zh
+"
+"MIME-Version: 1.0
+"
+"Content-Type: text/plain; charset=UTF-8
+"
+"Content-Transfer-Encoding: 8bit
+"
+
+msgid "Home"
+msgstr "首页"
+
+msgid "Managed Calls"
+msgstr "托管通话"
+
+msgid "Managed SMS"
+msgstr "托管短信"
+
+msgid "PBX Events"
+msgstr "PBX 事件"
+
+msgid "Schedule Call"
+msgstr "排程通话"
+
+msgid "Address Book"
+msgstr "通讯录"
+
+msgid "Session"
+msgstr "会话"
+
+msgid "User Management"
+msgstr "用户管理"
+
+msgid "Logout"
+msgstr "登出"
+
+msgid "Offline-ready call orchestration."
+msgstr "离线就绪的通话编排。"
+
+msgid "Live Telephony NOC Dashboard"
+msgstr "实时电话 NOC 控制面板"
+
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "关键任务事件响应与调度遥测"
+
+msgid "Total Calls Dispatched"
+msgstr "总调度通话数"
+
+msgid "DTMF Acknowledgment Rate"
+msgstr "DTMF 确认率"
+
+msgid "Escalated Calls"
+msgstr "升级通话"
+
+msgid "SMS Delivery Status"
+msgstr "短信送达状态"
+
+msgid "Delivered"
+msgstr "已送达"
+
+msgid "Failed"
+msgstr "失败"
+
+msgid "Call Lifecycle Breakdown"
+msgstr "通话生命周期分解"
+
+msgid "Acknowledged"
+msgstr "已确认"
+
+msgid "Heard / Snoozed"
+msgstr "已收听 / 稍后"
+
+msgid "Escalated"
+msgstr "已升级"
+
+msgid "In Flight"
+msgstr "进行中"
+
+msgid "Hardware Gateways & Engines"
+msgstr "硬件网关与引擎"
+
+msgid "SMS Gateway"
+msgstr "短信网关"
+
+msgid "Hardware GSM Modem"
+msgstr "硬件 GSM 调制解调器"
+
+msgid "SaaS Fallback"
+msgstr "SaaS 回退"
+
+msgid "Telephony Engine"
+msgstr "电话引擎"
+
+msgid "Asterisk ARI Connected"
+msgstr "Asterisk ARI 已连接"
+
+msgid "Track and manage outgoing calls"
+msgstr "跟踪和管理呼出电话"
+
+msgid "Track and inspect SMS messages"
+msgstr "跟踪和检查短信"
+
+msgid "Real-time Asterisk events"
+msgstr "实时 Asterisk 事件"
+
+msgid "Plan future call activities"
+msgstr "规划未来的通话活动"
+
+msgid "Manage your contacts"
+msgstr "管理您的联系人"
+
+msgid "Export CSV"
+msgstr "导出 CSV"
+
+msgid "Search"
+msgstr "搜索"
+
+msgid "Auto refresh:"
+msgstr "自动刷新："
+
+msgid "Disable"
+msgstr "禁用"
+
+msgid "Search managed calls..."
+msgstr "搜索托管通话..."
+
+msgid "Search contacts..."
+msgstr "搜索联系人..."
+
+msgid "Search SMS..."
+msgstr "搜索短信..."
+

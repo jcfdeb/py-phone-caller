@@ -18,8 +18,12 @@
 body {
     background: radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 32rem),
     linear-gradient(180deg, #f8fbff 0%, #eef4ff 46%, #f8fafc 100%);
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: 'Segoe UI', system-ui, -apple-system, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'SimHei', 'Noto Sans Devanagari', 'Nirmala UI', 'Lohit Devanagari', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
     color: var(--ink-color);
+}
+
+button, input, select, textarea, .dropdown-menu, .nav-link, .navbar-brand {
+    font-family: inherit;
 }
 
 .app-shell {

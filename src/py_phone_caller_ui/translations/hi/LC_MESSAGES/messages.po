@@ -1,0 +1,142 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: py-phone-caller 1.0
+"
+"Report-Msgid-Bugs-To: 
+"
+"POT-Creation-Date: 2026-10-02 12:00+0000
+"
+"PO-Revision-Date: 2026-10-02 12:00+0000
+"
+"Language: hi
+"
+"MIME-Version: 1.0
+"
+"Content-Type: text/plain; charset=UTF-8
+"
+"Content-Transfer-Encoding: 8bit
+"
+
+msgid "Home"
+msgstr "होम"
+
+msgid "Managed Calls"
+msgstr "प्रबंधित कॉल"
+
+msgid "Managed SMS"
+msgstr "प्रबंधित एसएमएस"
+
+msgid "PBX Events"
+msgstr "पीबीएक्स घटनाएँ"
+
+msgid "Schedule Call"
+msgstr "कॉल शेड्यूल करें"
+
+msgid "Address Book"
+msgstr "पता पुस्तिका"
+
+msgid "Session"
+msgstr "सत्र"
+
+msgid "User Management"
+msgstr "उपयोगकर्ता प्रबंधन"
+
+msgid "Logout"
+msgstr "लॉग आउट"
+
+msgid "Offline-ready call orchestration."
+msgstr "ऑफ़लाइन-तैयार कॉल ऑर्केस्ट्रेशन।"
+
+msgid "Live Telephony NOC Dashboard"
+msgstr "लाइव टेलीफोनी एनओसी डैशबोर्ड"
+
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "मिशन-महत्वपूर्ण घटना प्रतिक्रिया और प्रेषण टेलीमेट्री"
+
+msgid "Total Calls Dispatched"
+msgstr "कुल कॉल प्रेषित"
+
+msgid "DTMF Acknowledgment Rate"
+msgstr "डीटीएमएफ पावती दर"
+
+msgid "Escalated Calls"
+msgstr "एस्केलेटेड कॉल"
+
+msgid "SMS Delivery Status"
+msgstr "एसएमएस वितरण स्थिति"
+
+msgid "Delivered"
+msgstr "वितरित"
+
+msgid "Failed"
+msgstr "विफल"
+
+msgid "Call Lifecycle Breakdown"
+msgstr "कॉल जीवनचक्र विवरण"
+
+msgid "Acknowledged"
+msgstr "स्वीकृत"
+
+msgid "Heard / Snoozed"
+msgstr "सुना / स्नूज़ किया गया"
+
+msgid "Escalated"
+msgstr "एस्केलेट किया गया"
+
+msgid "In Flight"
+msgstr "प्रगति पर"
+
+msgid "Hardware Gateways & Engines"
+msgstr "हार्डवेयर गेटवे और इंजन"
+
+msgid "SMS Gateway"
+msgstr "एसएमएस गेटवे"
+
+msgid "Hardware GSM Modem"
+msgstr "हार्डवेयर जीएसएम मोडेम"
+
+msgid "SaaS Fallback"
+msgstr "सास फ़ॉलबैक"
+
+msgid "Telephony Engine"
+msgstr "टेलीफ़ोनी इंजन"
+
+msgid "Asterisk ARI Connected"
+msgstr "एस्टरिस्क एआरआई कनेक्टेड"
+
+msgid "Track and manage outgoing calls"
+msgstr "आउटगोइंग कॉल ट्रैक और प्रबंधित करें"
+
+msgid "Track and inspect SMS messages"
+msgstr "एसएमएस संदेश ट्रैक और निरीक्षण करें"
+
+msgid "Real-time Asterisk events"
+msgstr "वास्तविक समय एस्टरिस्क घटनाएँ"
+
+msgid "Plan future call activities"
+msgstr "भविष्य की कॉल गतिविधियों की योजना बनाएं"
+
+msgid "Manage your contacts"
+msgstr "अपने संपर्कों को प्रबंधित करें"
+
+msgid "Export CSV"
+msgstr "सीएसवी निर्यात करें"
+
+msgid "Search"
+msgstr "खोजें"
+
+msgid "Auto refresh:"
+msgstr "स्वतः रीफ़्रेश:"
+
+msgid "Disable"
+msgstr "अक्षम करें"
+
+msgid "Search managed calls..."
+msgstr "प्रबंधित कॉल खोजें..."
+
+msgid "Search contacts..."
+msgstr "संपर्क खोजें..."
+
+msgid "Search SMS..."
+msgstr "एसएमएस खोजें..."
+
