@@ -12,6 +12,7 @@ dependencies = [
     "py_phone_caller_utils",
     "aiohttp>=3.9.0",
     "requests>=2.31.0",
+    "aiobreaker>=1.2.0",
 ]
 
 [tool.setuptools.package-dir]

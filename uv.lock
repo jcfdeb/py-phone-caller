@@ -30,6 +30,15 @@ wheels = [
 ]
 
 [[package]]
+name = "aiobreaker"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/eb/749ef48d3227fd62d500ff01fcd451f10111e00d822c200eb51782ba076a/aiobreaker-1.2.0.tar.gz", hash = "sha256:217a9cfa12e520bb2dd1934bace281d1d7deb8d7630dd183a6295fd22e323ce7", size = 15947, upload-time = "2021-05-17T11:58:05.278Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ff/c8/4cd4b2834012ffc71ae3fd69187f08a17f01f3937527b6b5e077f4f5d0db/aiobreaker-1.2.0-py3-none-any.whl", hash = "sha256:f275decad78bdd161715afeee67e5dde7967de54c836648b44f4eea1b5e41d60", size = 20700, upload-time = "2021-05-17T11:58:04.192Z" },
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -187,6 +196,7 @@ name = "asterisk-caller"
 version = "1.0.0"
 source = { editable = "src/asterisk_caller" }
 dependencies = [
+    { name = "aiobreaker" },
     { name = "aiohttp" },
     { name = "py-phone-caller-utils" },
     { name = "requests" },
@@ -194,6 +204,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiobreaker", specifier = ">=1.2.0" },
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "py-phone-caller-utils", editable = "src/py-phone-caller-utils" },
     { name = "requests", specifier = ">=2.31.0" },

@@ -29,7 +29,14 @@ from py_phone_caller_utils.py_phone_caller_db.db_sms import insert_sms, select_s
 import caller_sms.backend.twilio as twilio_backend
 import caller_sms.backend.rust_on_premise as rust_on_premise
 
+from datetime import UTC, datetime
+from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import Calls
+from py_phone_caller_utils.redis_lock import call_mutex
 from caller_sms.constants import (
+    SMS_SAAS_FALLBACK,
+    TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN,
+    TWILIO_SMS_FROM,
     CALLER_SMS_PORT,
     CALLER_SMS_APP_ROUTE,
     LOG_FORMATTER,
@@ -88,9 +95,50 @@ async def send_the_sms(request):
 
     match carrier:
         case "twilio":
-            futures = await twilio_backend.sms_sender_async(message, phone)
+            try:
+                futures = await twilio_backend.sms_sender_async(message, phone)
+                await asyncio.ensure_future(futures)
+                status_code = 200
+                status = "sent"
+            except Exception as err:
+                status_code = 500
+                status = "failed"
+                error_msg = str(err)
+                logging.exception(f"Unable to send SMS via Twilio: '{err}'")
+
         case "on_premise":
-            futures = await rust_on_premise.sms_sender_async(message, phone)
+            try:
+                futures = await rust_on_premise.sms_sender_async(message, phone)
+                await asyncio.ensure_future(futures)
+                status_code = 200
+                status = "sent"
+            except Exception as on_prem_err:
+                logging.warning(f"On-premise GSM modem failed to send SMS: {on_prem_err}")
+                has_twilio_creds = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_SMS_FROM)
+
+                if SMS_SAAS_FALLBACK and has_twilio_creds:
+                    logging.info("sms_saas_fallback is enabled. Attempting SaaS fallback via Twilio...")
+                    try:
+                        twilio_future = await twilio_backend.sms_sender_async(message, phone)
+                        await asyncio.ensure_future(twilio_future)
+                        carrier = "twilio_fallback"
+                        status_code = 200
+                        status = "sent"
+                        error_msg = ""
+                    except Exception as fallback_err:
+                        status_code = 500
+                        status = "failed"
+                        error_msg = f"On-premise error: {on_prem_err}; Twilio fallback error: {fallback_err}"
+                        logging.exception(error_msg)
+                else:
+                    if SMS_SAAS_FALLBACK and not has_twilio_creds:
+                        logging.warning("sms_saas_fallback enabled but Twilio credentials missing. Staying sovereign/failing fast.")
+                    else:
+                        logging.info("sms_saas_fallback is disabled (sovereign mode). Failing fast without SaaS fallback.")
+                    status_code = 500
+                    status = "failed"
+                    error_msg = str(on_prem_err)
+
         case _:
             error_msg = f"Carrier '{carrier}' not supported."
             logging.error(error_msg)
@@ -105,16 +153,6 @@ async def send_the_sms(request):
             except Exception as db_err:
                 logging.error(f"Error recording SMS in database: {db_err}")
             return web.json_response({"status": 500, "error": error_msg}, status=500)
-
-    try:
-        await asyncio.ensure_future(futures)
-        status_code = 200
-        status = "sent"
-    except Exception as err:
-        status_code = 500
-        status = "failed"
-        error_msg = str(err)
-        logging.exception(f"Unable to send the SMS: '{err}'")
 
     try:
         await insert_sms(
@@ -133,6 +171,72 @@ async def send_the_sms(request):
 
     return web.json_response(response_data, status=status_code)
 
+
+
+async def receive_inbound_sms(request):
+    """
+    Receives incoming SMS webhook (e.g. Twilio webhook or on-premise modem callback).
+    If message body contains acknowledgment tokens (ACK, OK, 1, CONFIRM),
+    matches the sender phone to active unacknowledged calls and marks acknowledge_at = now().
+    """
+    params = await extract_params(request)
+    raw_from = params.get("From") or params.get("phone") or params.get("from", "")
+    raw_body = params.get("Body") or params.get("message") or params.get("text", "")
+
+    sender_phone = str(raw_from).strip()
+    body_text = str(raw_body).strip().upper()
+
+    if not sender_phone or not body_text:
+        return web.json_response(
+            {"status": 400, "error": "Missing sender phone or message body"},
+            status=400,
+        )
+
+    ack_tokens = {"ACK", "OK", "1", "CONFIRM", "YES"}
+    is_ack = any(token in body_text.split() or body_text == token for token in ack_tokens)
+
+    matched_calls = 0
+    now_utc = datetime.now(UTC).replace(tzinfo=None)
+
+    if is_ack:
+        clean_phone = sender_phone.replace("+", "00")
+        phone_patterns = [sender_phone, clean_phone]
+        if clean_phone.startswith("00"):
+            phone_patterns.append("+" + clean_phone[2:])
+
+        active_calls = await Calls.select().where(
+            Calls.phone.is_in(phone_patterns) & (Calls.cycle_done == False)
+        ).run()
+
+        for c in active_calls:
+            call_id = str(c.get("id"))
+            chan = c.get("asterisk_chan")
+            async with call_mutex(call_id):
+                await Calls.update({
+                    Calls.acknowledge_at: now_utc,
+                    Calls.cycle_done: True,
+                }).where(Calls.id == c.get("id")).run()
+                matched_calls += 1
+                logging.info(
+                    f"Inbound SMS ACK from {sender_phone} matched call {call_id} (chan: {chan}). Marked acknowledged."
+                )
+
+    try:
+        await insert_sms(
+            phone=sender_phone,
+            message=str(raw_body),
+            carrier="inbound",
+            status="received_ack" if is_ack and matched_calls > 0 else "received",
+            error="",
+        )
+    except Exception as db_err:
+        logging.error(f"Error storing inbound SMS: {db_err}")
+
+    return web.json_response({
+        "status": 200,
+        "acknowledged": is_ack and matched_calls > 0,
+        "matched_calls": matched_calls,
+    })
 
 async def get_sms_records(request):
     """
@@ -222,6 +326,7 @@ async def init_app():
     app.router.add_route("GET", "/", root_catalog)
     app.router.add_route("POST", f"/{CALLER_SMS_APP_ROUTE}", send_the_sms)
     app.router.add_route("GET", "/get_sms", get_sms_records)
+    app.router.add_route("POST", "/sms/inbound", receive_inbound_sms)
 
     setup_swagger_routes(
         app=app,

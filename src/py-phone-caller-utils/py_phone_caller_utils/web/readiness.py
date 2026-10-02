@@ -111,7 +111,7 @@ async def check_asterisk_ari(ari_url: str, username: str, secret: str) -> Tuple[
     from aiohttp import ClientSession, BasicAuth, ClientTimeout
 
     try:
-        url = f"{ari_url.rstrip('/')}/asterisk/info"
+        url = f"{ari_url.rstrip('/')}/ari/asterisk/info"
         auth = BasicAuth(username, secret) if username and secret else None
         async with ClientSession(timeout=ClientTimeout(total=2.0)) as session:
             async with session.get(url, auth=auth) as resp:
@@ -120,6 +120,38 @@ async def check_asterisk_ari(ari_url: str, username: str, secret: str) -> Tuple[
                 return False, f"Asterisk ARI returned HTTP {resp.status}"
     except Exception as e:
         return False, f"Asterisk ARI unreachable: {str(e)}"
+
+
+async def check_asterisk_pjsip_trunk(
+    ari_url: str,
+    username: str,
+    secret: str,
+    trunk_resource: str,
+) -> Tuple[bool, str]:
+    """
+    Deep Carrier Verification: checks Asterisk PJSIP endpoint registration/reachability.
+    Interrogates GET /ari/endpoints/PJSIP/<trunk_resource>.
+    """
+    from aiohttp import ClientSession, BasicAuth, ClientTimeout
+
+    try:
+        url = f"{ari_url.rstrip('/')}/ari/endpoints/PJSIP/{trunk_resource}"
+        auth = BasicAuth(username, secret) if username and secret else None
+        async with ClientSession(timeout=ClientTimeout(total=2.5)) as session:
+            async with session.get(url, auth=auth) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    state = str(data.get("state", "")).lower()
+                    # In Asterisk ARI, PJSIP endpoints are online/offline/unknown
+                    if state in ("online", "unknown", "offline"):
+                        # 'offline' or 'online' confirms the endpoint exists in Asterisk configuration
+                        return True, f"PJSIP trunk '{trunk_resource}' configured (state: {state})"
+                    return False, f"PJSIP trunk '{trunk_resource}' unexpected state: {state}"
+                elif resp.status == 404:
+                    return False, f"PJSIP trunk '{trunk_resource}' not found in Asterisk"
+                return False, f"PJSIP trunk query returned HTTP {resp.status}"
+    except Exception as e:
+        return False, f"PJSIP trunk check failed: {str(e)}"
 
 
 def setup_readiness_probe(

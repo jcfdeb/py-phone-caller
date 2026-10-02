@@ -209,3 +209,98 @@ async def test_asterisk_recaller_recall_post_integration(aiohttp_client):
         assert received_params.get("phone") == "00393349246425"
         assert received_params.get("message") == "Recall alert"
         assert received_params.get("backup_callee") == "false"
+
+
+@pytest.mark.asyncio
+async def test_asterisk_caller_circuit_breaker_tripping(aiohttp_client, monkeypatch):
+    """
+    Test that ari_circuit_breaker in asterisk_caller trips to OPEN after 3 consecutive failures
+    and returns HTTP 503 fast.
+    """
+    from src.asterisk_caller.asterisk_caller import init_app, ari_circuit_breaker
+    from aiobreaker.state import CircuitBreakerState
+
+    ari_circuit_breaker.close()
+
+    # Create dummy server that simulates 500 error from Asterisk ARI
+    app = web.Application()
+    async def ari_failure_handler(request):
+        return web.Response(status=500, text="Internal Server Error")
+
+    app.router.add_route("POST", "/ari/channels", ari_failure_handler)
+    mock_ari_server = await aiohttp_client(app)
+
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_URL",
+        str(mock_ari_server.make_url("")).rstrip("/"),
+    )
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_ARI_CHANNELS",
+        "ari/channels",
+    )
+
+    caller_app = await init_app()
+    caller_client = await aiohttp_client(caller_app)
+
+    # Trigger failures to trip the circuit breaker (fail_max = 3)
+    for _ in range(3):
+        resp = await caller_client.post(
+            "/place_call",
+            json={"phone": "00393349246425", "message": "Test Failure"},
+        )
+        assert resp.status in (500, 503)
+
+    assert ari_circuit_breaker.current_state == CircuitBreakerState.OPEN
+
+    # 4th call should fail immediately with 503 from open circuit breaker
+    resp4 = await caller_client.post(
+        "/place_call",
+        json={"phone": "00393349246425", "message": "Test Circuit Open"},
+    )
+    assert resp4.status == 503
+    data = await resp4.json()
+    assert "circuit breaker open" in data.get("error", "").lower()
+
+    # Reset breaker to closed for subsequent tests
+    ari_circuit_breaker.close()
+
+
+@pytest.mark.asyncio
+async def test_asterisk_caller_ready_probe_with_trunk(aiohttp_client, monkeypatch):
+    """
+    Test that /ready evaluates Asterisk ARI reachability and PJSIP trunk verification.
+    """
+    from src.asterisk_caller.asterisk_caller import init_app, ari_circuit_breaker
+
+    ari_circuit_breaker.close()
+
+    app = web.Application()
+    async def ari_info_handler(request):
+        return web.json_response({"system": {"version": "18.10"}}, status=200)
+
+    async def ari_trunk_handler(request):
+        return web.json_response({"technology": "PJSIP", "resource": "py-phone-caller", "state": "online"}, status=200)
+
+    app.router.add_route("GET", "/ari/asterisk/info", ari_info_handler)
+    app.router.add_route("GET", "/ari/endpoints/PJSIP/py-phone-caller", ari_trunk_handler)
+    mock_ari_server = await aiohttp_client(app)
+
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_URL",
+        str(mock_ari_server.make_url("")).rstrip("/"),
+    )
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_CHAN_TYPE",
+        "PJSIP/py-phone-caller",
+    )
+
+    caller_app = await init_app()
+    caller_client = await aiohttp_client(caller_app)
+
+    resp = await caller_client.get("/ready")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["ready"] is True
+    assert "asterisk_ari" in data["checks"]
+    assert "pjsip_trunk" in data["checks"]
+    assert data["checks"]["pjsip_trunk"]["ready"] is True

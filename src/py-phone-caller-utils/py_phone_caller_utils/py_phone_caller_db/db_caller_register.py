@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from py_phone_caller_utils.config import settings
+from py_phone_caller_utils.redis_lock import call_mutex
 from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import (
     Calls,
 )
@@ -282,6 +283,11 @@ async def check_call_yet_present(call_chk_sum, phone, message):
 
 
 async def update_acknowledgement(asterisk_chan):
+    async with call_mutex(asterisk_chan):
+        return await _update_acknowledgement_impl(asterisk_chan)
+
+
+async def _update_acknowledgement_impl(asterisk_chan):
     """
     Updates the acknowledgement timestamp and marks the call cycle as done for the specified Asterisk channel,
     but only if the call is within the firing period.
@@ -389,6 +395,11 @@ async def _mark_related_oncall_records_done(msg_chk_sum, current_time):
 
 
 async def update_heard_at(asterisk_chan):
+    async with call_mutex(asterisk_chan):
+        return await _update_heard_at_impl(asterisk_chan)
+
+
+async def _update_heard_at_impl(asterisk_chan):
     """
     Updates the 'heard_at' timestamp for the specified Asterisk channel in the database.
 

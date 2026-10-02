@@ -112,6 +112,7 @@ def instrument_aiohttp_app(app, service_name: Optional[str] = None):
 
         # Default ready handler if service does not attach a specialized ReadinessRegistry
         async def default_ready_handler(request):
+            # If app already has a custom /ready route registered afterwards or attached registry
             return web.json_response(
                 {
                     "status": "ready",
@@ -121,7 +122,10 @@ def instrument_aiohttp_app(app, service_name: Optional[str] = None):
                 }
             )
 
-        app.router.add_get("/ready", default_ready_handler)
+        # Only add default /ready if not already in routes
+        has_ready = any(r.resource and r.resource.canonical == "/ready" for r in app.router.routes())
+        if not has_ready:
+            app.router.add_get("/ready", default_ready_handler)
 
         async def metrics_handler(request):
             data = generate_latest()

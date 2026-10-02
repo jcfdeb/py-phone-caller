@@ -99,6 +99,7 @@ sms_before_call_wait_seconds = 120
 
 # The carrier to use. Options: "twilio", "on_premise"
 caller_sms_carrier = "twilio"
+sms_saas_fallback = false
 
 # Twilio configuration (Legacy/Cloud fallback)
 twilio_sms_from = "+1234567890"

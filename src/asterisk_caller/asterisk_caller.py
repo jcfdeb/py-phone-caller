@@ -34,7 +34,15 @@ if current_dir in sys.path:
 if src_dir not in sys.path:
     sys.path.append(src_dir)
 
+from datetime import timedelta
 from aiohttp import ClientSession, ClientTimeout, client_exceptions, web
+from aiobreaker import CircuitBreaker, CircuitBreakerError
+
+from py_phone_caller_utils.web.readiness import (
+    ReadinessRegistry,
+    check_asterisk_ari,
+    check_asterisk_pjsip_trunk,
+)
 
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
 from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
@@ -72,6 +80,12 @@ from asterisk_caller.constants import (
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 
 init_telemetry("asterisk_caller")
+
+ari_circuit_breaker = CircuitBreaker(
+    fail_max=3,
+    timeout_duration=timedelta(seconds=30),
+    name="asterisk_ari_circuit_breaker",
+)
 
 
 class OnCallPhoneUnavailable(RuntimeError):
@@ -116,6 +130,10 @@ def manage_call_queue():
             logging.warning(
                 "Call queue item skipped because the on-call phone is unavailable: "
                 f"phone='{phone}', message='{message}', reason='{err}'"
+            )
+        except CircuitBreakerError as err:
+            logging.warning(
+                f"Call queue item skipped because Asterisk ARI circuit breaker is open: {err}"
             )
         except Exception as err:
             logging.exception(
@@ -245,11 +263,29 @@ async def validate_parameters(parameter, rel_url):
         ) from err
 
 
+async def _raw_post_ari_call(asterisk_call_init, headers):
+    async with ClientSession(
+        timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+    ) as session:
+        call_resp = await session.post(
+            url=asterisk_call_init, data=None, headers=headers
+        )
+        if call_resp.status >= 500:
+            raise client_exceptions.ClientResponseError(
+                request_info=call_resp.request_info,
+                history=call_resp.history,
+                status=call_resp.status,
+                message=f"Asterisk ARI server error: {call_resp.status}",
+            )
+        return call_resp
+
+
 async def initiate_asterisk_call(
         asterisk_call_init, phone, resolved_phone, message, headers, backup_callee="false"
 ):
     """
     Initiates a call through the Asterisk ARI API and registers the call in the call register service.
+    Protected by ari_circuit_breaker to fail-fast when PBX is down.
 
     Args:
         asterisk_call_init (str): The ARI endpoint URL to initiate the call.
@@ -264,44 +300,48 @@ async def initiate_asterisk_call(
 
     Raises:
         web.HTTPBadRequest: If unable to connect to the Asterisk system or call register service.
+        web.HTTPServiceUnavailable: If the Asterisk ARI circuit breaker is open.
     """
 
     try:
         oncall = "true" if phone.lower() == "oncall" else "false"
 
-        async with ClientSession(
-            timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
-        ) as session:
-            call_resp = await session.post(
-                url=asterisk_call_init, data=None, headers=headers
-            )
+        call_resp = await ari_circuit_breaker.call_async(
+            _raw_post_ari_call, asterisk_call_init, headers
+        )
 
-            if call_resp.status == 200:
-                response_data = await call_resp.json()
-                asterisk_chan = response_data["id"]
+        if call_resp.status == 200:
+            response_data = await call_resp.json()
+            asterisk_chan = response_data["id"]
 
-                async with ClientSession(
-                    timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
-                ) as reg_session:
-                    await reg_session.post(
-                        url=f"{CALL_REGISTER_URL}/{CALL_REGISTER_APP_ROUTE_REGISTER_CALL}",
-                        params={
-                            "phone": resolved_phone,
-                            "message": message,
-                            "asterisk_chan": asterisk_chan,
-                            "oncall": oncall,
-                            "backup_callee": backup_callee,
-                        },
-                        data=None,
-                        headers=headers,
-                    )
-                return call_resp
-
-            logging.error(
-                f"Asterisk server '{ASTERISK_URL}' response: {call_resp.status}. Unable to initialize the call."
-            )
+            async with ClientSession(
+                timeout=ClientTimeout(total=CLIENT_TIMEOUT_TOTAL)
+            ) as reg_session:
+                await reg_session.post(
+                    url=f"{CALL_REGISTER_URL}/{CALL_REGISTER_APP_ROUTE_REGISTER_CALL}",
+                    params={
+                        "phone": resolved_phone,
+                        "message": message,
+                        "asterisk_chan": asterisk_chan,
+                        "oncall": oncall,
+                        "backup_callee": backup_callee,
+                    },
+                    data=None,
+                    headers=headers,
+                )
             return call_resp
 
+        logging.error(
+            f"Asterisk server '{ASTERISK_URL}' response: {call_resp.status}. Unable to initialize the call."
+        )
+        return call_resp
+
+    except CircuitBreakerError as breaker_err:
+        logging.error(f"Asterisk ARI Circuit Breaker is OPEN: {breaker_err}")
+        raise web.HTTPServiceUnavailable(
+            reason="Asterisk ARI Circuit Breaker OPEN (PBX outage)",
+            text='{"status": 503, "error": "Asterisk PBX circuit breaker open"}'
+        )
     except client_exceptions.ClientConnectorError as err:
         logging.exception(
             f"Unable to connect to the Asterisk system or the 'call_register' service: '{err}'"
@@ -457,6 +497,11 @@ async def place_call(request):
     except OnCallPhoneUnavailable as err:
         logging.warning(f"Unable to place call: {err}")
         return web.json_response({"status": 400, "error": str(err)}, status=400)
+    except web.HTTPServiceUnavailable:
+        return web.json_response(
+            {"status": 503, "error": "Asterisk PBX circuit breaker open"},
+            status=503,
+        )
 
     return web.json_response({"status": call_resp.status})
 
@@ -574,6 +619,31 @@ async def init_app():
     """
 
     app = web.Application()
+
+    registry = ReadinessRegistry("asterisk_caller")
+    registry.register(
+        "asterisk_ari",
+        lambda: check_asterisk_ari(ASTERISK_URL, ASTERISK_USER, ASTERISK_PASS),
+    )
+
+    trunk_resource = (
+        ASTERISK_CHAN_TYPE.split("/")[1]
+        if "/" in ASTERISK_CHAN_TYPE
+        else ASTERISK_CHAN_TYPE
+    )
+    registry.register(
+        "pjsip_trunk",
+        lambda: check_asterisk_pjsip_trunk(
+            ASTERISK_URL, ASTERISK_USER, ASTERISK_PASS, trunk_resource
+        ),
+    )
+
+    async def asterisk_caller_ready(request):
+        all_ready, details = await registry.evaluate()
+        status_code = 200 if all_ready else 503
+        return web.json_response(details, status=status_code)
+
+    app.router.add_route("GET", "/ready", asterisk_caller_ready)
 
     instrument_aiohttp_app(app, "asterisk_caller")
 
