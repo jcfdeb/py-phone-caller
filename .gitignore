@@ -177,3 +177,4 @@ openalert.db*
 # Downloaded TTS Models
 /src/generate_audio/pre_trained_models/*
 /src/generate_audio/audio/*
+/pre_trained_models/*

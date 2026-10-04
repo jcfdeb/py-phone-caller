@@ -1,0 +1,803 @@
+# Hebrew translations for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-02 17:35+0200\n"
+"PO-Revision-Date: 2026-10-04 14:57+0200\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: he\n"
+"Language-Team: he <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:24
+msgid "Learn how On-Call rotations and availability work"
+msgstr "למד כיצד פועלים סבבי כוננות וזמינות"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:25
+msgid "On-Call Guide"
+msgstr "מדריך כוננות"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "Contact Name"
+msgstr "שם איש קשר"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "First and last name of the responder"
+msgstr "שם פרטי ומשפחה של המענה"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "Phone Number"
+msgstr "מספר טלפון"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+msgid "E.164 formatted number dialed for voice calls and SMS"
+msgstr "מספר בפורמט E.164 לחיוג שיחות קוליות והודעות SMS"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+msgid "Status"
+msgstr "סטטוס"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+msgid "Only active contacts receive automated alerts"
+msgstr "רק אנשי קשר פעילים מקבלים התראות אוטומטיות"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+msgid "International format starting with + (e.g. +393349246425)"
+msgstr "פורמט בינלאומי המתחיל ב-+ (לדוגמה: +393349246425)"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:440
+msgid "Priority"
+msgstr "עדיפות"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+msgid "Priority 0 is dialed first, followed by 1, 2, 3, 4"
+msgstr "עדיפות 0 מחויגת ראשונה, ולאחריה 1, 2, 3, 4"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:389
+msgid "Address Book & On-Call Rotation Guide"
+msgstr "מדריך ספר כתובות וסבב כוננות"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:391
+msgid ""
+"How contact availability, priority escalation, and calendar routing "
+"operate."
+msgstr "כיצד פועלים זמינות אנשי קשר, אסקלציית עדיפות וניתוב לפי יומן."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:402
+msgid "Contact Details & Phone Numbers"
+msgstr "פרטי אנשי קשר ומספרי טלפון"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:405
+msgid ""
+"Contacts must include standard E.164 phone numbers (e.g. +393349246425) "
+"to dial properly through Asterisk ARI SIP trunks and GSM modems."
+msgstr ""
+"על אנשי קשר לכלול מספרי טלפון סטנדרטיים בתקן E.164 (למשל: +393349246425) "
+"לחיוג תקין דרך ערוצי Asterisk ARI SIP ומודמי GSM."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+msgid "Active"
+msgstr "פעיל"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+msgid "Eligible for automated incident calls and SMS."
+msgstr "זכאי לשיחות והודעות SMS אוטומטיות בזמן תקלה."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Disabled"
+msgstr "מושבת"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Excluded from on-call selection and escalation."
+msgstr "מוחרג מבחירת כוננים ואסקלציה."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:417
+msgid "Availability Windows & Timezones"
+msgstr "חלונות זמינות ואזורי זמן"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:420
+msgid ""
+"Availability is specified in your local browser timezone. The system "
+"automatically converts and stores windows in UTC for accurate global "
+"scheduling."
+msgstr ""
+"הזמינות מוגדרת באזור הזמן של הדפדפן שלך. המערכת ממירה ושומרת את החלונות "
+"ב-UTC לתזמון עולמי מדויק."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:423
+msgid ""
+"Contacts without explicit windows are considered available 24/7 if "
+"enabled."
+msgstr "אנשי קשר ללא חלונות מוגדרים נחשבים זמינים 24/7 אם הם במצב פעיל."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:431
+msgid "Priority Levels & Escalation Rules"
+msgstr "רמות עדיפות וכללי אסקלציה"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:434
+msgid ""
+"When an incident or scheduled call dispatches, the system queries "
+"contacts active right now and orders them by Priority:"
+msgstr ""
+"כאשר נשלחת שיחת תקלה או שיחה מתוזמנת, המערכת מאתרת אנשי קשר הפעילים כעת "
+"ומסדרת אותם לפי עדיפות:"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:441
+msgid "Role"
+msgstr "תפקיד"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:442
+msgid "Dispatch Behavior"
+msgstr "אופן החיוג"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:448
+msgid "Primary Responder"
+msgstr "כונן ראשי"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:449
+msgid "First contact dialed when an alert triggers."
+msgstr "איש הקשר הראשון שמחויג בעת הפעלת התראה."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:453
+msgid "Secondary Responder"
+msgstr "כונן משני"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:454
+msgid "Contact dialed if Primary fails to answer or acknowledge with DTMF 1."
+msgstr "איש קשר שמחויג אם הכונן הראשי אינו עונה או אינו מאשר ב-DTMF 1."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:458
+msgid "Tier 2 / Team Backup"
+msgstr "דרג 2 / גיבוי צוותי"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:459
+msgid "Escalation fallback for high-severity incidents."
+msgstr "גיבוי אסקלציה לתקלות בחומרה גבוהה."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:463
+msgid "Duty Supervisor / Final Fallback"
+msgstr "אחראי תורן / גיבוי סופי"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:464
+msgid "Notified only when earlier tiers are exhausted."
+msgstr "מקבל הודעה רק כאשר מוצו כל הדרגים הקודמים."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:474
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:345
+msgid "Got it"
+msgstr "הבנתי"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:94
+msgid "Maximum number of call retry attempts"
+msgstr "מספר ניסיונות חיוג מרבי"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:102
+msgid "Number of dial attempts executed so far"
+msgstr "מספר ניסיונות חיוג שבוצעו עד כה"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:126
+msgid "Timestamp when receiver pressed DTMF 1 to acknowledge the alert"
+msgstr "חותמת זמן שבה הנמען לחץ DTMF 1 לאישור ההתראה"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:42
+msgid "Live Telephony NOC Dashboard"
+msgstr "לוח בקרה חי של טלפוניית NOC"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:44
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "טלמטריית שיגור ומענה לתקלות קריטיות"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:45
+#: src/py_phone_caller_ui/templates/base.html:176
+msgid "Offline-ready call orchestration."
+msgstr "ניהול שיחות עצמאי ומוכן לסביבה מנותקת."
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:52
+msgid "Hardware GSM Modem"
+msgstr "מודם GSM חומרתי"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:57
+msgid "SaaS Fallback"
+msgstr "גיבוי ענן (SaaS)"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:62
+msgid "Asterisk ARI Connected"
+msgstr "Asterisk ARI מחובר"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:73
+msgid "Total Calls Dispatched"
+msgstr "סך שיחות ששוגרו"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:80
+msgid "dispatched"
+msgstr "שוגרו"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:89
+msgid "DTMF Acknowledgment Rate"
+msgstr "שיעור אישורי DTMF"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:105
+msgid "Escalated Calls"
+msgstr "שיחות באסקלציה"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:114
+msgid "backup callee"
+msgstr "יעד גיבוי"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:123
+msgid "SMS Delivery Status"
+msgstr "סטטוס מסירת SMS"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:130
+msgid "Delivered"
+msgstr "נמסר"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:132
+msgid "Failed"
+msgstr "נכשל"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:143
+msgid "Call Lifecycle Breakdown"
+msgstr "פילוח מחזור חיי שיחות"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:164
+msgid "Acknowledged"
+msgstr "אושר"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:169
+msgid "Heard / Snoozed"
+msgstr "נשמע / נודנם"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:174
+msgid "Escalated"
+msgstr "הועבר לאסקלציה"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:179
+msgid "In Flight"
+msgstr "בביצוע"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:195
+#: src/py_phone_caller_ui/templates/base.html:47
+msgid "Managed Calls"
+msgstr "שיחות מנוהלות"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:196
+msgid "Track and manage outgoing calls"
+msgstr "מעקב וניהול שיחות יוצאות"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:210
+#: src/py_phone_caller_ui/templates/base.html:53
+msgid "Managed SMS"
+msgstr "הודעות SMS מנוהלות"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:211
+msgid "Track and inspect SMS messages"
+msgstr "מעקב ובדיקת הודעות SMS"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:226
+#: src/py_phone_caller_ui/templates/base.html:59
+msgid "PBX Events"
+msgstr "אירועי מרכזייה (PBX)"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:227
+msgid "Real-time Asterisk events"
+msgstr "אירועי Asterisk בזמן אמת"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:242
+#: src/py_phone_caller_ui/templates/base.html:65
+msgid "Schedule Call"
+msgstr "תזמון שיחה"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:243
+msgid "Plan future call activities"
+msgstr "תכנון שיחות עתידיות"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:257
+#: src/py_phone_caller_ui/templates/base.html:71
+msgid "Address Book"
+msgstr "ספר כתובות"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:258
+msgid "Manage your contacts"
+msgstr "ניהול אנשי הקשר שלך"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:10
+msgid "Learn how scheduled calls and speech synthesis work"
+msgstr "למד כיצד פועלים תזמון שיחות וסינתזת דיבור"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:11
+msgid "Scheduler Guide"
+msgstr "מדריך תזמון"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "E.164 format or select an active responder via Contacts button"
+msgstr "פורמט E.164 או בחירת כונן פעיל דרך כפתור אנשי קשר"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:171
+msgid "Select from Address Book or auto-pick current On-call"
+msgstr "בחירה מספר כתובות או בחירה אוטומטית של הכונן הנוכחי"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:177
+msgid "Message"
+msgstr "הודעה"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:177
+msgid "Synthesized into voice audio and played when the recipient answers"
+msgstr "מסונתז לקובץ קול ומושמע כאשר הנמען עונה"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:280
+msgid "Scheduled Calls & Voice Synthesis Guide"
+msgstr "מדריך שיחות מתוזמנות וסינתזת קול"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:282
+msgid "Automated telephony job execution, TTS synthesis, and DTMF confirmation."
+msgstr "ביצוע משימות טלפוניה אוטומטי, סינתזת TTS ואישור ב-DTMF."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:293
+msgid "Timing & Job Execution"
+msgstr "תזמון וביצוע משימות"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:296
+msgid ""
+"Scheduled calls are stored and triggered asynchronously by Celery and "
+"Redis at the exact local date and time configured."
+msgstr ""
+"שיחות מתוזמנות נשמרות ומופעלות אסינכרונית ע״י Celery ו-Redis בתאריך ובשעה"
+" המקומיים המדויקים."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:299
+msgid ""
+"Once reached, the system initiates an Asterisk Stasis application channel"
+" to the destination."
+msgstr "בהגיע המועד, המערכת יוצרת ערוץ Asterisk Stasis אל היעד."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:307
+msgid "Neural TTS Audio Generation"
+msgstr "יצירת קול באמצעות TTS עצבי"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:310
+msgid ""
+"Your message text is automatically synthesized into clear 8kHz/16kHz WAV "
+"audio using Silero Neural TTS."
+msgstr ""
+"טקסט ההודעה מסונתז אוטומטית לשמע WAV איכותי ב-8kHz/16kHz באמצעות Silero "
+"Neural TTS."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:313
+msgid ""
+"Audio is cached locally by message hash to ensure zero latency on "
+"repeated notifications."
+msgstr "השמע נשמר במטמון מקומי לפי hash של ההודעה למניעת השהיה בהתראות חוזרות."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:321
+msgid "Contact Picker & Live On-Call"
+msgstr "בורר אנשי קשר וכונן נוכחי"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:324
+msgid ""
+"Click the Contacts button next to the phone field to pick any saved "
+"contact, or click \"Use current On-call\" to automatically resolve who is"
+" on duty right now."
+msgstr ""
+"לחץ על כפתור אנשי הקשר ליד שדה הטלפון כדי לבחור איש קשר, או לחץ ״השתמש "
+"בכונן הנוכחי״ לזיהוי אוטומטי של התורן."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:332
+msgid "DTMF Acknowledgment & Retries"
+msgstr "אישור DTMF וניסיונות חוזרים"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:335
+msgid ""
+"When the recipient answers, the audio message plays continuously until "
+"they press DTMF 1 to acknowledge, or the maximum ring duration expires."
+msgstr ""
+"כאשר הנמען עונה, הודעת הקול מתנגנת ברצף עד להקשת 1 ב-DTMF לאישור, או עד "
+"לפקיעת זמן הצלצול המרבי."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:338
+msgid ""
+"Unacknowledged calls will retry according to your configured retry count "
+"and backoff interval."
+msgstr "שיחות שלא אושרו יחויגו שוב בהתאם למספר הניסיונות ומרווח ההמתנה שהוגדרו."
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:94
+msgid ""
+"SMS transmission gateway: Asterisk dongle, Gammu GSM modem, or cloud "
+"gateway"
+msgstr "שער שידור SMS: דונגל Asterisk, מודם Gammu GSM או שער ענן"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:102
+msgid "Delivery lifecycle: Pending, Sent, Delivered, or Failed"
+msgstr "מחזור חיי מסירה: בהמתנה, נשלח, נמסר או נכשל"
+
+#: src/py_phone_caller_ui/templates/base.html:41
+msgid "Home"
+msgstr "דף הבית"
+
+#: src/py_phone_caller_ui/templates/base.html:78
+msgid "Quick On-Call: View and toggle active on-duty emergency responders."
+msgstr "כוננות מהירה: צפייה והחלפה של כונני חירום תורנים."
+
+#: src/py_phone_caller_ui/templates/base.html:80
+msgid "On-Call"
+msgstr "כוננות"
+
+#: src/py_phone_caller_ui/templates/base.html:85
+msgid "Active On-Call Responders"
+msgstr "כונני חירום פעילים"
+
+#: src/py_phone_caller_ui/templates/base.html:86
+msgid "Manage Roster"
+msgstr "ניהול סבב"
+
+#: src/py_phone_caller_ui/templates/base.html:89
+msgid "Loading roster..."
+msgstr "טוען סבב כוננות..."
+
+#: src/py_phone_caller_ui/templates/base.html:96
+msgid "Quick Search & Command Palette (Ctrl+K)"
+msgstr "חיפוש מהיר ולוח פקודות (Ctrl+K)"
+
+#: src/py_phone_caller_ui/templates/base.html:104
+msgid ""
+"Telephony & SMS Diagnostics Console: Test live SIP ARI calls and SMS "
+"dispatching."
+msgstr "מסוף אבחון טלפוניה ו-SMS: בדיקת שיחות SIP ARI ושיגור SMS בזמן אמת."
+
+#: src/py_phone_caller_ui/templates/base.html:106
+msgid "Diagnostics"
+msgstr "אבחון"
+
+#: src/py_phone_caller_ui/templates/base.html:112
+msgid "Help Center: Press ? for documentation and operational guides."
+msgstr "מרכז עזרה: לחץ ? לתיעוד ומדריכים תפעוליים."
+
+#: src/py_phone_caller_ui/templates/base.html:119
+msgid "Toggle Theme: Switch between light and dark night mode."
+msgstr "החלפת ערכת נושא: מעבר בין מצב בהיר למצב לילה כהה."
+
+#: src/py_phone_caller_ui/templates/base.html:127
+msgid "Switch Language: Select from 8 supported locales."
+msgstr "החלפת שפה: בחירה מתוך השפות הנתמכות."
+
+#: src/py_phone_caller_ui/templates/base.html:147
+msgid "Session"
+msgstr "הפעלה"
+
+#: src/py_phone_caller_ui/templates/base.html:152
+msgid "NOC Wallboard (24/7)"
+msgstr "לוח מחוונים NOC (24/7)"
+
+#: src/py_phone_caller_ui/templates/base.html:154
+msgid "User Management"
+msgstr "ניהול משתמשים"
+
+#: src/py_phone_caller_ui/templates/base.html:159
+msgid "Logout"
+msgstr "התנתקות"
+
+#: src/py_phone_caller_ui/templates/base.html:190
+msgid "Search calls, contacts, schedules, or actions... (Esc to close)"
+msgstr "חיפוש שיחות, אנשי קשר, לוחות זמנים או פעולות... (Esc לסגירה)"
+
+#: src/py_phone_caller_ui/templates/base.html:223
+msgid "Telephony & SMS Diagnostics Console"
+msgstr "מסוף אבחון טלפוניה ו-SMS"
+
+#: src/py_phone_caller_ui/templates/base.html:225
+msgid ""
+"Trigger immediate test calls or SMS to verify PBX trunk and GSM modem "
+"gateways."
+msgstr "הפעלת שיחות בדיקה או SMS מיידיות לאימות ערוצי מרכזייה ומודמי GSM."
+
+#: src/py_phone_caller_ui/templates/base.html:236
+msgid "Outbound Test Call"
+msgstr "שיחת בדיקה יוצאת"
+
+#: src/py_phone_caller_ui/templates/base.html:239
+msgid "Outbound Test SMS"
+msgstr "הודעת SMS לבדיקה"
+
+#: src/py_phone_caller_ui/templates/base.html:248
+#: src/py_phone_caller_ui/templates/base.html:276
+msgid "Destination Phone Number"
+msgstr "מספר טלפון יעד"
+
+#: src/py_phone_caller_ui/templates/base.html:254
+#: src/py_phone_caller_ui/templates/base.html:282
+msgid "E.164 international format (e.g. +393349246425)."
+msgstr "פורמט בינלאומי E.164 (למשל: +393349246425)."
+
+#: src/py_phone_caller_ui/templates/base.html:259
+msgid "Speech Audio Message"
+msgstr "הודעת שמע קולית"
+
+#: src/py_phone_caller_ui/templates/base.html:262
+msgid ""
+"Synthesized into speech via Silero Neural TTS and played to the SIP "
+"channel."
+msgstr "מסונתזת לדיבור באמצעות Silero Neural TTS ומושמעת בערוץ ה-SIP."
+
+#: src/py_phone_caller_ui/templates/base.html:266
+msgid "Dispatch Test Call"
+msgstr "שיגור שיחת בדיקה"
+
+#: src/py_phone_caller_ui/templates/base.html:287
+msgid "SMS Message Text"
+msgstr "טקסט הודעת SMS"
+
+#: src/py_phone_caller_ui/templates/base.html:290
+msgid ""
+"Dispatched via On-Premise GSM Modem (/dev/ttyUSB) with automatic Twilio "
+"fallback."
+msgstr "נשלח דרך מודם GSM מקומי (/dev/ttyUSB) עם גיבוי אוטומטי ל-Twilio."
+
+#: src/py_phone_caller_ui/templates/base.html:294
+msgid "Send Test SMS"
+msgstr "שלח SMS בדיקה"
+
+#: src/py_phone_caller_ui/templates/base.html:324
+msgid "Close"
+msgstr "סגור"
+
+#: src/py_phone_caller_ui/templates/base.html:332
+msgid "Help & Documentation"
+msgstr "עזרה ותיעוד"
+
+#: src/py_phone_caller_ui/templates/base.html:344
+msgid "Help Center"
+msgstr "מרכז עזרה"
+
+#: src/py_phone_caller_ui/templates/base.html:345
+msgid "Sovereign Voice & SMS Alerting"
+msgstr "התראות קוליות ו-SMS עצמאיות"
+
+#: src/py_phone_caller_ui/templates/base.html:355
+msgid "Search help topics..."
+msgstr "חיפוש נושאי עזרה..."
+
+#: src/py_phone_caller_ui/templates/base.html:362
+msgid "Current section:"
+msgstr "סעיף נוכחי:"
+
+#: src/py_phone_caller_ui/templates/base.html:362
+#: src/py_phone_caller_ui/templates/base.html:727
+msgid "Overview"
+msgstr "סקירה כללית"
+
+#: src/py_phone_caller_ui/templates/base.html:373
+#: src/py_phone_caller_ui/templates/base.html:713
+msgid "Address Book & On-Call"
+msgstr "ספר כתובות וכוננות"
+
+#: src/py_phone_caller_ui/templates/base.html:378
+msgid "E.164 Phone Numbers:"
+msgstr "מספרי טלפון בתקן E.164:"
+
+#: src/py_phone_caller_ui/templates/base.html:378
+msgid ""
+"Store phone numbers with country code (+39...) to dial properly through "
+"Asterisk ARI and send SMS."
+msgstr ""
+"שמירת מספרי טלפון עם קידומת בינלאומית (+39...) לחיוג תקין ב-Asterisk ARI "
+"ושליחת SMS."
+
+#: src/py_phone_caller_ui/templates/base.html:379
+msgid "On-Call Availability:"
+msgstr "זמינות כוננות:"
+
+#: src/py_phone_caller_ui/templates/base.html:379
+msgid ""
+"Define start/end schedule intervals. Active contacts in the current "
+"window are selected automatically."
+msgstr "הגדרת טווחי זמנים. אנשי קשר פעילים בחלון הנוכחי נבחרים אוטומטית."
+
+#: src/py_phone_caller_ui/templates/base.html:380
+msgid "Escalation Priority:"
+msgstr "עדיפות אסקלציה:"
+
+#: src/py_phone_caller_ui/templates/base.html:380
+msgid ""
+"Priority 0 is Primary Responder, 1 is Secondary, 2-3 Backup, 4 Duty "
+"Supervisor."
+msgstr "עדיפות 0 היא מענה ראשי, 1 משני, 2-3 גיבוי, 4 מפקח תורן."
+
+#: src/py_phone_caller_ui/templates/base.html:381
+msgid "CSV Operations:"
+msgstr "פעולות קובצי CSV:"
+
+#: src/py_phone_caller_ui/templates/base.html:381
+msgid "Import or export entire contact databases at any time."
+msgstr "ייבוא או ייצוא של מסדי נתוני אנשי קשר בכל עת."
+
+#: src/py_phone_caller_ui/templates/base.html:390
+#: src/py_phone_caller_ui/templates/base.html:714
+msgid "Scheduled Calls & Speech"
+msgstr "שיחות מתוזמנות ודיבור"
+
+#: src/py_phone_caller_ui/templates/base.html:395
+msgid "Neural TTS Engine:"
+msgstr "מנוע TTS עצבי:"
+
+#: src/py_phone_caller_ui/templates/base.html:395
+msgid ""
+"Message text is automatically synthesized into clear 8kHz/16kHz audio "
+"using Silero Neural TTS."
+msgstr ""
+"טקסט ההודעה מסונתז אוטומטית לשמע ברור ב-8kHz/16kHz באמצעות Silero Neural "
+"TTS."
+
+#: src/py_phone_caller_ui/templates/base.html:396
+msgid "Audio Caching:"
+msgstr "שמירת שמע במטמון:"
+
+#: src/py_phone_caller_ui/templates/base.html:396
+msgid ""
+"Synthesized audio is cached locally by message hash for instant zero-"
+"latency playback."
+msgstr "שמע מסונתז נשמר מקומית לפי hash של ההודעה להשמעה מיידית ללא השהיה."
+
+#: src/py_phone_caller_ui/templates/base.html:397
+msgid "Smart Recipient Picker:"
+msgstr "בורר נמענים חכם:"
+
+#: src/py_phone_caller_ui/templates/base.html:397
+msgid ""
+"Choose a specific contact or select \"Use current On-call\" to resolve "
+"on-duty responders."
+msgstr "בחר איש קשר מסוים או לחץ על ״השתמש בכונן הנוכחי״ לאיתור הכונן התורן."
+
+#: src/py_phone_caller_ui/templates/base.html:406
+#: src/py_phone_caller_ui/templates/base.html:715
+msgid "Managed Calls & DTMF"
+msgstr "שיחות מנוהלות ו-DTMF"
+
+#: src/py_phone_caller_ui/templates/base.html:411
+msgid "Asterisk ARI Integration:"
+msgstr "שילוב Asterisk ARI:"
+
+#: src/py_phone_caller_ui/templates/base.html:411
+msgid ""
+"Channels are initiated via Asterisk REST Interface and placed in Stasis "
+"bridge."
+msgstr "ערוצים נפתחים באמצעות ממשק Asterisk REST ומנותבים לגשר Stasis."
+
+#: src/py_phone_caller_ui/templates/base.html:412
+msgid "DTMF 1 Acknowledgment:"
+msgstr "אישור באמצעות DTMF 1:"
+
+#: src/py_phone_caller_ui/templates/base.html:412
+msgid ""
+"The recipient presses 1 to acknowledge the alert, marking it acknowledged"
+" and terminating retries."
+msgstr ""
+"הנמען מקיש 1 לאישור ההתראה, דבר המסמן אותה כמאושרת ומפסיק ניסיונות חיוג "
+"חוזרים."
+
+#: src/py_phone_caller_ui/templates/base.html:413
+msgid "Automatic Retries:"
+msgstr "ניסיונות חיוג אוטומטיים:"
+
+#: src/py_phone_caller_ui/templates/base.html:413
+msgid ""
+"Unanswered calls automatically retry according to retry count and backoff"
+" configuration."
+msgstr ""
+"שיחות שלא נענו מחויגות שוב אוטומטית לפי מספר הניסיונות ומרווח ההמתנה "
+"שהוגדרו."
+
+#: src/py_phone_caller_ui/templates/base.html:422
+#: src/py_phone_caller_ui/templates/base.html:716
+msgid "SMS & GSM Modems"
+msgstr "הודעות SMS ומודמי GSM"
+
+#: src/py_phone_caller_ui/templates/base.html:427
+msgid "On-Premise Hardware Modems:"
+msgstr "מודמי חומרה מקומיים:"
+
+#: src/py_phone_caller_ui/templates/base.html:427
+msgid ""
+"SMS is dispatched directly via serial AT commands (/dev/ttyUSB) without "
+"external dependencies."
+msgstr "SMS משוגר ישירות דרך פקודות AT טוריות (/dev/ttyUSB) ללא תלות חיצונית."
+
+#: src/py_phone_caller_ui/templates/base.html:428
+msgid "Carrier Failover:"
+msgstr "מעבר ספק גיבוי:"
+
+#: src/py_phone_caller_ui/templates/base.html:428
+msgid ""
+"If GSM signal is lost or modem fails, failover to secondary gateway (e.g."
+" Twilio) triggers automatically."
+msgstr ""
+"במקרה של אובדן קליטת GSM או תקלת מודם, מתבצע מעבר אוטומטי לשער גיבוי "
+"(למשל: Twilio)."
+
+#: src/py_phone_caller_ui/templates/base.html:429
+msgid "Full Delivery Tracking:"
+msgstr "מעקב מסירה מלא:"
+
+#: src/py_phone_caller_ui/templates/base.html:429
+msgid ""
+"View outbound SMS logs, delivery statuses, carrier metadata, and "
+"timestamps in real time."
+msgstr "צפייה ביומני SMS יוצאים, סטטוסי מסירה, נתוני ספק וחותמות זמן בזמן אמת."
+
+#: src/py_phone_caller_ui/templates/base.html:438
+#: src/py_phone_caller_ui/templates/base.html:717
+msgid "PBX Events & Telephony Stream"
+msgstr "אירועי מרכזייה וזרם טלפוניה"
+
+#: src/py_phone_caller_ui/templates/base.html:443
+msgid "WebSocket Event Feed:"
+msgstr "הזנת אירועי WebSocket:"
+
+#: src/py_phone_caller_ui/templates/base.html:443
+msgid ""
+"Real-time feed of Asterisk ARI events including StasisStart, "
+"ChannelDtmfReceived, and ChannelDestroyed."
+msgstr ""
+"זרם אירועי Asterisk ARI בזמן אמת, כולל StasisStart, ChannelDtmfReceived "
+"ו-ChannelDestroyed."
+
+#: src/py_phone_caller_ui/templates/base.html:444
+msgid "Troubleshooting Audits:"
+msgstr "ביקורת ואיתור תקלות:"
+
+#: src/py_phone_caller_ui/templates/base.html:444
+msgid ""
+"Use the event timeline to diagnose call setup delays, SIP trunk "
+"responses, and DTMF tones."
+msgstr ""
+"שימוש בציר הזמן של האירועים לאבחון עיכובי הקמת שיחה, תגובות ערוץ SIP "
+"וצלילי DTMF."
+
+#: src/py_phone_caller_ui/templates/base.html:453
+#: src/py_phone_caller_ui/templates/base.html:712
+msgid "Prometheus & Webhook Triggering"
+msgstr "הפעלת התראות מ-Prometheus ו-Webhook"
+
+#: src/py_phone_caller_ui/templates/base.html:458
+msgid "Alertmanager Receiver:"
+msgstr "מקלט Alertmanager:"
+
+#: src/py_phone_caller_ui/templates/base.html:458
+msgid "Configure Alertmanager to forward firing alerts to the webhook service:"
+msgstr "הגדר את Alertmanager להעברת התראות פעילות לשירות ה-webhook:"
+
+#: src/py_phone_caller_ui/templates/base.html:462
+msgid ""
+"Incoming alerts automatically resolve duty on-call contacts, synthesize "
+"speech, and initiate emergency phone calls."
+msgstr ""
+"התראות נכנסות מפענחות אוטומטית את הכוננים התורנים, מסנתזות קול ויוזמות "
+"שיחות חירום."
+
+#: src/py_phone_caller_ui/templates/base.html:471
+msgid "Need to test right now?"
+msgstr "רוצה לבדוק עכשיו?"
+
+#: src/py_phone_caller_ui/templates/base.html:472
+msgid "Send a live test call or SMS from the diagnostics console."
+msgstr "שלח שיחת בדיקה או הודעת SMS חיה ממסוף האבחון."
+
+#: src/py_phone_caller_ui/templates/base.html:474
+msgid "Open Diagnostics Console"
+msgstr "פתח מסוף אבחון"
+

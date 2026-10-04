@@ -18,7 +18,7 @@
 body {
     background: radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 32rem),
     linear-gradient(180deg, #f8fbff 0%, #eef4ff 46%, #f8fafc 100%);
-    font-family: 'Segoe UI', system-ui, -apple-system, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'SimHei', 'Noto Sans Devanagari', 'Nirmala UI', 'Lohit Devanagari', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
+    font-family: 'Segoe UI', system-ui, -apple-system, 'Noto Sans', 'Noto Sans Arabic', 'Noto Sans Hebrew', 'Noto Sans CJK SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'SimHei', 'Noto Sans Devanagari', 'Nirmala UI', 'Lohit Devanagari', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
     color: var(--ink-color);
 }
 
@@ -863,4 +863,57 @@ button, input, select, textarea, .dropdown-menu, .nav-link, .navbar-brand {
 [data-bs-theme="dark"] .help-topic-card:hover {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     border-color: #475569 !important;
+}
+
+
+/* ==========================================================================
+   Right-To-Left (RTL) Layout Enhancements (Hebrew & Arabic)
+   ========================================================================== */
+html[dir="rtl"] body {
+    text-align: right;
+}
+
+html[dir="rtl"] .dropdown-menu {
+    text-align: right;
+}
+
+html[dir="rtl"] .dropdown-menu-end {
+    right: auto !important;
+    left: 0 !important;
+}
+
+html[dir="rtl"] .me-1 { margin-left: 0.25rem !important; margin-right: 0 !important; }
+html[dir="rtl"] .me-2 { margin-left: 0.5rem !important; margin-right: 0 !important; }
+html[dir="rtl"] .me-3 { margin-left: 1rem !important; margin-right: 0 !important; }
+html[dir="rtl"] .ms-1 { margin-right: 0.25rem !important; margin-left: 0 !important; }
+html[dir="rtl"] .ms-2 { margin-right: 0.5rem !important; margin-left: 0 !important; }
+html[dir="rtl"] .ms-3 { margin-right: 1rem !important; margin-left: 0 !important; }
+html[dir="rtl"] .ms-auto { margin-right: auto !important; margin-left: 0 !important; }
+html[dir="rtl"] .me-auto { margin-left: auto !important; margin-right: 0 !important; }
+html[dir="rtl"] .text-start { text-align: right !important; }
+html[dir="rtl"] .text-end { text-align: left !important; }
+
+html[dir="rtl"] .form-select,
+html[dir="rtl"] select {
+    background-position: left 0.75rem center !important;
+    padding-right: 0.75rem !important;
+    padding-left: 2.25rem !important;
+}
+
+html[dir="rtl"] .help-fab {
+    right: auto;
+    left: 1.5rem;
+}
+
+html[dir="rtl"] .help-offcanvas {
+    border-left: none;
+    border-right: 1px solid var(--border-soft);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.12);
+}
+
+[data-bs-theme="dark"] html[dir="rtl"] .help-offcanvas,
+html[dir="rtl"][data-bs-theme="dark"] .help-offcanvas {
+    border-left: none;
+    border-right: 1px solid #334155;
+    box-shadow: 10px 0 35px rgba(0, 0, 0, 0.5);
 }

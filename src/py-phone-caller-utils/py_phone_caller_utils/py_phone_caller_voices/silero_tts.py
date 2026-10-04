@@ -38,6 +38,20 @@ MODEL_FILENAMES = {
 _MODEL_CACHE = {}
 
 
+def resolve_device(requested_device: str = "auto") -> str:
+    """
+    Resolves compute device ('cuda' or 'cpu').
+    If 'auto', uses 'cuda' when available, else 'cpu'.
+    """
+    req = (requested_device or "auto").lower().strip()
+    if req == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if req == "cuda" and not torch.cuda.is_available():
+        logger.warning("CUDA requested but not available. Falling back to CPU.")
+        return "cpu"
+    return req
+
+
 def resolve_silero_model_path(lang: str = "en", model_path: str = None) -> str:
     """
     Resolves the filesystem path to the Silero TTS checkpoint for the given language.
@@ -118,16 +132,18 @@ def resolve_silero_model_path(lang: str = "en", model_path: str = None) -> str:
     return None
 
 
-def load_silero_model(model_path: str, device: str = "cpu"):
+def load_silero_model(model_path: str, device: str = "auto"):
     """
     Loads Silero TTS model from a local .pt checkpoint using torch.package or torch.jit.
     Cached in memory for zero cold-start latency.
     """
-    if model_path in _MODEL_CACHE:
-        return _MODEL_CACHE[model_path]
+    actual_device = resolve_device(device)
+    cache_key = f"{model_path}:{actual_device}"
+    if cache_key in _MODEL_CACHE:
+        return _MODEL_CACHE[cache_key]
 
-    logger.info(f"Loading Silero model from {model_path} onto {device}...")
-    torch_device = torch.device(device)
+    logger.info(f"Loading Silero model from {model_path} onto {actual_device}...")
+    torch_device = torch.device(actual_device)
 
     try:
         importer = torch.package.PackageImporter(model_path)
@@ -139,8 +155,8 @@ def load_silero_model(model_path: str, device: str = "cpu"):
     if hasattr(model, "to"):
         model.to(torch_device)
 
-    _MODEL_CACHE[model_path] = model
-    logger.info("Silero model loaded successfully.")
+    _MODEL_CACHE[cache_key] = model
+    logger.info(f"Silero model loaded successfully on {actual_device}.")
     return model
 
 
@@ -169,7 +185,7 @@ def text_to_speech_silero(
     sample_rate: int = 8000,
     speed: float = 1.0,
     model_path: str = None,
-    device: str = "cpu",
+    device: str = "auto",
 ) -> None:
     """
     Synthesize audio using Silero TTS and write 16-bit mono PCM WAV for Asterisk.
@@ -186,14 +202,15 @@ def text_to_speech_silero(
             f"Silero model for '{clean_lang}' not found. Searched in: {model_path or 'default paths'}"
         )
 
-    model = load_silero_model(resolved_path, device=device)
+    actual_device = resolve_device(device)
+    model = load_silero_model(resolved_path, device=actual_device)
 
     # Silero native sample rates are 8000, 24000, 48000.
     native_sr = sample_rate if sample_rate in (8000, 24000, 48000) else 8000
 
     logger.info(
         f"Synthesizing Silero speech: lang={clean_lang}, speaker={target_speaker}, "
-        f"native_sr={native_sr}, target_sr={sample_rate}, speed={speed}"
+        f"native_sr={native_sr}, target_sr={sample_rate}, speed={speed}, device={actual_device}"
     )
 
     try:
@@ -286,8 +303,8 @@ def parse_arguments():
     parser.add_argument(
         "--device",
         type=str,
-        default="cpu",
-        help="Inference device ('cpu' or 'cuda')",
+        default="auto",
+        help="Inference device ('auto', 'cpu', or 'cuda')",
     )
 
     return parser.parse_args()

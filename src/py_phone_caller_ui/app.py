@@ -3,7 +3,7 @@ Py Phone Caller UI application.
 
 Flask-based web UI for managing calls, schedules, users, WS events, address
 book, and SMS. Integrates with the backend services and exposes multiple blueprints.
-Features full internationalization (i18n) across 8 locales via Flask-Babel
+Features full internationalization (i18n) across 10 locales via Flask-Babel
 and a real-time NOC Telemetry Dashboard.
 """
 
@@ -79,14 +79,16 @@ app.config["SESSION_PERMANENT"] = False
 
 # i18n & Locales Configuration
 SUPPORTED_LOCALES = {
-    "en": {"name": "English", "flag": "🇬🇧"},
-    "es": {"name": "Español", "flag": "🇪🇸"},
-    "it": {"name": "Italiano", "flag": "🇮🇹"},
-    "de": {"name": "Deutsch", "flag": "🇩🇪"},
-    "fr": {"name": "Français", "flag": "🇫🇷"},
-    "ru": {"name": "Русский", "flag": "🇷🇺"},
-    "zh": {"name": "中文 (Chinese)", "flag": "🇨🇳"},
-    "hi": {"name": "हिन्दी (Hindi)", "flag": "🇮🇳"},
+    "en": {"name": "English", "flag": "🇬🇧", "dir": "ltr"},
+    "es": {"name": "Español", "flag": "🇪🇸", "dir": "ltr"},
+    "it": {"name": "Italiano", "flag": "🇮🇹", "dir": "ltr"},
+    "de": {"name": "Deutsch", "flag": "🇩🇪", "dir": "ltr"},
+    "fr": {"name": "Français", "flag": "🇫🇷", "dir": "ltr"},
+    "ru": {"name": "Русский", "flag": "🇷🇺", "dir": "ltr"},
+    "zh": {"name": "中文 (Chinese)", "flag": "🇨🇳", "dir": "ltr"},
+    "hi": {"name": "हिन्दी (Hindi)", "flag": "🇮🇳", "dir": "ltr"},
+    "he": {"name": "עברית (Hebrew)", "flag": "🇮🇱", "dir": "rtl"},
+    "ar": {"name": "العربية (Arabic)", "flag": "🇸🇦", "dir": "rtl"},
 }
 
 LOCALE_ALIASES = {
@@ -114,6 +116,14 @@ LOCALE_ALIASES = {
     "en-us": "en",
     "en_gb": "en",
     "en-gb": "en",
+    "he_il": "he",
+    "he-il": "he",
+    "ar_sa": "ar",
+    "ar-sa": "ar",
+    "ar_eg": "ar",
+    "ar-eg": "ar",
+    "ar_ae": "ar",
+    "ar-ae": "ar",
 }
 
 

@@ -341,7 +341,7 @@ def test_sms_export_csv(mock_select_sms, client):
 # =========================================================================
 
 def test_set_locale_endpoint_and_cookie(client):
-    for lang in ["it", "es", "de", "fr", "ru", "zh", "hi", "en"]:
+    for lang in ["it", "es", "de", "fr", "ru", "zh", "hi", "he", "ar", "en"]:
         response = client.get(f"/set_locale/{lang}")
         assert response.status_code == 302
         cookie_header = response.headers.get("Set-Cookie", "")
@@ -380,6 +380,46 @@ def test_home_page_renders_noc_dashboard_with_translations(mock_metrics, client)
         assert "Chiamate gestite" in content
         assert "42" in content
         assert "83.3%" in content
+
+
+@patch("py_phone_caller_ui.home.get_noc_dashboard_metrics", new_callable=AsyncMock)
+def test_hebrew_arabic_french_rendering_and_rtl(mock_metrics, client):
+    import datetime
+    from datetime import timezone
+    mock_metrics.return_value = {
+        "total_calls": 10,
+        "ack_count": 8,
+        "ack_rate": 80.0,
+        "heard_count": 1,
+        "escalated_count": 1,
+        "in_flight_count": 0,
+        "total_sms": 5,
+        "sms_delivered": 5,
+        "sms_failed": 0,
+        "sms_rate": 100.0,
+        "is_gsm": True,
+        "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+    }
+
+    test_cases = [
+        ("he", "rtl", "שיחות מנוהלות"),
+        ("ar", "rtl", "المكالمات المدارة"),
+        ("fr", "ltr", "Appels gérés"),
+    ]
+
+    for lang, expected_dir, expected_text in test_cases:
+        with client.session_transaction() as sess:
+            sess["_user_id"] = "1"
+            sess["_fresh"] = True
+            sess["locale"] = lang
+
+        with patch("flask_login.utils._get_user") as mock_user:
+            mock_user.return_value = MagicMock(is_authenticated=True)
+            response = client.get("/")
+            assert response.status_code == 200
+            html = response.data.decode("utf-8")
+            assert f'dir="{expected_dir}"' in html, f'Expected dir="{expected_dir}" for {lang}'
+            assert expected_text in html, f'Expected "{expected_text}" in html for {lang}'
 
 
 @patch("py_phone_caller_ui.home.get_noc_dashboard_metrics", new_callable=AsyncMock)
