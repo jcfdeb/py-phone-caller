@@ -442,3 +442,31 @@ def test_missing_model_fallback_silero():
         assert "--lang" in cmd
         idx = cmd.index("--lang")
         assert cmd[idx + 1] == SILERO_LANG
+
+
+@pytest.mark.asyncio
+async def test_get_languages_endpoint(cli):
+    resp = await cli.get("/languages")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "active_engine" in data
+    assert "default_language" in data
+    assert "languages" in data
+    assert isinstance(data["languages"], list)
+    assert len(data["languages"]) > 0
+    assert "installed_models" in data
+    default_items = [l for l in data["languages"] if l.get("is_default")]
+    assert len(default_items) == 1
+    assert default_items[0]["code"] == data["default_language"]
+
+
+def test_scan_installed_languages_structure():
+    from src.generate_audio.generate_audio import scan_installed_languages
+    result = scan_installed_languages()
+    assert result["active_engine"] in ["facebook_mms", "piper_tts", "kokoro_tts", "silero_tts", "google_gtts", "aws_polly"]
+    assert isinstance(result["languages"], list)
+    assert "installed_models" in result
+    assert "facebook_mms" in result["installed_models"]
+    assert "piper_tts" in result["installed_models"]
+    assert "kokoro_tts" in result["installed_models"]
+    assert "silero_tts" in result["installed_models"]

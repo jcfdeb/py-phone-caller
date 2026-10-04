@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}py-phone-caller Address Book{% endblock %}
+{% block title %}py-phone-caller {{ _('Address Book') }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid main-container px-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
-        <h2 class="page-header mb-0 text-start">Address Book</h2>
+        <h2 class="page-header mb-0 text-start">{{ _('Address Book') }}</h2>
         <div class="d-flex gap-2 mt-2 mt-md-0 flex-wrap">
             <a class="btn btn-outline-primary" href="{{ address_book_calendar_url }}">
-                <i class="bi bi-calendar3 me-1"></i> Show Calendar
+                <i class="bi bi-calendar3 me-1"></i> {{ _('Show Calendar') }}
             </a>
             <div class="dropdown">
                 <button class="btn btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-file-earmark-excel me-1"></i> CSV Ops
+                    <i class="bi bi-file-earmark-excel me-1"></i> {{ _('CSV Ops') }}
                 </button>
                 <ul class="dropdown-menu shadow-sm">
-                    <li><a class="dropdown-item" href="{{ url_for('address_book_blueprint.export_contacts_csv') }}"><i class="bi bi-download me-2"></i>Export Contacts</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('address_book_blueprint.export_contacts_csv') }}"><i class="bi bi-download me-2"></i>{{ _('Export Contacts') }}</a></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="#" onclick="document.getElementById('ab_import_file').click()"><i class="bi bi-upload me-2"></i>Import Contacts</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="document.getElementById('ab_import_file').click()"><i class="bi bi-upload me-2"></i>{{ _('Import Contacts') }}</a></li>
                 </ul>
             </div>
             <input type="file" id="ab_import_file" class="d-none" accept=".csv,text/csv" onchange="handleABImport(event)">
@@ -25,7 +25,7 @@
                 <i class="bi bi-question-circle me-1"></i> {{ _('On-Call Guide') }}
             </button>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
-                <i class="bi bi-person-plus me-1"></i> Add Contact
+                <i class="bi bi-person-plus me-1"></i> {{ _('Add Contact') }}
             </button>
         </div>
     </div>
@@ -37,32 +37,32 @@
                 <div class="col-md-4">
                     <div class="input-group">
                         <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
-                        <input class="form-control border-start-0 ps-0" type="text" name="search" value="{{ search_query }}" placeholder="Search contacts...">
+                        <input class="form-control border-start-0 ps-0" type="text" name="search" value="{{ search_query }}" placeholder="{{ _('Search contacts...') }}">
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="input-group input-group-sm h-100">
-                        <label class="input-group-text bg-light border-end-0" for="sort_by">Sort by</label>
+                        <label class="input-group-text bg-light border-end-0" for="sort_by">{{ _('Sort by') }}</label>
                         <select class="form-select border-start-0" name="sort_by" id="sort_by">
-                            <option value="created_time" {% if sort_by=='created_time' %}selected{% endif %}>Created</option>
-                            <option value="name" {% if sort_by=='name' %}selected{% endif %}>Name</option>
-                            <option value="phone_number" {% if sort_by=='phone_number' %}selected{% endif %}>Phone</option>
-                            <option value="enabled" {% if sort_by=='enabled' %}selected{% endif %}>Enabled</option>
+                            <option value="created_time" {% if sort_by=='created_time' %}selected{% endif %}>{{ _('Created') }}</option>
+                            <option value="name" {% if sort_by=='name' %}selected{% endif %}>{{ _('Name') }}</option>
+                            <option value="phone_number" {% if sort_by=='phone_number' %}selected{% endif %}>{{ _('Phone') }}</option>
+                            <option value="enabled" {% if sort_by=='enabled' %}selected{% endif %}>{{ _('Enabled') }}</option>
                         </select>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="input-group input-group-sm h-100">
-                        <label class="input-group-text bg-light border-end-0" for="sort_order">Order</label>
+                        <label class="input-group-text bg-light border-end-0" for="sort_order">{{ _('Order') }}</label>
                         <select class="form-select border-start-0" name="sort_order" id="sort_order">
-                            <option value="desc" {% if sort_order=='desc' %}selected{% endif %}>Descending</option>
-                            <option value="asc" {% if sort_order=='asc' %}selected{% endif %}>Ascending</option>
+                            <option value="desc" {% if sort_order=='desc' %}selected{% endif %}>{{ _('Descending') }}</option>
+                            <option value="asc" {% if sort_order=='asc' %}selected{% endif %}>{{ _('Ascending') }}</option>
                         </select>
                     </div>
                 </div>
                 <div class="col-md-2">
                     <button class="btn btn-secondary w-100 d-flex align-items-center justify-content-center h-100" type="submit">
-                        <i class="bi bi-filter me-1"></i> Filter
+                        <i class="bi bi-filter me-1"></i> {{ _('Filter') }}
                     </button>
                 </div>
             </form>
@@ -76,8 +76,8 @@
                 <th>{{ _('Contact Name') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('First and last name of the responder') }}"></i></th>
                 <th>{{ _('Phone Number') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('E.164 formatted number dialed for voice calls and SMS') }}"></i></th>
                 <th class="text-center">{{ _('Status') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Only active contacts receive automated alerts') }}"></i></th>
-                <th>Created</th>
-                <th class="text-end">Actions</th>
+                <th>{{ _('Created') }}</th>
+                <th class="text-end">{{ _('Actions') }}</th>
             </tr>
             </thead>
             <tbody>
@@ -90,9 +90,9 @@
                     <td><code class="text-primary">{{ c.get('phone_number') }}</code></td>
                     <td class="text-center">
                         {% if c.get('enabled') %}
-                            <span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle">{{ _('Active') }}</span>
                         {% else %}
-                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Disabled</span>
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ _('Disabled') }}</span>
                         {% endif %}
                     </td>
                     <td class="small text-muted">{{ c.get('created_time') }}</td>
@@ -125,7 +125,7 @@
             <tr>
                 <td colspan="5" class="text-center py-5 text-muted">
                     <i class="bi bi-person-x fs-1 d-block mb-2"></i>
-                    No contacts found in address book
+                    {{ _('No contacts found in address book') }}
                 </td>
             </tr>
             {% endif %}
@@ -139,17 +139,17 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus me-2 text-primary"></i>Add New Contact</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus me-2 text-primary"></i>{{ _('Add New Contact') }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Name</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Name') }}</label>
                         <input id="add_name" class="form-control" placeholder="John"/>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Surname</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Surname') }}</label>
                         <input id="add_surname" class="form-control" placeholder="Doe"/>
                     </div>
                     <div class="col-md-6">
@@ -157,30 +157,30 @@
                         <input id="add_phone" class="form-control" placeholder="+39..."/>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Status</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Status') }}</label>
                         <select id="add_enabled" class="form-select">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled</option>
+                            <option value="true">{{ _('Enabled') }}</option>
+                            <option value="false">{{ _('Disabled') }}</option>
                         </select>
                     </div>
                     <div class="col-12">
-                        <label class="form-label fw-bold small text-secondary">Address</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Address') }}</label>
                         <input id="add_address" class="form-control" placeholder="123 Street Name"/>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold small text-secondary">ZIP Code</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('ZIP Code') }}</label>
                         <input id="add_zip_code" class="form-control"/>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold small text-secondary">City</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('City') }}</label>
                         <input id="add_city" class="form-control"/>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold small text-secondary">Country</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Country') }}</label>
                         <input id="add_country" class="form-control"/>
                     </div>
                     <div class="col-12">
-                        <label class="form-label fw-bold small text-secondary">Annotations</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Annotations') }}</label>
                         <textarea id="add_annotations" class="form-control" rows="2" placeholder="Additional notes..."></textarea>
                     </div>
                     
@@ -188,23 +188,23 @@
                         <div class="card bg-light border-0">
                             <div class="card-body">
                                 <h6 class="card-title fw-bold mb-3 d-flex align-items-center">
-                                    <i class="bi bi-clock-history me-2 text-primary"></i>On-call Availability Windows
+                                    <i class="bi bi-clock-history me-2 text-primary"></i>{{ _('On-call Availability Windows') }}
                                 </h6>
                                 <div class="row g-2 align-items-end mb-3">
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">Start Date</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('Start Date') }}</label>
                                         <input type="date" id="avail_start_date" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">Start Time</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('Start Time') }}</label>
                                         <input type="time" id="avail_start_time" step="1" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">End Date</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('End Date') }}</label>
                                         <input type="date" id="avail_end_date" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">End Time</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('End Time') }}</label>
                                         <input type="time" id="avail_end_time" step="1" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
@@ -219,7 +219,7 @@
                                     </div>
                                     <div class="col-md-2">
                                         <button type="button" class="btn btn-primary btn-sm w-100" onclick="addAvailability()">
-                                            <i class="bi bi-plus-lg"></i> Add
+                                            <i class="bi bi-plus-lg"></i> {{ _('Add') }}
                                         </button>
                                     </div>
                                 </div>
@@ -227,10 +227,10 @@
                                     <table class="table table-sm table-hover mb-0">
                                         <thead class="table-light border-bottom">
                                             <tr>
-                                                <th class="ps-3 small">Start (local)</th>
-                                                <th class="small">End (local)</th>
-                                                <th class="small">Priority</th>
-                                                <th class="text-end pe-3 small">Action</th>
+                                                <th class="ps-3 small">{{ _('Start (local)') }}</th>
+                                                <th class="small">{{ _('End (local)') }}</th>
+                                                <th class="small">{{ _('Priority') }}</th>
+                                                <th class="text-end pe-3 small">{{ _('Action') }}</th>
                                             </tr>
                                         </thead>
                                         <tbody id="availability_tbody"></tbody>
@@ -238,7 +238,7 @@
                                 </div>
                                 <div class="d-flex justify-content-between align-items-center">
                                     <small class="text-muted small"><i class="bi bi-info-circle me-1"></i>UTC conversion is automatic. TZ: <span id="tz_name" class="fw-bold"></span></small>
-                                    <button type="button" class="btn btn-link btn-sm text-danger p-0" onclick="clearAvailability()">Clear all</button>
+                                    <button type="button" class="btn btn-link btn-sm text-danger p-0" onclick="clearAvailability()">{{ _('Clear all') }}</button>
                                 </div>
                                 <input type="hidden" id="add_availability" value="[]">
                             </div>
@@ -247,8 +247,8 @@
                 </div>
             </div>
             <div class="modal-footer bg-light border-0">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary px-4" onclick="addContact()">Save Contact</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Cancel') }}</button>
+                <button type="button" class="btn btn-primary px-4" onclick="addContact()">{{ _('Save Contact') }}</button>
             </div>
         </div>
     </div>
@@ -259,18 +259,18 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2 text-primary"></i>Edit Contact</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2 text-primary"></i>{{ _('Edit Contact') }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <input type="hidden" id="edit_id">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Name</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Name') }}</label>
                         <input id="edit_name" class="form-control"/>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Surname</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Surname') }}</label>
                         <input id="edit_surname" class="form-control"/>
                     </div>
                     <div class="col-md-6">
@@ -278,30 +278,30 @@
                         <input id="edit_phone" class="form-control"/>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">Status</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Status') }}</label>
                         <select id="edit_enabled" class="form-select">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled</option>
+                            <option value="true">{{ _('Enabled') }}</option>
+                            <option value="false">{{ _('Disabled') }}</option>
                         </select>
                     </div>
                     <div class="col-12">
-                        <label class="form-label fw-bold small text-secondary">Address</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Address') }}</label>
                         <input id="edit_address" class="form-control"/>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold small text-secondary">ZIP Code</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('ZIP Code') }}</label>
                         <input id="edit_zip_code" class="form-control"/>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold small text-secondary">City</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('City') }}</label>
                         <input id="edit_city" class="form-control"/>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold small text-secondary">Country</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Country') }}</label>
                         <input id="edit_country" class="form-control"/>
                     </div>
                     <div class="col-12">
-                        <label class="form-label fw-bold small text-secondary">Annotations</label>
+                        <label class="form-label fw-bold small text-secondary">{{ _('Annotations') }}</label>
                         <textarea id="edit_annotations" class="form-control" rows="2"></textarea>
                     </div>
                     
@@ -309,23 +309,23 @@
                         <div class="card bg-light border-0">
                             <div class="card-body">
                                 <h6 class="card-title fw-bold mb-3 d-flex align-items-center">
-                                    <i class="bi bi-clock-history me-2 text-primary"></i>On-call Availability Windows
+                                    <i class="bi bi-clock-history me-2 text-primary"></i>{{ _('On-call Availability Windows') }}
                                 </h6>
                                 <div class="row g-2 align-items-end mb-3">
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">Start Date</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('Start Date') }}</label>
                                         <input type="date" id="edit_avail_start_date" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">Start Time</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('Start Time') }}</label>
                                         <input type="time" id="edit_avail_start_time" step="1" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">End Date</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('End Date') }}</label>
                                         <input type="date" id="edit_avail_end_date" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label small mb-1 text-muted">End Time</label>
+                                        <label class="form-label small mb-1 text-muted">{{ _('End Time') }}</label>
                                         <input type="time" id="edit_avail_end_time" step="1" class="form-control form-control-sm">
                                     </div>
                                     <div class="col-md-2">
@@ -340,7 +340,7 @@
                                     </div>
                                     <div class="col-md-2">
                                         <button type="button" class="btn btn-primary btn-sm w-100" onclick="addEditAvailability()">
-                                            <i class="bi bi-plus-lg"></i> Add
+                                            <i class="bi bi-plus-lg"></i> {{ _('Add') }}
                                         </button>
                                     </div>
                                 </div>
@@ -348,10 +348,10 @@
                                     <table class="table table-sm table-hover mb-0">
                                         <thead class="table-light border-bottom">
                                             <tr>
-                                                <th class="ps-3 small">Start (local)</th>
-                                                <th class="small">End (local)</th>
-                                                <th class="small">Priority</th>
-                                                <th class="text-end pe-3 small">Action</th>
+                                                <th class="ps-3 small">{{ _('Start (local)') }}</th>
+                                                <th class="small">{{ _('End (local)') }}</th>
+                                                <th class="small">{{ _('Priority') }}</th>
+                                                <th class="text-end pe-3 small">{{ _('Action') }}</th>
                                             </tr>
                                         </thead>
                                         <tbody id="edit_availability_tbody"></tbody>
@@ -359,7 +359,7 @@
                                 </div>
                                 <div class="d-flex justify-content-between align-items-center">
                                     <small class="text-muted small">TZ: <span id="edit_tz_name" class="fw-bold"></span></small>
-                                    <button type="button" class="btn btn-link btn-sm text-danger p-0" onclick="clearEditAvailability()">Clear all</button>
+                                    <button type="button" class="btn btn-link btn-sm text-danger p-0" onclick="clearEditAvailability()">{{ _('Clear all') }}</button>
                                 </div>
                                 <input type="hidden" id="edit_availability" value="[]">
                             </div>
@@ -368,8 +368,8 @@
                 </div>
             </div>
             <div class="modal-footer bg-light border-0">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary px-4" onclick="saveEdit()">Save Changes</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Cancel') }}</button>
+                <button type="button" class="btn btn-primary px-4" onclick="saveEdit()">{{ _('Save Changes') }}</button>
             </div>
         </div>
     </div>
@@ -451,7 +451,7 @@
                                         <tr>
                                             <td><span class="badge bg-warning text-dark">1</span></td>
                                             <td><strong>{{ _('Secondary Responder') }}</strong></td>
-                                            <td>{{ _('Contact dialed if Primary fails to answer or acknowledge with DTMF 1.') }}</td>
+                                            <td>{{ _('Contact dialed if Primary fails to answer or acknowledge with DTMF 4.') }}</td>
                                         </tr>
                                         <tr>
                                             <td><span class="badge bg-info text-dark">2 - 3</span></td>

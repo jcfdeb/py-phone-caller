@@ -43,3 +43,4 @@ GENERATE_AUDIO_PORT = int(settings.generate_audio.generate_audio_port)
 GENERATE_AUDIO_ERROR = settings.logs.generate_audio_error
 LOG_FORMATTER = settings.logs.log_formatter
 LOG_LEVEL = settings.logs.log_level
+LANGUAGES_ENDPOINT = getattr(settings.generate_audio, "languages_endpoint", "languages")

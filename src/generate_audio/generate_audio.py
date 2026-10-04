@@ -28,6 +28,7 @@ if src_dir not in sys.path:
 
 from concurrent.futures.thread import ThreadPoolExecutor
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 from aiohttp import web
 from py_phone_caller_utils.py_phone_caller_voices.aws_polly import (
@@ -66,6 +67,7 @@ from generate_audio.constants import (
     SILERO_SPEAKER,
     SILERO_SAMPLE_RATE,
     SILERO_PYTHON_INTERPRETER,
+    LANGUAGES_ENDPOINT,
 )
 
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
@@ -315,6 +317,15 @@ def text_to_speech_kokoro_tts(
         "j": "jf_alpha",  # Japanese
         "p": "pf_dora",   # Brazilian Portuguese
         "z": "zf_xiaobei",# Mandarin Chinese
+        # Also map standard 2-letter codes
+        "en": "af_heart",
+        "es": "ef_dora",
+        "fr": "ff_siwis",
+        "hi": "hf_alpha",
+        "it": "if_sara",
+        "ja": "jf_alpha",
+        "pt": "pf_dora",
+        "zh": "zf_xiaobei",
     }
 
     target_lang = language or KOKORO_LANG
@@ -331,6 +342,12 @@ def text_to_speech_kokoro_tts(
         KOKORO_MODELS_FOLDER,
     )
 
+    # Convert 2-letter back to single letter for kokoro CLI if needed
+    kokoro_cli_lang = target_lang
+    kokoro_lang_reverse = {"en": "a", "es": "e", "fr": "f", "hi": "h", "it": "i", "ja": "j", "pt": "p", "zh": "z"}
+    if kokoro_cli_lang in kokoro_lang_reverse:
+        kokoro_cli_lang = kokoro_lang_reverse[kokoro_cli_lang]
+
     cmd = [
         python_interpreter,
         kokoro_script,
@@ -338,7 +355,7 @@ def text_to_speech_kokoro_tts(
         "--voice-name",
         voice_name,
         "--lang",
-        target_lang,
+        kokoro_cli_lang,
         "--speed",
         str(speed),
         "--output",
@@ -541,6 +558,268 @@ async def create_audio(request):
     return web.json_response({"status": status_code, "cached": False})
 
 
+LANGUAGE_NAMES: Dict[str, str] = {
+    "en": "English",
+    "eng": "English",
+    "en_US": "English (United States)",
+    "en_GB": "English (United Kingdom)",
+    "en-US": "English (United States)",
+    "en-GB": "English (United Kingdom)",
+    "es": "Spanish",
+    "spa": "Spanish",
+    "es_ES": "Spanish (Spain)",
+    "es_MX": "Spanish (Mexico)",
+    "es-ES": "Spanish (Spain)",
+    "it": "Italian",
+    "ita": "Italian",
+    "it_IT": "Italian (Italy)",
+    "it-IT": "Italian (Italy)",
+    "fr": "French",
+    "fra": "French",
+    "fr_FR": "French (France)",
+    "fr-FR": "French (France)",
+    "de": "German",
+    "deu": "German",
+    "de_DE": "German (Germany)",
+    "de-DE": "German (Germany)",
+    "ru": "Russian",
+    "rus": "Russian",
+    "ru_RU": "Russian (Russia)",
+    "ru-RU": "Russian (Russia)",
+    "zh": "Chinese (Mandarin)",
+    "cmn": "Chinese (Mandarin)",
+    "zh_CN": "Chinese (Simplified)",
+    "cmn-CN": "Chinese (Mandarin)",
+    "hi": "Hindi",
+    "hin": "Hindi",
+    "hi_IN": "Hindi (India)",
+    "hi-IN": "Hindi (India)",
+    "indic": "Indic / Hindi",
+    "he": "Hebrew",
+    "heb": "Hebrew",
+    "he_IL": "Hebrew (Israel)",
+    "he-IL": "Hebrew (Israel)",
+    "ar": "Arabic",
+    "ara": "Arabic",
+    "arb": "Arabic (Standard)",
+    "ar_JO": "Arabic (Jordan)",
+    "pt": "Portuguese",
+    "por": "Portuguese",
+    "pt_BR": "Portuguese (Brazil)",
+    "ja": "Japanese",
+    "jpn": "Japanese",
+    "a": "English (American)",
+    "b": "English (British)",
+    "e": "Spanish",
+    "f": "French",
+    "h": "Hindi",
+    "i": "Italian",
+    "j": "Japanese",
+    "p": "Portuguese (Brazil)",
+    "z": "Chinese (Mandarin)",
+}
+
+
+def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
+    """
+    Scans the pre-trained models directory for installed weights and configs
+    across all supported engines, and returns both active engine language options
+    and full installed model inventories.
+    """
+    if base_models_dir is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        base_models_dir = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
+
+    installed: Dict[str, Any] = {
+        "facebook_mms": [],
+        "piper_tts": [],
+        "kokoro_tts": {"ready": False, "voices": []},
+        "silero_tts": [],
+    }
+
+    # 1. Facebook MMS
+    fb_dir = os.path.join(base_models_dir, FACEBOOK_MMS_MODELS_FOLDER)
+    if os.path.isdir(fb_dir):
+        for entry in sorted(os.listdir(fb_dir)):
+            sub = os.path.join(fb_dir, entry)
+            if os.path.isdir(sub) and entry.startswith("mms-tts-"):
+                code = entry.replace("mms-tts-", "").strip()
+                cfg = os.path.join(sub, "config.json")
+                if os.path.exists(cfg):
+                    installed["facebook_mms"].append({
+                        "code": code,
+                        "name": LANGUAGE_NAMES.get(code, code.capitalize()),
+                        "model": entry,
+                        "ready": True,
+                    })
+
+    # 2. Piper TTS
+    piper_dir = os.path.join(base_models_dir, PIPER_MODELS_FOLDER)
+    if os.path.isdir(piper_dir):
+        for entry in sorted(os.listdir(piper_dir)):
+            sub = os.path.join(piper_dir, entry)
+            if os.path.isdir(sub):
+                onnx_file = os.path.join(sub, f"{entry}.onnx")
+                if os.path.exists(onnx_file):
+                    installed["piper_tts"].append({
+                        "code": entry,
+                        "name": LANGUAGE_NAMES.get(entry, entry),
+                        "model": f"{entry}.onnx",
+                        "ready": True,
+                    })
+            elif entry.endswith(".onnx"):
+                code = entry[:-5]
+                installed["piper_tts"].append({
+                    "code": code,
+                    "name": LANGUAGE_NAMES.get(code, code),
+                    "model": entry,
+                    "ready": True,
+                })
+
+    # 3. Kokoro TTS
+    kokoro_dir = os.path.join(base_models_dir, KOKORO_MODELS_FOLDER)
+    if os.path.isdir(kokoro_dir):
+        pth = os.path.join(kokoro_dir, KOKORO_MODEL_FILENAME)
+        cfg = os.path.join(kokoro_dir, "config.json")
+        is_ready = os.path.exists(pth) or os.path.exists(cfg)
+        voices: List[str] = []
+        voices_dir = os.path.join(kokoro_dir, "voices")
+        if os.path.isdir(voices_dir):
+            for v in sorted(os.listdir(voices_dir)):
+                if v.endswith(".pt"):
+                    voices.append(v[:-3])
+        installed["kokoro_tts"] = {
+            "model": KOKORO_MODEL_FILENAME,
+            "ready": is_ready,
+            "voices": voices,
+        }
+
+    # 4. Silero TTS
+    silero_dir = os.path.join(base_models_dir, SILERO_MODELS_FOLDER)
+    if os.path.isdir(silero_dir):
+        for entry in sorted(os.listdir(silero_dir)):
+            sub = os.path.join(silero_dir, entry)
+            if os.path.isdir(sub):
+                pt_files = [f for f in os.listdir(sub) if f.endswith(".pt")]
+                if pt_files:
+                    installed["silero_tts"].append({
+                        "code": entry,
+                        "name": LANGUAGE_NAMES.get(entry, entry.capitalize()),
+                        "model": pt_files[0],
+                        "ready": True,
+                    })
+            elif entry.endswith(".pt") and entry.startswith("v"):
+                parts = entry[:-3].split("_")
+                if len(parts) >= 2:
+                    code = parts[1]
+                    installed["silero_tts"].append({
+                        "code": code,
+                        "name": LANGUAGE_NAMES.get(code, code.capitalize()),
+                        "model": entry,
+                        "ready": True,
+                    })
+
+    # Build active engine languages list
+    engine_val = TTS_ENGINE.value
+    active_langs: List[Dict[str, Any]] = []
+    default_lang = ""
+
+    if TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
+        default_lang = FACEBOOK_MMS_LANGUAGE_CODE
+        active_langs = list(installed["facebook_mms"])
+        if not any(item["code"] == default_lang for item in active_langs):
+            active_langs.insert(0, {
+                "code": default_lang,
+                "name": LANGUAGE_NAMES.get(default_lang, default_lang.capitalize()),
+                "model": f"mms-tts-{default_lang}",
+                "ready": True,
+            })
+    elif TTS_ENGINE == TTSEngine.PIPER:
+        default_lang = PIPER_LANGUAGE_CODE
+        active_langs = list(installed["piper_tts"])
+        if not any(item["code"] == default_lang for item in active_langs):
+            active_langs.insert(0, {
+                "code": default_lang,
+                "name": LANGUAGE_NAMES.get(default_lang, default_lang),
+                "model": f"{default_lang}.onnx",
+                "ready": True,
+            })
+    elif TTS_ENGINE == TTSEngine.KOKORO:
+        default_lang = KOKORO_LANG
+        for v in installed["kokoro_tts"]["voices"]:
+            lang_code = "en"
+            if v.startswith("ff_"):
+                lang_code = "fr"
+            elif v.startswith("ef_") or v.startswith("em_"):
+                lang_code = "es"
+            elif v.startswith("if_") or v.startswith("im_"):
+                lang_code = "it"
+            elif v.startswith("zf_") or v.startswith("zm_"):
+                lang_code = "zh"
+            elif v.startswith("jf_") or v.startswith("jm_"):
+                lang_code = "ja"
+            elif v.startswith("hf_") or v.startswith("hm_"):
+                lang_code = "hi"
+            active_langs.append({
+                "code": lang_code,
+                "voice": v,
+                "name": f"{LANGUAGE_NAMES.get(lang_code, lang_code.capitalize())} ({v})",
+                "ready": installed["kokoro_tts"]["ready"],
+            })
+        if not active_langs:
+            active_langs.append({
+                "code": default_lang,
+                "name": LANGUAGE_NAMES.get(default_lang, "English (American)"),
+                "ready": installed["kokoro_tts"]["ready"],
+            })
+    elif TTS_ENGINE == TTSEngine.SILERO:
+        default_lang = SILERO_LANG
+        active_langs = list(installed["silero_tts"])
+        if not any(item["code"] == default_lang for item in active_langs):
+            active_langs.insert(0, {
+                "code": default_lang,
+                "name": LANGUAGE_NAMES.get(default_lang, default_lang.capitalize()),
+                "model": f"v3_{default_lang}.pt",
+                "ready": True,
+            })
+    elif TTS_ENGINE == TTSEngine.GOOGLE_GTTS:
+        default_lang = "en"
+        for c in ["en", "es", "it", "fr", "de", "ru", "zh", "hi", "he", "ar"]:
+            active_langs.append({
+                "code": c,
+                "name": LANGUAGE_NAMES.get(c, c.capitalize()),
+                "ready": True,
+            })
+    elif TTS_ENGINE == TTSEngine.AWS_POLLY:
+        default_lang = "en-US"
+        for c in ["en-US", "es-ES", "it-IT", "fr-FR", "de-DE", "ru-RU", "cmn-CN", "hi-IN", "he-IL", "arb"]:
+            active_langs.append({
+                "code": c,
+                "name": LANGUAGE_NAMES.get(c, c),
+                "ready": True,
+            })
+
+    for item in active_langs:
+        item["engine"] = engine_val
+        item["is_default"] = (item["code"] == default_lang)
+
+    return {
+        "active_engine": engine_val,
+        "default_language": default_lang,
+        "languages": active_langs,
+        "installed_models": installed,
+    }
+
+
+async def get_languages(request: web.Request) -> web.Response:
+    """
+    Returns the list of available languages for the active TTS engine
+    along with installed offline pre-trained models on disk.
+    """
+    result = await asyncio.to_thread(scan_installed_languages)
+    return web.json_response(result)
+
+
 async def ensure_models_present():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     abs_pre_trained_models = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
@@ -651,6 +930,7 @@ async def init_app():
 
     app.router.add_post(f"/{GENERATE_AUDIO_APP_ROUTE}", create_audio)
     app.router.add_get(f"/{IS_AUDIO_READY_ENDPOINT}", is_audio_ready)
+    app.router.add_get(f"/{LANGUAGES_ENDPOINT}", get_languages)
 
     app.router.add_static(
         f"/{SERVING_AUDIO_FOLDER}/",

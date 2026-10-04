@@ -130,10 +130,10 @@ async def schedule_call():
     all_calls = await select_scheduled_calls()
 
     for call in all_calls:
-        if call.get("inserted_at"):
-            call["inserted_at"] = localize_datetime(call["inserted_at"])
+        if call.get("inserted_at"):\
+            call["inserted_at"] = localize_datetime(call.get("inserted_at"))
         if call.get("scheduled_at"):
-            call["scheduled_at"] = localize_datetime(call["scheduled_at"])
+            call["scheduled_at"] = localize_datetime(call.get("scheduled_at"))
 
     selected_calls = dict(enumerate(all_calls))
 
@@ -210,12 +210,14 @@ async def schedule_picker():
         str or dict: "Scheduled OK" on success, or a dictionary with error status and message on failure.
     """
     query_args = request.args.to_dict()
+    lang = query_args.get("language") or query_args.get("lang")
 
     try:
         status_code_scheduler = enqueue_the_call(
             query_args.get("phone"),
             query_args.get("message"),
             f"{query_args.get('scheduled_date')} {query_args.get('scheduled_time')}",
+            lang=lang,
         )
         if status_code_scheduler != 200:
             return {

@@ -124,7 +124,7 @@
                 <!-- Locale Switcher Dropdown -->
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="navbarLocaleDropdown" role="button"
-                       data-bs-toggle="dropdown" aria-expanded="false" title="{{ _('Switch Language: Select from 8 supported locales.') }}">
+                       data-bs-toggle="dropdown" aria-expanded="false" title="{{ _('Switch Language') }}">
                         <span class="me-1">{{ current_locale_meta.flag if current_locale_meta else '🌐' }}</span>
                         <span class="d-none d-xl-inline">{{ current_locale_meta.name if current_locale_meta else 'Language' }}</span>
                     </a>
@@ -252,6 +252,16 @@
                                 <input type="tel" class="form-control font-monospace" id="diagCallPhone" placeholder="+393349246425" value="+393349246425" required>
                             </div>
                             <div class="form-text small">{{ _('E.164 international format (e.g. +393349246425).') }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-body-secondary">
+                                <i class="bi bi-translate me-1 text-info"></i>{{ _('Voice Language') }}
+                            </label>
+                            <select class="form-select" id="diagCallLanguage">
+                                <option value="">{{ _('Loading available languages...') }}</option>
+                            </select>
+                            <div class="form-text small">{{ _('Languages served by the active TTS audio engine.') }}</div>
                         </div>
 
                         <div class="mb-3">
@@ -409,7 +419,7 @@
                 <div id="collapseCalls" class="accordion-collapse collapse" aria-labelledby="headingCalls" data-bs-parent="#helpAccordion">
                     <div class="accordion-body small text-secondary">
                         <p class="mb-2"><strong>{{ _('Asterisk ARI Integration:') }}</strong> {{ _('Channels are initiated via Asterisk REST Interface and placed in Stasis bridge.') }}</p>
-                        <p class="mb-2"><strong>{{ _('DTMF 1 Acknowledgment:') }}</strong> {{ _('The recipient presses 1 to acknowledge the alert, marking it acknowledged and terminating retries.') }}</p>
+                        <p class="mb-2"><strong>{{ _('DTMF 4 Acknowledgment:') }}</strong> {{ _('The recipient presses 4 to acknowledge the alert, marking it acknowledged and terminating retries.') }}</p>
                         <p class="mb-0"><strong>{{ _('Automatic Retries:') }}</strong> {{ _('Unanswered calls automatically retry according to retry count and backoff configuration.') }}</p>
                     </div>
                 </div>
@@ -605,18 +615,57 @@
         resJson.textContent = typeof rawData === 'object' ? JSON.stringify(rawData, null, 2) : String(rawData);
     }
 
+    async function loadAvailableLanguages(selectElementId, defaultSelected = null) {
+        const selectEl = document.getElementById(selectElementId);
+        if (!selectEl) return;
+        try {
+            const resp = await fetch("{{ url_for('home_blueprint.api_languages') }}");
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const languages = data.languages || [];
+            selectEl.innerHTML = '';
+            languages.forEach(l => {
+                const opt = document.createElement('option');
+                opt.value = l.code;
+                const flagPrefix = l.flag ? l.flag + ' ' : '';
+                const defaultSuffix = l.is_default ? ' - {{ _("Default") }}' : '';
+                opt.textContent = (l.flag ? l.flag + " " : "") + l.name + " (" + l.code + ")" + (l.is_default ? " - {{ _('Default') }}" : "");
+                if (defaultSelected) {
+                    if (l.code === defaultSelected) opt.selected = true;
+                } else if (l.is_default) {
+                    opt.selected = true;
+                }
+                selectEl.appendChild(opt);
+            });
+            if (languages.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = 'en';
+                opt.textContent = 'English (en) - {{ _("Default") }}';
+                selectEl.appendChild(opt);
+            }
+        } catch(err) {
+            console.warn('Failed to load languages for ' + selectElementId, err);
+            selectEl.innerHTML = '<option value="en" selected>English (en) - {{ _("Default") }}</option>';
+        }
+    }
+
+    document.getElementById('quickDiagnosticsModal')?.addEventListener('show.bs.modal', function() {
+        loadAvailableLanguages('diagCallLanguage');
+    });
+
     async function handleTestCallSubmit(e) {
         e.preventDefault();
         const btn = document.getElementById('diagCallBtn');
         const phone = document.getElementById('diagCallPhone').value.trim();
         const message = document.getElementById('diagCallMessage').value.trim();
+        const language = document.getElementById('diagCallLanguage') ? document.getElementById('diagCallLanguage').value : '';
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Placing Call...';
         try {
             const resp = await fetch("{{ url_for('home_blueprint.test_call_dispatch') }}", {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({phone, message})
+                body: JSON.stringify({phone, message, language})
             });
             const res = await resp.json();
             if (res.success) {

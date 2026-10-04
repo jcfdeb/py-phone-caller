@@ -116,7 +116,27 @@ async def download_silero_model_async(language_code: str, base_dir: str = None) 
         else:
             dest_dir = base_dir_path / SILERO_MODELS_FOLDER / lang
     else:
-        dest_dir = Path(SILERO_MODELS_BASE_DIR) / SILERO_MODELS_FOLDER / lang
+        # Always locate generate_audio/pre_trained_models/silero_tts
+        target_base = None
+        try:
+            import importlib.util
+            spec = importlib.util.find_spec("generate_audio")
+            if spec and spec.submodule_search_locations:
+                for loc in spec.submodule_search_locations:
+                    candidate = Path(loc) / SILERO_MODELS_BASE_DIR
+                    target_base = candidate
+                    break
+        except Exception:
+            pass
+
+        if not target_base:
+            repo_candidate = Path(__file__).resolve().parents[3] / "generate_audio" / SILERO_MODELS_BASE_DIR
+            if repo_candidate.exists() or repo_candidate.parent.exists():
+                target_base = repo_candidate
+            else:
+                target_base = Path(SILERO_MODELS_BASE_DIR)
+
+        dest_dir = target_base / SILERO_MODELS_FOLDER / lang
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = dest_dir / filename

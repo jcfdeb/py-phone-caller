@@ -8,6 +8,7 @@ real-time Server-Sent Events (SSE) telemetry stream, and diagnostic test dispatc
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Dict
 
 import aiohttp
@@ -116,6 +117,7 @@ async def test_call_dispatch():
     data = request.get_json(silent=True) or request.form
     phone = (data.get("phone") or "").strip()
     message = (data.get("message") or "This is a diagnostic test call from py-phone-caller.").strip()
+    lang = (data.get("language") or data.get("lang") or "").strip()
 
     if not phone:
         return jsonify({"success": False, "error": "Phone number is required."}), 400
@@ -128,6 +130,9 @@ async def test_call_dispatch():
         "phone": phone,
         "message": message,
     }
+    if lang:
+        payload["lang"] = lang
+        payload["language"] = lang
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -179,6 +184,7 @@ async def home():
         logout_url=url_for("home_blueprint.logout"),
     )
 
+
 @home_blueprint.route("/api/audio_proxy/<filename>")
 @login_required
 async def api_audio_proxy(filename: str):
@@ -186,8 +192,6 @@ async def api_audio_proxy(filename: str):
     Proxies TTS audio preview requests from the browser to the generate_audio service.
     Avoids CORS issues and ensures LAN services remain protected.
     """
-    import re
-    # Validate filename to prevent path traversal
     if not re.match(r"^[a-zA-Z0-9_\-.]+\.wav$", filename):
         return jsonify({"error": "Invalid audio filename"}), 400
 
@@ -207,6 +211,38 @@ async def api_audio_proxy(filename: str):
     except Exception as exc:
         logger.warning(f"Audio proxy connection failed for {target_url}: {exc}")
         return jsonify({"error": f"Audio service unreachable: {exc}"}), 502
+
+
+@home_blueprint.route("/api/languages")
+async def api_languages():
+    """
+    Proxies language discovery requests from the browser to generate_audio (/languages).
+    Returns available languages for the active TTS engine with safe fallback.
+    """
+    audio_host = settings.get("generate_audio.generate_audio_host") or "127.0.0.1"
+    audio_port = settings.get("generate_audio.generate_audio_port") or 8082
+    if audio_host in ("192.168.101.17", "192.168.101.111"):
+        audio_host = "127.0.0.1"
+
+    target_url = f"http://{audio_host}:{audio_port}/languages"
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
+            async with session.get(target_url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return jsonify(data)
+                return jsonify({"error": "Failed to fetch languages", "status": resp.status}), resp.status
+    except Exception as exc:
+        logger.warning(f"Languages proxy connection failed for {target_url}: {exc}")
+        default_lang = settings.get("generate_audio.facebook_mms_language_code") or "spa"
+        return jsonify({
+            "active_engine": settings.get("generate_audio.tts_engine", "facebook_mms"),
+            "default_language": default_lang,
+            "languages": [
+                {"code": default_lang, "name": default_lang.upper(), "is_default": True, "ready": True}
+            ],
+            "installed_models": {},
+        })
 
 
 @home_blueprint.route("/api/global_search")

@@ -663,3 +663,88 @@ def test_dark_mode_and_modal_present_in_base(mock_metrics, client):
         assert b"quickDiagnosticsModal" in response.data
         assert b"toggleDarkMode" in response.data
         assert b"wallboard" in response.data
+
+
+@patch("aiohttp.ClientSession.get")
+def test_api_languages_proxy_endpoint(mock_get, client):
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value={
+        "status": "success",
+        "active_engine": "silero_tts",
+        "default_language": "en",
+        "languages": [
+            {"code": "en", "name": "English", "is_default": True, "flag": "🇬🇧"},
+            {"code": "it", "name": "Italian", "is_default": False, "flag": "🇮🇹"},
+        ]
+    })
+    mock_context = AsyncMock()
+    mock_context.__aenter__.return_value = mock_resp
+    mock_context.__aexit__.return_value = None
+    mock_get.return_value = mock_context
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        res = client.get("/api/languages")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["status"] == "success"
+        assert len(data["languages"]) == 2
+        assert data["languages"][1]["code"] == "it"
+
+
+@patch("aiohttp.ClientSession.post")
+def test_test_call_dispatch_with_language(mock_post, client):
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value={"status": 200})
+    mock_context = AsyncMock()
+    mock_context.__aenter__.return_value = mock_resp
+    mock_context.__aexit__.return_value = None
+    mock_post.return_value = mock_context
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        res = client.post("/api/diagnostics/test_call", json={
+            "phone": "+393349246425",
+            "message": "Ciao mondo",
+            "language": "it"
+        })
+        assert res.status_code == 200
+        assert res.get_json()["success"] is True
+        call_kwargs = mock_post.call_args.kwargs
+        assert call_kwargs.get("json", {}).get("lang") == "it"
+        assert call_kwargs.get("json", {}).get("language") == "it"
+
+
+@patch("py_phone_caller_ui.schedule_call.enqueue_the_call")
+def test_schedule_picker_with_language(mock_enqueue, client):
+    mock_enqueue.return_value = {"status": "enqueued"}
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        res = client.get("/schedule_picker", query_string={
+            "phone": "+393349246425",
+            "message": "Scheduled alert",
+            "scheduled_date": "2026-10-05",
+            "scheduled_time": "14:30",
+            "lang": "it"
+        })
+        assert res.status_code == 200
+        assert res.status_code == 200
+        mock_enqueue.assert_called_once()
+        args, kwargs = mock_enqueue.call_args
+        assert args[0] == "+393349246425"
+        assert args[1] == "Scheduled alert"
+        assert kwargs.get("lang") == "it"

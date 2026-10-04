@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Address Book Calendar - py-phone-caller{% endblock %}
+{% block title %}{{ _('On-call Calendar') }} - py-phone-caller{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -80,24 +80,24 @@
 {% block content %}
 <div class="container main-container px-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
-        <h2 class="page-header mb-0 text-start">On-call Calendar</h2>
+        <h2 class="page-header mb-0 text-start">{{ _('On-call Calendar') }}</h2>
         <div class="d-flex gap-2 mt-2 mt-md-0">
             <a class="btn btn-outline-secondary" href="{{ address_book_url }}">
-                <i class="bi bi-list-ul me-1"></i> Back to List
+                <i class="bi bi-list-ul me-1"></i> {{ _('Back to List') }}
             </a>
             <div class="dropdown">
                 <button class="btn btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-file-earmark-excel me-1"></i> CSV Ops
+                    <i class="bi bi-file-earmark-excel me-1"></i> {{ _('CSV Ops') }}
                 </button>
                 <ul class="dropdown-menu shadow-sm">
                     <li>
                         <form method="get" action="{{ url_for('address_book_blueprint.calendar_export_csv') }}">
                             <input type="hidden" name="month" value="{{ month_str }}">
-                            <button type="submit" class="dropdown-item"><i class="bi bi-download me-2"></i>Export Current Month</button>
+                            <button type="submit" class="dropdown-item"><i class="bi bi-download me-2"></i>{{ _('Export Current Month') }}</button>
                         </form>
                     </li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="#" onclick="document.getElementById('import_file').click()"><i class="bi bi-upload me-2"></i>Import Windows</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="document.getElementById('import_file').click()"><i class="bi bi-upload me-2"></i>{{ _('Import Windows') }}</a></li>
                 </ul>
             </div>
             <input type="file" id="import_file" class="d-none" accept=".csv,text/csv" onchange="handleImportCSV(event)">
@@ -119,14 +119,14 @@
             </div>
             <div class="col-md-4 order-1 order-md-2 text-center">
                 <span class="badge bg-light text-dark border">
-                    <i class="bi bi-info-circle me-1 text-primary"></i> Preview uses UTC times
+                    <i class="bi bi-info-circle me-1 text-primary"></i> {{ _('Preview uses UTC times') }}
                 </span>
             </div>
             <div class="col-md-4 order-3 text-md-end">
                 <form class="d-inline-block" method="get" action="{{ address_book_calendar_url }}">
                     <div class="input-group input-group-sm">
                         <input type="month" class="form-control" name="month" value="{{ month_str }}">
-                        <button class="btn btn-primary" type="submit">Jump to Date</button>
+                        <button class="btn btn-primary" type="submit">{{ _('Jump to Date') }}</button>
                     </div>
                 </form>
             </div>
@@ -135,13 +135,13 @@
 
     <div class="calendar-container">
         <div class="row text-center mb-2 g-0">
-            <div class="col"><div class="day-header">Mon</div></div>
-            <div class="col"><div class="day-header">Tue</div></div>
-            <div class="col"><div class="day-header">Wed</div></div>
-            <div class="col"><div class="day-header">Thu</div></div>
-            <div class="col"><div class="day-header">Fri</div></div>
-            <div class="col"><div class="day-header text-danger-emphasis">Sat</div></div>
-            <div class="col"><div class="day-header text-danger-emphasis">Sun</div></div>
+            <div class="col"><div class="day-header">{{ _('Mon') }}</div></div>
+            <div class="col"><div class="day-header">{{ _('Tue') }}</div></div>
+            <div class="col"><div class="day-header">{{ _('Wed') }}</div></div>
+            <div class="col"><div class="day-header">{{ _('Thu') }}</div></div>
+            <div class="col"><div class="day-header">{{ _('Fri') }}</div></div>
+            <div class="col"><div class="day-header text-danger-emphasis">{{ _('Sat') }}</div></div>
+            <div class="col"><div class="day-header text-danger-emphasis">{{ _('Sun') }}</div></div>
         </div>
         <div class="calendar">
             {% for week in weeks %}
@@ -150,7 +150,7 @@
                         <div class="day-cell">
                             <div class="day-num">{{ cell.date.day }}</div>
                             {% if cell.entries|length == 0 %}
-                                <div class="text-muted x-small text-center mt-auto mb-auto fst-italic" style="opacity: 0.5;">No on-call</div>
+                                <div class="text-muted x-small text-center mt-auto mb-auto fst-italic" style="opacity: 0.5;">{{ _('No on-call') }}</div>
                             {% else %}
                                 <div class="entries-wrapper flex-grow-1 overflow-hidden">
                                 {% for e in cell.entries %}

@@ -44,7 +44,7 @@ class DtmfAckPayload(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     asterisk_chan: str = Field(..., min_length=1, description="Unique Asterisk channel or tracking identifier")
-    digit: str = Field(default="1", min_length=1, max_length=4, description="DTMF digit pressed")
+    digit: str = Field(default="4", min_length=1, max_length=4, description="DTMF digit pressed")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of the acknowledgment")
 
 

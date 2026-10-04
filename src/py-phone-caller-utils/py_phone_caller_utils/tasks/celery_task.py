@@ -52,11 +52,15 @@ app.conf.task_routes = {
 
 
 @app.task(bind=True, max_retries=3, default_retry_delay=5)
-def do_this_call(self, phone, message, priority=5):
+def do_this_call(self, phone, message, priority=5, **kwargs):
     """
     Executes a standard scheduled call task by sending a POST request to Asterisk Caller.
     """
     data = {"phone": phone, "message": message}
+    lang = kwargs.get("lang") or kwargs.get("language")
+    if lang:
+        data["lang"] = lang
+        data["language"] = lang
     try:
         response = requests.post(URL, params=data, headers=inject_trace_context(), timeout=30)
         return response.status_code
@@ -75,8 +79,26 @@ def dispatch_emergency_call(self, phone, message):
         response = requests.post(URL, params=data, headers=inject_trace_context(), timeout=15)
         return response.status_code
     except requests.exceptions.RequestException as err:
-        logging.exception(f"Error dispatching emergency P0 call to Asterisk: {err}")
+        logging.exception(f"Error dispatching emergency call: {err}")
         raise self.retry(exc=err)
+
+
+@app.task(bind=True, max_retries=3, default_retry_delay=5)
+def dispatch_async_sms(self, phone, message):
+    """
+    Asynchronously dispatches an SMS via caller_sms service.
+    """
+    from py_phone_caller_utils.config import settings
+    sms_port = getattr(settings.caller_sms, "caller_sms_port", 8085)
+    sms_route = str(getattr(settings.caller_sms, "caller_sms_app_route", "send_sms")).lstrip("/")
+    url = f"http://127.0.0.1:{sms_port}/{sms_route}"
+    try:
+        response = requests.post(url, json={"phone": phone, "message": message}, headers=inject_trace_context(), timeout=15)
+        return response.status_code
+    except requests.exceptions.RequestException as err:
+        logging.exception(f"Error dispatching async SMS: {err}")
+        raise self.retry(exc=err)
+
 
 # Celery Beat Periodic Tasks Configuration
 app.conf.beat_schedule = {
@@ -89,6 +111,7 @@ app.conf.beat_schedule = {
 
 import traceback
 import json
+
 
 @app.task(name="py_phone_caller_utils.tasks.celery_task.record_dead_letter")
 def record_dead_letter(task_id, task_name, queue, payload, exc_str, tb_str):

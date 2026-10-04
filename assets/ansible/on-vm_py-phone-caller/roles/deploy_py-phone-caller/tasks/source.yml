@@ -49,36 +49,69 @@
     - py_phone_caller_git_repo | length == 0
     - py_phone_caller_local_src_path | length > 0
 
-# rsync protects excluded paths from --delete, so the two lists together both
-# keep server-only state (venv, models, rendered config) and skip development
-# noise.
-#
-# --chown sets the service account during the transfer rather than afterwards:
-# the control node's uids mean nothing here, and a recursive chown of the tree
-# would also walk the ~50k files torch installs into the virtualenv.
-- name: Synchronise the local checkout
+# Synchronize application sources from local src/ directly to remote app/
+- name: Synchronise application sources into app directory
   ansible.posix.synchronize:
-    src: "{{ py_phone_caller_local_src_path }}/"
-    dest: "{{ py_phone_caller_install_dir }}/"
+    src: "{{ py_phone_caller_local_src_path }}/src/"
+    dest: "{{ py_phone_caller_src_dir }}/"
     archive: true
     owner: false
     group: false
     delete: true
     compress: true
     use_ssh_args: true
-    rsync_opts: "{{ _ppc_rsync_filters }}"
+    rsync_opts: "{{ _ppc_app_rsync_filters }}"
   vars:
-    # --omit-dir-times: the installation directory holds venv/, bin/ and .uv/
-    # that the checkout does not, so its mtime never matches and rsync would
-    # report a change on every single run.
-    _ppc_rsync_filters: >-
+    _ppc_app_rsync_filters: >-
       {{ ['--chown=' ~ py_phone_caller_user ~ ':' ~ py_phone_caller_group, '--omit-dir-times']
-         + (py_phone_caller_sync_protected + py_phone_caller_sync_excludes)
+         + (['/config/', '/generate_audio/pre_trained_models/', '/generate_audio/audio/'] + py_phone_caller_sync_excludes)
            | map('regex_replace', '^', '--exclude=') | list }}
   become: "{{ py_phone_caller_sync_become | bool }}"
   when:
     - py_phone_caller_git_repo | length == 0
     - py_phone_caller_local_src_path | length > 0
+  notify: Restart py-phone-caller services
+
+# Synchronize top-level project metadata (README, LICENSE, etc.)
+- name: Synchronise root project metadata
+  ansible.posix.synchronize:
+    src: "{{ py_phone_caller_local_src_path }}/"
+    dest: "{{ py_phone_caller_install_dir }}/"
+    archive: true
+    owner: false
+    group: false
+    delete: false
+    compress: true
+    use_ssh_args: true
+    rsync_opts: "{{ _ppc_root_rsync_filters }}"
+  vars:
+    _ppc_root_rsync_filters: >-
+      {{ ['--chown=' ~ py_phone_caller_user ~ ':' ~ py_phone_caller_group, '--omit-dir-times']
+         + (['/src/', '/app/', '/pre_trained_models/', 'pyproject.toml', 'uv.lock'] + py_phone_caller_sync_protected + py_phone_caller_sync_excludes)
+           | map('regex_replace', '^', '--exclude=') | list }}
+  become: "{{ py_phone_caller_sync_become | bool }}"
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Deliver target pyproject.toml with app workspace members
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file', py_phone_caller_local_src_path ~ '/pyproject.toml') | replace('"src/', '"app/') }}
+    dest: "{{ py_phone_caller_install_dir }}/pyproject.toml"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
+  notify: Restart py-phone-caller services
+
+- name: Deliver target uv.lock with app workspace paths
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file', py_phone_caller_local_src_path ~ '/uv.lock') | replace('"src/', '"app/') }}
+    dest: "{{ py_phone_caller_install_dir }}/uv.lock"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
   notify: Restart py-phone-caller services
 
 - name: Ensure the writable runtime directories exist
@@ -89,9 +122,6 @@
     group: "{{ py_phone_caller_group }}"
     mode: "0755"
   loop:
-    # py_phone_caller_config_dir is deliberately absent: config.yml owns it
-    # and gives it mode 0750. Creating it here as 0755 too made the two tasks
-    # fight, and both reported "changed" on every run.
     - "{{ py_phone_caller_src_dir }}/generate_audio/audio"
     - "{{ py_phone_caller_src_dir }}/generate_audio/pre_trained_models"
 
@@ -103,29 +133,12 @@
     group: "{{ py_phone_caller_group }}"
     mode: "0755"
 
-# Repair pass for trees laid down by an older role version, which rsynced as
-# root. Off by default because it walks the whole virtualenv.
-- name: Take ownership of the whole tree
+- name: Remove legacy src directory on target
   ansible.builtin.file:
-    path: "{{ py_phone_caller_install_dir }}"
-    state: directory
-    owner: "{{ py_phone_caller_user }}"
-    group: "{{ py_phone_caller_group }}"
-    recurse: true
-  when: py_phone_caller_force_chown | bool
-
-# Older releases of this role installed the tree as "app/" with a "src"
-# symlink pointing at it, which broke the editable installs recorded in the
-# virtualenv. Clear that layout out on upgrade.
-- name: Detect the legacy app/ layout
-  ansible.builtin.stat:
-    path: "{{ py_phone_caller_install_dir }}/app"
-  register: _ppc_legacy_app
-
-- name: Remove the legacy app/ layout
-  ansible.builtin.file:
-    path: "{{ py_phone_caller_install_dir }}/app"
+    path: "{{ py_phone_caller_install_dir }}/src"
     state: absent
-  when:
-    - _ppc_legacy_app.stat.exists | default(false)
-    - not (_ppc_legacy_app.stat.islnk | default(false))
+
+- name: Remove misplaced pre_trained_models at root
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}/pre_trained_models"
+    state: absent

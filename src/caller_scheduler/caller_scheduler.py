@@ -52,6 +52,8 @@ async def schedule_this_call(request):
     message = params.get("message")
     scheduled_at_str = params.get("scheduled_at")
     priority = int(params.get("priority", 5))
+    lang = params.get("lang") or params.get("language")
+
     if not phone or not message or not scheduled_at_str:
         logging.exception(
             f"No 'phone', 'message' or 'scheduled_at' parameters passed on: '{request.rel_url}'"
@@ -86,12 +88,18 @@ async def schedule_this_call(request):
 
     try:
         queue_name = "telephony.p0" if priority >= 8 else "telephony.p2"
+        apply_kwargs = {
+            "priority": priority,
+            "queue": queue_name,
+            "eta": scheduled_at_utc,
+        }
+        if lang:
+            apply_kwargs["kwargs"] = {"lang": lang}
+
         # Pass positional [phone, message] to maintain backward compatibility with mocks
         do_this_call.apply_async(
             [phone, message],
-            priority=priority,
-            queue=queue_name,
-            eta=scheduled_at_utc,
+            **apply_kwargs,
         )
     except Exception as err:
         logging.exception(f"Unable to place the call due: {err}")
@@ -157,15 +165,20 @@ async def init_app():
                                         "message": {"type": "string", "example": "Scheduled notification"},
                                         "scheduled_at": {"type": "string", "example": "2026-10-01 15:30:00"},
                                         "priority": {"type": "integer", "default": 5, "description": "Priority 0-9 (>=8 routes to telephony.p0)"},
+                                        "lang": {"type": "string", "example": "spa", "description": "Optional target language code for TTS audio"},
                                     },
                                     "required": ["phone", "message", "scheduled_at"],
                                 }
                             }
                         }
                     },
-                    "responses": {"200": {"description": "Call scheduled successfully"}},
+                    "responses": {
+                        "200": {"description": "Call scheduled successfully"},
+                        "400": {"description": "Missing parameters or invalid date"},
+                        "500": {"description": "Queue submission failure"},
+                    },
                 }
-            },
+            }
         },
     )
 
@@ -173,6 +186,5 @@ async def init_app():
 
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    app = loop.run_until_complete(init_app())
-    web.run_app(app, port=int(SCHEDULED_CALLS_PORT))
+    app = init_app()
+    web.run_app(app, port=SCHEDULED_CALLS_PORT)

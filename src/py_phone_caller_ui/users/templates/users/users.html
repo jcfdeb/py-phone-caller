@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}py-phone-caller User Management{% endblock %}
+{% block title %}py-phone-caller {{ _('User Management') }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid main-container px-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
-        <h2 class="page-header mb-0 text-start">User Management</h2>
+        <h2 class="page-header mb-0 text-start">{{ _('User Management') }}</h2>
         {% if is_admin_session %}
-        <button type="button" class="btn btn-primary" id="addUserBtn">
-            <i class="bi bi-person-plus me-1"></i> Add New User
+        <button type="button" class="btn btn-primary" id=\"addUserBtn\">
+            <i class="bi bi-person-plus me-1"></i> {{ _('Add New User') }}
         </button>
         {% endif %}
     </div>
@@ -23,13 +23,13 @@
                         <input type="hidden" name="sort_order" value="{{ sort_order }}">
                         <div class="input-group">
                             <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
-                            <input class="form-control border-start-0 ps-0" type="search" placeholder="Search users by name or email..."
-                                   aria-label="Search" name="search" value="{{ search_query }}">
+                            <input class="form-control border-start-0 ps-0" type="search" placeholder="{{ _('Search users by name or email...') }}"
+                                   aria-label="{{ _('Search') }}" name="search" value="{{ search_query }}">
                             {% if search_query %}
                             <a href="{{ url_for('users_blueprint.users', per_page=per_page, sort_by=sort_by, sort_order=sort_order) }}"
                                class="btn btn-outline-secondary d-flex align-items-center"><i class="bi bi-x-lg"></i></a>
                             {% endif %}
-                            <button class="btn btn-primary px-4" type="submit">Search</button>
+                            <button class="btn btn-primary px-4" type="submit">{{ _('Search') }}</button>
                         </div>
                     </form>
                 </div>
@@ -43,7 +43,7 @@
             <tr>
                 <th>
                     <a href="{{ url_for('users_blueprint.users', sort_by='given_name', sort_order='asc' if sort_by != 'given_name' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Full Name
+                        {{ _('Full Name') }}
                         {% if sort_by == 'given_name' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -51,16 +51,16 @@
                 </th>
                 <th>
                     <a href="{{ url_for('users_blueprint.users', sort_by='email', sort_order='asc' if sort_by != 'email' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Email Address
+                        {{ _('Email Address') }}
                         {% if sort_by == 'email' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
                     </a>
                 </th>
-                <th class="text-center">Active</th>
-                <th>Created On</th>
-                <th>Last Login</th>
-                <th class="text-end">Actions</th>
+                <th class="text-center">{{ _('Active') }}</th>
+                <th>{{ _('Created On') }}</th>
+                <th>{{ _('Last Login') }}</th>
+                <th class="text-end">{{ _('Actions') }}</th>
             </tr>
             </thead>
             <tbody>
@@ -71,19 +71,19 @@
                 <td><code class="text-primary">{{ user.get("email") }}</code></td>
                 <td class="text-center">
                     {% if user.get("is_active") %}
-                        <span class="badge bg-success-subtle text-success border border-success-subtle">Yes</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">{{ _('Yes') }}</span>
                     {% else %}
-                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">No</span>
+                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ _('No') }}</span>
                     {% endif %}
                 </td>
                 <td class="small text-muted">{{ user.get("created_on") }}</td>
-                <td class="small text-muted">{{ user.get("last_login") or "Never" }}</td>
+                <td class="small text-muted">{{ user.get("last_login") or _("Never") }}</td>
                 <td class="text-end">
                     <div class="btn-group btn-group-sm">
                         <button type="button" class="btn btn-outline-primary change-password-btn" 
                                 data-user-id="{{ user.get('id') }}"
                                 data-user-email="{{ user.get('email') }}"
-                                title="Change Password">
+                                title="{{ _('Change Password') }}">
                             <i class="bi bi-key"></i>
                         </button>
                         {% if is_admin_session %}
@@ -91,13 +91,13 @@
                         <button type="button" class="btn btn-outline-warning toggle-active-btn" 
                                 data-user-id="{{ user.get('id') }}" 
                                 {% if is_admin_row %}disabled{% endif %}
-                                title="{{ 'Deactivate' if user.get('is_active') else 'Activate' }}">
+                                title="{{ _('Deactivate') if user.get('is_active') else _('Activate') }}">
                             <i class="bi bi-power"></i>
                         </button>
                         <button type="button" class="btn btn-outline-danger delete-user-btn" 
                                 data-user-id="{{ user.get('id') }}"
                                 {% if is_admin_row %}disabled{% endif %}
-                                title="Delete User">
+                                title="{{ _('Delete User') }}">
                             <i class="bi bi-trash"></i>
                         </button>
                         {% endif %}
@@ -109,7 +109,7 @@
             <tr>
                 <td colspan="6" class="text-center py-5 text-muted">
                     <i class="bi bi-person-x fs-1 d-block mb-2"></i>
-                    No users found{% if search_query %} for "{{ search_query }}"{% endif %}
+                    {{ _('No users found') }}{% if search_query %} {{ _('for') }} "{{ search_query }}"{% endif %}
                 </td>
             </tr>
             {% endif %}
@@ -124,7 +124,7 @@
                 <input type="hidden" name="sort_by" value="{{ sort_by }}">
                 <input type="hidden" name="sort_order" value="{{ sort_order }}">
                 <div class="input-group input-group-sm">
-                    <label class="input-group-text bg-light border-end-0" for="items-per-page">Items per page:</label>
+                    <label class="input-group-text bg-light border-end-0" for="items-per-page">{{ _('Items per page:') }}</label>
                     <select class="form-select border-start-0" id="items-per-page" name="per_page" onchange="this.form.submit()">
                         {% for option in [5, 10, 25, 50, 100] %}
                         <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
@@ -163,25 +163,25 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold" id="addUserModalLabel"><i class="bi bi-person-plus me-2 text-primary"></i>Add New User</h5>
+                <h5 class="modal-title fw-bold" id="addUserModalLabel"><i class="bi bi-person-plus me-2 text-primary"></i>{{ _('Add New User') }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <form id="addUserForm">
                     <div class="mb-3">
-                        <label for="givenName" class="form-label fw-bold small text-secondary">Full Name</label>
+                        <label for="givenName" class="form-label fw-bold small text-secondary">{{ _('Full Name') }}</label>
                         <input type="text" class="form-control" id="givenName" name="given_name" placeholder="John Doe" required>
                     </div>
                     <div class="mb-3">
-                        <label for="email" class="form-label fw-bold small text-secondary">Email Address</label>
+                        <label for="email" class="form-label fw-bold small text-secondary">{{ _('Email Address') }}</label>
                         <input type="email" class="form-control" id="email" name="email" placeholder="john@example.com" required>
                     </div>
                     <div class="alert alert-danger d-none" id="addUserError"></div>
                 </form>
             </div>
             <div class="modal-footer border-0 bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary px-4" id="saveAddUserBtn">Create User</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Cancel') }}</button>
+                <button type="button" class="btn btn-primary px-4" id="saveAddUserBtn">{{ _('Create User') }}</button>
             </div>
         </div>
     </div>
@@ -191,13 +191,13 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-success text-white">
-                <h5 class="modal-title fw-bold" id="generatedPasswordModalLabel"><i class="bi bi-check-circle me-2"></i>User Created Successfully</h5>
+                <h5 class="modal-title fw-bold" id="generatedPasswordModalLabel"><i class="bi bi-check-circle me-2"></i>{{ _('User Created Successfully') }}</h5>
             </div>
             <div class="modal-body p-4 text-center">
-                <p class="text-muted">A temporary password has been generated for the new user.</p>
+                <p class="text-muted">{{ _('A temporary password has been generated for the new user.') }}</p>
                 <div class="alert alert-warning mb-4">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    <strong>Important:</strong> Copy this password now. It will not be shown again!
+                    <strong>{{ _('Important:') }}</strong> {{ _('Copy this password now. It will not be shown again!') }}
                 </div>
                 <div class="input-group input-group-lg mb-3">
                     <input type="text" class="form-control font-monospace text-center bg-light" id="generatedPasswordField" readonly>
@@ -207,7 +207,7 @@
                 </div>
             </div>
             <div class="modal-footer border-0 justify-content-center">
-                <button type="button" class="btn btn-primary btn-lg px-5" data-bs-dismiss="modal">I've saved it</button>
+                <button type="button" class="btn btn-primary btn-lg px-5" data-bs-dismiss="modal">{{ _("I've saved it") }}</button>
             </div>
         </div>
     </div>
@@ -217,7 +217,7 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold" id="changePasswordModalLabel"><i class="bi bi-key me-2 text-primary"></i>Change Password</h5>
+                <h5 class="modal-title fw-bold" id="changePasswordModalLabel"><i class="bi bi-key me-2 text-primary"></i>{{ _('Change Password') }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
@@ -225,26 +225,26 @@
                     <input type="hidden" id="userId" name="user_id">
                     
                     <div class="mb-4 text-center">
-                        <label class="form-label small text-muted mb-0">Updating password for:</label>
+                        <label class="form-label small text-muted mb-0">{{ _('Updating password for:') }}</label>
                         <div id="userEmailDisplay" class="fw-bold text-dark"></div>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="oldPassword" class="form-label fw-bold small text-secondary">Current Password</label>
+                        <label for="oldPassword" class="form-label fw-bold small text-secondary">{{ _('Current Password') }}</label>
                         <input type="password" class="form-control" id="oldPassword" name="old_password" required>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="newPassword" class="form-label fw-bold small text-secondary">New Password</label>
+                        <label for="newPassword" class="form-label fw-bold small text-secondary">{{ _('New Password') }}</label>
                         <input type="password" class="form-control" id="newPassword" name="new_password" required>
                         <div class="form-text x-small text-muted mt-2">
                             <i class="bi bi-shield-lock me-1"></i>
-                            Must be at least 17 characters with uppercase, lowercase, numbers, and symbols.
+                            {{ _('Must be at least 17 characters with uppercase, lowercase, numbers, and symbols.') }}
                         </div>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="confirmPassword" class="form-label fw-bold small text-secondary">Confirm New Password</label>
+                        <label for="confirmPassword" class="form-label fw-bold small text-secondary">{{ _('Confirm New Password') }}</label>
                         <input type="password" class="form-control" id="confirmPassword" name="confirm_password" required>
                     </div>
                     
@@ -253,8 +253,8 @@
                 </form>
             </div>
             <div class="modal-footer border-0 bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary px-4" id="savePasswordBtn">Update Password</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Cancel') }}</button>
+                <button type="button" class="btn btn-primary px-4" id="savePasswordBtn">{{ _('Update Password') }}</button>
             </div>
         </div>
     </div>
