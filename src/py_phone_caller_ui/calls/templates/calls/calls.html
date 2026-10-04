@@ -182,7 +182,8 @@
                             {% set firing_end_time = first_dial + timedelta(seconds=seconds_to_forget) %}
                             {% if current_time <= firing_end_time %}
                                 <button class="btn btn-warning btn-sm ack-button shadow-sm fw-bold px-3" 
-                                        data-asterisk-chan="{{ call.get('asterisk_chan') }}">
+                                        data-asterisk-chan="{{ call.get('asterisk_chan') }}"
+                                        onclick="acknowledgeCall('{{ call.get("asterisk_chan") }}', this)">
                                     <i class="bi bi-check-circle me-1"></i>{{ _('Ack') }}
                                 </button>
                             {% else %}
@@ -281,30 +282,50 @@
 {% block extra_js %}
 <script>
     function acknowledgeCall(asteriskChan, element) {
+        if (!asteriskChan) {
+            console.error('No asterisk_chan provided');
+            return false;
+        }
         element.disabled = true;
         const originalContent = element.innerHTML;
         element.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
 
-        fetch(`{{ call_register_endpoint }}?asterisk_chan=${encodeURIComponent(asteriskChan)}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 200) {
-                    showToast('Success', 'Call acknowledged successfully', 'success');
+        const endpoint = '{{ call_register_endpoint }}' || '/calls/proxy_acknowledge';
+        fetch(`${endpoint}?asterisk_chan=${encodeURIComponent(asteriskChan)}`)
+            .then(async response => {
+                const data = await response.json().catch(() => ({}));
+                return { ok: response.ok, status: response.status, data: data };
+            })
+            .then(({ ok, status, data }) => {
+                if (ok && (status === 200 || data.status === 200)) {
+                    showToast('Success', data.message || 'Call acknowledged successfully', 'success');
                     element.parentNode.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
                 } else {
                     showToast('Note', data.message || 'Call acknowledged but outside firing period', 'warning');
-                    element.parentNode.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+                    element.disabled = false;
+                    element.innerHTML = originalContent;
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                showToast('Error', 'Communication error with backend', 'danger');
+                showToast('Error', 'Communication error with backend: ' + error.message, 'danger');
                 element.disabled = false;
                 element.innerHTML = originalContent;
             });
 
         return false; 
     }
+
+    // Attach click listeners to all Ack buttons on DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.ack-button').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const asteriskChan = this.getAttribute('data-asterisk-chan');
+                acknowledgeCall(asteriskChan, this);
+            });
+        });
+    });
 
     (function(){
         const STORAGE_KEY = 'calls_auto_refresh_seconds';
@@ -351,14 +372,6 @@
         document.addEventListener('DOMContentLoaded', function(){
             const sel = document.getElementById(selectId);
             if (!sel) return;
-
-            // Add event listeners for ack buttons
-            document.querySelectorAll('.ack-button').forEach(button => {
-                button.addEventListener('click', function() {
-                    const asteriskChan = this.getAttribute('data-asterisk-chan');
-                    acknowledgeCall(asteriskChan, this);
-                });
-            });
 
             let stored = parseInt(localStorage.getItem(STORAGE_KEY) || '', 10);
             if (isNaN(stored) || ![0,5,10,15,30,60].includes(stored)) {
@@ -452,7 +465,11 @@
         if (btn) btn.disabled = true;
 
         try {
-            const resp = await fetch('/calls/api/bulk_acknowledge', {\n                method: 'POST',\n                headers: {'Content-Type': 'application/json'},\n                body: JSON.stringify({channels})\n            });
+            const resp = await fetch('/calls/api/bulk_acknowledge', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({channels})
+            });
             const res = await resp.json();
             if (res.status === 200) {
                 showToast('Bulk ACK Complete', `Acknowledged ${res.acknowledged} of ${res.total} calls`, 'success');

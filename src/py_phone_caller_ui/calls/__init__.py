@@ -331,9 +331,13 @@ async def proxy_acknowledge():
 
     try:
         response = requests.get(
-            f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={asterisk_chan}"
+            f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={asterisk_chan}", timeout=5
         )
-        return jsonify(response.json()), response.status_code
+        try:
+            resp_json = response.json()
+        except Exception:
+            resp_json = {"status": response.status_code, "text": response.text}
+        return jsonify(resp_json), response.status_code
     except Exception as e:
         return jsonify(
             {

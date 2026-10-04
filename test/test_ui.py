@@ -748,3 +748,56 @@ def test_schedule_picker_with_language(mock_enqueue, client):
         assert args[0] == "+393349246425"
         assert args[1] == "Scheduled alert"
         assert kwargs.get("lang") == "it"
+
+
+@patch("py_phone_caller_ui.calls.requests.get")
+def test_proxy_acknowledge_success(mock_get, client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"status": 200, "message": "Acknowledged"}
+    mock_get.return_value = mock_resp
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        res = client.get("/calls/proxy_acknowledge?asterisk_chan=PJSIP/101-0001")
+        assert res.status_code == 200
+        assert res.get_json()["status"] == 200
+        assert res.get_json()["message"] == "Acknowledged"
+
+
+def test_proxy_acknowledge_missing_param(client):
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        res = client.get("/calls/proxy_acknowledge")
+        assert res.status_code == 400
+        assert "Missing asterisk_chan" in res.get_json()["message"]
+
+
+@patch("py_phone_caller_ui.calls.requests.get")
+def test_api_bulk_acknowledge(mock_get, client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"status": 200}
+    mock_get.return_value = mock_resp
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        res = client.post("/calls/api/bulk_acknowledge", json={
+            "channels": ["PJSIP/101-0001", "PJSIP/102-0002"]
+        })
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["total"] == 2
+        assert data["acknowledged"] == 2

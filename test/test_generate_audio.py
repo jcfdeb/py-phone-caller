@@ -5,8 +5,11 @@ from unittest.mock import patch, MagicMock
 from src.generate_audio.generate_audio import (
     init_app,
     generate_tts_audio,
+    TTS_DISPATCH_STRATEGIES,
     TTSEngine,
     wave_file_exists,
+    resolve_engine_for_language,
+    scan_installed_languages,
 )
 from src.generate_audio.constants import (
     GENERATE_AUDIO_APP_ROUTE,
@@ -461,7 +464,6 @@ async def test_get_languages_endpoint(cli):
 
 
 def test_scan_installed_languages_structure():
-    from src.generate_audio.generate_audio import scan_installed_languages
     result = scan_installed_languages()
     assert result["active_engine"] in ["facebook_mms", "piper_tts", "kokoro_tts", "silero_tts", "google_gtts", "aws_polly"]
     assert isinstance(result["languages"], list)
@@ -470,3 +472,84 @@ def test_scan_installed_languages_structure():
     assert "piper_tts" in result["installed_models"]
     assert "kokoro_tts" in result["installed_models"]
     assert "silero_tts" in result["installed_models"]
+
+
+def test_scan_installed_languages_openalert_landscape(tmp_path):
+    # Replicate openalert directory structure exactly
+    kokoro_dir = tmp_path / "kokoro_tts"
+    kokoro_dir.mkdir(parents=True)
+    (kokoro_dir / "config.json").write_text("{}")
+    (kokoro_dir / "kokoro-v1_0.pth").write_text("model_data")
+    (kokoro_dir / "voices").mkdir()  # empty voices directory
+
+    silero_dir = tmp_path / "silero_tts" / "en"
+    silero_dir.mkdir(parents=True)
+    (silero_dir / "v3_en.pt").write_text("silero_en_data")
+
+    with patch("src.generate_audio.generate_audio.TTS_ENGINE", TTSEngine.KOKORO):
+        result = scan_installed_languages(base_models_dir=str(tmp_path))
+
+        assert result["active_engine"] == "kokoro_tts"
+        assert result["default_language"] == "e"
+
+        lang_codes = [l["code"] for l in result["languages"]]
+        # Both Spanish (e) from Kokoro and English (en) from Silero must be present!
+        assert "e" in lang_codes
+        assert "en" in lang_codes
+
+        default_l = next(l for l in result["languages"] if l["code"] == "e")
+        assert default_l["is_default"] is True
+        assert default_l["engine"] == "kokoro_tts"
+
+        silero_l = next(l for l in result["languages"] if l["code"] == "en")
+        assert silero_l["is_default"] is False
+        assert silero_l["engine"] == "silero_tts"
+        assert silero_l["ready"] is True
+
+        # Test cross-engine dynamic resolution:
+        # Requesting "e" or "es" maps to active engine KOKORO
+        resolved_es = resolve_engine_for_language("e", base_models_dir=str(tmp_path))
+        assert resolved_es == TTSEngine.KOKORO
+
+        # Requesting "en" dynamically resolves to SILERO because silero has v3_en.pt
+        resolved_en = resolve_engine_for_language("en", base_models_dir=str(tmp_path))
+        assert resolved_en == TTSEngine.SILERO
+
+
+def test_cross_engine_audio_generation_dispatch(tmp_path):
+    with patch(
+        "src.generate_audio.generate_audio.TTS_ENGINE", TTSEngine.KOKORO
+    ), patch(
+        "src.generate_audio.generate_audio.resolve_engine_for_language",
+        return_value=TTSEngine.SILERO,
+    ), patch(
+        "src.generate_audio.generate_audio.text_to_speech_silero_tts"
+    ) as mock_silero:
+        generate_tts_audio(
+            message="English alert notification",
+            output_path=str(tmp_path / "test_en.wav"),
+            language="en",
+            speed=1.0,
+        )
+        mock_silero.assert_called_once()
+
+
+def test_tts_dispatch_strategies_mapping():
+    for engine in TTSEngine:
+        assert engine in TTS_DISPATCH_STRATEGIES
+        assert callable(TTS_DISPATCH_STRATEGIES[engine])
+
+
+def test_generate_tts_audio_unsupported_engine():
+    with pytest.raises(ValueError, match="Unsupported TTS engine"):
+        generate_tts_audio("hello", "/tmp/dummy.wav", engine="invalid_engine")
+
+
+def test_generate_tts_audio_piper_and_polly_dispatch():
+    with patch("src.generate_audio.generate_audio.text_to_speech_piper_tts") as mock_piper:
+        generate_tts_audio("Testing piper", "/tmp/p.wav", engine=TTSEngine.PIPER, language="it", speed=1.2)
+        mock_piper.assert_called_once_with("Testing piper", "/tmp/p.wav", language="it", speed=1.2)
+
+    with patch("src.generate_audio.generate_audio.aws_polly_text_to_wave") as mock_polly:
+        generate_tts_audio("Testing polly", "/tmp/polly.wav", engine=TTSEngine.AWS_POLLY)
+        mock_polly.assert_called_once_with("Testing polly", "/tmp/polly.wav")

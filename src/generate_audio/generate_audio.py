@@ -28,7 +28,7 @@ if src_dir not in sys.path:
 
 from concurrent.futures.thread import ThreadPoolExecutor
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from aiohttp import web
 from py_phone_caller_utils.py_phone_caller_voices.aws_polly import (
@@ -104,6 +104,166 @@ except ValueError as e:
     TTS_ENGINE = TTSEngine.GOOGLE_GTTS
 
 
+LANGUAGE_NAMES: Dict[str, str] = {
+    "en": "English",
+    "eng": "English",
+    "en_US": "English (United States)",
+    "en_GB": "English (United Kingdom)",
+    "en-US": "English (United States)",
+    "en-GB": "English (United Kingdom)",
+    "es": "Spanish",
+    "spa": "Spanish",
+    "es_ES": "Spanish (Spain)",
+    "es_MX": "Spanish (Mexico)",
+    "es-ES": "Spanish (Spain)",
+    "it": "Italian",
+    "ita": "Italian",
+    "it_IT": "Italian (Italy)",
+    "it-IT": "Italian (Italy)",
+    "fr": "French",
+    "fra": "French",
+    "fr_FR": "French (France)",
+    "fr-FR": "French (France)",
+    "de": "German",
+    "deu": "German",
+    "de_DE": "German (Germany)",
+    "de-DE": "German (Germany)",
+    "ru": "Russian",
+    "rus": "Russian",
+    "ru_RU": "Russian (Russia)",
+    "ru-RU": "Russian (Russia)",
+    "zh": "Chinese (Mandarin)",
+    "cmn": "Chinese (Mandarin)",
+    "zh_CN": "Chinese (Simplified)",
+    "cmn-CN": "Chinese (Mandarin)",
+    "hi": "Hindi",
+    "hin": "Hindi",
+    "hi_IN": "Hindi (India)",
+    "hi-IN": "Hindi (India)",
+    "indic": "Indic / Hindi",
+    "he": "Hebrew",
+    "heb": "Hebrew",
+    "he_IL": "Hebrew (Israel)",
+    "he-IL": "Hebrew (Israel)",
+    "ar": "Arabic",
+    "ara": "Arabic",
+    "arb": "Arabic (Standard)",
+    "ar_JO": "Arabic (Jordan)",
+    "pt": "Portuguese",
+    "por": "Portuguese",
+    "pt_BR": "Portuguese (Brazil)",
+    "ja": "Japanese",
+    "jpn": "Japanese",
+    "a": "English (American)",
+    "b": "English (British)",
+    "e": "Spanish",
+    "f": "French",
+    "h": "Hindi",
+    "i": "Italian",
+    "j": "Japanese",
+    "p": "Portuguese (Brazil)",
+    "z": "Chinese (Mandarin)",
+}
+
+LANGUAGE_FLAGS: Dict[str, str] = {
+    "en": "🇬🇧",
+    "eng": "🇬🇧",
+    "en_US": "🇺🇸",
+    "en-US": "🇺🇸",
+    "en_GB": "🇬🇧",
+    "en-GB": "🇬🇧",
+    "a": "🇺🇸",
+    "b": "🇬🇧",
+    "es": "🇪🇸",
+    "spa": "🇪🇸",
+    "e": "🇪🇸",
+    "es_ES": "🇪🇸",
+    "es-ES": "🇪🇸",
+    "es_MX": "🇲🇽",
+    "it": "🇮🇹",
+    "ita": "🇮🇹",
+    "i": "🇮🇹",
+    "it_IT": "🇮🇹",
+    "it-IT": "🇮🇹",
+    "fr": "🇫🇷",
+    "fra": "🇫🇷",
+    "f": "🇫🇷",
+    "fr_FR": "🇫🇷",
+    "fr-FR": "🇫🇷",
+    "de": "🇩🇪",
+    "deu": "🇩🇪",
+    "de_DE": "🇩🇪",
+    "de-DE": "🇩🇪",
+    "ru": "🇷🇺",
+    "rus": "🇷🇺",
+    "ru_RU": "🇷🇺",
+    "ru-RU": "🇷🇺",
+    "zh": "🇨🇳",
+    "cmn": "🇨🇳",
+    "z": "🇨🇳",
+    "zh_CN": "🇨🇳",
+    "cmn-CN": "🇨🇳",
+    "hi": "🇮🇳",
+    "hin": "🇮🇳",
+    "h": "🇮🇳",
+    "hi_IN": "🇮🇳",
+    "hi-IN": "🇮🇳",
+    "indic": "🇮🇳",
+    "he": "🇮🇱",
+    "heb": "🇮🇱",
+    "he_IL": "🇮🇱",
+    "he-IL": "🇮🇱",
+    "ar": "🇸🇦",
+    "ara": "🇸🇦",
+    "arb": "🇸🇦",
+    "ar_JO": "🇯🇴",
+    "pt": "🇵🇹",
+    "por": "🇵🇹",
+    "p": "🇧🇷",
+    "pt_BR": "🇧🇷",
+    "ja": "🇯🇵",
+    "jpn": "🇯🇵",
+    "j": "🇯🇵",
+}
+
+LANGUAGE_ALIASES: Dict[str, str] = {
+    "a": "en",
+    "b": "en",
+    "eng": "en",
+    "en_us": "en",
+    "en-us": "en",
+    "en_gb": "en",
+    "en-gb": "en",
+    "e": "es",
+    "spa": "es",
+    "es_es": "es",
+    "es-es": "es",
+    "es_mx": "es",
+    "i": "it",
+    "ita": "it",
+    "it_it": "it",
+    "it-it": "it",
+    "f": "fr",
+    "fra": "fr",
+    "fr_fr": "fr",
+    "fr-fr": "fr",
+    "deu": "de",
+    "de_de": "de",
+    "de-de": "de",
+    "rus": "ru",
+    "ru_ru": "ru",
+    "ru-ru": "ru",
+    "z": "zh",
+    "cmn": "zh",
+    "zh_cn": "zh",
+    "cmn-cn": "zh",
+    "h": "hi",
+    "hin": "hi",
+    "hi_in": "hi",
+    "hi-in": "hi",
+}
+
+
 def resolve_audio_filename(msg_chk_sum: str, lang: str = None) -> str:
     """
     Returns filename for serving audio.
@@ -123,6 +283,249 @@ async def create_audio_folder(folder_name):
         logging.exception(f"Unable to create the folder '{folder_name}': '{err}'")
 
 
+def resolve_engine_for_language(
+    language: str = None, base_models_dir: str = None
+) -> TTSEngine:
+    """
+    Resolves the best TTS engine for a requested language code.
+    If no language is requested, or if the active TTS_ENGINE supports the requested
+    language, returns TTS_ENGINE. Otherwise, checks if another installed offline
+    engine (silero_tts, piper_tts, facebook_mms, kokoro_tts) has weights for this language.
+    """
+    clean_lang = str(language).strip() if language else ""
+    if not clean_lang:
+        return TTS_ENGINE
+
+    # Cloud engines support everything online
+    if TTS_ENGINE in (TTSEngine.GOOGLE_GTTS, TTSEngine.AWS_POLLY):
+        return TTS_ENGINE
+
+    if base_models_dir is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        base_models_dir = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
+
+    norm = LANGUAGE_ALIASES.get(clean_lang.lower(), clean_lang.lower())
+
+    # 1. Does the active engine support it?
+    if TTS_ENGINE == TTSEngine.KOKORO:
+        active_norm = LANGUAGE_ALIASES.get(KOKORO_LANG.lower(), KOKORO_LANG.lower())
+        if clean_lang == KOKORO_LANG or norm == active_norm:
+            return TTSEngine.KOKORO
+        voice_map = {
+            "a": "af_heart", "en": "af_heart", "b": "bf_emma",
+            "e": "ef_dora", "es": "ef_dora", "f": "ff_siwis", "fr": "ff_siwis",
+            "h": "hf_alpha", "hi": "hf_alpha", "i": "if_sara", "it": "if_sara",
+            "j": "jf_alpha", "ja": "jf_alpha", "p": "pf_dora", "pt": "pf_dora",
+            "z": "zf_xiaobei", "zh": "zf_xiaobei"
+        }
+        voice_name = voice_map.get(clean_lang) or voice_map.get(norm)
+        if voice_name:
+            voice_file = os.path.join(
+                base_models_dir, KOKORO_MODELS_FOLDER, "voices", f"{voice_name}.pt"
+            )
+            if os.path.exists(voice_file):
+                return TTSEngine.KOKORO
+
+    elif TTS_ENGINE == TTSEngine.SILERO:
+        active_norm = LANGUAGE_ALIASES.get(SILERO_LANG.lower(), SILERO_LANG.lower())
+        if clean_lang == SILERO_LANG or norm == active_norm:
+            return TTSEngine.SILERO
+        silero_file = os.path.join(base_models_dir, SILERO_MODELS_FOLDER, norm, f"v3_{norm}.pt")
+        direct_file = os.path.join(base_models_dir, SILERO_MODELS_FOLDER, f"v3_{norm}.pt")
+        if os.path.exists(silero_file) or os.path.exists(direct_file):
+            return TTSEngine.SILERO
+
+    elif TTS_ENGINE == TTSEngine.PIPER:
+        active_norm = LANGUAGE_ALIASES.get(PIPER_LANGUAGE_CODE.lower(), PIPER_LANGUAGE_CODE.lower())
+        if clean_lang == PIPER_LANGUAGE_CODE or norm == active_norm:
+            return TTSEngine.PIPER
+        piper_dir = os.path.join(base_models_dir, PIPER_MODELS_FOLDER)
+        if os.path.isdir(piper_dir):
+            for entry in os.listdir(piper_dir):
+                if entry == clean_lang or LANGUAGE_ALIASES.get(entry.lower(), entry.lower()) == norm:
+                    return TTSEngine.PIPER
+
+    elif TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
+        active_norm = LANGUAGE_ALIASES.get(FACEBOOK_MMS_LANGUAGE_CODE.lower(), FACEBOOK_MMS_LANGUAGE_CODE.lower())
+        if clean_lang == FACEBOOK_MMS_LANGUAGE_CODE or norm == active_norm:
+            return TTSEngine.FACEBOOK_MMS
+        mms_dir = os.path.join(base_models_dir, FACEBOOK_MMS_MODELS_FOLDER)
+        if os.path.isdir(mms_dir):
+            for entry in os.listdir(mms_dir):
+                if entry.startswith("mms-tts-"):
+                    sub = entry.replace("mms-tts-", "")
+                    if sub == clean_lang or LANGUAGE_ALIASES.get(sub.lower(), sub.lower()) == norm:
+                        return TTSEngine.FACEBOOK_MMS
+
+    # 2. Check other offline engines on disk:
+    # Check Silero
+    silero_dir = os.path.join(base_models_dir, SILERO_MODELS_FOLDER)
+    if os.path.isdir(silero_dir):
+        for entry in os.listdir(silero_dir):
+            sub_path = os.path.join(silero_dir, entry)
+            if os.path.isdir(sub_path):
+                if entry == clean_lang or LANGUAGE_ALIASES.get(entry.lower(), entry.lower()) == norm:
+                    if any(f.endswith(".pt") for f in os.listdir(sub_path)):
+                        return TTSEngine.SILERO
+            elif entry.endswith(".pt") and entry.startswith("v"):
+                parts = entry[:-3].split("_")
+                if len(parts) >= 2:
+                    sub = parts[1]
+                    if sub == clean_lang or LANGUAGE_ALIASES.get(sub.lower(), sub.lower()) == norm:
+                        return TTSEngine.SILERO
+
+    # Check Piper
+    piper_dir = os.path.join(base_models_dir, PIPER_MODELS_FOLDER)
+    if os.path.isdir(piper_dir):
+        for entry in os.listdir(piper_dir):
+            sub_path = os.path.join(piper_dir, entry)
+            if os.path.isdir(sub_path):
+                if entry == clean_lang or LANGUAGE_ALIASES.get(entry.lower(), entry.lower()) == norm:
+                    if os.path.exists(os.path.join(sub_path, f"{entry}.onnx")):
+                        return TTSEngine.PIPER
+            elif entry.endswith(".onnx"):
+                c = entry[:-5]
+                if c == clean_lang or LANGUAGE_ALIASES.get(c.lower(), c.lower()) == norm:
+                    return TTSEngine.PIPER
+
+    # Check Facebook MMS
+    mms_dir = os.path.join(base_models_dir, FACEBOOK_MMS_MODELS_FOLDER)
+    if os.path.isdir(mms_dir):
+        for entry in os.listdir(mms_dir):
+            if entry.startswith("mms-tts-"):
+                sub = entry.replace("mms-tts-", "")
+                if sub == clean_lang or LANGUAGE_ALIASES.get(sub.lower(), sub.lower()) == norm:
+                    if os.path.exists(os.path.join(mms_dir, entry, "config.json")):
+                        return TTSEngine.FACEBOOK_MMS
+
+    # Check Kokoro
+    kokoro_dir = os.path.join(base_models_dir, KOKORO_MODELS_FOLDER)
+    if os.path.isdir(kokoro_dir) and (
+        os.path.exists(os.path.join(kokoro_dir, KOKORO_MODEL_FILENAME))
+        or os.path.exists(os.path.join(kokoro_dir, "config.json"))
+    ):
+        v_map = {
+            "a": "af_heart", "en": "af_heart", "b": "bf_emma",
+            "e": "ef_dora", "es": "ef_dora", "f": "ff_siwis", "fr": "ff_siwis",
+            "h": "hf_alpha", "hi": "hf_alpha", "i": "if_sara", "it": "if_sara",
+            "j": "jf_alpha", "ja": "jf_alpha", "p": "pf_dora", "pt": "pf_dora",
+            "z": "zf_xiaobei", "zh": "zf_xiaobei"
+        }
+        target_v = v_map.get(clean_lang) or v_map.get(norm)
+        if target_v and os.path.exists(os.path.join(kokoro_dir, "voices", f"{target_v}.pt")):
+            return TTSEngine.KOKORO
+        if clean_lang == KOKORO_LANG or norm == LANGUAGE_ALIASES.get(KOKORO_LANG.lower(), KOKORO_LANG.lower()):
+            return TTSEngine.KOKORO
+
+    return TTS_ENGINE
+
+
+def _handle_google_gtts(
+    message: str,
+    output_path: str,
+    language: Optional[str] = None,
+    speed: float = 1.0,
+) -> None:
+    msg_chk_sum = os.path.basename(output_path).replace(".wav", "")
+    create_audio_file(message, msg_chk_sum)
+
+
+def _handle_facebook_mms(
+    message: str,
+    output_path: str,
+    language: Optional[str] = None,
+    speed: float = 1.0,
+) -> None:
+    target_lang = language or FACEBOOK_MMS_LANGUAGE_CODE
+    mms_alias = {
+        "es": "spa",
+        "e": "spa",
+        "en": "eng",
+        "a": "eng",
+        "it": "ita",
+        "i": "ita",
+        "fr": "fra",
+        "f": "fra",
+        "de": "deu",
+    }
+    if target_lang in mms_alias:
+        target_lang = mms_alias[target_lang]
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dir = os.path.join(
+        script_dir,
+        PRE_TRAINED_MODELS_FOLDER,
+        FACEBOOK_MMS_MODELS_FOLDER,
+        f"mms-tts-{target_lang}",
+    )
+    if not os.path.exists(model_dir) and target_lang != FACEBOOK_MMS_LANGUAGE_CODE:
+        logging.warning(
+            f"MMS language model for '{target_lang}' not found at {model_dir}. Falling back to default '{FACEBOOK_MMS_LANGUAGE_CODE}'"
+        )
+        target_lang = FACEBOOK_MMS_LANGUAGE_CODE
+        model_dir = os.path.join(
+            script_dir,
+            PRE_TRAINED_MODELS_FOLDER,
+            FACEBOOK_MMS_MODELS_FOLDER,
+            f"mms-tts-{target_lang}",
+        )
+    text_to_speech_facebook_mms(
+        message,
+        target_lang,
+        output_path,
+        model_path=model_dir if os.path.exists(model_dir) else None,
+        speed=speed,
+    )
+
+
+def _handle_piper(
+    message: str,
+    output_path: str,
+    language: Optional[str] = None,
+    speed: float = 1.0,
+) -> None:
+    text_to_speech_piper_tts(message, output_path, language=language, speed=speed)
+
+
+def _handle_aws_polly(
+    message: str,
+    output_path: str,
+    language: Optional[str] = None,
+    speed: float = 1.0,
+) -> None:
+    aws_polly_text_to_wave(message, output_path)
+
+
+def _handle_kokoro(
+    message: str,
+    output_path: str,
+    language: Optional[str] = None,
+    speed: float = 1.0,
+) -> None:
+    text_to_speech_kokoro_tts(message, output_path, language=language, speed=speed)
+
+
+def _handle_silero(
+    message: str,
+    output_path: str,
+    language: Optional[str] = None,
+    speed: float = 1.0,
+) -> None:
+    text_to_speech_silero_tts(message, output_path, language=language, speed=speed)
+
+
+TTS_DISPATCH_STRATEGIES: Dict[
+    TTSEngine, Callable[[str, str, Optional[str], float], None]
+] = {
+    TTSEngine.GOOGLE_GTTS: _handle_google_gtts,
+    TTSEngine.FACEBOOK_MMS: _handle_facebook_mms,
+    TTSEngine.PIPER: _handle_piper,
+    TTSEngine.AWS_POLLY: _handle_aws_polly,
+    TTSEngine.KOKORO: _handle_kokoro,
+    TTSEngine.SILERO: _handle_silero,
+}
+
+
 def generate_tts_audio(
     message: str,
     output_path: str,
@@ -132,50 +535,16 @@ def generate_tts_audio(
 ) -> None:
     """
     Generate audio file using the specified TTS engine, language, and speed.
+    Dynamically resolves engine based on requested language and installed weights.
     Falls back gracefully to default language if requested language model is missing.
     """
-    engine = engine or TTS_ENGINE
+    engine = engine or resolve_engine_for_language(language)
 
-    if engine == TTSEngine.GOOGLE_GTTS:
-        msg_chk_sum = os.path.basename(output_path).replace(".wav", "")
-        create_audio_file(message, msg_chk_sum)
-    elif engine == TTSEngine.FACEBOOK_MMS:
-        target_lang = language or FACEBOOK_MMS_LANGUAGE_CODE
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        model_dir = os.path.join(
-            script_dir,
-            PRE_TRAINED_MODELS_FOLDER,
-            FACEBOOK_MMS_MODELS_FOLDER,
-            f"mms-tts-{target_lang}",
-        )
-        if not os.path.exists(model_dir) and target_lang != FACEBOOK_MMS_LANGUAGE_CODE:
-            logging.warning(
-                f"MMS language model for '{target_lang}' not found at {model_dir}. Falling back to default '{FACEBOOK_MMS_LANGUAGE_CODE}'"
-            )
-            target_lang = FACEBOOK_MMS_LANGUAGE_CODE
-            model_dir = os.path.join(
-                script_dir,
-                PRE_TRAINED_MODELS_FOLDER,
-                FACEBOOK_MMS_MODELS_FOLDER,
-                f"mms-tts-{target_lang}",
-            )
-        text_to_speech_facebook_mms(
-            message,
-            target_lang,
-            output_path,
-            model_path=model_dir if os.path.exists(model_dir) else None,
-            speed=speed,
-        )
-    elif engine == TTSEngine.PIPER:
-        text_to_speech_piper_tts(message, output_path, language=language, speed=speed)
-    elif engine == TTSEngine.AWS_POLLY:
-        aws_polly_text_to_wave(message, output_path)
-    elif engine == TTSEngine.KOKORO:
-        text_to_speech_kokoro_tts(message, output_path, language=language, speed=speed)
-    elif engine == TTSEngine.SILERO:
-        text_to_speech_silero_tts(message, output_path, language=language, speed=speed)
-    else:
+    strategy = TTS_DISPATCH_STRATEGIES.get(engine)
+    if not strategy:
         raise ValueError(f"Unsupported TTS engine: {engine}")
+
+    strategy(message, output_path, language, speed)
 
 
 def file_not_found_error(error_text, file_location):
@@ -219,6 +588,10 @@ def text_to_speech_piper_tts(
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     target_lang = language or PIPER_LANGUAGE_CODE
+    piper_alias = {"it": "it_IT", "en": "en_US"}
+    if target_lang in piper_alias:
+        target_lang = piper_alias[target_lang]
+
     model_dir = os.path.join(
         script_dir, PRE_TRAINED_MODELS_FOLDER, PIPER_MODELS_FOLDER, target_lang
     )
@@ -416,7 +789,12 @@ def text_to_speech_silero_tts(
     if not os.path.exists(silero_script):
         file_not_found_error("Silero TTS script not found at: ", silero_script)
 
-    target_lang = language or SILERO_LANG
+    raw_lang = language or SILERO_LANG
+    silero_map = {
+        "spa": "es", "e": "es", "eng": "en", "a": "en", "b": "en",
+        "fra": "fr", "f": "fr", "deu": "de", "ita": "it", "i": "it"
+    }
+    target_lang = silero_map.get(raw_lang, raw_lang)
     supported_langs = ["en", "ru", "de", "es", "fr", "indic"]
     if target_lang not in supported_langs and target_lang != SILERO_LANG:
         logging.warning(
@@ -430,6 +808,11 @@ def text_to_speech_silero_tts(
         SILERO_MODELS_FOLDER,
     )
 
+    speaker = SILERO_SPEAKER
+    # Adjust speaker if language differs from default
+    if target_lang != "en" and speaker.startswith("en_"):
+        speaker = f"{target_lang}_0"
+
     cmd = [
         python_interpreter,
         silero_script,
@@ -437,7 +820,7 @@ def text_to_speech_silero_tts(
         "--lang",
         target_lang,
         "--speaker",
-        SILERO_SPEAKER,
+        speaker,
         "--sample-rate",
         str(SILERO_SAMPLE_RATE),
         "--speed",
@@ -513,6 +896,7 @@ async def create_audio(request):
     msg_chk_sum = params.get("msg_chk_sum")
     lang = params.get("lang") or params.get("language")
     raw_speed = params.get("speed", 1.0)
+    engine_param = params.get("engine")
     try:
         speed = float(raw_speed) if raw_speed is not None else 1.0
     except (ValueError, TypeError):
@@ -528,6 +912,17 @@ async def create_audio(request):
             text=None,
             content_type=None,
         )
+
+    selected_engine = None
+    if engine_param:
+        try:
+            selected_engine = TTSEngine.from_string(engine_param)
+        except ValueError:
+            logging.warning(
+                f"Invalid engine '{engine_param}' requested, resolving dynamically"
+            )
+    if not selected_engine:
+        selected_engine = resolve_engine_for_language(lang)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     filename = resolve_audio_filename(msg_chk_sum, lang)
@@ -545,6 +940,7 @@ async def create_audio(request):
             generate_tts_audio,
             message,
             output_path,
+            engine=selected_engine,
             language=lang,
             speed=speed,
         )
@@ -552,72 +948,10 @@ async def create_audio(request):
     except Exception as err:
         status_code = 500
         logging.exception(
-            f"Unable to generate the audio file using {TTS_ENGINE.value}: '{err}'"
+            f"Unable to generate the audio file using {selected_engine.value}: '{err}'"
         )
 
     return web.json_response({"status": status_code, "cached": False})
-
-
-LANGUAGE_NAMES: Dict[str, str] = {
-    "en": "English",
-    "eng": "English",
-    "en_US": "English (United States)",
-    "en_GB": "English (United Kingdom)",
-    "en-US": "English (United States)",
-    "en-GB": "English (United Kingdom)",
-    "es": "Spanish",
-    "spa": "Spanish",
-    "es_ES": "Spanish (Spain)",
-    "es_MX": "Spanish (Mexico)",
-    "es-ES": "Spanish (Spain)",
-    "it": "Italian",
-    "ita": "Italian",
-    "it_IT": "Italian (Italy)",
-    "it-IT": "Italian (Italy)",
-    "fr": "French",
-    "fra": "French",
-    "fr_FR": "French (France)",
-    "fr-FR": "French (France)",
-    "de": "German",
-    "deu": "German",
-    "de_DE": "German (Germany)",
-    "de-DE": "German (Germany)",
-    "ru": "Russian",
-    "rus": "Russian",
-    "ru_RU": "Russian (Russia)",
-    "ru-RU": "Russian (Russia)",
-    "zh": "Chinese (Mandarin)",
-    "cmn": "Chinese (Mandarin)",
-    "zh_CN": "Chinese (Simplified)",
-    "cmn-CN": "Chinese (Mandarin)",
-    "hi": "Hindi",
-    "hin": "Hindi",
-    "hi_IN": "Hindi (India)",
-    "hi-IN": "Hindi (India)",
-    "indic": "Indic / Hindi",
-    "he": "Hebrew",
-    "heb": "Hebrew",
-    "he_IL": "Hebrew (Israel)",
-    "he-IL": "Hebrew (Israel)",
-    "ar": "Arabic",
-    "ara": "Arabic",
-    "arb": "Arabic (Standard)",
-    "ar_JO": "Arabic (Jordan)",
-    "pt": "Portuguese",
-    "por": "Portuguese",
-    "pt_BR": "Portuguese (Brazil)",
-    "ja": "Japanese",
-    "jpn": "Japanese",
-    "a": "English (American)",
-    "b": "English (British)",
-    "e": "Spanish",
-    "f": "French",
-    "h": "Hindi",
-    "i": "Italian",
-    "j": "Japanese",
-    "p": "Portuguese (Brazil)",
-    "z": "Chinese (Mandarin)",
-}
 
 
 def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
@@ -625,6 +959,8 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
     Scans the pre-trained models directory for installed weights and configs
     across all supported engines, and returns both active engine language options
     and full installed model inventories.
+    Comprehensive multi-engine support: compiles all installed offline languages
+    into the top-level 'languages' array so the Web UI can display and select them.
     """
     if base_models_dir is None:
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -746,6 +1082,7 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
             })
     elif TTS_ENGINE == TTSEngine.KOKORO:
         default_lang = KOKORO_LANG
+        kokoro_seen: Set[str] = set()
         for v in installed["kokoro_tts"]["voices"]:
             lang_code = "en"
             if v.startswith("ff_"):
@@ -760,18 +1097,36 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
                 lang_code = "ja"
             elif v.startswith("hf_") or v.startswith("hm_"):
                 lang_code = "hi"
-            active_langs.append({
-                "code": lang_code,
-                "voice": v,
-                "name": f"{LANGUAGE_NAMES.get(lang_code, lang_code.capitalize())} ({v})",
-                "ready": installed["kokoro_tts"]["ready"],
-            })
-        if not active_langs:
-            active_langs.append({
-                "code": default_lang,
-                "name": LANGUAGE_NAMES.get(default_lang, "English (American)"),
-                "ready": installed["kokoro_tts"]["ready"],
-            })
+            elif v.startswith("pf_") or v.startswith("pm_"):
+                lang_code = "pt"
+            elif v.startswith("bf_") or v.startswith("bm_"):
+                lang_code = "en"
+
+            norm = LANGUAGE_ALIASES.get(lang_code.lower(), lang_code.lower())
+            if norm not in kokoro_seen:
+                kokoro_seen.add(norm)
+                active_langs.append({
+                    "code": lang_code,
+                    "voice": v,
+                    "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
+                    "ready": installed["kokoro_tts"]["ready"],
+                })
+
+        def_norm = LANGUAGE_ALIASES.get(default_lang.lower(), default_lang.lower())
+        if default_lang not in [item["code"] for item in active_langs]:
+            existing = next(
+                (item for item in active_langs if LANGUAGE_ALIASES.get(item["code"].lower(), item["code"].lower()) == def_norm),
+                None
+            )
+            if existing:
+                existing["code"] = default_lang
+            else:
+                active_langs.insert(0, {
+                    "code": default_lang,
+                    "name": LANGUAGE_NAMES.get(default_lang, "Spanish"),
+                    "ready": installed["kokoro_tts"]["ready"],
+                })
+
     elif TTS_ENGINE == TTSEngine.SILERO:
         default_lang = SILERO_LANG
         active_langs = list(installed["silero_tts"])
@@ -802,11 +1157,105 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
     for item in active_langs:
         item["engine"] = engine_val
         item["is_default"] = (item["code"] == default_lang)
+        item["flag"] = LANGUAGE_FLAGS.get(item["code"], "")
+
+    # Compile comprehensive languages list including all other installed offline models
+    all_languages: List[Dict[str, Any]] = list(active_langs)
+    seen_normalized = {
+        LANGUAGE_ALIASES.get(item["code"].lower(), item["code"].lower())
+        for item in active_langs
+    }
+    seen_codes = {item["code"] for item in active_langs}
+
+    # Add installed Silero models
+    if TTS_ENGINE != TTSEngine.SILERO:
+        for s in installed["silero_tts"]:
+            c = s["code"]
+            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
+            if norm not in seen_normalized and c not in seen_codes:
+                all_languages.append({
+                    "code": c,
+                    "name": s["name"],
+                    "engine": "silero_tts",
+                    "ready": s.get("ready", True),
+                    "is_default": False,
+                    "flag": LANGUAGE_FLAGS.get(c, ""),
+                })
+                seen_normalized.add(norm)
+                seen_codes.add(c)
+
+    # Add installed Piper models
+    if TTS_ENGINE != TTSEngine.PIPER:
+        for p in installed["piper_tts"]:
+            c = p["code"]
+            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
+            if norm not in seen_normalized and c not in seen_codes:
+                all_languages.append({
+                    "code": c,
+                    "name": p["name"],
+                    "engine": "piper_tts",
+                    "ready": p.get("ready", True),
+                    "is_default": False,
+                    "flag": LANGUAGE_FLAGS.get(c, ""),
+                })
+                seen_normalized.add(norm)
+                seen_codes.add(c)
+
+    # Add installed Facebook MMS models
+    if TTS_ENGINE != TTSEngine.FACEBOOK_MMS:
+        for f in installed["facebook_mms"]:
+            c = f["code"]
+            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
+            if norm not in seen_normalized and c not in seen_codes:
+                all_languages.append({
+                    "code": c,
+                    "name": f["name"],
+                    "engine": "facebook_mms",
+                    "ready": f.get("ready", True),
+                    "is_default": False,
+                    "flag": LANGUAGE_FLAGS.get(c, ""),
+                })
+                seen_normalized.add(norm)
+                seen_codes.add(c)
+
+    # Add installed Kokoro voices if Kokoro is not active engine
+    if TTS_ENGINE != TTSEngine.KOKORO and installed["kokoro_tts"]["ready"]:
+        for v in installed["kokoro_tts"]["voices"]:
+            lang_code = "en"
+            if v.startswith("ff_"):
+                lang_code = "fr"
+            elif v.startswith("ef_") or v.startswith("em_"):
+                lang_code = "es"
+            elif v.startswith("if_") or v.startswith("im_"):
+                lang_code = "it"
+            elif v.startswith("zf_") or v.startswith("zm_"):
+                lang_code = "zh"
+            elif v.startswith("jf_") or v.startswith("jm_"):
+                lang_code = "ja"
+            elif v.startswith("hf_") or v.startswith("hm_"):
+                lang_code = "hi"
+            elif v.startswith("pf_") or v.startswith("pm_"):
+                lang_code = "pt"
+            elif v.startswith("bf_") or v.startswith("bm_"):
+                lang_code = "en"
+            norm = LANGUAGE_ALIASES.get(lang_code.lower(), lang_code.lower())
+            if norm not in seen_normalized and lang_code not in seen_codes:
+                all_languages.append({
+                    "code": lang_code,
+                    "voice": v,
+                    "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
+                    "engine": "kokoro_tts",
+                    "ready": True,
+                    "is_default": False,
+                    "flag": LANGUAGE_FLAGS.get(lang_code, ""),
+                })
+                seen_normalized.add(norm)
+                seen_codes.add(lang_code)
 
     return {
         "active_engine": engine_val,
         "default_language": default_lang,
-        "languages": active_langs,
+        "languages": all_languages,
         "installed_models": installed,
     }
 
@@ -878,13 +1327,22 @@ async def ensure_models_present():
             model_dir = os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER)
             model_path = os.path.join(model_dir, KOKORO_MODEL_FILENAME)
             config_path = os.path.join(model_dir, "config.json")
+            voices_dir = os.path.join(model_dir, "voices")
 
-            if not os.path.exists(model_path) or not os.path.exists(config_path):
-                logging.info(f"Kokoro TTS model not found in {model_dir}. Downloading...")
-                from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
-                    download_kokoro_model_async,
-                )
-                await download_kokoro_model_async(model_dir)
+            has_voices = (
+                os.path.isdir(voices_dir)
+                and len([f for f in os.listdir(voices_dir) if f.endswith(".pt")]) > 0
+            )
+
+            if not os.path.exists(model_path) or not os.path.exists(config_path) or not has_voices:
+                logging.info(f"Kokoro TTS model or voices not fully present in {model_dir}. Downloading...")
+                try:
+                    from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
+                        download_kokoro_model_async,
+                    )
+                    await download_kokoro_model_async(model_dir)
+                except Exception as k_err:
+                    logging.warning(f"Could not preload Kokoro TTS model/voices: {k_err}")
             else:
                 logging.info(f"Kokoro TTS model is present at {model_dir}")
             logging.info("Kokoro TTS model check completed.")
