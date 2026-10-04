@@ -2,7 +2,7 @@
 Generate Audio service.
 
 Provides endpoints to generate and serve audio files from text using various
-TTS engines (Google gTTS, Facebook MMS, Piper, AWS Polly, Kokoro) and to verify
+TTS engines (Google gTTS, Facebook MMS, Piper, AWS Polly, Kokoro, Silero) and to verify
 when an audio file is ready to be played.
 """
 
@@ -61,6 +61,11 @@ from generate_audio.constants import (
     KOKORO_LANG,
     KOKORO_PYTHON_INTERPRETER,
     KOKORO_MODEL_FILENAME,
+    SILERO_MODELS_FOLDER,
+    SILERO_LANG,
+    SILERO_SPEAKER,
+    SILERO_SAMPLE_RATE,
+    SILERO_PYTHON_INTERPRETER,
 )
 
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
@@ -78,6 +83,7 @@ class TTSEngine(Enum):
     PIPER = "piper_tts"
     AWS_POLLY = "aws_polly"
     KOKORO = "kokoro_tts"
+    SILERO = "silero_tts"
 
     @classmethod
     def from_string(cls, value: str):
@@ -164,6 +170,8 @@ def generate_tts_audio(
         aws_polly_text_to_wave(message, output_path)
     elif engine == TTSEngine.KOKORO:
         text_to_speech_kokoro_tts(message, output_path, language=language, speed=speed)
+    elif engine == TTSEngine.SILERO:
+        text_to_speech_silero_tts(message, output_path, language=language, speed=speed)
     else:
         raise ValueError(f"Unsupported TTS engine: {engine}")
 
@@ -182,6 +190,7 @@ def text_to_speech_piper_tts(
     local_script = os.path.join(
         current_file_dir,
         "..",
+        "py-phone-caller-utils",
         "py_phone_caller_utils",
         "py_phone_caller_voices",
         "piper_tts.py",
@@ -271,6 +280,7 @@ def text_to_speech_kokoro_tts(
     local_script = os.path.join(
         current_file_dir,
         "..",
+        "py-phone-caller-utils",
         "py_phone_caller_utils",
         "py_phone_caller_voices",
         "kokoro_tts.py",
@@ -352,6 +362,90 @@ def text_to_speech_kokoro_tts(
         raise RuntimeError(error_msg) from e
     except Exception as e:
         error_msg = f"Error running Kokoro TTS: {str(e)}"
+        logging.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
+
+def text_to_speech_silero_tts(
+    message: str, output_path: str, language: str = None, speed: float = 1.0
+):
+    python_interpreter = SILERO_PYTHON_INTERPRETER
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    local_script = os.path.join(
+        current_file_dir,
+        "..",
+        "py-phone-caller-utils",
+        "py_phone_caller_utils",
+        "py_phone_caller_voices",
+        "silero_tts.py",
+    )
+
+    if os.path.exists(local_script):
+        silero_script = os.path.abspath(local_script)
+    else:
+        spec = importlib.util.find_spec(
+            "py_phone_caller_utils.py_phone_caller_voices.silero_tts"
+        )
+        if spec and spec.origin:
+            silero_script = spec.origin
+        else:
+            silero_script = os.path.join(
+                site.getsitepackages()[0],
+                "py_phone_caller_utils",
+                "py_phone_caller_voices",
+                "silero_tts.py",
+            )
+
+    if not os.path.exists(silero_script):
+        file_not_found_error("Silero TTS script not found at: ", silero_script)
+
+    target_lang = language or SILERO_LANG
+    supported_langs = ["en", "ru", "de", "es", "fr", "indic"]
+    if target_lang not in supported_langs and target_lang != SILERO_LANG:
+        logging.warning(
+            f"Silero language '{target_lang}' not directly supported. Falling back to '{SILERO_LANG}'"
+        )
+        target_lang = SILERO_LANG
+
+    local_models_base = os.path.join(
+        current_file_dir,
+        PRE_TRAINED_MODELS_FOLDER,
+        SILERO_MODELS_FOLDER,
+    )
+
+    cmd = [
+        python_interpreter,
+        silero_script,
+        message,
+        "--lang",
+        target_lang,
+        "--speaker",
+        SILERO_SPEAKER,
+        "--sample-rate",
+        str(SILERO_SAMPLE_RATE),
+        "--speed",
+        str(speed),
+        "--output",
+        output_path,
+    ]
+    if os.path.exists(local_models_base):
+        cmd.extend(["--model", local_models_base])
+
+    logging.info(f"Running Silero TTS with command: {' '.join(cmd)}")
+
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logging.info(f"Silero TTS completed successfully for output: {output_path}")
+        if result.stdout:
+            logging.debug(f"Silero TTS output: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        error_msg = (
+            f"Silero TTS process failed with exit code {e.returncode}: {e.stderr}"
+        )
+        logging.error(error_msg)
+        raise RuntimeError(error_msg) from e
+    except Exception as e:
+        error_msg = f"Error running Silero TTS: {str(e)}"
         logging.error(error_msg)
         raise RuntimeError(error_msg) from e
 
@@ -515,6 +609,34 @@ async def ensure_models_present():
             else:
                 logging.info(f"Kokoro TTS model is present at {model_dir}")
             logging.info("Kokoro TTS model check completed.")
+
+        elif TTS_ENGINE == TTSEngine.SILERO:
+            from py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model import (
+                download_silero_model_async,
+                MODEL_FILENAMES,
+            )
+            silero_langs = preload_cfg.get("silero_tts", [SILERO_LANG])
+            if SILERO_LANG not in silero_langs:
+                silero_langs.append(SILERO_LANG)
+
+            for lang in silero_langs:
+                expected_fn = MODEL_FILENAMES.get(lang, f"v3_{lang}.pt")
+                model_dir = os.path.join(
+                    abs_pre_trained_models, SILERO_MODELS_FOLDER, lang
+                )
+                model_path = os.path.join(model_dir, expected_fn)
+                direct_path = os.path.join(abs_pre_trained_models, SILERO_MODELS_FOLDER, expected_fn)
+
+                if not os.path.exists(model_path) and not os.path.exists(direct_path):
+                    try:
+                        logging.info(f"Silero TTS model for '{lang}' not found. Downloading...")
+                        await download_silero_model_async(lang, abs_pre_trained_models)
+                    except Exception as dl_err:
+                        logging.warning(f"Could not preload Silero TTS model '{lang}': {dl_err}")
+                else:
+                    actual = model_path if os.path.exists(model_path) else direct_path
+                    logging.info(f"Silero TTS model for '{lang}' is present at {actual}")
+            logging.info("Silero TTS model check completed.")
     except Exception as e:
         logging.error(f"Failed to ensure models are present: {e}")
 

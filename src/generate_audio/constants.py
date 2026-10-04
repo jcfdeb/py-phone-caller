@@ -29,6 +29,15 @@ KOKORO_MODEL_FILENAME = getattr(
 if KOKORO_PYTHON_INTERPRETER in ["python", "python3"]:
     KOKORO_PYTHON_INTERPRETER = sys.executable
 
+SILERO_MODELS_FOLDER = getattr(settings.generate_audio, "silero_models_folder", "silero_tts")
+SILERO_LANG = getattr(settings.generate_audio, "silero_lang", "en")
+SILERO_SPEAKER = getattr(settings.generate_audio, "silero_speaker", "en_0")
+SILERO_SAMPLE_RATE = int(getattr(settings.generate_audio, "silero_sample_rate", 8000))
+SILERO_PYTHON_INTERPRETER = getattr(settings.generate_audio, "silero_python_interpreter", "python3")
+
+if SILERO_PYTHON_INTERPRETER in ["python", "python3"]:
+    SILERO_PYTHON_INTERPRETER = sys.executable
+
 GENERATE_AUDIO_APP_ROUTE = settings.generate_audio.generate_audio_app_route
 GENERATE_AUDIO_PORT = int(settings.generate_audio.generate_audio_port)
 GENERATE_AUDIO_ERROR = settings.logs.generate_audio_error

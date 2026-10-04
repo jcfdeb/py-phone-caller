@@ -55,6 +55,7 @@ generate_audio_app_route = "make_audio"
 ### PIPER = "piper_tts" -> ffmpeg or avconv (install ffmpeg!!!)
 ### AWS_POLLY = "aws_polly"
 ### KOKORO = "kokoro_tts"
+### SILERO = "silero_tts"
 tts_engine = "facebook_mms"
 gcloud_tts_language_code = "en"
 aws_polly_region_name = 'eu-north-1'
@@ -75,6 +76,11 @@ kokoro_model_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/e9d173129d
 kokoro_voices_base_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices"
 kokoro_repo_id = "hexgrad/Kokoro-82M"
 kokoro_model_filename = "kokoro-v1_0.pth"
+silero_models_folder = "silero_tts"
+silero_lang = "en"
+silero_speaker = "en_0"
+silero_sample_rate = 8000
+silero_python_interpreter = "python3"
 serving_audio_folder = "audio"
 is_audio_ready_endpoint = "is_audio_ready"
 num_of_cpus = 2
@@ -83,6 +89,7 @@ num_of_cpus = 2
 facebook_mms = ["spa", "eng", "ita"]
 piper_tts = ["it_IT", "en_US"]
 kokoro_tts = ["default"]
+silero_tts = ["en", "ru"]
 
 [caller_prometheus_webhook]
 prometheus_webhook_port = 8084

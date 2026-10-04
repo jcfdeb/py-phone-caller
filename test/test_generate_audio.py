@@ -24,6 +24,14 @@ from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
     download_kokoro_model_async,
     DEFAULT_VOICES,
 )
+from py_phone_caller_utils.py_phone_caller_voices.silero_tts import (
+    resolve_silero_model_path,
+    text_to_speech_silero,
+)
+from py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model import (
+    download_silero_model_async,
+    SILERO_MODELS,
+)
 
 
 @pytest.fixture
@@ -90,6 +98,7 @@ def test_tts_engine_from_string():
     assert TTSEngine.from_string("piper_tts") == TTSEngine.PIPER
     assert TTSEngine.from_string("google_gtts") == TTSEngine.GOOGLE_GTTS
     assert TTSEngine.from_string("aws_polly") == TTSEngine.AWS_POLLY
+    assert TTSEngine.from_string("silero_tts") == TTSEngine.SILERO
 
     with pytest.raises(ValueError, match="Invalid TTS engine"):
         TTSEngine.from_string("invalid_engine_name")
@@ -323,3 +332,113 @@ def test_missing_model_fallback_kokoro():
         assert "--lang" in cmd
         idx = cmd.index("--lang")
         assert cmd[idx + 1] == "e"
+
+
+# =========================================================================
+# SILERO TTS TESTS
+# =========================================================================
+
+def test_silero_model_path_resolution(tmp_path):
+    # 1. Existing file returned directly
+    test_pt = tmp_path / "v3_en.pt"
+    test_pt.write_text("model_data")
+    assert resolve_silero_model_path("en", model_path=str(test_pt)) == str(test_pt)
+
+    # 2. Existing folder with subfolder <p>/<lang>/<filename>
+    sub_dir = tmp_path / "silero_dir" / "en"
+    sub_dir.mkdir(parents=True)
+    sub_pt = sub_dir / "v3_en.pt"
+    sub_pt.write_text("sub_model_data")
+    assert resolve_silero_model_path("en", model_path=str(tmp_path / "silero_dir")) == str(sub_pt)
+
+    # 3. Direct folder with <p>/v3_en.pt
+    direct_dir = tmp_path / "direct_dir"
+    direct_dir.mkdir(parents=True)
+    direct_pt = direct_dir / "v3_en.pt"
+    direct_pt.write_text("direct_model_data")
+    assert resolve_silero_model_path("en", model_path=str(direct_dir)) == str(direct_pt)
+
+
+@pytest.mark.asyncio
+async def test_download_silero_model_async_local_dir(tmp_path):
+    dest = tmp_path / "silero_models"
+
+    async def mock_download_file(client, url, dest_path):
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(b"dummy_silero_model_bytes_" + b"0" * 2000000)
+        return True
+
+    with patch(
+        "py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model.download_file",
+        side_effect=mock_download_file,
+    ):
+        result_path = await download_silero_model_async("en", base_dir=str(dest))
+        assert os.path.exists(result_path)
+        assert result_path.endswith("v3_en.pt")
+        assert "en" in result_path
+
+
+def test_silero_tts_generation_mock(tmp_path):
+    import torch
+    import numpy as np
+
+    fake_model = MagicMock()
+    # 1 second of 8000Hz sine wave as torch tensor
+    fake_audio = torch.zeros(8000)
+    fake_model.apply_tts.return_value = fake_audio
+
+    model_file = tmp_path / "v3_en.pt"
+    model_file.write_text("mock_model")
+
+    out_wav = str(tmp_path / "silero_output.wav")
+
+    with patch("py_phone_caller_utils.py_phone_caller_voices.silero_tts.load_silero_model", return_value=fake_model):
+        text_to_speech_silero(
+            message="Alert: fire alarm triggered",
+            output_path=out_wav,
+            lang="en",
+            speaker="en_0",
+            sample_rate=8000,
+            model_path=str(model_file),
+        )
+
+    assert os.path.exists(out_wav)
+    assert os.path.getsize(out_wav) > 0
+    assert wave_file_exists(out_wav) is True
+    fake_model.apply_tts.assert_called_once_with(
+        text="Alert: fire alarm triggered",
+        speaker="en_0",
+        sample_rate=8000,
+    )
+
+
+def test_generate_tts_audio_silero_dispatch():
+    with patch("src.generate_audio.generate_audio.text_to_speech_silero_tts") as mock_silero:
+        generate_tts_audio(
+            message="Server room over temperature",
+            output_path="/tmp/silero_test.wav",
+            engine=TTSEngine.SILERO,
+            language="en",
+            speed=1.0,
+        )
+        mock_silero.assert_called_once_with(
+            "Server room over temperature",
+            "/tmp/silero_test.wav",
+            language="en",
+            speed=1.0,
+        )
+
+
+def test_missing_model_fallback_silero():
+    with patch("os.path.exists", return_value=True), patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
+        from src.generate_audio.generate_audio import text_to_speech_silero_tts
+        from src.generate_audio.constants import SILERO_LANG
+
+        # Unsupported language 'unsupported_xyz'
+        text_to_speech_silero_tts("Alert", "/tmp/silero_fb.wav", language="unsupported_xyz", speed=1.0)
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert "--lang" in cmd
+        idx = cmd.index("--lang")
+        assert cmd[idx + 1] == SILERO_LANG
