@@ -11,10 +11,10 @@ import importlib
 import importlib.util
 import logging
 import os
-import sys
 import pathlib
 import site
 import subprocess
+import sys
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.dirname(current_dir)
@@ -25,12 +25,11 @@ if current_dir in sys.path:
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-
-from concurrent.futures.thread import ThreadPoolExecutor
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from aiohttp import web
+from py_phone_caller_utils.config import settings
 from py_phone_caller_utils.py_phone_caller_voices.aws_polly import (
     aws_polly_text_to_wave,
 )
@@ -39,35 +38,37 @@ from py_phone_caller_utils.py_phone_caller_voices.facebook_mms import (
 )
 from py_phone_caller_utils.py_phone_caller_voices.google_gtts import create_audio_file
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_app
-from py_phone_caller_utils.web import extract_params, create_service_catalog, setup_swagger_routes
-from py_phone_caller_utils.config import settings
+from py_phone_caller_utils.web import (
+    create_service_catalog,
+    extract_params,
+    setup_swagger_routes,
+)
 
 from generate_audio.constants import (
+    CONFIG_TTS_ENGINE,
+    FACEBOOK_MMS_LANGUAGE_CODE,
+    FACEBOOK_MMS_MODELS_FOLDER,
     GENERATE_AUDIO_APP_ROUTE,
+    GENERATE_AUDIO_ERROR,
     GENERATE_AUDIO_PORT,
+    IS_AUDIO_READY_ENDPOINT,
+    KOKORO_LANG,
+    KOKORO_MODEL_FILENAME,
+    KOKORO_MODELS_FOLDER,
+    KOKORO_PYTHON_INTERPRETER,
+    LANGUAGES_ENDPOINT,
     LOG_FORMATTER,
     LOG_LEVEL,
-    NUM_OF_CPUS,
-    SERVING_AUDIO_FOLDER,
-    IS_AUDIO_READY_ENDPOINT,
-    PRE_TRAINED_MODELS_FOLDER,
-    FACEBOOK_MMS_MODELS_FOLDER,
-    FACEBOOK_MMS_LANGUAGE_CODE,
-    PIPER_MODELS_FOLDER,
     PIPER_LANGUAGE_CODE,
-    CONFIG_TTS_ENGINE,
+    PIPER_MODELS_FOLDER,
     PIPER_PYTHON_INTERPRETER,
-    GENERATE_AUDIO_ERROR,
-    KOKORO_MODELS_FOLDER,
-    KOKORO_LANG,
-    KOKORO_PYTHON_INTERPRETER,
-    KOKORO_MODEL_FILENAME,
-    SILERO_MODELS_FOLDER,
+    PRE_TRAINED_MODELS_FOLDER,
+    SERVING_AUDIO_FOLDER,
     SILERO_LANG,
-    SILERO_SPEAKER,
-    SILERO_SAMPLE_RATE,
+    SILERO_MODELS_FOLDER,
     SILERO_PYTHON_INTERPRETER,
-    LANGUAGES_ENDPOINT,
+    SILERO_SAMPLE_RATE,
+    SILERO_SPEAKER,
 )
 
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
@@ -263,6 +264,30 @@ LANGUAGE_ALIASES: Dict[str, str] = {
     "hi-in": "hi",
 }
 
+KOKORO_VOICE_PREFIX_TO_LANG: Dict[str, str] = {
+    "ff": "fr",
+    "ef": "es",
+    "em": "es",
+    "if": "it",
+    "im": "it",
+    "zf": "zh",
+    "zm": "zh",
+    "jf": "ja",
+    "jm": "ja",
+    "hf": "hi",
+    "hm": "hi",
+    "pf": "pt",
+    "pm": "pt",
+    "bf": "en",
+    "bm": "en",
+    "af": "en",
+    "am": "en",
+}
+
+
+def _kokoro_voice_to_lang(voice_name: str) -> str:
+    return KOKORO_VOICE_PREFIX_TO_LANG.get(voice_name[:2], "en")
+
 
 def resolve_audio_filename(msg_chk_sum: str, lang: str = None) -> str:
     """
@@ -271,9 +296,7 @@ def resolve_audio_filename(msg_chk_sum: str, lang: str = None) -> str:
     Otherwise preserves exact backward-compatibility '{msg_chk_sum}.wav'.
     """
     clean_lang = str(lang).strip() if lang else ""
-    if clean_lang:
-        return f"{msg_chk_sum}_{clean_lang}.wav"
-    return f"{msg_chk_sum}.wav"
+    return f"{msg_chk_sum}_{clean_lang}.wav" if clean_lang else f"{msg_chk_sum}.wav"
 
 
 async def create_audio_folder(folder_name):
@@ -283,6 +306,339 @@ async def create_audio_folder(folder_name):
         logging.exception(f"Unable to create the folder '{folder_name}': '{err}'")
 
 
+def file_not_found_error(error_text, file_location):
+    error_msg = f"{error_text}{file_location}"
+    logging.error(error_msg)
+    raise FileNotFoundError(error_msg)
+
+
+def _find_voice_script(script_filename: str) -> str:
+    """
+    Discovers the path of an offline voice runner script using flat candidate checks.
+    """
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    local_script = os.path.abspath(
+        os.path.join(
+            current_file_dir,
+            "..",
+            "py-phone-caller-utils",
+            "py_phone_caller_utils",
+            "py_phone_caller_voices",
+            script_filename,
+        )
+    )
+    if os.path.exists(local_script):
+        return local_script
+
+    module_name = f"py_phone_caller_utils.py_phone_caller_voices.{script_filename.replace('.py', '')}"
+    spec = importlib.util.find_spec(module_name)
+    if spec and spec.origin and os.path.exists(spec.origin):
+        return spec.origin
+
+    site_script = os.path.join(
+        site.getsitepackages()[0],
+        "py_phone_caller_utils",
+        "py_phone_caller_voices",
+        script_filename,
+    )
+    if os.path.exists(site_script):
+        return site_script
+
+    file_not_found_error(f"{script_filename} script not found at: ", local_script)
+
+
+# =========================================================================
+# MODEL DISCOVERY HELPERS
+# =========================================================================
+
+def _scan_facebook_mms(base_dir: str) -> List[Dict[str, Any]]:
+    fb_dir = os.path.join(base_dir, FACEBOOK_MMS_MODELS_FOLDER)
+    if not os.path.isdir(fb_dir):
+        return []
+
+    models = []
+    for entry in sorted(os.listdir(fb_dir)):
+        sub = os.path.join(fb_dir, entry)
+        if not (os.path.isdir(sub) and entry.startswith("mms-tts-")):
+            continue
+        code = entry.replace("mms-tts-", "").strip()
+        if os.path.exists(os.path.join(sub, "config.json")):
+            models.append({
+                "code": code,
+                "name": LANGUAGE_NAMES.get(code, code.capitalize()),
+                "model": entry,
+                "ready": True,
+            })
+    return models
+
+
+def _scan_piper(base_dir: str) -> List[Dict[str, Any]]:
+    piper_dir = os.path.join(base_dir, PIPER_MODELS_FOLDER)
+    if not os.path.isdir(piper_dir):
+        return []
+
+    models = []
+    for entry in sorted(os.listdir(piper_dir)):
+        sub = os.path.join(piper_dir, entry)
+        if os.path.isdir(sub):
+            onnx_file = os.path.join(sub, f"{entry}.onnx")
+            if os.path.exists(onnx_file):
+                models.append({
+                    "code": entry,
+                    "name": LANGUAGE_NAMES.get(entry, entry),
+                    "model": f"{entry}.onnx",
+                    "ready": True,
+                })
+        elif entry.endswith(".onnx"):
+            code = entry[:-5]
+            models.append({
+                "code": code,
+                "name": LANGUAGE_NAMES.get(code, code),
+                "model": entry,
+                "ready": True,
+            })
+    return models
+
+
+def _scan_kokoro(base_dir: str) -> Dict[str, Any]:
+    kokoro_dir = os.path.join(base_dir, KOKORO_MODELS_FOLDER)
+    if not os.path.isdir(kokoro_dir):
+        return {"ready": False, "voices": []}
+
+    pth = os.path.join(kokoro_dir, KOKORO_MODEL_FILENAME)
+    cfg = os.path.join(kokoro_dir, "config.json")
+    is_ready = os.path.exists(pth) or os.path.exists(cfg)
+
+    voices_dir = os.path.join(kokoro_dir, "voices")
+    voices = (
+        [v[:-3] for v in sorted(os.listdir(voices_dir)) if v.endswith(".pt")]
+        if os.path.isdir(voices_dir)
+        else []
+    )
+    return {
+        "model": KOKORO_MODEL_FILENAME,
+        "ready": is_ready,
+        "voices": voices,
+    }
+
+
+def _scan_silero(base_dir: str) -> List[Dict[str, Any]]:
+    silero_dir = os.path.join(base_dir, SILERO_MODELS_FOLDER)
+    if not os.path.isdir(silero_dir):
+        return []
+
+    models = []
+    for entry in sorted(os.listdir(silero_dir)):
+        sub = os.path.join(silero_dir, entry)
+        if os.path.isdir(sub):
+            pt_files = [f for f in os.listdir(sub) if f.endswith(".pt")]
+            if pt_files:
+                models.append({
+                    "code": entry,
+                    "name": LANGUAGE_NAMES.get(entry, entry.capitalize()),
+                    "model": pt_files[0],
+                    "ready": True,
+                })
+        elif entry.endswith(".pt") and entry.startswith("v"):
+            parts = entry[:-3].split("_")
+            if len(parts) >= 2:
+                code = parts[1]
+                models.append({
+                    "code": code,
+                    "name": LANGUAGE_NAMES.get(code, code.capitalize()),
+                    "model": entry,
+                    "ready": True,
+                })
+    return models
+
+
+# =========================================================================
+# ACTIVE ENGINE LANGUAGE BUILDERS (Strategy Pattern)
+# =========================================================================
+
+def _build_mms_active_langs(installed: Dict[str, Any], default_lang: str) -> List[Dict[str, Any]]:
+    langs = list(installed["facebook_mms"])
+    if not any(item["code"] == default_lang for item in langs):
+        langs.insert(0, {
+            "code": default_lang,
+            "name": LANGUAGE_NAMES.get(default_lang, default_lang.capitalize()),
+            "model": f"mms-tts-{default_lang}",
+            "ready": True,
+        })
+    return langs
+
+
+def _build_piper_active_langs(installed: Dict[str, Any], default_lang: str) -> List[Dict[str, Any]]:
+    langs = list(installed["piper_tts"])
+    if not any(item["code"] == default_lang for item in langs):
+        langs.insert(0, {
+            "code": default_lang,
+            "name": LANGUAGE_NAMES.get(default_lang, default_lang),
+            "model": f"{default_lang}.onnx",
+            "ready": True,
+        })
+    return langs
+
+
+def _build_kokoro_active_langs(installed: Dict[str, Any], default_lang: str) -> List[Dict[str, Any]]:
+    langs = []
+    seen = set()
+    for v in installed["kokoro_tts"]["voices"]:
+        lang_code = _kokoro_voice_to_lang(v)
+        norm = LANGUAGE_ALIASES.get(lang_code.lower(), lang_code.lower())
+        if norm not in seen:
+            seen.add(norm)
+            langs.append({
+                "code": lang_code,
+                "voice": v,
+                "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
+                "ready": installed["kokoro_tts"]["ready"],
+            })
+
+    def_norm = LANGUAGE_ALIASES.get(default_lang.lower(), default_lang.lower())
+    if default_lang not in [item["code"] for item in langs]:
+        existing = next(
+            (item for item in langs if LANGUAGE_ALIASES.get(item["code"].lower(), item["code"].lower()) == def_norm),
+            None,
+        )
+        if existing:
+            existing["code"] = default_lang
+        else:
+            langs.insert(0, {
+                "code": default_lang,
+                "name": LANGUAGE_NAMES.get(default_lang, "Spanish"),
+                "ready": installed["kokoro_tts"]["ready"],
+            })
+    return langs
+
+
+def _build_silero_active_langs(installed: Dict[str, Any], default_lang: str) -> List[Dict[str, Any]]:
+    langs = list(installed["silero_tts"])
+    if not any(item["code"] == default_lang for item in langs):
+        langs.insert(0, {
+            "code": default_lang,
+            "name": LANGUAGE_NAMES.get(default_lang, default_lang.capitalize()),
+            "model": f"v3_{default_lang}.pt",
+            "ready": True,
+        })
+    return langs
+
+
+def _build_google_active_langs(installed: Dict[str, Any], default_lang: str) -> List[Dict[str, Any]]:
+    return [
+        {"code": c, "name": LANGUAGE_NAMES.get(c, c.capitalize()), "ready": True}
+        for c in ["en", "es", "it", "fr", "de", "ru", "zh", "hi", "he", "ar"]
+    ]
+
+
+def _build_polly_active_langs(installed: Dict[str, Any], default_lang: str) -> List[Dict[str, Any]]:
+    return [
+        {"code": c, "name": LANGUAGE_NAMES.get(c, c), "ready": True}
+        for c in ["en-US", "es-ES", "it-IT", "fr-FR", "de-DE", "ru-RU", "cmn-CN", "hi-IN", "he-IL", "arb"]
+    ]
+
+
+_ACTIVE_LANG_BUILDERS: Dict[TTSEngine, Callable[[Dict[str, Any], str], List[Dict[str, Any]]]] = {
+    TTSEngine.FACEBOOK_MMS: _build_mms_active_langs,
+    TTSEngine.PIPER: _build_piper_active_langs,
+    TTSEngine.KOKORO: _build_kokoro_active_langs,
+    TTSEngine.SILERO: _build_silero_active_langs,
+    TTSEngine.GOOGLE_GTTS: _build_google_active_langs,
+    TTSEngine.AWS_POLLY: _build_polly_active_langs,
+}
+
+_DEFAULT_LANG_MAP: Dict[TTSEngine, str] = {
+    TTSEngine.FACEBOOK_MMS: FACEBOOK_MMS_LANGUAGE_CODE,
+    TTSEngine.PIPER: PIPER_LANGUAGE_CODE,
+    TTSEngine.KOKORO: KOKORO_LANG,
+    TTSEngine.SILERO: SILERO_LANG,
+    TTSEngine.GOOGLE_GTTS: "en",
+    TTSEngine.AWS_POLLY: "en-US",
+}
+
+
+def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
+    """
+    Scans the pre-trained models directory for installed weights and configs
+    across all supported engines, returning active language options and the
+    complete multi-engine language inventory.
+    """
+    if base_models_dir is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        base_models_dir = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
+
+    installed: Dict[str, Any] = {
+        "facebook_mms": _scan_facebook_mms(base_models_dir),
+        "piper_tts": _scan_piper(base_models_dir),
+        "kokoro_tts": _scan_kokoro(base_models_dir),
+        "silero_tts": _scan_silero(base_models_dir),
+    }
+
+    default_lang = _DEFAULT_LANG_MAP.get(TTS_ENGINE, "")
+    builder = _ACTIVE_LANG_BUILDERS.get(TTS_ENGINE, _build_google_active_langs)
+    active_langs = builder(installed, default_lang)
+
+    for item in active_langs:
+        item["engine"] = TTS_ENGINE.value
+        item["is_default"] = (item["code"] == default_lang)
+        item["flag"] = LANGUAGE_FLAGS.get(item["code"], "")
+
+    all_languages: List[Dict[str, Any]] = list(active_langs)
+    seen_normalized = {
+        LANGUAGE_ALIASES.get(item["code"].lower(), item["code"].lower())
+        for item in active_langs
+    }
+    seen_codes = {item["code"] for item in active_langs}
+
+    # Add installed models from other offline engines if not already present
+    offline_engines = [
+        (TTSEngine.SILERO, "silero_tts"),
+        (TTSEngine.PIPER, "piper_tts"),
+        (TTSEngine.FACEBOOK_MMS, "facebook_mms"),
+    ]
+    for eng_enum, eng_key in offline_engines:
+        if TTS_ENGINE == eng_enum:
+            continue
+        for m in installed[eng_key]:
+            c = m["code"]
+            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
+            if norm not in seen_normalized and c not in seen_codes:
+                all_languages.append({
+                    "code": c,
+                    "name": m["name"],
+                    "engine": eng_key,
+                    "ready": m.get("ready", True),
+                    "is_default": False,
+                    "flag": LANGUAGE_FLAGS.get(c, ""),
+                })
+                seen_normalized.add(norm)
+                seen_codes.add(c)
+
+    if TTS_ENGINE != TTSEngine.KOKORO and installed["kokoro_tts"]["ready"]:
+        for v in installed["kokoro_tts"]["voices"]:
+            lang_code = _kokoro_voice_to_lang(v)
+            norm = LANGUAGE_ALIASES.get(lang_code.lower(), lang_code.lower())
+            if norm not in seen_normalized and lang_code not in seen_codes:
+                all_languages.append({
+                    "code": lang_code,
+                    "voice": v,
+                    "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
+                    "engine": "kokoro_tts",
+                    "ready": True,
+                    "is_default": False,
+                    "flag": LANGUAGE_FLAGS.get(lang_code, ""),
+                })
+                seen_normalized.add(norm)
+                seen_codes.add(lang_code)
+
+    return {
+        "active_engine": TTS_ENGINE.value,
+        "default_language": default_lang,
+        "languages": all_languages,
+        "installed_models": installed,
+    }
+
+
 def resolve_engine_for_language(
     language: str = None, base_models_dir: str = None
 ) -> TTSEngine:
@@ -290,135 +646,55 @@ def resolve_engine_for_language(
     Resolves the best TTS engine for a requested language code.
     If no language is requested, or if the active TTS_ENGINE supports the requested
     language, returns TTS_ENGINE. Otherwise, checks if another installed offline
-    engine (silero_tts, piper_tts, facebook_mms, kokoro_tts) has weights for this language.
+    engine has weights for this language.
     """
     clean_lang = str(language).strip() if language else ""
-    if not clean_lang:
+    if not clean_lang or TTS_ENGINE in (TTSEngine.GOOGLE_GTTS, TTSEngine.AWS_POLLY):
         return TTS_ENGINE
 
-    # Cloud engines support everything online
-    if TTS_ENGINE in (TTSEngine.GOOGLE_GTTS, TTSEngine.AWS_POLLY):
-        return TTS_ENGINE
-
-    if base_models_dir is None:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        base_models_dir = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
-
+    installed = scan_installed_languages(base_models_dir)["installed_models"]
     norm = LANGUAGE_ALIASES.get(clean_lang.lower(), clean_lang.lower())
 
-    # 1. Does the active engine support it?
-    if TTS_ENGINE == TTSEngine.KOKORO:
-        active_norm = LANGUAGE_ALIASES.get(KOKORO_LANG.lower(), KOKORO_LANG.lower())
-        if clean_lang == KOKORO_LANG or norm == active_norm:
-            return TTSEngine.KOKORO
-        voice_map = {
-            "a": "af_heart", "en": "af_heart", "b": "bf_emma",
-            "e": "ef_dora", "es": "ef_dora", "f": "ff_siwis", "fr": "ff_siwis",
-            "h": "hf_alpha", "hi": "hf_alpha", "i": "if_sara", "it": "if_sara",
-            "j": "jf_alpha", "ja": "jf_alpha", "p": "pf_dora", "pt": "pf_dora",
-            "z": "zf_xiaobei", "zh": "zf_xiaobei"
-        }
-        voice_name = voice_map.get(clean_lang) or voice_map.get(norm)
-        if voice_name:
-            voice_file = os.path.join(
-                base_models_dir, KOKORO_MODELS_FOLDER, "voices", f"{voice_name}.pt"
+    def _supports(eng: TTSEngine) -> bool:
+        if eng == TTSEngine.KOKORO:
+            kokoro_def = KOKORO_LANG.lower()
+            if clean_lang == KOKORO_LANG or norm == LANGUAGE_ALIASES.get(kokoro_def, kokoro_def):
+                return True
+            voice_map = {
+                "a": "af_heart", "en": "af_heart", "b": "bf_emma",
+                "e": "ef_dora", "es": "ef_dora", "f": "ff_siwis", "fr": "ff_siwis",
+                "h": "hf_alpha", "hi": "hf_alpha", "i": "if_sara", "it": "if_sara",
+                "j": "jf_alpha", "ja": "jf_alpha", "p": "pf_dora", "pt": "pf_dora",
+                "z": "zf_xiaobei", "zh": "zf_xiaobei"
+            }
+            target_v = voice_map.get(clean_lang) or voice_map.get(norm)
+            if target_v and target_v in installed["kokoro_tts"].get("voices", []):
+                return True
+            return any(
+                _kokoro_voice_to_lang(v) in (clean_lang, norm)
+                for v in installed["kokoro_tts"].get("voices", [])
             )
-            if os.path.exists(voice_file):
-                return TTSEngine.KOKORO
+        key = eng.value
+        return any(
+            m["code"] == clean_lang or LANGUAGE_ALIASES.get(m["code"].lower(), m["code"].lower()) == norm
+            for m in installed.get(key, [])
+        )
 
-    elif TTS_ENGINE == TTSEngine.SILERO:
-        active_norm = LANGUAGE_ALIASES.get(SILERO_LANG.lower(), SILERO_LANG.lower())
-        if clean_lang == SILERO_LANG or norm == active_norm:
-            return TTSEngine.SILERO
-        silero_file = os.path.join(base_models_dir, SILERO_MODELS_FOLDER, norm, f"v3_{norm}.pt")
-        direct_file = os.path.join(base_models_dir, SILERO_MODELS_FOLDER, f"v3_{norm}.pt")
-        if os.path.exists(silero_file) or os.path.exists(direct_file):
-            return TTSEngine.SILERO
+    # 1. Prefer active engine if it supports the requested language
+    if _supports(TTS_ENGINE):
+        return TTS_ENGINE
 
-    elif TTS_ENGINE == TTSEngine.PIPER:
-        active_norm = LANGUAGE_ALIASES.get(PIPER_LANGUAGE_CODE.lower(), PIPER_LANGUAGE_CODE.lower())
-        if clean_lang == PIPER_LANGUAGE_CODE or norm == active_norm:
-            return TTSEngine.PIPER
-        piper_dir = os.path.join(base_models_dir, PIPER_MODELS_FOLDER)
-        if os.path.isdir(piper_dir):
-            for entry in os.listdir(piper_dir):
-                if entry == clean_lang or LANGUAGE_ALIASES.get(entry.lower(), entry.lower()) == norm:
-                    return TTSEngine.PIPER
-
-    elif TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
-        active_norm = LANGUAGE_ALIASES.get(FACEBOOK_MMS_LANGUAGE_CODE.lower(), FACEBOOK_MMS_LANGUAGE_CODE.lower())
-        if clean_lang == FACEBOOK_MMS_LANGUAGE_CODE or norm == active_norm:
-            return TTSEngine.FACEBOOK_MMS
-        mms_dir = os.path.join(base_models_dir, FACEBOOK_MMS_MODELS_FOLDER)
-        if os.path.isdir(mms_dir):
-            for entry in os.listdir(mms_dir):
-                if entry.startswith("mms-tts-"):
-                    sub = entry.replace("mms-tts-", "")
-                    if sub == clean_lang or LANGUAGE_ALIASES.get(sub.lower(), sub.lower()) == norm:
-                        return TTSEngine.FACEBOOK_MMS
-
-    # 2. Check other offline engines on disk:
-    # Check Silero
-    silero_dir = os.path.join(base_models_dir, SILERO_MODELS_FOLDER)
-    if os.path.isdir(silero_dir):
-        for entry in os.listdir(silero_dir):
-            sub_path = os.path.join(silero_dir, entry)
-            if os.path.isdir(sub_path):
-                if entry == clean_lang or LANGUAGE_ALIASES.get(entry.lower(), entry.lower()) == norm:
-                    if any(f.endswith(".pt") for f in os.listdir(sub_path)):
-                        return TTSEngine.SILERO
-            elif entry.endswith(".pt") and entry.startswith("v"):
-                parts = entry[:-3].split("_")
-                if len(parts) >= 2:
-                    sub = parts[1]
-                    if sub == clean_lang or LANGUAGE_ALIASES.get(sub.lower(), sub.lower()) == norm:
-                        return TTSEngine.SILERO
-
-    # Check Piper
-    piper_dir = os.path.join(base_models_dir, PIPER_MODELS_FOLDER)
-    if os.path.isdir(piper_dir):
-        for entry in os.listdir(piper_dir):
-            sub_path = os.path.join(piper_dir, entry)
-            if os.path.isdir(sub_path):
-                if entry == clean_lang or LANGUAGE_ALIASES.get(entry.lower(), entry.lower()) == norm:
-                    if os.path.exists(os.path.join(sub_path, f"{entry}.onnx")):
-                        return TTSEngine.PIPER
-            elif entry.endswith(".onnx"):
-                c = entry[:-5]
-                if c == clean_lang or LANGUAGE_ALIASES.get(c.lower(), c.lower()) == norm:
-                    return TTSEngine.PIPER
-
-    # Check Facebook MMS
-    mms_dir = os.path.join(base_models_dir, FACEBOOK_MMS_MODELS_FOLDER)
-    if os.path.isdir(mms_dir):
-        for entry in os.listdir(mms_dir):
-            if entry.startswith("mms-tts-"):
-                sub = entry.replace("mms-tts-", "")
-                if sub == clean_lang or LANGUAGE_ALIASES.get(sub.lower(), sub.lower()) == norm:
-                    if os.path.exists(os.path.join(mms_dir, entry, "config.json")):
-                        return TTSEngine.FACEBOOK_MMS
-
-    # Check Kokoro
-    kokoro_dir = os.path.join(base_models_dir, KOKORO_MODELS_FOLDER)
-    if os.path.isdir(kokoro_dir) and (
-        os.path.exists(os.path.join(kokoro_dir, KOKORO_MODEL_FILENAME))
-        or os.path.exists(os.path.join(kokoro_dir, "config.json"))
-    ):
-        v_map = {
-            "a": "af_heart", "en": "af_heart", "b": "bf_emma",
-            "e": "ef_dora", "es": "ef_dora", "f": "ff_siwis", "fr": "ff_siwis",
-            "h": "hf_alpha", "hi": "hf_alpha", "i": "if_sara", "it": "if_sara",
-            "j": "jf_alpha", "ja": "jf_alpha", "p": "pf_dora", "pt": "pf_dora",
-            "z": "zf_xiaobei", "zh": "zf_xiaobei"
-        }
-        target_v = v_map.get(clean_lang) or v_map.get(norm)
-        if target_v and os.path.exists(os.path.join(kokoro_dir, "voices", f"{target_v}.pt")):
-            return TTSEngine.KOKORO
-        if clean_lang == KOKORO_LANG or norm == LANGUAGE_ALIASES.get(KOKORO_LANG.lower(), KOKORO_LANG.lower()):
-            return TTSEngine.KOKORO
+    # 2. Check offline fallback candidates in priority order
+    for candidate in (TTSEngine.SILERO, TTSEngine.PIPER, TTSEngine.FACEBOOK_MMS, TTSEngine.KOKORO):
+        if _supports(candidate):
+            return candidate
 
     return TTS_ENGINE
 
+
+# =========================================================================
+# TTS ENGINE STRATEGY DISPATCH PATTERN
+# =========================================================================
 
 def _handle_google_gtts(
     message: str,
@@ -438,18 +714,10 @@ def _handle_facebook_mms(
 ) -> None:
     target_lang = language or FACEBOOK_MMS_LANGUAGE_CODE
     mms_alias = {
-        "es": "spa",
-        "e": "spa",
-        "en": "eng",
-        "a": "eng",
-        "it": "ita",
-        "i": "ita",
-        "fr": "fra",
-        "f": "fra",
-        "de": "deu",
+        "es": "spa", "e": "spa", "en": "eng", "a": "eng",
+        "it": "ita", "i": "ita", "fr": "fra", "f": "fra", "de": "deu",
     }
-    if target_lang in mms_alias:
-        target_lang = mms_alias[target_lang]
+    target_lang = mms_alias.get(target_lang, target_lang)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(
@@ -547,50 +815,18 @@ def generate_tts_audio(
     strategy(message, output_path, language, speed)
 
 
-def file_not_found_error(error_text, file_location):
-    error_msg = f"{error_text}{file_location}"
-    logging.error(error_msg)
-    raise FileNotFoundError(error_msg)
-
+# =========================================================================
+# OFFLINE TTS CLI SUBPROCESS RUNNERS
+# =========================================================================
 
 def text_to_speech_piper_tts(
     message: str, output_path: str, language: str = None, speed: float = 1.0
 ):
-    python_interpreter = PIPER_PYTHON_INTERPRETER
-    current_file_dir = os.path.dirname(os.path.abspath(__file__))
-    local_script = os.path.join(
-        current_file_dir,
-        "..",
-        "py-phone-caller-utils",
-        "py_phone_caller_utils",
-        "py_phone_caller_voices",
-        "piper_tts.py",
-    )
-
-    if os.path.exists(local_script):
-        piper_script = os.path.abspath(local_script)
-    else:
-        spec = importlib.util.find_spec(
-            "py_phone_caller_utils.py_phone_caller_voices.piper_tts"
-        )
-        if spec and spec.origin:
-            piper_script = spec.origin
-        else:
-            piper_script = os.path.join(
-                site.getsitepackages()[0],
-                "py_phone_caller_utils",
-                "py_phone_caller_voices",
-                "piper_tts.py",
-            )
-
-    if not os.path.exists(piper_script):
-        file_not_found_error("Piper TTS script not found at: ", piper_script)
-
+    piper_script = _find_voice_script("piper_tts.py")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     target_lang = language or PIPER_LANGUAGE_CODE
     piper_alias = {"it": "it_IT", "en": "en_US"}
-    if target_lang in piper_alias:
-        target_lang = piper_alias[target_lang]
+    target_lang = piper_alias.get(target_lang, target_lang)
 
     model_dir = os.path.join(
         script_dir, PRE_TRAINED_MODELS_FOLDER, PIPER_MODELS_FOLDER, target_lang
@@ -615,7 +851,7 @@ def text_to_speech_piper_tts(
         file_not_found_error("Piper config file not found at: ", config_path)
 
     cmd = [
-        python_interpreter,
+        PIPER_PYTHON_INTERPRETER,
         piper_script,
         message,
         "--model",
@@ -629,16 +865,13 @@ def text_to_speech_piper_tts(
     ]
 
     logging.info(f"Running Piper TTS with command: {' '.join(cmd)}")
-
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         logging.info(f"Piper TTS completed successfully for output: {output_path}")
         if result.stdout:
             logging.debug(f"Piper TTS output: {result.stdout}")
     except subprocess.CalledProcessError as e:
-        error_msg = (
-            f"Piper TTS process failed with exit code {e.returncode}: {e.stderr}"
-        )
+        error_msg = f"Piper TTS process failed with exit code {e.returncode}: {e.stderr}"
         logging.error(error_msg)
         raise RuntimeError(error_msg) from e
     except Exception as e:
@@ -650,55 +883,14 @@ def text_to_speech_piper_tts(
 def text_to_speech_kokoro_tts(
     message: str, output_path: str, language: str = None, speed: float = 1.0
 ):
-    python_interpreter = KOKORO_PYTHON_INTERPRETER
+    kokoro_script = _find_voice_script("kokoro_tts.py")
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
-    local_script = os.path.join(
-        current_file_dir,
-        "..",
-        "py-phone-caller-utils",
-        "py_phone_caller_utils",
-        "py_phone_caller_voices",
-        "kokoro_tts.py",
-    )
-
-    if os.path.exists(local_script):
-        kokoro_script = os.path.abspath(local_script)
-    else:
-        spec = importlib.util.find_spec(
-            "py_phone_caller_utils.py_phone_caller_voices.kokoro_tts"
-        )
-        if spec and spec.origin:
-            kokoro_script = spec.origin
-        else:
-            kokoro_script = os.path.join(
-                site.getsitepackages()[0],
-                "py_phone_caller_utils",
-                "py_phone_caller_voices",
-                "kokoro_tts.py",
-            )
-
-    if not os.path.exists(kokoro_script):
-        file_not_found_error("Kokoro TTS script not found at: ", kokoro_script)
 
     voice_name_map = {
-        "a": "af_heart",  # American English
-        "b": "bf_emma",   # British English
-        "e": "ef_dora",   # Spanish
-        "f": "ff_siwis",  # French
-        "h": "hf_alpha",  # Hindi
-        "i": "if_sara",   # Italian
-        "j": "jf_alpha",  # Japanese
-        "p": "pf_dora",   # Brazilian Portuguese
-        "z": "zf_xiaobei",# Mandarin Chinese
-        # Also map standard 2-letter codes
-        "en": "af_heart",
-        "es": "ef_dora",
-        "fr": "ff_siwis",
-        "hi": "hf_alpha",
-        "it": "if_sara",
-        "ja": "jf_alpha",
-        "pt": "pf_dora",
-        "zh": "zf_xiaobei",
+        "a": "af_heart", "b": "bf_emma", "e": "ef_dora", "f": "ff_siwis",
+        "h": "hf_alpha", "i": "if_sara", "j": "jf_alpha", "p": "pf_dora", "z": "zf_xiaobei",
+        "en": "af_heart", "es": "ef_dora", "fr": "ff_siwis", "hi": "hf_alpha",
+        "it": "if_sara", "ja": "jf_alpha", "pt": "pf_dora", "zh": "zf_xiaobei",
     }
 
     target_lang = language or KOKORO_LANG
@@ -710,19 +902,14 @@ def text_to_speech_kokoro_tts(
 
     voice_name = voice_name_map.get(target_lang, "af_heart")
     local_model_dir = os.path.join(
-        current_file_dir,
-        PRE_TRAINED_MODELS_FOLDER,
-        KOKORO_MODELS_FOLDER,
+        current_file_dir, PRE_TRAINED_MODELS_FOLDER, KOKORO_MODELS_FOLDER
     )
 
-    # Convert 2-letter back to single letter for kokoro CLI if needed
-    kokoro_cli_lang = target_lang
     kokoro_lang_reverse = {"en": "a", "es": "e", "fr": "f", "hi": "h", "it": "i", "ja": "j", "pt": "p", "zh": "z"}
-    if kokoro_cli_lang in kokoro_lang_reverse:
-        kokoro_cli_lang = kokoro_lang_reverse[kokoro_cli_lang]
+    kokoro_cli_lang = kokoro_lang_reverse.get(target_lang, target_lang)
 
     cmd = [
-        python_interpreter,
+        KOKORO_PYTHON_INTERPRETER,
         kokoro_script,
         message,
         "--voice-name",
@@ -738,16 +925,13 @@ def text_to_speech_kokoro_tts(
         cmd.extend(["--model", local_model_dir])
 
     logging.info(f"Running Kokoro TTS with command: {' '.join(cmd)}")
-
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         logging.info(f"Kokoro TTS completed successfully for output: {output_path}")
         if result.stdout:
             logging.debug(f"Kokoro TTS output: {result.stdout}")
     except subprocess.CalledProcessError as e:
-        error_msg = (
-            f"Kokoro TTS process failed with exit code {e.returncode}: {e.stderr}"
-        )
+        error_msg = f"Kokoro TTS process failed with exit code {e.returncode}: {e.stderr}"
         logging.error(error_msg)
         raise RuntimeError(error_msg) from e
     except Exception as e:
@@ -759,40 +943,13 @@ def text_to_speech_kokoro_tts(
 def text_to_speech_silero_tts(
     message: str, output_path: str, language: str = None, speed: float = 1.0
 ):
-    python_interpreter = SILERO_PYTHON_INTERPRETER
+    silero_script = _find_voice_script("silero_tts.py")
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
-    local_script = os.path.join(
-        current_file_dir,
-        "..",
-        "py-phone-caller-utils",
-        "py_phone_caller_utils",
-        "py_phone_caller_voices",
-        "silero_tts.py",
-    )
-
-    if os.path.exists(local_script):
-        silero_script = os.path.abspath(local_script)
-    else:
-        spec = importlib.util.find_spec(
-            "py_phone_caller_utils.py_phone_caller_voices.silero_tts"
-        )
-        if spec and spec.origin:
-            silero_script = spec.origin
-        else:
-            silero_script = os.path.join(
-                site.getsitepackages()[0],
-                "py_phone_caller_utils",
-                "py_phone_caller_voices",
-                "silero_tts.py",
-            )
-
-    if not os.path.exists(silero_script):
-        file_not_found_error("Silero TTS script not found at: ", silero_script)
 
     raw_lang = language or SILERO_LANG
     silero_map = {
         "spa": "es", "e": "es", "eng": "en", "a": "en", "b": "en",
-        "fra": "fr", "f": "fr", "deu": "de", "ita": "it", "i": "it"
+        "fra": "fr", "f": "fr", "deu": "de", "ita": "it", "i": "it",
     }
     target_lang = silero_map.get(raw_lang, raw_lang)
     supported_langs = ["en", "ru", "de", "es", "fr", "indic"]
@@ -803,18 +960,15 @@ def text_to_speech_silero_tts(
         target_lang = SILERO_LANG
 
     local_models_base = os.path.join(
-        current_file_dir,
-        PRE_TRAINED_MODELS_FOLDER,
-        SILERO_MODELS_FOLDER,
+        current_file_dir, PRE_TRAINED_MODELS_FOLDER, SILERO_MODELS_FOLDER
     )
 
     speaker = SILERO_SPEAKER
-    # Adjust speaker if language differs from default
     if target_lang != "en" and speaker.startswith("en_"):
         speaker = f"{target_lang}_0"
 
     cmd = [
-        python_interpreter,
+        SILERO_PYTHON_INTERPRETER,
         silero_script,
         message,
         "--lang",
@@ -832,16 +986,13 @@ def text_to_speech_silero_tts(
         cmd.extend(["--model", local_models_base])
 
     logging.info(f"Running Silero TTS with command: {' '.join(cmd)}")
-
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         logging.info(f"Silero TTS completed successfully for output: {output_path}")
         if result.stdout:
             logging.debug(f"Silero TTS output: {result.stdout}")
     except subprocess.CalledProcessError as e:
-        error_msg = (
-            f"Silero TTS process failed with exit code {e.returncode}: {e.stderr}"
-        )
+        error_msg = f"Silero TTS process failed with exit code {e.returncode}: {e.stderr}"
         logging.error(error_msg)
         raise RuntimeError(error_msg) from e
     except Exception as e:
@@ -852,18 +1003,11 @@ def text_to_speech_silero_tts(
 
 def wave_file_exists(file_path: str) -> bool:
     try:
-        if not os.path.isfile(file_path):
+        if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
             return False
-
-        if os.path.getsize(file_path) == 0:
-            return False
-
         with open(file_path, "rb") as f:
             header = f.read(44)
-            if len(header) < 44 or not header.startswith(b"RIFF"):
-                return False
-
-        return True
+            return len(header) >= 44 and header.startswith(b"RIFF")
     except (OSError, IOError):
         return False
 
@@ -954,312 +1098,6 @@ async def create_audio(request):
     return web.json_response({"status": status_code, "cached": False})
 
 
-def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
-    """
-    Scans the pre-trained models directory for installed weights and configs
-    across all supported engines, and returns both active engine language options
-    and full installed model inventories.
-    Comprehensive multi-engine support: compiles all installed offline languages
-    into the top-level 'languages' array so the Web UI can display and select them.
-    """
-    if base_models_dir is None:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        base_models_dir = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
-
-    installed: Dict[str, Any] = {
-        "facebook_mms": [],
-        "piper_tts": [],
-        "kokoro_tts": {"ready": False, "voices": []},
-        "silero_tts": [],
-    }
-
-    # 1. Facebook MMS
-    fb_dir = os.path.join(base_models_dir, FACEBOOK_MMS_MODELS_FOLDER)
-    if os.path.isdir(fb_dir):
-        for entry in sorted(os.listdir(fb_dir)):
-            sub = os.path.join(fb_dir, entry)
-            if os.path.isdir(sub) and entry.startswith("mms-tts-"):
-                code = entry.replace("mms-tts-", "").strip()
-                cfg = os.path.join(sub, "config.json")
-                if os.path.exists(cfg):
-                    installed["facebook_mms"].append({
-                        "code": code,
-                        "name": LANGUAGE_NAMES.get(code, code.capitalize()),
-                        "model": entry,
-                        "ready": True,
-                    })
-
-    # 2. Piper TTS
-    piper_dir = os.path.join(base_models_dir, PIPER_MODELS_FOLDER)
-    if os.path.isdir(piper_dir):
-        for entry in sorted(os.listdir(piper_dir)):
-            sub = os.path.join(piper_dir, entry)
-            if os.path.isdir(sub):
-                onnx_file = os.path.join(sub, f"{entry}.onnx")
-                if os.path.exists(onnx_file):
-                    installed["piper_tts"].append({
-                        "code": entry,
-                        "name": LANGUAGE_NAMES.get(entry, entry),
-                        "model": f"{entry}.onnx",
-                        "ready": True,
-                    })
-            elif entry.endswith(".onnx"):
-                code = entry[:-5]
-                installed["piper_tts"].append({
-                    "code": code,
-                    "name": LANGUAGE_NAMES.get(code, code),
-                    "model": entry,
-                    "ready": True,
-                })
-
-    # 3. Kokoro TTS
-    kokoro_dir = os.path.join(base_models_dir, KOKORO_MODELS_FOLDER)
-    if os.path.isdir(kokoro_dir):
-        pth = os.path.join(kokoro_dir, KOKORO_MODEL_FILENAME)
-        cfg = os.path.join(kokoro_dir, "config.json")
-        is_ready = os.path.exists(pth) or os.path.exists(cfg)
-        voices: List[str] = []
-        voices_dir = os.path.join(kokoro_dir, "voices")
-        if os.path.isdir(voices_dir):
-            for v in sorted(os.listdir(voices_dir)):
-                if v.endswith(".pt"):
-                    voices.append(v[:-3])
-        installed["kokoro_tts"] = {
-            "model": KOKORO_MODEL_FILENAME,
-            "ready": is_ready,
-            "voices": voices,
-        }
-
-    # 4. Silero TTS
-    silero_dir = os.path.join(base_models_dir, SILERO_MODELS_FOLDER)
-    if os.path.isdir(silero_dir):
-        for entry in sorted(os.listdir(silero_dir)):
-            sub = os.path.join(silero_dir, entry)
-            if os.path.isdir(sub):
-                pt_files = [f for f in os.listdir(sub) if f.endswith(".pt")]
-                if pt_files:
-                    installed["silero_tts"].append({
-                        "code": entry,
-                        "name": LANGUAGE_NAMES.get(entry, entry.capitalize()),
-                        "model": pt_files[0],
-                        "ready": True,
-                    })
-            elif entry.endswith(".pt") and entry.startswith("v"):
-                parts = entry[:-3].split("_")
-                if len(parts) >= 2:
-                    code = parts[1]
-                    installed["silero_tts"].append({
-                        "code": code,
-                        "name": LANGUAGE_NAMES.get(code, code.capitalize()),
-                        "model": entry,
-                        "ready": True,
-                    })
-
-    # Build active engine languages list
-    engine_val = TTS_ENGINE.value
-    active_langs: List[Dict[str, Any]] = []
-    default_lang = ""
-
-    if TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
-        default_lang = FACEBOOK_MMS_LANGUAGE_CODE
-        active_langs = list(installed["facebook_mms"])
-        if not any(item["code"] == default_lang for item in active_langs):
-            active_langs.insert(0, {
-                "code": default_lang,
-                "name": LANGUAGE_NAMES.get(default_lang, default_lang.capitalize()),
-                "model": f"mms-tts-{default_lang}",
-                "ready": True,
-            })
-    elif TTS_ENGINE == TTSEngine.PIPER:
-        default_lang = PIPER_LANGUAGE_CODE
-        active_langs = list(installed["piper_tts"])
-        if not any(item["code"] == default_lang for item in active_langs):
-            active_langs.insert(0, {
-                "code": default_lang,
-                "name": LANGUAGE_NAMES.get(default_lang, default_lang),
-                "model": f"{default_lang}.onnx",
-                "ready": True,
-            })
-    elif TTS_ENGINE == TTSEngine.KOKORO:
-        default_lang = KOKORO_LANG
-        kokoro_seen: Set[str] = set()
-        for v in installed["kokoro_tts"]["voices"]:
-            lang_code = "en"
-            if v.startswith("ff_"):
-                lang_code = "fr"
-            elif v.startswith("ef_") or v.startswith("em_"):
-                lang_code = "es"
-            elif v.startswith("if_") or v.startswith("im_"):
-                lang_code = "it"
-            elif v.startswith("zf_") or v.startswith("zm_"):
-                lang_code = "zh"
-            elif v.startswith("jf_") or v.startswith("jm_"):
-                lang_code = "ja"
-            elif v.startswith("hf_") or v.startswith("hm_"):
-                lang_code = "hi"
-            elif v.startswith("pf_") or v.startswith("pm_"):
-                lang_code = "pt"
-            elif v.startswith("bf_") or v.startswith("bm_"):
-                lang_code = "en"
-
-            norm = LANGUAGE_ALIASES.get(lang_code.lower(), lang_code.lower())
-            if norm not in kokoro_seen:
-                kokoro_seen.add(norm)
-                active_langs.append({
-                    "code": lang_code,
-                    "voice": v,
-                    "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
-                    "ready": installed["kokoro_tts"]["ready"],
-                })
-
-        def_norm = LANGUAGE_ALIASES.get(default_lang.lower(), default_lang.lower())
-        if default_lang not in [item["code"] for item in active_langs]:
-            existing = next(
-                (item for item in active_langs if LANGUAGE_ALIASES.get(item["code"].lower(), item["code"].lower()) == def_norm),
-                None
-            )
-            if existing:
-                existing["code"] = default_lang
-            else:
-                active_langs.insert(0, {
-                    "code": default_lang,
-                    "name": LANGUAGE_NAMES.get(default_lang, "Spanish"),
-                    "ready": installed["kokoro_tts"]["ready"],
-                })
-
-    elif TTS_ENGINE == TTSEngine.SILERO:
-        default_lang = SILERO_LANG
-        active_langs = list(installed["silero_tts"])
-        if not any(item["code"] == default_lang for item in active_langs):
-            active_langs.insert(0, {
-                "code": default_lang,
-                "name": LANGUAGE_NAMES.get(default_lang, default_lang.capitalize()),
-                "model": f"v3_{default_lang}.pt",
-                "ready": True,
-            })
-    elif TTS_ENGINE == TTSEngine.GOOGLE_GTTS:
-        default_lang = "en"
-        for c in ["en", "es", "it", "fr", "de", "ru", "zh", "hi", "he", "ar"]:
-            active_langs.append({
-                "code": c,
-                "name": LANGUAGE_NAMES.get(c, c.capitalize()),
-                "ready": True,
-            })
-    elif TTS_ENGINE == TTSEngine.AWS_POLLY:
-        default_lang = "en-US"
-        for c in ["en-US", "es-ES", "it-IT", "fr-FR", "de-DE", "ru-RU", "cmn-CN", "hi-IN", "he-IL", "arb"]:
-            active_langs.append({
-                "code": c,
-                "name": LANGUAGE_NAMES.get(c, c),
-                "ready": True,
-            })
-
-    for item in active_langs:
-        item["engine"] = engine_val
-        item["is_default"] = (item["code"] == default_lang)
-        item["flag"] = LANGUAGE_FLAGS.get(item["code"], "")
-
-    # Compile comprehensive languages list including all other installed offline models
-    all_languages: List[Dict[str, Any]] = list(active_langs)
-    seen_normalized = {
-        LANGUAGE_ALIASES.get(item["code"].lower(), item["code"].lower())
-        for item in active_langs
-    }
-    seen_codes = {item["code"] for item in active_langs}
-
-    # Add installed Silero models
-    if TTS_ENGINE != TTSEngine.SILERO:
-        for s in installed["silero_tts"]:
-            c = s["code"]
-            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
-            if norm not in seen_normalized and c not in seen_codes:
-                all_languages.append({
-                    "code": c,
-                    "name": s["name"],
-                    "engine": "silero_tts",
-                    "ready": s.get("ready", True),
-                    "is_default": False,
-                    "flag": LANGUAGE_FLAGS.get(c, ""),
-                })
-                seen_normalized.add(norm)
-                seen_codes.add(c)
-
-    # Add installed Piper models
-    if TTS_ENGINE != TTSEngine.PIPER:
-        for p in installed["piper_tts"]:
-            c = p["code"]
-            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
-            if norm not in seen_normalized and c not in seen_codes:
-                all_languages.append({
-                    "code": c,
-                    "name": p["name"],
-                    "engine": "piper_tts",
-                    "ready": p.get("ready", True),
-                    "is_default": False,
-                    "flag": LANGUAGE_FLAGS.get(c, ""),
-                })
-                seen_normalized.add(norm)
-                seen_codes.add(c)
-
-    # Add installed Facebook MMS models
-    if TTS_ENGINE != TTSEngine.FACEBOOK_MMS:
-        for f in installed["facebook_mms"]:
-            c = f["code"]
-            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
-            if norm not in seen_normalized and c not in seen_codes:
-                all_languages.append({
-                    "code": c,
-                    "name": f["name"],
-                    "engine": "facebook_mms",
-                    "ready": f.get("ready", True),
-                    "is_default": False,
-                    "flag": LANGUAGE_FLAGS.get(c, ""),
-                })
-                seen_normalized.add(norm)
-                seen_codes.add(c)
-
-    # Add installed Kokoro voices if Kokoro is not active engine
-    if TTS_ENGINE != TTSEngine.KOKORO and installed["kokoro_tts"]["ready"]:
-        for v in installed["kokoro_tts"]["voices"]:
-            lang_code = "en"
-            if v.startswith("ff_"):
-                lang_code = "fr"
-            elif v.startswith("ef_") or v.startswith("em_"):
-                lang_code = "es"
-            elif v.startswith("if_") or v.startswith("im_"):
-                lang_code = "it"
-            elif v.startswith("zf_") or v.startswith("zm_"):
-                lang_code = "zh"
-            elif v.startswith("jf_") or v.startswith("jm_"):
-                lang_code = "ja"
-            elif v.startswith("hf_") or v.startswith("hm_"):
-                lang_code = "hi"
-            elif v.startswith("pf_") or v.startswith("pm_"):
-                lang_code = "pt"
-            elif v.startswith("bf_") or v.startswith("bm_"):
-                lang_code = "en"
-            norm = LANGUAGE_ALIASES.get(lang_code.lower(), lang_code.lower())
-            if norm not in seen_normalized and lang_code not in seen_codes:
-                all_languages.append({
-                    "code": lang_code,
-                    "voice": v,
-                    "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
-                    "engine": "kokoro_tts",
-                    "ready": True,
-                    "is_default": False,
-                    "flag": LANGUAGE_FLAGS.get(lang_code, ""),
-                })
-                seen_normalized.add(norm)
-                seen_codes.add(lang_code)
-
-    return {
-        "active_engine": engine_val,
-        "default_language": default_lang,
-        "languages": all_languages,
-        "installed_models": installed,
-    }
-
-
 async def get_languages(request: web.Request) -> web.Response:
     """
     Returns the list of available languages for the active TTS engine
@@ -1269,113 +1107,119 @@ async def get_languages(request: web.Request) -> web.Response:
     return web.json_response(result)
 
 
+# =========================================================================
+# MODEL PRELOADING STRATEGIES
+# =========================================================================
+
+async def _ensure_facebook_mms_models(base_dir: str, preload_cfg: Dict[str, Any]) -> None:
+    from py_phone_caller_utils.py_phone_caller_voices.get_fb_mms_language_model import (
+        download_mms_model_async,
+    )
+    mms_langs = preload_cfg.get("facebook_mms", [FACEBOOK_MMS_LANGUAGE_CODE])
+    if FACEBOOK_MMS_LANGUAGE_CODE not in mms_langs:
+        mms_langs.append(FACEBOOK_MMS_LANGUAGE_CODE)
+
+    for lang in mms_langs:
+        model_name = f"mms-tts-{lang}"
+        model_dir = os.path.join(base_dir, FACEBOOK_MMS_MODELS_FOLDER, model_name)
+        if not os.path.exists(os.path.join(model_dir, "config.json")):
+            try:
+                logging.info(f"Facebook MMS model for '{lang}' not found. Downloading...")
+                await download_mms_model_async(
+                    lang, os.path.join(base_dir, FACEBOOK_MMS_MODELS_FOLDER)
+                )
+            except Exception as dl_err:
+                logging.warning(f"Could not preload Facebook MMS model '{lang}': {dl_err}")
+        else:
+            logging.info(f"Facebook MMS model for '{lang}' is present at {model_dir}")
+
+
+async def _ensure_piper_models(base_dir: str, preload_cfg: Dict[str, Any]) -> None:
+    from py_phone_caller_utils.py_phone_caller_voices.get_pipper_tts_language_model import (
+        download_piper_model_async,
+    )
+    piper_langs = preload_cfg.get("piper_tts", [PIPER_LANGUAGE_CODE])
+    if PIPER_LANGUAGE_CODE not in piper_langs:
+        piper_langs.append(PIPER_LANGUAGE_CODE)
+
+    for lang in piper_langs:
+        model_dir = os.path.join(base_dir, PIPER_MODELS_FOLDER, lang)
+        model_path = os.path.join(model_dir, f"{lang}.onnx")
+        config_path = os.path.join(model_dir, f"{lang}.onnx.json")
+        if not os.path.exists(model_path) or not os.path.exists(config_path):
+            logging.info(f"Piper TTS model for '{lang}' not found. Downloading...")
+            await download_piper_model_async(lang, base_dir)
+        else:
+            logging.info(f"Piper TTS model for '{lang}' is present at {model_path}")
+
+
+async def _ensure_kokoro_models(base_dir: str, preload_cfg: Dict[str, Any]) -> None:
+    model_dir = os.path.join(base_dir, KOKORO_MODELS_FOLDER)
+    model_path = os.path.join(model_dir, KOKORO_MODEL_FILENAME)
+    config_path = os.path.join(model_dir, "config.json")
+    voices_dir = os.path.join(model_dir, "voices")
+
+    has_voices = os.path.isdir(voices_dir) and any(f.endswith(".pt") for f in os.listdir(voices_dir))
+    if not os.path.exists(model_path) or not os.path.exists(config_path) or not has_voices:
+        logging.info(f"Kokoro TTS model or voices not fully present in {model_dir}. Downloading...")
+        try:
+            from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
+                download_kokoro_model_async,
+            )
+            await download_kokoro_model_async(model_dir)
+        except Exception as k_err:
+            logging.warning(f"Could not preload Kokoro TTS model/voices: {k_err}")
+    else:
+        logging.info(f"Kokoro TTS model is present at {model_dir}")
+    logging.info("Kokoro TTS model check completed.")
+
+
+async def _ensure_silero_models(base_dir: str, preload_cfg: Dict[str, Any]) -> None:
+    from py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model import (
+        MODEL_FILENAMES,
+        download_silero_model_async,
+    )
+    silero_langs = preload_cfg.get("silero_tts", [SILERO_LANG])
+    if SILERO_LANG not in silero_langs:
+        silero_langs.append(SILERO_LANG)
+
+    for lang in silero_langs:
+        expected_fn = MODEL_FILENAMES.get(lang, f"v3_{lang}.pt")
+        model_dir = os.path.join(base_dir, SILERO_MODELS_FOLDER, lang)
+        model_path = os.path.join(model_dir, expected_fn)
+        direct_path = os.path.join(base_dir, SILERO_MODELS_FOLDER, expected_fn)
+
+        if not os.path.exists(model_path) and not os.path.exists(direct_path):
+            try:
+                logging.info(f"Silero TTS model for '{lang}' not found. Downloading...")
+                await download_silero_model_async(lang, base_dir)
+            except Exception as dl_err:
+                logging.warning(f"Could not preload Silero TTS model '{lang}': {dl_err}")
+        else:
+            actual = model_path if os.path.exists(model_path) else direct_path
+            logging.info(f"Silero TTS model for '{lang}' is present at {actual}")
+    logging.info("Silero TTS model check completed.")
+
+
+_PRELOAD_STRATEGIES: Dict[TTSEngine, Callable[[str, Dict[str, Any]], Awaitable[None]]] = {
+    TTSEngine.FACEBOOK_MMS: _ensure_facebook_mms_models,
+    TTSEngine.PIPER: _ensure_piper_models,
+    TTSEngine.KOKORO: _ensure_kokoro_models,
+    TTSEngine.SILERO: _ensure_silero_models,
+}
+
+
 async def ensure_models_present():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     abs_pre_trained_models = os.path.join(script_dir, PRE_TRAINED_MODELS_FOLDER)
-
     preload_cfg = settings.get("generate_audio", {}).get("preload", {})
 
-    try:
-        if TTS_ENGINE == TTSEngine.FACEBOOK_MMS:
-            from py_phone_caller_utils.py_phone_caller_voices.get_fb_mms_language_model import (
-                download_mms_model_async,
-            )
-            mms_langs = preload_cfg.get("facebook_mms", [FACEBOOK_MMS_LANGUAGE_CODE])
-            if FACEBOOK_MMS_LANGUAGE_CODE not in mms_langs:
-                mms_langs.append(FACEBOOK_MMS_LANGUAGE_CODE)
-
-            for lang in mms_langs:
-                model_name = f"mms-tts-{lang}"
-                model_dir = os.path.join(
-                    abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER, model_name
-                )
-                config_path = os.path.join(model_dir, "config.json")
-                if not os.path.exists(config_path):
-                    try:
-                        logging.info(f"Facebook MMS model for '{lang}' not found. Downloading...")
-                        await download_mms_model_async(
-                            lang,
-                            os.path.join(abs_pre_trained_models, FACEBOOK_MMS_MODELS_FOLDER),
-                        )
-                    except Exception as dl_err:
-                        logging.warning(f"Could not preload Facebook MMS model '{lang}': {dl_err}")
-                else:
-                    logging.info(f"Facebook MMS model for '{lang}' is present at {model_dir}")
-
-        elif TTS_ENGINE == TTSEngine.PIPER:
-            from py_phone_caller_utils.py_phone_caller_voices.get_pipper_tts_language_model import (
-                download_piper_model_async,
-            )
-            piper_langs = preload_cfg.get("piper_tts", [PIPER_LANGUAGE_CODE])
-            if PIPER_LANGUAGE_CODE not in piper_langs:
-                piper_langs.append(PIPER_LANGUAGE_CODE)
-
-            for lang in piper_langs:
-                model_dir = os.path.join(
-                    abs_pre_trained_models, PIPER_MODELS_FOLDER, lang
-                )
-                model_path = os.path.join(model_dir, f"{lang}.onnx")
-                config_path = os.path.join(model_dir, f"{lang}.onnx.json")
-
-                if not os.path.exists(model_path) or not os.path.exists(config_path):
-                    logging.info(f"Piper TTS model for '{lang}' not found. Downloading...")
-                    await download_piper_model_async(lang, abs_pre_trained_models)
-                else:
-                    logging.info(f"Piper TTS model for '{lang}' is present at {model_path}")
-
-        elif TTS_ENGINE == TTSEngine.KOKORO:
-            model_dir = os.path.join(abs_pre_trained_models, KOKORO_MODELS_FOLDER)
-            model_path = os.path.join(model_dir, KOKORO_MODEL_FILENAME)
-            config_path = os.path.join(model_dir, "config.json")
-            voices_dir = os.path.join(model_dir, "voices")
-
-            has_voices = (
-                os.path.isdir(voices_dir)
-                and len([f for f in os.listdir(voices_dir) if f.endswith(".pt")]) > 0
-            )
-
-            if not os.path.exists(model_path) or not os.path.exists(config_path) or not has_voices:
-                logging.info(f"Kokoro TTS model or voices not fully present in {model_dir}. Downloading...")
-                try:
-                    from py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model import (
-                        download_kokoro_model_async,
-                    )
-                    await download_kokoro_model_async(model_dir)
-                except Exception as k_err:
-                    logging.warning(f"Could not preload Kokoro TTS model/voices: {k_err}")
-            else:
-                logging.info(f"Kokoro TTS model is present at {model_dir}")
-            logging.info("Kokoro TTS model check completed.")
-
-        elif TTS_ENGINE == TTSEngine.SILERO:
-            from py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model import (
-                download_silero_model_async,
-                MODEL_FILENAMES,
-            )
-            silero_langs = preload_cfg.get("silero_tts", [SILERO_LANG])
-            if SILERO_LANG not in silero_langs:
-                silero_langs.append(SILERO_LANG)
-
-            for lang in silero_langs:
-                expected_fn = MODEL_FILENAMES.get(lang, f"v3_{lang}.pt")
-                model_dir = os.path.join(
-                    abs_pre_trained_models, SILERO_MODELS_FOLDER, lang
-                )
-                model_path = os.path.join(model_dir, expected_fn)
-                direct_path = os.path.join(abs_pre_trained_models, SILERO_MODELS_FOLDER, expected_fn)
-
-                if not os.path.exists(model_path) and not os.path.exists(direct_path):
-                    try:
-                        logging.info(f"Silero TTS model for '{lang}' not found. Downloading...")
-                        await download_silero_model_async(lang, abs_pre_trained_models)
-                    except Exception as dl_err:
-                        logging.warning(f"Could not preload Silero TTS model '{lang}': {dl_err}")
-                else:
-                    actual = model_path if os.path.exists(model_path) else direct_path
-                    logging.info(f"Silero TTS model for '{lang}' is present at {actual}")
-            logging.info("Silero TTS model check completed.")
-    except Exception as e:
-        logging.error(f"Failed to ensure models are present: {e}")
+    preloader = _PRELOAD_STRATEGIES.get(TTS_ENGINE)
+    if preloader:
+        try:
+            await preloader(abs_pre_trained_models, preload_cfg)
+        except Exception as e:
+            logging.error(f"Failed to ensure models are present: {e}")
 
 
 async def init_app():
