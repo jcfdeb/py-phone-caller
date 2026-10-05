@@ -15,13 +15,15 @@ The system is built as a set of microservices that communicate over HTTP and que
 
 ## Key Features
 
-- Outbound calls via Asterisk ARI with retry and escalation logic.
-- Prometheus Alertmanager webhook integration.
-- Multi-engine TTS gTTS, AWS Polly, Facebook MMS, Piper, Kokoro.
-- SMS delivery via Twilio or an on-premise USB modem backend.
-- Scheduling and queue-backed processing with Celery/Redis.
-- Contact and on-call rotation management.
-- Web UI for call history, scheduling, users, and events.
+- **Outbound Voice Calls**: Originated via Asterisk ARI with automated retry and backup escalation logic.
+- **Prometheus Alertmanager Integration**: Native webhook supporting call-only, SMS-only, simultaneous, or SMS-before-call escalation.
+- **Multi-Engine Neural TTS**: Kokoro-82M, Silero, Piper ONNX, Facebook MMS, AWS Polly, and Google gTTS with dynamic language discovery, speech rate control, and automated model preloading.
+- **Dynamic Language & Engine Routing**: Intelligent fallback resolving language aliases and delegating to installed offline models across engines.
+- **SMS Delivery**: Dual-backend support for cloud delivery via Twilio API or local air-gapped delivery via on-premise USB GSM/LTE modems (native Rust engine).
+- **Scheduling & Priority Queues**: Redis and Celery-backed execution supporting priority queues (P0 emergency routing) and scheduled delivery.
+- **Contact & On-Call Rotations**: Multi-tiered address book with time-windowed on-call coverage, priority rankings, and interactive calendar.
+- **Multilingual Web UI**: Flask management console with internationalization (`Flask-Babel`), RTL layout support (Arabic, Hebrew), European translations (German, Spanish, French, Italian, English), live TTS audio preview, bulk call acknowledgment, and incident audit reporting.
+- **Enterprise Resilience**: Asterisk ARI Circuit Breakers, distributed Redis locks, standardized health/readiness probes, and OpenTelemetry instrumentation.
 
 ## Architecture
 
@@ -69,13 +71,13 @@ flowchart TB
 | `asterisk_recaller` | Retries failed or unacknowledged calls and escalates to backups. | [README](src/asterisk_recaller/README.md) |
 | `caller_register` | Central registry for call attempts, status, and metadata. | [README](src/caller_register/README.md) |
 | `caller_scheduler` | Schedules future calls through Celery tasks. | [README](src/caller_scheduler/README.md) |
-| `celery_worker` | Executes queued and scheduled call tasks. | [src/README.md](src/README.md) |
+| `celery_worker` | Executes queued and scheduled call tasks with priority routing. | [src/README.md](src/README.md) |
 | `caller_sms` | SMS notifications via Twilio or on-premise modem backend. | [README](src/caller_sms/README.md) |
 | `caller_prometheus_webhook` | Alertmanager-compatible webhook for calls and SMS. | [README](src/caller_prometheus_webhook/README.md) |
 | `caller_address_book` | Contact and on-call rotation management. | [README](src/caller_address_book/README.md) |
-| `generate_audio` | Text-to-speech audio generation for call playback. | [README](src/generate_audio/README.md) |
-| `py_phone_caller_ui` | Web UI for operations, scheduling, and users. | [README](src/py_phone_caller_ui/README.md) |
-| `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, and telemetry. | [README](src/py-phone-caller-utils/README.md) |
+| `generate_audio` | Multi-engine text-to-speech audio generation with dynamic language discovery and preloading. | [README](src/generate_audio/README.md) |
+| `py_phone_caller_ui` | Web UI for operations, scheduling, users, audio preview, and incident audits. | [README](src/py_phone_caller_ui/README.md) |
+| `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, telemetry, and circuit breakers. | [README](src/py-phone-caller-utils/README.md) |
 | `openalertd` | Decentralized Nostr (0xChat E2EE, embedded micro-relay) and BitChat BLE mesh gateway bridging air-gapped field alerts. | [README](src/openalert/README.md) |
 
 ## Prerequisites & Requirements (What You Need to Run)
@@ -100,7 +102,7 @@ Depending on your environment and the features you plan to enable (outbound voic
   - Stores call logs, address book contacts, on-call schedules, SMS audit history, and web UI user accounts.
   - Relational schema tables and migrations are automatically initialized and managed via Piccolo ORM by `caller_register`.
 - **Redis (v7+) or Valkey**:
-  - In-memory message broker used by Celery for asynchronous call scheduling and queue workers.
+  - In-memory message broker used by Celery for asynchronous call scheduling, priority queues, and distributed locking.
 
 ### 3. Text-to-Speech (TTS) Engines: Local vs. Cloud
 `generate_audio` converts alert text messages into Asterisk-compliant 8 kHz mono WAV audio files. You can choose between 100% offline local neural TTS or cloud-hosted synthesis:
@@ -108,6 +110,7 @@ Depending on your environment and the features you plan to enable (outbound voic
 | TTS Engine | Mode | What You Need | Key Benefits & Notes |
 | :--- | :--- | :--- | :--- |
 | **Kokoro-82M** *(Default & Recommended)* | **Local / Offline** | • CPU/RAM for inference<br>• Model weights (`kokoro-v1_0.pth` ~320MB) & voice embeddings cached in `pre_trained_models/kokoro_tts`<br>• `ffmpeg` for 8 kHz audio encoding | **Zero cloud accounts needed.** Runs 100% locally on CPU in air-gapped environments. Natural human-like speech. |
+| **Silero TTS** | **Local / Offline** | • PyTorch runtime & weights (`v3_<lang>.pt` ~50MB) cached in `pre_trained_models/silero_tts`<br>• `ffmpeg` for 8 kHz audio resampling | **Zero cloud accounts needed.** Ultra-compact, highly reliable offline neural TTS with multi-language speaker models (English, Spanish, German, French, Russian, Indic). Runs efficiently on low-resource hardware. |
 | **Piper ONNX** | **Local / Offline** | • ONNX voice model files (`.onnx` + `.onnx.json`) in `pre_trained_models/piper_tts`<br>• `ffmpeg` | Ultra-fast, lightweight neural speech synthesizer designed for local devices. |
 | **Facebook MMS** | **Local / Offline** | • Hugging Face MMS model checkpoint (`facebook/mms-tts-<lang>`)<br>• `ffmpeg` | Supports over 1,000+ languages completely offline. |
 | **AWS Polly** | **Cloud / Online** | • **Active AWS Account**<br>• AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `aws_polly_region_name`)<br>• IAM permission: `polly:SynthesizeSpeech`<br>• Outbound Internet connectivity | Cloud-managed TTS service with diverse multilingual voices. |
@@ -250,6 +253,7 @@ Pick one path.
 ## Documentation
 
 - **[Master Documentation Library](doc/README.md)** - Comprehensive documentation map, architectural guides, and operational manuals.
+- **[Release 1.0.1 Notes & Enhancement Report](docs/1.0.1-release.md)** - Detailed release summary for v1.0.1 enhancements.
 - **[Operator Installation Guide (A to Z)](doc/OPERATOR_INSTALLATION_GUIDE.md)** - Step-by-step production installation for Ansible, Docker/Podman Compose, and Native Systemd.
 - **[Architecture & Call Flows Guide](doc/architecture-and-call-flows.md)** - End-to-end call lifecycle, DTMF acknowledgment ('4' key), retry loops, and SMS flows.
 - **[Services & Endpoints Reference](doc/services-and-endpoints.md)** - Complete REST API specification for all 11 microservices and health probes.
