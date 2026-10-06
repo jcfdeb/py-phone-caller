@@ -29,7 +29,13 @@ def localize_datetime(dt):
 
 from py_phone_caller_utils.py_phone_caller_db.db_caller_register import select_calls
 
-from .constants import CALL_REGISTER_ENDPOINT
+from .constants import (
+    CALL_REGISTER_ENDPOINT,
+    CALL_REGISTER_HOST,
+    CALL_REGISTER_PORT,
+    CALL_REGISTER_HTTP_SCHEME,
+    CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE,
+)
 
 
 calls_blueprint = Blueprint(
@@ -133,6 +139,73 @@ async def export_csv():
         headers={
             "Content-Disposition": f"attachment;filename=calls_{export_month}.csv"
         },
+    )
+
+
+
+@calls_blueprint.route("/calls/audit_report")
+@login_required
+async def audit_report():
+    """
+    Generates a printable, high-density HTML / PDF-ready incident audit report
+    with full DTMF acknowledgment proof, timestamps, responder tracking, and carrier details.
+    """
+    export_month = request.args.get("export_month", "")
+    all_calls = await select_calls()
+
+    if export_month:
+        try:
+            year, month = map(int, export_month.split("-"))
+            start_date = local_tz.localize(datetime.datetime(year, month, 1))
+            if month == 12:
+                end_date = local_tz.localize(datetime.datetime(year + 1, 1, 1))
+            else:
+                end_date = local_tz.localize(datetime.datetime(year, month + 1, 1))
+        except ValueError:
+            start_date = None
+            end_date = None
+    else:
+        start_date = None
+        end_date = None
+
+    filtered_calls = []
+    total_calls = 0
+    ack_count = 0
+    heard_count = 0
+    escalated_count = 0
+
+    for call in all_calls:
+        for key in ["first_dial", "last_dial", "heard_at", "acknowledge_at"]:
+            if call.get(key):
+                call[key] = localize_datetime(call[key])
+
+        first_dial = call.get("first_dial")
+        if start_date and end_date:
+            if not first_dial or not (start_date <= first_dial < end_date):
+                continue
+
+        total_calls += 1
+        if call.get("acknowledge_at"):
+            ack_count += 1
+        elif call.get("heard_at"):
+            heard_count += 1
+        elif call.get("backup_callee"):
+            escalated_count += 1
+
+        filtered_calls.append(call)
+
+    ack_rate = round((ack_count / total_calls * 100), 1) if total_calls > 0 else 0
+
+    return render_template(
+        "audit_report.html",
+        calls=filtered_calls,
+        export_month=export_month or "All Time",
+        generated_at=datetime.datetime.now(local_tz).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        total_calls=total_calls,
+        ack_count=ack_count,
+        heard_count=heard_count,
+        escalated_count=escalated_count,
+        ack_rate=ack_rate,
     )
 
 
@@ -263,10 +336,25 @@ async def proxy_acknowledge():
         ), 400
 
     try:
-        response = requests.get(
-            f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={asterisk_chan}"
-        )
-        return jsonify(response.json()), response.status_code
+        try:
+            response = requests.get(
+                f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={asterisk_chan}", timeout=5
+            )
+        except Exception as exc:
+            if CALL_REGISTER_HOST in ("192.168.101.17", "192.168.101.111"):
+                try:
+                    fallback_url = f"{CALL_REGISTER_HTTP_SCHEME}://127.0.0.1:{CALL_REGISTER_PORT}/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}?asterisk_chan={asterisk_chan}"
+                    response = requests.get(fallback_url, timeout=5)
+                except Exception:
+                    raise exc
+            else:
+                raise exc
+
+        try:
+            resp_json = response.json()
+        except Exception:
+            resp_json = {"status": response.status_code, "text": response.text}
+        return jsonify(resp_json), response.status_code
     except Exception as e:
         return jsonify(
             {
@@ -274,3 +362,48 @@ async def proxy_acknowledge():
                 "message": f"Error communicating with backend service: {str(e)}",
             }
         ), 500
+
+
+@calls_blueprint.route("/calls/api/bulk_acknowledge", methods=["POST"])
+@login_required
+async def api_bulk_acknowledge():
+    """
+    Acknowledges multiple active calls in bulk.
+    Expects JSON: { "channels": ["PJSIP/...", ...] }
+    """
+    data = request.get_json(silent=True) or {}
+    channels = data.get("channels", [])
+    if not channels or not isinstance(channels, list):
+        return jsonify({"status": 400, "message": "channels array is required"}), 400
+
+    results = []
+    success_count = 0
+    for chan in channels:
+        try:
+            try:
+                resp = requests.get(f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={chan}", timeout=3)
+            except Exception as exc:
+                if CALL_REGISTER_HOST in ("192.168.101.17", "192.168.101.111"):
+                    try:
+                        fallback_url = f"{CALL_REGISTER_HTTP_SCHEME}://127.0.0.1:{CALL_REGISTER_PORT}/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}?asterisk_chan={chan}"
+                        resp = requests.get(fallback_url, timeout=3)
+                    except Exception:
+                        resp = None
+                else:
+                    resp = None
+
+            if resp is not None and resp.status_code == 200:
+                success_count += 1
+                results.append({"channel": chan, "status": 200, "success": True})
+            else:
+                status_code = resp.status_code if resp is not None else 500
+                results.append({"channel": chan, "status": status_code, "success": False})
+        except Exception as exc:
+            results.append({"channel": chan, "status": 500, "error": str(exc), "success": False})
+
+    return jsonify({
+        "status": 200,
+        "total": len(channels),
+        "acknowledged": success_count,
+        "details": results,
+    })

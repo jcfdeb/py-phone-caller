@@ -1,6 +1,6 @@
 # 🔌 py-phone-caller Services & Endpoints Reference
 
-This document is the authoritative API and microservices reference for **py-phone-caller** (Release 1.0.0).
+This document is the authoritative API and microservices reference for **py-phone-caller** (Release 1.0.1).
 
 ---
 
@@ -30,7 +30,7 @@ This document is the authoritative API and microservices reference for **py-phon
 | Service Name | Default Port | Protocol / Type | Primary Responsibility |
 | :--- | :---: | :--- | :--- |
 | **`asterisk_caller`** | `8081` | HTTP (aiohttp) | Originates Asterisk ARI calls, manages call queue, plays audio |
-| **`generate_audio`** | `8082` | HTTP (aiohttp) | Offline neural TTS audio synthesis (Kokoro, Piper, MMS, Polly) |
+| **`generate_audio`** | `8082` | HTTP (aiohttp) | Multi-engine neural TTS audio synthesis (Kokoro, Silero, Piper, MMS, Polly, gTTS) |
 | **`caller_register`** | `8083` | HTTP (aiohttp) | Central call registry, state tracker, and Piccolo ORM migrations |
 | **`caller_prometheus_webhook`** | `8084` | HTTP (aiohttp) | Prometheus Alertmanager webhook receiver for voice and SMS |
 | **`caller_sms`** | `8085` | HTTP (aiohttp) | Multi-carrier SMS gateway (Twilio API / on-premise Rust modems) |
@@ -55,7 +55,7 @@ All HTTP microservices automatically register uniform health and Prometheus metr
   {
     "status": "healthy",
     "service": "asterisk_caller",
-    "version": "1.0.0"
+    "version": "1.0.1"
   }
   ```
 - **HTTP Status Codes**:
@@ -72,7 +72,7 @@ All HTTP microservices automatically register uniform health and Prometheus metr
 
 ### 3.1 `asterisk_caller` (Port 8081)
 
-Interfaces directly with Asterisk ARI to originate outbound calls and manage audio playback.
+Interfaces directly with Asterisk ARI to originate outbound calls and manage audio playback. Includes an integrated Circuit Breaker for graceful degradation when Asterisk is unavailable.
 
 #### `POST /call_to_queue`
 Enqueues a phone call into the internal async worker queue. **This is the recommended endpoint for monitoring integrations (Alertmanager, Nagios, Zabbix).**
@@ -106,32 +106,85 @@ Plays a generated audio WAV file to an active Asterisk channel.
 
 ### 3.2 `generate_audio` (Port 8082)
 
-Synthesizes high-quality, Asterisk-compliant 16-bit mono 8000 Hz WAV audio files from text messages.
+Synthesizes Asterisk-compliant 16-bit mono 8000 Hz WAV audio files from text messages using 6 TTS engines with dynamic multi-language model discovery and cross-engine fallback.
 
 #### `POST /make_audio`
-Asynchronously triggers audio generation for a message.
-- **Query Parameters**:
+Asynchronously triggers audio generation for a message or returns cached status if the file already exists.
+- **Query / Form Parameters**:
   - `message` (string, required): Text message to synthesize.
-  - `msg_chk_sum` (string, required): Checksum for the resulting audio file.
-- **TTS Engines**:
+  - `msg_chk_sum` (string, required): Unique checksum identifying the audio file.
+  - `lang` / `language` (string, optional): Language code (e.g. `en`, `es`, `it`, `fr`, `de`, `ru`, `zh`, `hi`, `ar`, `he`).
+  - `speed` (float, optional, default: 1.0): Speech rate adjustment factor.
+  - `engine` (string, optional): Explicit TTS engine override (`kokoro_tts`, `silero_tts`, `piper_tts`, `facebook_mms`, `aws_polly`, `google_gtts`).
+- **Supported TTS Engines**:
   - `kokoro_tts`: High-fidelity neural voice synthesis (Kokoro-82M v1.0).
-  - `piper_tts`: Ultra-fast neural synthesis via local ONNX.
-  - `facebook_mms`: Multilingual PyTorch VITS architecture.
-  - `aws_polly`: Cloud synthesis fallback.
-  - `gtts`: Google TTS fallback.
+  - `silero_tts`: Compact, offline PyTorch neural voice synthesis (English, Spanish, German, French, Russian, Indic).
+  - `piper_tts`: Ultra-fast offline neural synthesis via local ONNX.
+  - `facebook_mms`: Multilingual PyTorch VITS architecture supporting 1,000+ languages.
+  - `aws_polly`: Cloud-managed Amazon Polly synthesis.
+  - `google_gtts`: Cloud fallback via Google Translate TTS.
 - **Response**: `200 OK`
   ```json
-  {"status": 200, "msg_chk_sum": "1e971032", "audio_path": "/app/src/generate_audio/audio/1e971032.wav"}
+  {
+    "status": 200,
+    "cached": false
+  }
   ```
 
 #### `GET /is_audio_ready`
-Polls whether an audio file has finished synthesis and is ready for playback.
+Polls whether an audio file has finished synthesis and is valid for Asterisk playback.
 - **Query Parameters**:
   - `msg_chk_sum` (string, required): Checksum of the audio file.
+  - `lang` / `language` (string, optional): Language code matching audio generation.
 - **Response**: `200 OK`
   ```json
-  {"status": 200, "is_ready": true}
+  {
+    "exists": true
+  }
   ```
+
+#### `GET /languages`
+Scans local on-disk model directories and returns the active engine, available language options, and installed model weights across all offline engines.
+- **Response**: `200 OK`
+  ```json
+  {
+    "active_engine": "kokoro_tts",
+    "default_language": "e",
+    "languages": [
+      {
+        "code": "e",
+        "voice": "ef_dora",
+        "name": "Spanish",
+        "engine": "kokoro_tts",
+        "ready": true,
+        "is_default": true,
+        "flag": "🇪🇸"
+      },
+      {
+        "code": "en",
+        "voice": "af_heart",
+        "name": "English",
+        "engine": "kokoro_tts",
+        "ready": true,
+        "is_default": false,
+        "flag": "🇬🇧"
+      }
+    ],
+    "installed_models": {
+      "kokoro_tts": {
+        "model": "kokoro-v1_0.pth",
+        "ready": true,
+        "voices": ["af_heart", "bf_emma", "ef_dora", "ff_siwis"]
+      },
+      "silero_tts": [
+        {"code": "en", "name": "English", "model": "v3_en.pt", "ready": true}
+      ]
+    }
+  }
+  ```
+
+#### `GET /audio/{filename}.wav`
+Serves generated 8 kHz mono WAV files directly for Asterisk audio playback.
 
 ---
 
@@ -157,16 +210,6 @@ Retrieves message text and checksum associated with an active Asterisk channel.
   ```json
   {"status": 200, "message": "High CPU on server", "msg_chk_sum": "1e971032"}
   ```
-
-#### `GET /ack`
-Marks a call as acknowledged when the operator presses DTMF key `'4'`.
-- **Query Parameters**:
-  - `asterisk_chan` (string, required): Active channel ID.
-
-#### `GET /heard`
-Marks a call as heard when audio finishes playing or the operator hangs up.
-- **Query Parameters**:
-  - `asterisk_chan` (string, required): Active channel ID.
 
 ---
 
@@ -294,20 +337,20 @@ Resolves the currently active on-call contact based on current UTC time and prio
 Streams all contact records as a downloadable CSV file.
 
 #### `POST /contacts_import_csv`
-Imports contact records from an uploaded CSV payload.
+Imports contact records from an uploaded CSV payload with validation.
 
 ---
 
 ### 3.8 `py_phone_caller_ui` (Port 5000)
 
-Flask web interface and Backend-for-Frontend (BFF).
+Flask web interface and Backend-for-Frontend (BFF). Includes full internationalization (`Flask-Babel`) with RTL layout support (Arabic, Hebrew) and multi-language translations (German, Spanish, French, Italian, English).
 
-- **Blueprints**:
-  - `home`: Main dashboard with quick action cards and system status.
+- **Blueprints & Capabilities**:
+  - `home`: Main dashboard with quick action cards, system status, and live TTS audio preview (`POST /proxy_tts_preview` and `GET /proxy_languages`).
   - `login`: Operator authentication gate and session management.
-  - `calls`: Real-time call history table with search, pagination, and monthly CSV export.
-  - `sms`: Managed SMS history table with carrier tags, status badges, and monthly CSV export.
-  - `address_book`: Contact list, on-call window creator, and interactive monthly coverage calendar.
+  - `calls`: Real-time call history table with search, pagination, bulk acknowledgment (`POST /proxy_acknowledge`), and incident audit reporting (`GET /calls/audit_report`).
+  - `sms`: Managed SMS history table with carrier tags, status badges, details modal with message lifecycle stepper, and monthly CSV export.
+  - `address_book`: Contact list, on-call window creator, quick on-call toggle, and interactive coverage calendar.
   - `schedule_call`: Scheduled call queue with creation modal and cancellation controls.
   - `ws_events`: Live Asterisk WebSocket event log inspector with JSON view modal.
   - `users`: User account administration, password reset, and role management.
@@ -327,7 +370,7 @@ Flask web interface and Backend-for-Frontend (BFF).
 ### 3.10 `asterisk_recaller` (Background Retry Daemon)
 
 - **Loop**: Periodically scans `calls` table for unacknowledged calls (`acknowledged == false`).
-- **Escalation**: Retries up to `times_to_dial` before escalating to the backup on-call contact.
+- **Escalation**: Retries up to `times_to_dial` before escalating to the backup on-call contact. Protected with Redis distributed locking.
 
 ---
 
@@ -335,7 +378,7 @@ Flask web interface and Backend-for-Frontend (BFF).
 
 - **Command**: `python -m celery -A py_phone_caller_utils.tasks.celery_task worker --loglevel=info`
 - **Task**: `py_phone_caller_utils.tasks.celery_task.do_this_call`
-- Dispatches queued calls to `asterisk_caller` when their scheduled ETA arrives.
+- Configured with priority queue routing (`p0_emergency` for high-priority alerts, `default` for standard scheduled calls).
 
 ---
 
@@ -344,68 +387,20 @@ Flask web interface and Backend-for-Frontend (BFF).
 The workspace shared library provides:
 - **`config.py`**: Dynaconf configuration loaders supporting TOML files and `DYNACONF_*` environment variable overrides.
 - **`telemetry.py`**: Standardized OpenTelemetry tracing setup, `/metrics` scrapers, and `/health` probe instrumentation.
+- **`redis_lock.py`**: Distributed Redis locks for multi-instance high-availability safety.
 - **`py_phone_caller_db`**: Asynchronous database query helpers (`db_call.py`, `db_address_book.py`, `db_sms.py`, `db_user.py`, `db_asterisk_recaller.py`).
-- **`py_phone_caller_voices`**: Multi-engine TTS synthesis wrappers (Kokoro, Piper, Facebook MMS, AWS Polly).
+- **`py_phone_caller_voices`**: Multi-engine TTS synthesis wrappers (`kokoro_tts.py`, `silero_tts.py`, `piper_tts.py`, `facebook_mms.py`, `aws_polly.py`, `google_gtts.py`).
 - **`sms`**: Native Rust bindings (`rust_engine`) and Twilio async clients.
+- **`web`**: Shared utilities for parameter extraction, service catalogs, readiness probes, and Asterisk ARI Circuit Breakers.
 
 ---
 
 ## 5. Database Models & Schemas (Piccolo ORM)
 
-All relational models are defined in `py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables`:
-
-```python
-# 1. Calls Table
-class Calls(Table):
-    id = UUID(primary_key=True)
-    phone = Varchar(length=64)
-    message = Varchar(length=1024)
-    msg_chk_sum = Varchar(length=64)
-    asterisk_chan = Varchar(length=64)
-    heard = Boolean(default=False)
-    acknowledged = Boolean(default=False)
-    times_to_dial = Integer(default=0)
-    created_time = Timestamp()
-    oncall = Boolean(default=False)
-    backup_callee = Boolean(default=False)
-    call_backup_callee_number_calls = Integer(default=0)
-
-# 2. AddressBook Table
-class AddressBook(Table):
-    id = UUID(primary_key=True)
-    name = Varchar(length=64)
-    surname = Varchar(length=64)
-    phone_number = Varchar(length=64)
-    on_call_availability = JSONB(default="[]")
-    enabled = Boolean(default=True)
-    created_time = Timestamp()
-    annotations = Varchar(length=1024)
-
-# 3. Sms Table
-class Sms(Table):
-    id = UUID(primary_key=True)
-    phone = Varchar(length=64)
-    message = Varchar(length=2048)
-    carrier = Varchar(length=32)
-    status = Varchar(length=32)
-    error = Varchar(length=1024)
-    created_time = Timestamp()
-
-# 4. ScheduledCalls Table
-class ScheduledCalls(Table):
-    id = UUID(primary_key=True)
-    phone = Varchar(length=64)
-    message = Varchar(length=1024)
-    scheduled_at = Timestamp()
-    created_time = Timestamp()
-    task_id = Varchar(length=64)
-
-# 5. Users Table
-class Users(Table):
-    id = UUID(primary_key=True)
-    email = Varchar(length=128, unique=True)
-    password_hash = Varchar(length=256)
-    active = Boolean(default=True)
-    created_time = Timestamp()
-    annotations = Varchar(length=2048)
-```
+All database tables are managed in PostgreSQL via Piccolo ORM:
+- **`calls`**: Audit trail of originated calls, channel IDs, acknowledgments, duration, and status.
+- **`sms`**: Outbound SMS log with carrier tags, phone numbers, timestamps, and delivery status.
+- **`address_book`**: Contact registry with priority ranking and annotations.
+- **`on_call_availability`**: Time-windowed schedules linking contacts to duty rotations.
+- **`scheduled_calls`**: Future call reservations enqueued in Celery.
+- **`user`**: Web UI operator credentials with Argon2 / bcrypt password hashing.

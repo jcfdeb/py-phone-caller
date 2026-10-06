@@ -13,7 +13,7 @@ from py_phone_caller_utils.tasks.constants import (
 URL = f"{SCHEDULED_CALL_URL}/{SCHEDULED_CALL_APP_ROUTE}"
 
 
-def enqueue_the_call(phone, message, scheduled_at):
+def enqueue_the_call(phone, message, scheduled_at, lang=None):
     """
     Sends a scheduled call request to the caller scheduler service with the provided details.
 
@@ -23,10 +23,14 @@ def enqueue_the_call(phone, message, scheduled_at):
         phone (str): The recipient's phone number.
         message (str): The message to be delivered during the call.
         scheduled_at (str): The scheduled time for the call in string format.
+        lang (str, optional): Target language code for audio synthesis.
 
     Returns:
         int: The HTTP status code returned by the caller scheduler service.
     """
     data = {"phone": phone, "message": message, "scheduled_at": scheduled_at}
+    if lang:
+        data["lang"] = lang
+        data["language"] = lang
     response = requests.post(URL, params=data, timeout=30)
     return response.status_code

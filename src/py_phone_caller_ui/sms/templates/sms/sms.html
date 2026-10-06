@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}py-phone-caller Managed SMS{% endblock %}
+{% block title %}py-phone-caller {{ _('Managed SMS') }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -20,10 +20,10 @@
 {% block content %}
 <div class="container-fluid main-container px-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
-        <h2 class="page-header mb-0 text-start">Managed SMS</h2>
+        <h2 class="page-header mb-0 text-start">{{ _('Managed SMS') }}</h2>
         <div class="d-flex gap-2 mt-2 mt-md-0">
             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#exportModal">
-                <i class="bi bi-file-earmark-excel me-1"></i> Export CSV
+                <i class="bi bi-file-earmark-excel me-1"></i> {{ _('Export CSV') }}
             </button>
         </div>
     </div>
@@ -38,22 +38,22 @@
                         <input type="hidden" name="sort_by" value="{{ sort_by }}">
                         <input type="hidden" name="sort_order" value="{{ sort_order }}">
                         <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
-                            <input class="form-control border-start-0 ps-0" type="search" placeholder="Search SMS by phone, message, carrier, status..."
-                                   aria-label="Search" name="search" value="{{ search_query }}">
+                            <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input class="form-control border-start-0 ps-0" type="search" placeholder="{{ _('Search SMS by phone, message, carrier, status...') }}"
+                                   aria-label="{{ _('Search') }}" name="search" value="{{ search_query }}">
                             {% if search_query %}
                             <a href="{{ url_for('sms_blueprint.sms', per_page=per_page, sort_by=sort_by, sort_order=sort_order) }}"
                                class="btn btn-outline-secondary d-flex align-items-center"><i class="bi bi-x-lg"></i></a>
                             {% endif %}
-                            <button class="btn btn-primary px-4" type="submit">Search</button>
+                            <button class="btn btn-primary px-4" type="submit">{{ _('Search') }}</button>
                         </div>
                     </form>
                 </div>
                 <div class="col-md-6">
                     <div class="d-flex align-items-center justify-content-md-end flex-wrap gap-2">
-                        <label for="autoRefreshSelect" class="mb-0 small fw-bold text-secondary"><i class="bi bi-clock-history me-1"></i>Auto refresh:</label>
+                        <label for="autoRefreshSelect" class="mb-0 small fw-bold text-secondary"><i class="bi bi-clock-history me-1"></i>{{ _('Auto refresh:') }}</label>
                         <select id="autoRefreshSelect" class="form-select form-select-sm border-secondary-subtle" style="max-width: 120px;">
-                            <option value="0">Disable</option>
+                            <option value="0">{{ _('Disable') }}</option>
                             <option value="5">5s</option>
                             <option value="10">10s</option>
                             <option value="15">15s</option>
@@ -73,25 +73,25 @@
             <tr>
                 <th>
                     <a href="{{ url_for('sms_blueprint.sms', sort_by='element', sort_order='asc' if sort_by != 'element' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Element
+                        {{ _('Element') }}
                         {% if sort_by == 'element' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
                     </a>
                 </th>
-                <th>Id</th>
+                <th>{{ _('Id') }}</th>
                 <th>
                     <a href="{{ url_for('sms_blueprint.sms', sort_by='phone', sort_order='asc' if sort_by != 'phone' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Recipient Phone
+                        {{ _('Recipient Phone') }}
                         {% if sort_by == 'phone' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
                     </a>
                 </th>
-                <th style="min-width: 250px;">Message</th>
+                <th style="min-width: 250px;">{{ _('Message') }}</th>
                 <th>
                     <a href="{{ url_for('sms_blueprint.sms', sort_by='carrier', sort_order='asc' if sort_by != 'carrier' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Carrier
+                        {{ _('Carrier') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('SMS transmission gateway: Asterisk dongle, Gammu GSM modem, or cloud gateway') }}"></i>
                         {% if sort_by == 'carrier' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -99,7 +99,7 @@
                 </th>
                 <th class="text-center">
                     <a href="{{ url_for('sms_blueprint.sms', sort_by='status', sort_order='asc' if sort_by != 'status' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
-                        Status
+                        {{ _('Status') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Delivery lifecycle: Pending, Sent, Delivered, or Failed') }}"></i>
                         {% if sort_by == 'status' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -107,20 +107,18 @@
                 </th>
                 <th>
                     <a href="{{ url_for('sms_blueprint.sms', sort_by='created_at', sort_order='asc' if sort_by != 'created_at' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Created At
+                        {{ _('Created At') }}
                         {% if sort_by == 'created_at' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
                     </a>
                 </th>
-                <th>Error / Notes</th>
-                <th class="text-center">Actions</th>
+                <th>{{ _('Error / Notes') }}</th>
+                <th class="text-center">{{ _('Actions') }}</th>
             </tr>
             </thead>
             <tbody>
-            {% if paginated_data %}
-                {% for key in paginated_data %}
-                {% set row = table_data[key] %}
+            {% if paginated_data %}\n                {% for key in paginated_data %}{% set row = table_data[key] %}
                 <tr>
                     <td class="fw-semibold text-secondary">{{ key + 1 }}</td>
                     <td>
@@ -142,13 +140,13 @@
                     </td>
                     <td class="text-center">
                         {% if row.status == 'sent' %}
-                            <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle me-1"></i>Sent</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle me-1"></i>{{ _('Sent') }}</span>
                         {% elif row.status == 'queued' or row.status == 'processing' %}
                             <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"><i class="bi bi-hourglass-split me-1"></i>{{ row.status|capitalize }}</span>
                         {% elif row.status == 'failed' %}
-                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-exclamation-triangle me-1"></i>Failed</span>
+                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-exclamation-triangle me-1"></i>{{ _('Failed') }}</span>
                         {% elif row.status == 'duplicate_ignored' %}
-                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"><i class="bi bi-files me-1"></i>Duplicate Ignored</span>
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"><i class="bi bi-files me-1"></i>{{ _('Duplicate Ignored') }}</span>
                         {% else %}
                             <span class="badge bg-light text-dark border">{{ row.status or 'Unknown' }}</span>
                         {% endif %}
@@ -157,7 +155,7 @@
                         {% if row.created_at %}
                             {{ row.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
                         {% else %}
-                            <span class="text-muted">No Data</span>
+                            <span class="text-muted">{{ _('No Data') }}</span>
                         {% endif %}
                     </td>
                     <td class="small text-truncate" style="max-width: 200px;" title="{{ row.error or '' }}">
@@ -169,8 +167,17 @@
                     </td>
                     <td class="text-center">
                         <button type="button" class="btn btn-sm btn-outline-primary sms-detail-btn"
-                                onclick="openSmsDetails('{{ row.id }}', '{{ row.phone|escape }}', '{{ row.carrier|escape }}', '{{ row.status|escape }}', '{{ (row.created_at.strftime('%Y-%m-%d %H:%M:%S') if row.created_at else '')|escape }}', '{{ row.message|replace("'", "\\'")|replace('"', '\\"')|replace('\n', ' ')|escape }}', '{{ row.error|replace("'", "\\'")|replace('"', '\\"')|replace('\n', ' ')|escape }}')">
-                            <i class="bi bi-eye me-1"></i>Details
+                                data-bs-toggle="modal"
+                                data-bs-target="#smsDetailModal"
+                                data-id="{{ row.id }}"
+                                data-phone="{{ row.phone }}"
+                                data-carrier="{{ row.carrier or 'default' }}"
+                                data-status="{{ row.status or 'Unknown' }}"
+                                data-created-at="{{ row.created_at.strftime('%Y-%m-%d %H:%M:%S') if row.created_at else 'No Data' }}"
+                                data-message="{{ row.message|default('', true) }}"
+                                data-error="{{ row.error|default('', true) }}"
+                                onclick="openSmsDetails(this.getAttribute('data-id'), this.getAttribute('data-phone'), this.getAttribute('data-carrier'), this.getAttribute('data-status'), this.getAttribute('data-created-at'), this.getAttribute('data-message'), this.getAttribute('data-error'))">
+                            <i class="bi bi-eye me-1"></i>{{ _('Details') }}
                         </button>
                     </td>
                 </tr>
@@ -180,8 +187,8 @@
                     <td colspan="9" class="text-center py-5">
                         <div class="text-muted">
                             <i class="bi bi-chat-left-dots fs-1 d-block mb-3 text-secondary"></i>
-                            <h5 class="fw-normal">No SMS records found</h5>
-                            <p class="small mb-0">{% if search_query %}Try clearing your search query{% else %}Sent SMS records will appear here{% endif %}</p>
+                            <h5 class="fw-normal">{{ _('No SMS records found') }}</h5>
+                            <p class="small mb-0">{% if search_query %}{{ _('Try clearing your search query') }}{% else %}{{ _('Sent SMS records will appear here') }}{% endif %}</p>
                         </div>
                     </td>
                 </tr>
@@ -193,13 +200,12 @@
     <!-- Pagination -->
     <div class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-3">
         <div class="d-flex align-items-center gap-2 order-2 order-md-1">
-            <span class="text-muted small">Showing {{ paginated_data|length }} of {{ total_items }} entries</span>
             <form method="get" action="{{ url_for('sms_blueprint.sms') }}" class="d-inline-block ms-2">
                 <input type="hidden" name="search" value="{{ search_query }}">
                 <input type="hidden" name="sort_by" value="{{ sort_by }}">
                 <input type="hidden" name="sort_order" value="{{ sort_order }}">
                 <div class="input-group input-group-sm">
-                    <label class="input-group-text bg-light text-muted border-end-0" for="items-per-page">Per page</label>
+                    <label class="input-group-text bg-light text-muted border-end-0" for="items-per-page">{{ _('Items per page:') }}</label>
                     <select class="form-select border-start-0" id="items-per-page" name="per_page" onchange="this.form.submit()">
                         {% for option in [5, 10, 25, 50, 100] %}
                         <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
@@ -239,14 +245,14 @@
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
                 <h5 class="modal-title fw-bold" id="smsDetailModalLabel">
-                    <i class="bi bi-chat-left-text me-2 text-primary"></i>SMS Details
+                    <i class="bi bi-chat-left-text me-2 text-primary"></i>{{ _('SMS Details') }}
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <div class="row g-3 mb-4">
                     <div class="col-md-6">
-                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">Record ID</label>
+                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">{{ _('Record ID') }}</label>
                         <div class="d-flex align-items-center">
                             <span class="font-monospace small bg-light p-2 rounded border text-break flex-grow-1" id="modalSmsId"></span>
                             <button class="btn btn-outline-secondary btn-sm ms-2" title="Copy UUID" onclick="copyToClipboard(document.getElementById('modalSmsId').textContent)">
@@ -255,35 +261,56 @@
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">Recipient Phone</label>
+                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">{{ _('Recipient Phone') }}</label>
                         <div class="fw-bold fs-6 p-2 bg-light rounded border" id="modalSmsPhone"></div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">Carrier</label>
+                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">{{ _('Carrier') }}</label>
                         <div class="p-2 bg-light rounded border" id="modalSmsCarrier"></div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">Status</label>
+                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">{{ _('Status') }}</label>
                         <div class="p-2 bg-light rounded border" id="modalSmsStatus"></div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">Created At</label>
+                        <label class="form-label small text-muted text-uppercase fw-semibold mb-1">{{ _('Created At') }}</label>
                         <div class="p-2 bg-light rounded border small" id="modalSmsCreatedAt"></div>
                     </div>
                 </div>
 
+                <!-- Delivery Lifecycle Stepper / Breadcrumbs -->
+                <div class="mb-4">
+                    <label class="form-label small text-muted text-uppercase fw-semibold mb-2">{{ _('Audit Lifecycle Progression') }}</label>
+                    <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border small">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-success rounded-pill px-2 py-1"><i class="bi bi-check-lg"></i></span>
+                            <span class="fw-semibold">Ingested</span>
+                        </div>
+                        <div class="flex-grow-1 border-top border-2 mx-2" id="stepLine1"></div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge rounded-pill px-2 py-1" id="stepBadgeRouted"><i class="bi bi-broadcast"></i></span>
+                            <span class="fw-semibold" id="stepLabelRouted">Dispatched</span>
+                        </div>
+                        <div class="flex-grow-1 border-top border-2 mx-2" id="stepLine2"></div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge rounded-pill px-2 py-1" id="stepBadgeStatus"><i class="bi bi-flag"></i></span>
+                            <span class="fw-semibold" id="stepLabelStatus">Delivered</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mb-3">
-                    <label class="form-label small text-muted text-uppercase fw-semibold mb-1">Message Content</label>
+                    <label class="form-label small text-muted text-uppercase fw-semibold mb-1">{{ _('Message Content') }}</label>
                     <div class="p-3 bg-light rounded border font-monospace text-break" style="white-space: pre-wrap;" id="modalSmsMessage"></div>
                 </div>
 
                 <div id="modalSmsErrorContainer" class="mb-0 d-none">
-                    <label class="form-label small text-danger text-uppercase fw-semibold mb-1">Error Details</label>
+                    <label class="form-label small text-danger text-uppercase fw-semibold mb-1">{{ _('Error Details') }}</label>
                     <div class="p-3 bg-danger-subtle text-danger rounded border border-danger-subtle font-monospace text-break small" id="modalSmsError"></div>
                 </div>
             </div>
             <div class="modal-footer bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Close') }}</button>
             </div>
         </div>
     </div>
@@ -294,19 +321,19 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold" id="exportModalLabel"><i class="bi bi-file-earmark-excel me-2 text-success"></i>Export SMS to CSV</h5>
+                <h5 class="modal-title fw-bold" id="exportModalLabel"><i class="bi bi-file-earmark-excel me-2 text-success"></i>{{ _('Export SMS to CSV') }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <form action="{{ url_for('sms_blueprint.export_csv') }}" method="get">
                     <div class="mb-4">
-                        <label for="export-month" class="form-label fw-bold small text-secondary">Select Month and Year</label>
+                        <label for="export-month" class="form-label fw-bold small text-secondary">{{ _('Select Month and Year') }}</label>
                         <input type="month" class="form-control form-control-lg" id="export-month" name="export_month" required>
-                        <div class="form-text mt-2">Data is exported one month at a time for optimal performance.</div>
+                        <div class="form-text mt-2">{{ _('Data is exported one month at a time for optimal performance.') }}</div>
                     </div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="bi bi-download me-2"></i>Download CSV
+                            <i class="bi bi-download me-2"></i>{{ _('Download CSV') }}
                         </button>
                     </div>
                 </form>
@@ -318,22 +345,26 @@
 
 {% block extra_js %}
 <script>
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            showToast('Copied', 'ID copied to clipboard', 'success');
-        }).catch(err => {
-            console.error('Failed to copy: ', err);
-            showToast('Error', 'Could not copy to clipboard', 'danger');
-        });
-    }
-
     function openSmsDetails(id, phone, carrier, status, createdAt, message, error) {
-        document.getElementById('modalSmsId').textContent = id;
-        document.getElementById('modalSmsPhone').textContent = phone;
+        document.getElementById('modalSmsId').textContent = id || '';
+        document.getElementById('modalSmsPhone').textContent = phone || '';
         document.getElementById('modalSmsCarrier').textContent = carrier || 'default';
-        document.getElementById('modalSmsStatus').textContent = status;
+        document.getElementById('modalSmsStatus').textContent = status || '';
         document.getElementById('modalSmsCreatedAt').textContent = createdAt || 'No Data';
-        document.getElementById('modalSmsMessage').textContent = message;
+        document.getElementById('modalSmsMessage').textContent = message || '';
+
+        // Update Lifecycle Audit Stepper
+        const isSent = (status || '').toLowerCase() === 'sent';
+        const isFailed = (status || '').toLowerCase() === 'failed';
+        const bRouted = document.getElementById('stepBadgeRouted');
+        const bStatus = document.getElementById('stepBadgeStatus');
+        const lStatus = document.getElementById('stepLabelStatus');
+
+        if (bRouted) bRouted.className = 'badge rounded-pill px-2 py-1 ' + (isFailed ? 'bg-danger text-white' : 'bg-primary text-white');
+        if (bStatus) {
+            bStatus.className = 'badge rounded-pill px-2 py-1 ' + (isSent ? 'bg-success text-white' : (isFailed ? 'bg-danger text-white' : 'bg-secondary text-white'));
+            if (lStatus) lStatus.textContent = isSent ? 'Sent Confirmed' : (isFailed ? 'Transmission Failed' : 'Queued / Processing');
+        }
 
         const errorContainer = document.getElementById('modalSmsErrorContainer');
         const errorText = document.getElementById('modalSmsError');
@@ -345,62 +376,25 @@
             errorContainer.classList.add('d-none');
         }
 
-        const modal = new bootstrap.Modal(document.getElementById('smsDetailModal'));
-        modal.show();
+        const modalEl = document.getElementById('smsDetailModal');
+        if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+            modal.show();
+        }
     }
 
-    (function(){
-        const STORAGE_KEY = 'sms_auto_refresh_seconds';
-        const selectId = 'autoRefreshSelect';
-        const countdownId = 'autoRefreshCountdown';
-        let timerId = null;
-        let remaining = 0;
-
-        function updateCountdownText() {
-            const el = document.getElementById(countdownId);
-            if (!el) return;
-            const sel = document.getElementById(selectId);
-            const secs = parseInt(sel?.value || '0', 10) || 0;
-            if (secs === 0) {
-                el.textContent = '';
-                el.style.display = 'none';
-                return;
-            }
-            el.style.display = 'inline-block';
-            el.textContent = `${remaining}s`;
-            el.className = remaining <= 3 ? 'badge bg-danger ms-2' : 'badge bg-info-subtle text-info border border-info-subtle ms-2';
-        }
-
-        function start(seconds) {
-            if (timerId) clearInterval(timerId);
-            const sel = document.getElementById(selectId);
-            if (sel) sel.value = String(seconds);
-            localStorage.setItem(STORAGE_KEY, String(seconds));
-
-            if (!seconds) { remaining = 0; updateCountdownText(); return; }
-            remaining = seconds;
-            updateCountdownText();
-            timerId = setInterval(() => {
-                if (document.hidden) return;
-                remaining--;
-                if (remaining <= 0) {
-                    clearInterval(timerId);
-                    window.location.reload();
-                    return;
-                }
-                updateCountdownText();
-            }, 1000);
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const saved = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
-            const sel = document.getElementById(selectId);
-            if (sel) {
-                sel.value = String(saved);
-                sel.addEventListener('change', (e) => start(parseInt(e.target.value, 10) || 0));
-            }
-            if (saved > 0) start(saved);
-        });
-    })();
-</script>
-{% endblock %}
+    document.addEventListener('DOMContentLoaded', function() {
+        const modalEl = document.getElementById('smsDetailModal');
+        if (modalEl) {
+            modalEl.addEventListener('show.bs.modal', function(event) {
+                const button = event.relatedTarget;
+                if (!button || !button.hasAttribute('data-id')) return;
+                openSmsDetails(
+                    button.getAttribute('data-id'),
+                    button.getAttribute('data-phone'),
+                    button.getAttribute('data-carrier'),
+                    button.getAttribute('data-status'),
+                    button.getAttribute('data-created-at'),
+                    button.getAttribute('data-message'),
+                    button.getAttribute('data-error')
+                );\n            });\n        }\n    });\n\n    (function(){\n        const STORAGE_KEY = 'sms_auto_refresh_seconds';\n        const selectId = 'autoRefreshSelect';\n        const countdownId = 'autoRefreshCountdown';\n        let timerId = null;\n        let remaining = 0;\n\n        function updateCountdownText() {\n            const el = document.getElementById(countdownId);\n            if (!el) return;\n            const sel = document.getElementById(selectId);\n            const secs = parseInt(sel?.value || '0', 10) || 0;\n            if (secs === 0) {\n                el.textContent = '';\n                el.style.display = 'none';\n                return;\n            }\n            el.style.display = 'inline-block';\n            el.textContent = `${remaining}s`;\n            el.className = remaining <= 3 ? 'badge bg-danger ms-2' : 'badge bg-info-subtle text-info border border-info-subtle ms-2';\n        }\n\n        function start(seconds) {\n            if (timerId) clearInterval(timerId);\n            const sel = document.getElementById(selectId);\n            if (sel) sel.value = String(seconds);\n            localStorage.setItem(STORAGE_KEY, String(seconds));\n\n            if (!seconds) { remaining = 0; updateCountdownText(); return; }\n            remaining = seconds;\n            updateCountdownText();\n            timerId = setInterval(() => {\n                if (document.hidden) return;\n                remaining--;\n                if (remaining <= 0) {\n                    clearInterval(timerId);\n                    window.location.reload();\n                    return;\n                }\n                updateCountdownText();\n            }, 1000);\n        }\n\n        document.addEventListener('DOMContentLoaded', () => {\n            const saved = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;\n            const sel = document.getElementById(selectId);\n            if (sel) {\n                sel.value = String(saved);\n                sel.addEventListener('change', (e) => start(parseInt(e.target.value, 10) || 0));\n            }\n            if (saved > 0) start(saved);\n        });\n    })();\n</script>\n{% endblock %}\n

@@ -77,6 +77,19 @@
   timeout: "{{ py_phone_caller_uv_sync_timeout }}"
   notify: Restart py-phone-caller services
 
+- name: Ensure spaCy English pipeline is installed for Kokoro TTS
+  ansible.builtin.command:
+    cmd: >-
+      {{ py_phone_caller_uv_bin }} pip install
+      --python {{ py_phone_caller_venv_dir }}/bin/python
+      https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+  environment: "{{ _ppc_uv_env }}"
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  register: _ppc_spacy_en
+  changed_when: "'Installed' in _ppc_spacy_en.stdout or 'Installed' in _ppc_spacy_en.stderr"
+  failed_when: false
+
 # The Rust engine drives the GSM modems directly; it is only needed when the
 # on-premise SMS carrier is selected.
 #

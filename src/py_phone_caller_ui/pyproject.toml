@@ -18,10 +18,11 @@ dependencies = [
     "requests>=2.31.0",
     "hypercorn>=0.16.0",
     "gunicorn>=21.2.0",
+    "flask-babel>=4.0.0",
 ]
 
 [tool.setuptools.package-dir]
 py_phone_caller_ui = "."
 
 [tool.setuptools.package-data]
-py_phone_caller_ui = ["templates/**/*", "static/**/*", "*.html", "*.css", "*.js"]
+py_phone_caller_ui = ["templates/**/*", "static/**/*", "translations/**/*", "*.html", "*.css", "*.js"]

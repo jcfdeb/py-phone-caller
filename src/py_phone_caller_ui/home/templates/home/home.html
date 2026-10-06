@@ -2,29 +2,188 @@
 
 {% block title %}py-phone-caller Dashboard{% endblock %}
 
+{% block extra_css %}
+<style>
+    .noc-kpi-card {
+        border: none;
+        border-radius: 1rem;
+        background: #ffffff;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .noc-kpi-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 16px 36px rgba(37, 99, 235, 0.1);
+    }
+    .noc-kpi-icon {
+        width: 3rem;
+        height: 3rem;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+    }
+    .lifecycle-bar {
+        height: 12px;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container main-container">
-    <div class="dashboard-hero mb-5">
-        <div class="row align-items-center g-4">
-            <div class="col-lg-8">
-                <span class="eyebrow"><i class="bi bi-broadcast-pin me-2"></i>Local operations console</span>
-                <h1 class="display-5 fw-bold mb-3">Phone call orchestration, for your control room.</h1>
-                <p class="lead mb-0">Manage calls, SMS messages, events, schedules, and contacts from a clean interface designed to
-                    work fully offline or Cloud.</p>
+    <!-- NOC Live Telephony & Incident Dashboard Banner -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-5">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 pb-3 mb-4 border-bottom">
+            <div>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill mb-2">
+                    <i class="bi bi-broadcast me-1"></i>{{ _('Live Telephony NOC Dashboard') }}
+                </span>
+                <h2 class="h3 fw-bold mb-1">{{ _('Mission-critical incident response & dispatch telemetry') }}</h2>
+                <p class="text-muted small mb-0">{{ _('Offline-ready call orchestration.') }}</p>
             </div>
-            <div class="col-lg-4">
-                <div class="hero-status-card ms-lg-auto">
-                    <div class="status-dot"></div>
-                    <div>
-                        <div class="small text-uppercase text-muted fw-semibold">Workspace mode</div>
-                        <div class="fw-bold">Air-gapped ready</div>
+            <!-- Hardware Gateway & Telephony Indicators -->
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                {% if metrics.is_gsm %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill d-flex align-items-center gap-1 shadow-sm">
+                    <i class="bi bi-sim fs-6"></i>
+                    <span>{{ _('Hardware GSM Modem') }}</span>
+                </span>
+                {% else %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill d-flex align-items-center gap-1 shadow-sm">
+                    <i class="bi bi-cloud fs-6"></i>
+                    <span>{{ _('SaaS Fallback') }}</span>
+                </span>
+                {% endif %}
+                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-3 py-2 rounded-pill d-flex align-items-center gap-1 shadow-sm">
+                    <i class="bi bi-cpu fs-6"></i>
+                    <span>{{ _('Asterisk ARI Connected') }}</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- 4 Real-time KPI Metric Cards -->
+        <div class="row g-3 mb-4">
+            <!-- Total Calls Dispatched -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card noc-kpi-card p-3 border">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="small fw-semibold text-muted text-uppercase">{{ _('Total Calls Dispatched') }}</span>
+                        <div class="noc-kpi-icon bg-primary-subtle text-primary">
+                            <i class="bi bi-telephone-outbound"></i>
+                        </div>
                     </div>
-                    <i class="bi bi-shield-check ms-auto"></i>
+                    <div class="d-flex align-items-baseline gap-2">
+                        <h3 class="fw-bold mb-0" id="kpi-total-calls">{{ metrics.total_calls }}</h3>
+                        <span class="small text-muted">{{ _('dispatched') }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DTMF Acknowledgment Rate -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card noc-kpi-card p-3 border">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="small fw-semibold text-muted text-uppercase">{{ _('DTMF Acknowledgment Rate') }}</span>
+                        <div class="noc-kpi-icon bg-success-subtle text-success">
+                            <i class="bi bi-check2-circle"></i>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-baseline gap-2">
+                        <h3 class="fw-bold mb-0 text-success" id="kpi-ack-rate">{{ metrics.ack_rate }}%</h3>
+                        <span class="small text-muted">(<span id="kpi-ack-count">{{ metrics.ack_count }}</span>/{{ metrics.total_calls }})</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Escalated Calls -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card noc-kpi-card p-3 border">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="small fw-semibold text-muted text-uppercase">{{ _('Escalated Calls') }}</span>
+                        <div class="noc-kpi-icon bg-danger-subtle text-danger">
+                            <i class="bi bi-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-baseline gap-2">
+                        <h3 class="fw-bold mb-0 {% if metrics.escalated_count > 0 %}text-danger{% else %}text-secondary{% endif %}" id="kpi-escalated-calls">
+                            {{ metrics.escalated_count }}
+                        </h3>
+                        <span class="small text-muted">{{ _('backup callee') }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SMS Delivery Status -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card noc-kpi-card p-3 border">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="small fw-semibold text-muted text-uppercase">{{ _('SMS Delivery Status') }}</span>
+                        <div class="noc-kpi-icon bg-info-subtle text-info">
+                            <i class="bi bi-chat-dots"></i>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-baseline gap-2">
+                        <h3 class="fw-bold mb-0" id="kpi-sms-delivered">{{ metrics.sms_delivered }}</h3>
+                        <span class="small text-muted">/ {{ metrics.total_sms }} {{ _('Delivered') }}</span>
+                        {% if metrics.sms_failed > 0 %}
+                        <span class="badge bg-danger ms-auto">{{ metrics.sms_failed }} {{ _('Failed') }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visual Outcome Breakdown -->
+        <div class="bg-light rounded-3 p-3 border">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small fw-bold text-uppercase text-secondary">
+                    <i class="bi bi-pie-chart me-1"></i>{{ _('Call Lifecycle Breakdown') }}
+                </span>
+                <span class="small text-muted" id="noc-last-update">Auto-refreshed</span>
+            </div>
+            
+            {% set total = metrics.total_calls if metrics.total_calls > 0 else 1 %}
+            {% set p_ack = (metrics.ack_count / total * 100)|round %}
+            {% set p_heard = (metrics.heard_count / total * 100)|round %}
+            {% set p_esc = (metrics.escalated_count / total * 100)|round %}
+            {% set p_flight = (metrics.in_flight_count / total * 100)|round %}
+
+            <div class="progress lifecycle-bar mb-3 bg-secondary-subtle">
+                <div class="progress-bar bg-success" role="progressbar" style="width: {{ p_ack }}%" title="Acknowledged" id="bar-ack"></div>
+                <div class="progress-bar bg-warning text-dark" role="progressbar" style="width: {{ p_heard }}%" title="Heard / Snoozed" id="bar-heard"></div>
+                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ p_esc }}%" title="Escalated" id="bar-escalated"></div>
+                <div class="progress-bar bg-info" role="progressbar" style="width: {{ p_flight }}%" title="In Flight" id="bar-flight"></div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 small">
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-success rounded-circle p-1"> </span>
+                    <span class="fw-semibold text-secondary">{{ _('Acknowledged') }}:</span>
+                    <span class="fw-bold" id="legend-ack">{{ metrics.ack_count }}</span>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning rounded-circle p-1"> </span>
+                    <span class="fw-semibold text-secondary">{{ _('Heard / Snoozed') }}:</span>
+                    <span class="fw-bold" id="legend-heard">{{ metrics.heard_count }}</span>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-danger rounded-circle p-1"> </span>
+                    <span class="fw-semibold text-secondary">{{ _('Escalated') }}:</span>
+                    <span class="fw-bold" id="legend-escalated">{{ metrics.escalated_count }}</span>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-info rounded-circle p-1"> </span>
+                    <span class="fw-semibold text-secondary">{{ _('In Flight') }}:</span>
+                    <span class="fw-bold" id="legend-flight">{{ metrics.in_flight_count }}</span>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Quick Navigation Feature Cards -->
     <div class="row g-4 justify-content-center">
         <div class="col-md-6 col-lg-4">
             <a href="{{ url_for('calls_blueprint.calls') }}" class="card-menu">
@@ -33,8 +192,8 @@
                         <div class="card-icon">
                             <img alt="Managed Calls" src="{{ url_for('static', filename='images/calls.png') }}"/>
                         </div>
-                        <h5>Managed Calls</h5>
-                        <p class="small text-muted mb-0">Track and manage outgoing calls</p>
+                        <h5>{{ _('Managed Calls') }}</h5>
+                        <p class="small text-muted mb-0">{{ _('Track and manage outgoing calls') }}</p>
                         <span class="card-arrow"><i class="bi bi-arrow-right"></i></span>
                     </div>
                 </div>
@@ -48,8 +207,8 @@
                         <div class="card-icon">
                             <i class="bi bi-chat-left-text text-primary fs-1"></i>
                         </div>
-                        <h5>Managed SMS</h5>
-                        <p class="small text-muted mb-0">Track and inspect SMS messages</p>
+                        <h5>{{ _('Managed SMS') }}</h5>
+                        <p class="small text-muted mb-0">{{ _('Track and inspect SMS messages') }}</p>
                         <span class="card-arrow"><i class="bi bi-arrow-right"></i></span>
                     </div>
                 </div>
@@ -64,8 +223,8 @@
                             <img alt="Asterisk WebSocket Events"
                                  src="{{ url_for('static', filename='images/ws_events.png') }}"/>
                         </div>
-                        <h5>PBX Events</h5>
-                        <p class="small text-muted mb-0">Real-time Asterisk events</p>
+                        <h5>{{ _('PBX Events') }}</h5>
+                        <p class="small text-muted mb-0">{{ _('Real-time Asterisk events') }}</p>
                         <span class="card-arrow"><i class="bi bi-arrow-right"></i></span>
                     </div>
                 </div>
@@ -80,8 +239,8 @@
                             <img alt="Schedule a Call"
                                  src="{{ url_for('static', filename='images/schedule_call.png') }}"/>
                         </div>
-                        <h5>Schedule Call</h5>
-                        <p class="small text-muted mb-0">Plan future call activities</p>
+                        <h5>{{ _('Schedule Call') }}</h5>
+                        <p class="small text-muted mb-0">{{ _('Plan future call activities') }}</p>
                         <span class="card-arrow"><i class="bi bi-arrow-right"></i></span>
                     </div>
                 </div>
@@ -95,8 +254,8 @@
                         <div class="card-icon">
                             <img alt="Address Book" src="{{ url_for('static', filename='images/address_book.png') }}"/>
                         </div>
-                        <h5>Address Book</h5>
-                        <p class="small text-muted mb-0">Manage your contacts</p>
+                        <h5>{{ _('Address Book') }}</h5>
+                        <p class="small text-muted mb-0">{{ _('Manage your contacts') }}</p>
                         <span class="card-arrow"><i class="bi bi-arrow-right"></i></span>
                     </div>
                 </div>
@@ -104,4 +263,115 @@
         </div>
     </div>
 </div>
+
+<script>
+    function applyMetricsToUI(data) {
+        if (!data) return;
+        const total = data.total_calls || 0;
+        const totalEl = document.getElementById('kpi-total-calls');
+        if (totalEl) totalEl.innerText = total;
+        const ackRateEl = document.getElementById('kpi-ack-rate');
+        if (ackRateEl) ackRateEl.innerText = (data.ack_rate || 0) + '%';
+        const ackCountEl = document.getElementById('kpi-ack-count');
+        if (ackCountEl) ackCountEl.innerText = data.ack_count || 0;
+        const escEl = document.getElementById('kpi-escalated-calls');
+        if (escEl) escEl.innerText = data.escalated_count || 0;
+        const smsEl = document.getElementById('kpi-sms-delivered');
+        if (smsEl) smsEl.innerText = data.sms_delivered || 0;
+
+        const legAck = document.getElementById('legend-ack');
+        if (legAck) legAck.innerText = data.ack_count || 0;
+        const legHeard = document.getElementById('legend-heard');
+        if (legHeard) legHeard.innerText = data.heard_count || 0;
+        const legEsc = document.getElementById('legend-escalated');
+        if (legEsc) legEsc.innerText = data.escalated_count || 0;
+        const legFlight = document.getElementById('legend-flight');
+        if (legFlight) legFlight.innerText = data.in_flight_count || 0;
+
+        const denom = total > 0 ? total : 1;
+        const barAck = document.getElementById('bar-ack');
+        if (barAck) barAck.style.width = Math.round((data.ack_count || 0) / denom * 100) + '%';
+        const barHeard = document.getElementById('bar-heard');
+        if (barHeard) barHeard.style.width = Math.round((data.heard_count || 0) / denom * 100) + '%';
+        const barEsc = document.getElementById('bar-escalated');
+        if (barEsc) barEsc.style.width = Math.round((data.escalated_count || 0) / denom * 100) + '%';
+        const barFlight = document.getElementById('bar-flight');
+        if (barFlight) barFlight.style.width = Math.round((data.in_flight_count || 0) / denom * 100) + '%';
+
+        const lastUp = document.getElementById('noc-last-update');
+        if (lastUp) {
+            const now = new Date();
+            lastUp.innerText = 'Live SSE ' + now.toLocaleTimeString();
+        }
+    }
+
+    // Connect to Server-Sent Events (SSE) for Real-Time Telemetry Stream
+    (function initSSE() {
+        if (!window.EventSource) return;
+        const sseUrl = "{{ url_for('home_blueprint.telemetry_stream') }}";
+        const evtSource = new EventSource(sseUrl);
+
+        evtSource.addEventListener('metrics', function(e) {
+            try {
+                const data = JSON.parse(e.data);
+                applyMetricsToUI(data);
+            } catch(err) {}
+        });
+
+        evtSource.addEventListener('telephony_event', function(e) {
+            try {
+                const ev = JSON.parse(e.data);
+                if (ev && ev.event_type) {
+                    showToast('Telephony Event', ev.event_type + (ev.channel_state ? ' (' + ev.channel_state + ')' : ''), 'info');
+                }
+            } catch(err) {}
+        });
+
+        evtSource.onerror = function() {
+            // EventSource will auto-reconnect
+            console.debug('SSE disconnected, reconnecting in background...');
+        };
+    })();
+
+    // Fallback polling every 15s in case SSE is blocked by proxies
+    async function refreshNocMetrics() {
+        try {
+            const res = await fetch("{{ url_for('home_blueprint.api_dashboard_metrics') }}");
+            if (!res.ok) return;
+            const data = await res.json();
+            applyMetricsToUI(data);
+        } catch(e) {}
+    }
+    setInterval(refreshNocMetrics, 15000);
+        try {
+            const res = await fetch("{{ url_for('home_blueprint.api_dashboard_metrics') }}");
+            if (!res.ok) return;
+            const data = await res.json();
+            
+            const total = data.total_calls || 0;
+            document.getElementById('kpi-total-calls').innerText = total;
+            document.getElementById('kpi-ack-rate').innerText = data.ack_rate + '%';
+            document.getElementById('kpi-ack-count').innerText = data.ack_count;
+            document.getElementById('kpi-escalated-calls').innerText = data.escalated_count;
+            document.getElementById('kpi-sms-delivered').innerText = data.sms_delivered;
+            
+            document.getElementById('legend-ack').innerText = data.ack_count;
+            document.getElementById('legend-heard').innerText = data.heard_count;
+            document.getElementById('legend-escalated').innerText = data.escalated_count;
+            document.getElementById('legend-flight').innerText = data.in_flight_count;
+
+            const denom = total > 0 ? total : 1;
+            document.getElementById('bar-ack').style.width = Math.round(data.ack_count / denom * 100) + '%';
+            document.getElementById('bar-heard').style.width = Math.round(data.heard_count / denom * 100) + '%';
+            document.getElementById('bar-escalated').style.width = Math.round(data.escalated_count / denom * 100) + '%';
+            document.getElementById('bar-flight').style.width = Math.round(data.in_flight_count / denom * 100) + '%';
+            
+            const now = new Date();
+            document.getElementById('noc-last-update').innerText = 'Updated ' + now.toLocaleTimeString();
+        } catch (e) {
+            console.debug('Dashboard metrics auto-refresh failed:', e);
+        }
+    }
+    setInterval(refreshNocMetrics, 10000);
+</script>
 {% endblock %}

@@ -12,7 +12,8 @@ py_phone_caller_group: py-phone-caller
 py_phone_caller_service_prefix: "py-phone-caller-"
 
 py_phone_caller_install_dir: /opt/py-phone-caller
-py_phone_caller_src_dir: "{{ py_phone_caller_install_dir }}/src"
+py_phone_caller_app_dir: "{{ py_phone_caller_install_dir }}/app"
+py_phone_caller_src_dir: "{{ py_phone_caller_app_dir }}"
 py_phone_caller_config_dir: "{{ py_phone_caller_src_dir }}/config"
 py_phone_caller_settings_file: "{{ py_phone_caller_config_dir }}/settings.toml"
 py_phone_caller_secrets_file: "{{ py_phone_caller_config_dir }}/.secrets.toml"
@@ -83,6 +84,7 @@ py_phone_caller_sync_excludes:
   - "Containerfile"
   # openalertd ships separately.
   - "/src/openalert/"
+  - "/pre_trained_models/"
   # Cargo build artifacts: 1.4 GB, rebuilt on the target, and not in git
   # (rsync does not read .gitignore).
   - "target/"
@@ -108,11 +110,11 @@ py_phone_caller_sync_protected:
   # directory is excluded, not just the two files: rsync would otherwise keep
   # resetting its mode, since config.yml deliberately makes it 0750 while the
   # checkout has it 0755.
-  - "/src/config/"
+  - "/app/config/"
   # Downloaded TTS models and the generated audio cache; re-downloading these
   # costs hundreds of megabytes on every run.
-  - "/src/generate_audio/pre_trained_models/"
-  - "/src/generate_audio/audio/"
+  - "/app/generate_audio/pre_trained_models/"
+  - "/app/generate_audio/audio/"
 
 # ---------------------------------------------------------------------------
 # Feature switches
@@ -267,9 +269,27 @@ py_phone_caller_config_defaults:
     kokoro_voices_base_url: "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices"
     kokoro_repo_id: "hexgrad/Kokoro-82M"
     kokoro_model_filename: "kokoro-v1_0.pth"
+    silero_models_folder: "silero_tts"
+    silero_lang: "en"
+    silero_speaker: "en_0"
+    silero_sample_rate: 8000
+    silero_python_interpreter: "python3"
     serving_audio_folder: "audio"
     is_audio_ready_endpoint: "is_audio_ready"
     num_of_cpus: 2
+    preload:
+      facebook_mms:
+        - "spa"
+        - "eng"
+        - "ita"
+      piper_tts:
+        - "it_IT"
+        - "en_US"
+      kokoro_tts:
+        - "default"
+      silero_tts:
+        - "en"
+        - "ru"
 
   caller_prometheus_webhook:
     prometheus_webhook_port: 8084

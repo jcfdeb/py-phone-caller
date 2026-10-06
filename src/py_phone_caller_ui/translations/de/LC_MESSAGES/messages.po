@@ -1,0 +1,1640 @@
+
+msgid ""
+msgstr ""
+"Project-Id-Version: py-phone-caller 1.Report-Msgid-Bugs-ToPOT-Creation-"
+"Date: 2026-10-02 12:00+000PO-Revision-Date: 2026-10-02 12:00+000Language:"
+" dMIME-Version: 1.Content-Type: text/plain; charset=UTF-Content-Transfer-"
+"Encoding: 8bi\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-04 20:48+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: de\n"
+"Language-Team: de <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:3
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:8
+#: src/py_phone_caller_ui/home/templates/home/home.html:257
+#: src/py_phone_caller_ui/templates/base.html:71
+msgid "Address Book"
+msgstr "Adressbuch"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:11
+msgid "Show Calendar"
+msgstr "Kalender anzeigen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:15
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:90
+msgid "CSV Ops"
+msgstr "CSV-Aktionen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:18
+msgid "Export Contacts"
+msgstr "Kontakte exportieren"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:20
+msgid "Import Contacts"
+msgstr "Kontakte importieren"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:24
+msgid "Learn how On-Call rotations and availability work"
+msgstr "Erfahren Sie, wie Bereitschaftsdienst und Verfügbarkeiten funktionieren"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:25
+msgid "On-Call Guide"
+msgstr "Bereitschafts-Leitfaden"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:28
+msgid "Add Contact"
+msgstr "Kontakt hinzufügen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:40
+msgid "Search contacts..."
+msgstr "Kontakte suchen..."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:45
+msgid "Sort by"
+msgstr "Sortieren nach"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:47
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:79
+msgid "Created"
+msgstr "Erstellt"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:48
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:148
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:269
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:224
+msgid "Name"
+msgstr "Name"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:49
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:225
+msgid "Phone"
+msgstr "Telefon"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:50
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:162
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:283
+msgid "Enabled"
+msgstr "Aktiviert"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:56
+msgid "Order"
+msgstr "Reihenfolge"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:58
+msgid "Descending"
+msgstr "Absteigend"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:59
+msgid "Ascending"
+msgstr "Aufsteigend"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:65
+msgid "Filter"
+msgstr "Filtern"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "Contact Name"
+msgstr "Kontaktname"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "First and last name of the responder"
+msgstr "Vor- und Nachname des Mitarbeiters"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:59
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "Phone Number"
+msgstr "Telefonnummer"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+msgid "E.164 formatted number dialed for voice calls and SMS"
+msgstr "Telefonnummer im E.164-Format für Sprachanrufe und SMS"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:160
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:281
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:132
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:102
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:272
+msgid "Status"
+msgstr "Status"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+msgid "Only active contacts receive automated alerts"
+msgstr "Nur aktive Kontakte erhalten automatisierte Benachrichtigungen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:80
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:117
+#: src/py_phone_caller_ui/users/templates/users/users.html:63
+msgid "Actions"
+msgstr "Aktionen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:93
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+#: src/py_phone_caller_ui/users/templates/users/users.html:60
+msgid "Active"
+msgstr "Aktiv"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:95
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:163
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:284
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Disabled"
+msgstr "Deaktiviert"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:128
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:243
+msgid "No contacts found in address book"
+msgstr "Keine Kontakte im Adressbuch gefunden"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:142
+msgid "Add New Contact"
+msgstr "Neuen Kontakt hinzufügen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:152
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:273
+msgid "Surname"
+msgstr "Nachname"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+msgid "International format starting with + (e.g. +393349246425)"
+msgstr "Internationales Format beginnend mit + (z. B. +393349246425)"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:167
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:288
+msgid "Address"
+msgstr "Adresse"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:171
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:292
+msgid "ZIP Code"
+msgstr "Postleitzahl"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:175
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:296
+msgid "City"
+msgstr "Stadt"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:179
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:300
+msgid "Country"
+msgstr "Land"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:183
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:304
+msgid "Annotations"
+msgstr "Anmerkungen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:191
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:312
+msgid "On-call Availability Windows"
+msgstr "Bereitschaftsfenster"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:195
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:316
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:160
+msgid "Start Date"
+msgstr "Startdatum"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:199
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:320
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:164
+msgid "Start Time"
+msgstr "Startzeit"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:203
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:324
+msgid "End Date"
+msgstr "Enddatum"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:207
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:328
+msgid "End Time"
+msgstr "Endzeit"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:232
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:353
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:440
+msgid "Priority"
+msgstr "Priorität"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+msgid "Priority 0 is dialed first, followed by 1, 2, 3, 4"
+msgstr "Priorität 0 wird zuerst gewählt, gefolgt von 1, 2, 3, 4"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:222
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:343
+msgid "Add"
+msgstr "Hinzufügen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:230
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:351
+msgid "Start (local)"
+msgstr "Start (lokal)"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:231
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:352
+msgid "End (local)"
+msgstr "Ende (lokal)"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:233
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:354
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:226
+msgid "Action"
+msgstr "Aktion"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:241
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:362
+msgid "Clear all"
+msgstr "Alles löschen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:250
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:371
+#: src/py_phone_caller_ui/users/templates/users/users.html:183
+#: src/py_phone_caller_ui/users/templates/users/users.html:256
+msgid "Cancel"
+msgstr "Abbrechen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:251
+msgid "Save Contact"
+msgstr "Kontakt speichern"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:262
+msgid "Edit Contact"
+msgstr "Kontakt bearbeiten"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:372
+msgid "Save Changes"
+msgstr "Änderungen speichern"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:389
+msgid "Address Book & On-Call Rotation Guide"
+msgstr "Leitfaden für Adressbuch & Bereitschaftsrotation"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:391
+msgid ""
+"How contact availability, priority escalation, and calendar routing "
+"operate."
+msgstr ""
+"Wie Kontaktverfügbarkeit, Prioritätseskalation und Kalender-Routing "
+"funktionieren."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:402
+msgid "Contact Details & Phone Numbers"
+msgstr "Kontaktdaten & Telefonnummern"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:405
+msgid ""
+"Contacts must include standard E.164 phone numbers (e.g. +393349246425) "
+"to dial properly through Asterisk ARI SIP trunks and GSM modems."
+msgstr ""
+"Kontakte müssen standardmäßige E.164-Telefonnummern (z. B. +393349246425)"
+" enthalten, um ordnungsgemäß über Asterisk ARI SIP-Trunks und GSM-Modems "
+"gewählt zu werden."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+msgid "Eligible for automated incident calls and SMS."
+msgstr "Berechtigt für automatisierte Notfallanrufe und SMS."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Excluded from on-call selection and escalation."
+msgstr "Von der Bereitschaftsauswahl und Eskalation ausgeschlossen."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:417
+msgid "Availability Windows & Timezones"
+msgstr "Verfügbarkeitsfenster & Zeitzonen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:420
+msgid ""
+"Availability is specified in your local browser timezone. The system "
+"automatically converts and stores windows in UTC for accurate global "
+"scheduling."
+msgstr ""
+"Die Verfügbarkeit wird in der lokalen Browser-Zeitzone angegeben. Das "
+"System konvertiert und speichert Zeitfenster automatisch in UTC für "
+"präzise globale Planung."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:423
+msgid ""
+"Contacts without explicit windows are considered available 24/7 if "
+"enabled."
+msgstr ""
+"Kontakte ohne explizite Zeitfenster gelten als rund um die Uhr verfügbar,"
+" sofern sie aktiviert sind."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:431
+msgid "Priority Levels & Escalation Rules"
+msgstr "Prioritätsstufen & Eskalationsregeln"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:434
+msgid ""
+"When an incident or scheduled call dispatches, the system queries "
+"contacts active right now and orders them by Priority:"
+msgstr ""
+"Bei einem Störungs- oder terminierten Anruf ermittelt das System die "
+"aktuell aktiven Kontakte und ordnet sie nach Priorität:"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:441
+msgid "Role"
+msgstr "Rolle"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:442
+msgid "Dispatch Behavior"
+msgstr "Versandverhalten"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:448
+msgid "Primary Responder"
+msgstr "Ersthelfer / Primärer Bereitschaftsdienst"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:449
+msgid "First contact dialed when an alert triggers."
+msgstr "Erster Kontakt, der bei Alarmauslösung angerufen wird."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:453
+msgid "Secondary Responder"
+msgstr "Zweiter Bereitschaftsdienst"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:454
+msgid "Contact dialed if Primary fails to answer or acknowledge with DTMF 4."
+msgstr ""
+"Kontakt, der angerufen wird, wenn der Ersthelfer nicht antwortet oder "
+"nicht mit DTMF 4 bestätigt."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:458
+msgid "Tier 2 / Team Backup"
+msgstr "Stufe 2 / Team-Backup"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:459
+msgid "Escalation fallback for high-severity incidents."
+msgstr "Eskalations-Fallback für Vorfälle mit hoher Priorität."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:463
+msgid "Duty Supervisor / Final Fallback"
+msgstr "Diensthabender Supervisor / Letzte Rückfallebene"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:464
+msgid "Notified only when earlier tiers are exhausted."
+msgstr "Wird erst benachrichtigt, wenn vorherige Stufen ausgeschöpft sind."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:474
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:354
+msgid "Got it"
+msgstr "Verstanden"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:3
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:83
+msgid "On-call Calendar"
+msgstr "Bereitschaftskalender"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:86
+msgid "Back to List"
+msgstr "Zurück zur Liste"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:96
+msgid "Export Current Month"
+msgstr "Aktuellen Monat exportieren"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:100
+msgid "Import Windows"
+msgstr "Fenster importieren"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:122
+msgid "Preview uses UTC times"
+msgstr "Vorschau verwendet UTC-Zeiten"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:129
+msgid "Jump to Date"
+msgstr "Zu Datum springen"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:138
+msgid "Mon"
+msgstr "Mo"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:139
+msgid "Tue"
+msgstr "Di"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:140
+msgid "Wed"
+msgstr "Mi"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:141
+msgid "Thu"
+msgstr "Do"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:142
+msgid "Fri"
+msgstr "Fr"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:143
+msgid "Sat"
+msgstr "Sa"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:144
+msgid "Sun"
+msgstr "So"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:153
+msgid "No on-call"
+msgstr "Keine Bereitschaft"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:3
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:17
+#: src/py_phone_caller_ui/home/templates/home/home.html:195
+#: src/py_phone_caller_ui/templates/base.html:47
+msgid "Managed Calls"
+msgstr "Verwaltete Anrufe"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:21
+msgid "Bulk Acknowledge"
+msgstr "Massenbestätigung"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:25
+msgid "Incident Audit Report"
+msgstr "Störungs-Auditbericht"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:28
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:17
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:26
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:11
+msgid "Export CSV"
+msgstr "CSV exportieren"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:44
+msgid "Search managed calls..."
+msgstr "Verwaltete Anrufe suchen..."
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:45
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:50
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:34
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:39
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:43
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:48
+#: src/py_phone_caller_ui/users/templates/users/users.html:27
+#: src/py_phone_caller_ui/users/templates/users/users.html:32
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:27
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:32
+msgid "Search"
+msgstr "Suchen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:56
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:54
+msgid "Auto refresh:"
+msgstr "Autom. Aktualisierung:"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:58
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:56
+msgid "Disable"
+msgstr "Deaktivieren"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:77
+msgid "Select All Active Calls"
+msgstr "Alle aktiven Anrufe auswählen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:81
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:53
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:76
+msgid "Element"
+msgstr "Element"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:87
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:82
+msgid "Id"
+msgstr "ID"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:88
+msgid "Callee"
+msgstr "Angerufener"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:89
+msgid "Flags"
+msgstr "Flags"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:90
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:60
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:186
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:91
+msgid "Message"
+msgstr "Nachricht"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:91
+msgid "Channel"
+msgstr "Kanal"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:94
+msgid "To Dial"
+msgstr "Zu wählen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:94
+msgid "Maximum number of call retry attempts"
+msgstr ""
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:102
+msgid "Dialed"
+msgstr "Gewählt"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:102
+msgid "Number of dial attempts executed so far"
+msgstr ""
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:110
+msgid "First Dial"
+msgstr "Erster Anruf"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:118
+msgid "Last Dial"
+msgstr "Letzter Anruf"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:126
+msgid "Acknowledgement"
+msgstr "Bestätigung"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:126
+msgid "Timestamp when receiver pressed DTMF 4 to acknowledge the alert"
+msgstr ""
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:149
+msgid "Primary On-call request"
+msgstr "Primäre Bereitschaftsanfrage"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:149
+msgid "On Call"
+msgstr "Im Dienst"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:152
+msgid "Backup call"
+msgstr "Ersatzanruf"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:152
+msgid "Backup"
+msgstr "Backup"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:162
+msgid "Play Synthesized Neural Alert Audio"
+msgstr "Synthetisiertes neuronales Warn-Audio abspielen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:176
+msgid "Completed"
+msgstr "Abgeschlossen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:186
+msgid "Ack"
+msgstr "Bestätigen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:189
+msgid "Expired"
+msgstr "Abgelaufen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:192
+msgid "Pending"
+msgstr "Ausstehend"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:202
+msgid "No managed calls found"
+msgstr "Keine verwalteten Anrufe gefunden"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:202
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:99
+#: src/py_phone_caller_ui/users/templates/users/users.html:112
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:94
+msgid "for"
+msgstr "für"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:217
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:114
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:208
+#: src/py_phone_caller_ui/users/templates/users/users.html:127
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:110
+msgid "Items per page:"
+msgstr "Einträge pro Seite:"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:256
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:258
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:149
+msgid "Export to CSV"
+msgstr "Als CSV exportieren"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:262
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:264
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:330
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:155
+msgid "Select Month and Year"
+msgstr "Monat und Jahr auswählen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:264
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:332
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:157
+msgid "Data is exported one month at a time for optimal performance."
+msgstr "Daten werden für optimale Leistung monatsweise exportiert."
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:268
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:269
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:336
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:161
+msgid "Download CSV"
+msgstr "CSV herunterladen"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:271
+msgid "View / Print Monthly Audit Report"
+msgstr "Monatlichen Auditbericht anzeigen / drucken"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:42
+msgid "Live Telephony NOC Dashboard"
+msgstr "Echtzeit-Telephonie-NOC-Dashboard"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:44
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "Missionskritische Störungsreaktion & Dispatch-Telemetrie"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:45
+#: src/py_phone_caller_ui/templates/base.html:176
+msgid "Offline-ready call orchestration."
+msgstr "Offline-fähige Anruforchestrierung."
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:52
+msgid "Hardware GSM Modem"
+msgstr "Hardware-GSM-Modem"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:57
+msgid "SaaS Fallback"
+msgstr "SaaS-Fallback"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:62
+msgid "Asterisk ARI Connected"
+msgstr "Asterisk ARI verbunden"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:73
+msgid "Total Calls Dispatched"
+msgstr "Gesamte gesendete Anrufe"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:80
+msgid "dispatched"
+msgstr "versendet"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:89
+msgid "DTMF Acknowledgment Rate"
+msgstr "DTMF-Bestätigungsrate"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:105
+msgid "Escalated Calls"
+msgstr "Eskalierte Anrufe"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:114
+msgid "backup callee"
+msgstr "Ersatzempfänger"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:123
+msgid "SMS Delivery Status"
+msgstr "SMS-Zustellungsstatus"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:130
+msgid "Delivered"
+msgstr "Zugestellt"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:132
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:147
+msgid "Failed"
+msgstr "Fehlgeschlagen"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:143
+msgid "Call Lifecycle Breakdown"
+msgstr "Aufschlüsselung des Anruflebenszyklus"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:164
+msgid "Acknowledged"
+msgstr "Bestätigt"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:169
+msgid "Heard / Snoozed"
+msgstr "Gehört / Schlummern"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:174
+msgid "Escalated"
+msgstr "Eskaliert"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:179
+msgid "In Flight"
+msgstr "In Bearbeitung"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:196
+msgid "Track and manage outgoing calls"
+msgstr "Ausgehende Anrufe verfolgen und verwalten"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:210
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:3
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:23
+#: src/py_phone_caller_ui/templates/base.html:53
+msgid "Managed SMS"
+msgstr "Verwaltete SMS"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:211
+msgid "Track and inspect SMS messages"
+msgstr "SMS-Nachrichten verfolgen und überprüfen"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:226
+#: src/py_phone_caller_ui/templates/base.html:59
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:3
+msgid "PBX Events"
+msgstr "PBX-Ereignisse"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:227
+msgid "Real-time Asterisk events"
+msgstr "Asterisk-Ereignisse in Echtzeit"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:242
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:192
+#: src/py_phone_caller_ui/templates/base.html:65
+msgid "Schedule Call"
+msgstr "Anruf planen"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:243
+msgid "Plan future call activities"
+msgstr "Zukünftige Anrufaktivitäten planen"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:258
+msgid "Manage your contacts"
+msgstr "Verwalte deine Kontakte"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:3
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:8
+msgid "Scheduled Calls"
+msgstr "Geplante Anrufe"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:10
+msgid "Learn how scheduled calls and speech synthesis work"
+msgstr "Erfahren Sie, wie terminierte Anrufe und Sprachsynthese funktionieren"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:11
+msgid "Scheduler Guide"
+msgstr "Planer-Leitfaden"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:14
+msgid "New Scheduled Call"
+msgstr "Neuer geplanter Anruf"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:33
+msgid "Search scheduled calls..."
+msgstr "Geplante Anrufe suchen..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:63
+msgid "Inserted At"
+msgstr "Eingefügt am"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:71
+msgid "Scheduled Time"
+msgstr "Geplante Zeit"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:99
+msgid "No scheduled calls found"
+msgstr "Keine geplanten Anrufe gefunden"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:153
+msgid "Schedule a New Call"
+msgstr "Neuen Anruf planen"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "E.164 format or select an active responder via Contacts button"
+msgstr ""
+"E.164-Format oder aktiven Mitarbeiter über die Schaltfläche „Kontakte“ "
+"auswählen"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:170
+msgid "Enter number..."
+msgstr "Nummer eingeben..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:171
+msgid "Select from Address Book or auto-pick current On-call"
+msgstr ""
+"Aus dem Adressbuch wählen oder aktuellen Bereitschaftsdienst automatisch "
+"auswählen"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:172
+msgid "Contacts"
+msgstr "Kontakte"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:178
+#: src/py_phone_caller_ui/templates/base.html:259
+msgid "Voice Language"
+msgstr "Sprachausgabe-Sprache"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:181
+#: src/py_phone_caller_ui/templates/base.html:262
+msgid "Loading available languages..."
+msgstr "Verfügbare Sprachen werden geladen..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:183
+#: src/py_phone_caller_ui/templates/base.html:264
+msgid "Languages served by the active TTS audio engine."
+msgstr "Sprachen, die von der aktiven TTS-Audio-Engine bereitgestellt werden."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:186
+msgid "Synthesized into voice audio and played when the recipient answers"
+msgstr ""
+"Wird in Sprachaudio synthetisiert und abgespielt, sobald der Empfänger "
+"abhebt"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:187
+msgid "Enter the message to be read..."
+msgstr "Vorzulesende Nachricht eingeben..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:205
+msgid "Select Contact"
+msgstr "Kontakt auswählen"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:211
+msgid "Filter by name, surname or number..."
+msgstr "Nach Name, Nachname oder Nummer filtern..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:216
+msgid "Use current On-call"
+msgstr "Aktuelle Bereitschaft nutzen"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:238
+msgid "Select"
+msgstr "Auswählen"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:289
+msgid "Scheduled Calls & Voice Synthesis Guide"
+msgstr "Leitfaden für terminierte Anrufe & Sprachsynthese"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:291
+msgid "Automated telephony job execution, TTS synthesis, and DTMF confirmation."
+msgstr ""
+"Automatisierte Telefonieauftragsausführung, TTS-Synthese und DTMF-"
+"Bestätigung."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:302
+msgid "Timing & Job Execution"
+msgstr "Timing & Auftragsausführung"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:305
+msgid ""
+"Scheduled calls are stored and triggered asynchronously by Celery and "
+"Redis at the exact local date and time configured."
+msgstr ""
+"Terminierte Anrufe werden gespeichert und durch Celery und Redis zum "
+"exakt konfigurierten lokalen Datum und Uhrzeit asynchron ausgelöst."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:308
+msgid ""
+"Once reached, the system initiates an Asterisk Stasis application channel"
+" to the destination."
+msgstr ""
+"Sobald der Zeitpunkt erreicht ist, öffnet das System einen Asterisk "
+"Stasis-Anwendungskanal zum Ziel."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:316
+msgid "Neural TTS Audio Generation"
+msgstr "Neuronale TTS-Audioerzeugung"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:319
+msgid ""
+"Your message text is automatically synthesized into clear 8kHz/16kHz WAV "
+"audio using Silero Neural TTS."
+msgstr ""
+"Ihr Nachrichtentext wird automatisch mit Silero Neural TTS in "
+"kristallklares 8kHz/16kHz WAV-Audio umgewandelt."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:322
+msgid ""
+"Audio is cached locally by message hash to ensure zero latency on "
+"repeated notifications."
+msgstr ""
+"Das Audio wird lokal nach Nachrichten-Hash zwischengespeichert, um bei "
+"wiederholten Benachrichtigungen minimale Latenz zu sichern."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:330
+msgid "Contact Picker & Live On-Call"
+msgstr "Kontaktauswahl & Live-Bereitschaft"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:333
+msgid ""
+"Click the Contacts button next to the phone field to pick any saved "
+"contact, or click \"Use current On-call\" to automatically resolve who is"
+" on duty right now."
+msgstr ""
+"Klicken Sie neben dem Telefonfeld auf „Kontakte“, um einen gespeicherten "
+"Kontakt auszuwählen, oder auf „Aktuellen Bereitschaftsdienst verwenden“, "
+"um den diensthabenden Mitarbeiter automatisch zu ermitteln."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:341
+msgid "DTMF Acknowledgment & Retries"
+msgstr "DTMF-Bestätigung & Wiederholungen"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:344
+msgid ""
+"When the recipient answers, the audio message plays continuously until "
+"they press DTMF 4 to acknowledge, or the maximum ring duration expires."
+msgstr ""
+"Nimmt der Empfänger ab, wird die Audionachricht kontinuierlich "
+"abgespielt, bis er DTMF 1 zur Bestätigung drückt oder das maximale "
+"Zeitlimit abläuft."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:347
+msgid ""
+"Unacknowledged calls will retry according to your configured retry count "
+"and backoff interval."
+msgstr ""
+"Unbestätigte Anrufe werden entsprechend der konfigurierten "
+"Wiederholungsanzahl und dem Backoff-Intervall wiederholt."
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:42
+msgid "Search SMS by phone, message, carrier, status..."
+msgstr "SMS nach Telefon, Nachricht, Anbieter, Status suchen..."
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:85
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:264
+msgid "Recipient Phone"
+msgstr "Empfängertelefon"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:94
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:268
+msgid "Carrier"
+msgstr "Netzbetreiber"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:94
+msgid ""
+"SMS transmission gateway: Asterisk dongle, Gammu GSM modem, or cloud "
+"gateway"
+msgstr ""
+"SMS-Übertragungsgateway: Asterisk-Dongle, Gammu GSM-Modem oder Cloud-"
+"Gateway"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:102
+msgid "Delivery lifecycle: Pending, Sent, Delivered, or Failed"
+msgstr "Zustellungszyklus: Ausstehend, Gesendet, Zugestellt oder Fehlgeschlagen"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:110
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:276
+msgid "Created At"
+msgstr "Erstellt am"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:116
+msgid "Error / Notes"
+msgstr "Fehler / Hinweise"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:143
+msgid "Sent"
+msgstr "Gesendet"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:149
+msgid "Duplicate Ignored"
+msgstr "Duplikat ignoriert"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:158
+msgid "No Data"
+msgstr "Keine Daten"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:180
+msgid "Details"
+msgstr "Details"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:190
+msgid "No SMS records found"
+msgstr "Keine SMS-Einträge gefunden"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:191
+msgid "Try clearing your search query"
+msgstr "Versuchen Sie, Ihre Suchanfrage zu löschen"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:191
+msgid "Sent SMS records will appear here"
+msgstr "Gesendete SMS-Einträge erscheinen hier"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:248
+msgid "SMS Details"
+msgstr "SMS-Details"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:255
+msgid "Record ID"
+msgstr "Datensatz-ID"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:283
+msgid "Audit Lifecycle Progression"
+msgstr "Audit-Lebenszyklusfortschritt"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:303
+msgid "Message Content"
+msgstr "Nachrichteninhalt"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:308
+msgid "Error Details"
+msgstr "Fehlerdetails"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:313
+#: src/py_phone_caller_ui/templates/base.html:334
+msgid "Close"
+msgstr "Schließen"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:324
+msgid "Export SMS to CSV"
+msgstr "SMS als CSV exportieren"
+
+#: src/py_phone_caller_ui/templates/base.html:41
+msgid "Home"
+msgstr "Startseite"
+
+#: src/py_phone_caller_ui/templates/base.html:78
+msgid "Quick On-Call: View and toggle active on-duty emergency responders."
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:80
+msgid "On-Call"
+msgstr "Bereitschafts-Leitfaden"
+
+#: src/py_phone_caller_ui/templates/base.html:85
+msgid "Active On-Call Responders"
+msgstr "Zweiter Bereitschaftsdienst"
+
+#: src/py_phone_caller_ui/templates/base.html:86
+msgid "Manage Roster"
+msgstr "Verwaltete SMS"
+
+#: src/py_phone_caller_ui/templates/base.html:89
+msgid "Loading roster..."
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:96
+msgid "Quick Search & Command Palette (Ctrl+K)"
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:104
+msgid ""
+"Telephony & SMS Diagnostics Console: Test live SIP ARI calls and SMS "
+"dispatching."
+msgstr ""
+"Telefonie- & SMS-Diagnosekonsole: Live-SIP-ARI-Anrufe und SMS-Versand "
+"testen."
+
+#: src/py_phone_caller_ui/templates/base.html:106
+msgid "Diagnostics"
+msgstr "Diagnose"
+
+#: src/py_phone_caller_ui/templates/base.html:112
+msgid "Help Center: Press ? for documentation and operational guides."
+msgstr ""
+"Hilfe-Center: Drücken Sie ?, um Dokumentation und Betriebsleitfäden "
+"anzuzeigen."
+
+#: src/py_phone_caller_ui/templates/base.html:119
+msgid "Toggle Theme: Switch between light and dark night mode."
+msgstr "Design umschalten: Zwischen hellem und dunklem Nachtmodus wechseln."
+
+#: src/py_phone_caller_ui/templates/base.html:127
+msgid "Switch Language"
+msgstr "Sprache wechseln"
+
+#: src/py_phone_caller_ui/templates/base.html:147
+msgid "Session"
+msgstr "Sitzung"
+
+#: src/py_phone_caller_ui/templates/base.html:152
+msgid "NOC Wallboard (24/7)"
+msgstr "NOC-Wallboard (24/7)"
+
+#: src/py_phone_caller_ui/templates/base.html:154
+#: src/py_phone_caller_ui/users/templates/users/users.html:3
+#: src/py_phone_caller_ui/users/templates/users/users.html:8
+msgid "User Management"
+msgstr "Benutzerverwaltung"
+
+#: src/py_phone_caller_ui/templates/base.html:159
+msgid "Logout"
+msgstr "Abmelden"
+
+#: src/py_phone_caller_ui/templates/base.html:190
+msgid "Search calls, contacts, schedules, or actions... (Esc to close)"
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:223
+msgid "Telephony & SMS Diagnostics Console"
+msgstr "Telefonie- & SMS-Diagnosekonsole"
+
+#: src/py_phone_caller_ui/templates/base.html:225
+msgid ""
+"Trigger immediate test calls or SMS to verify PBX trunk and GSM modem "
+"gateways."
+msgstr ""
+"Lösen Sie sofortige Testanrufe oder SMS aus, um den PBX-Trunk und GSM-"
+"Modem-Gateways zu überprüfen."
+
+#: src/py_phone_caller_ui/templates/base.html:236
+msgid "Outbound Test Call"
+msgstr "Ausgehender Testanruf"
+
+#: src/py_phone_caller_ui/templates/base.html:239
+msgid "Outbound Test SMS"
+msgstr "Ausgehende Test-SMS"
+
+#: src/py_phone_caller_ui/templates/base.html:248
+#: src/py_phone_caller_ui/templates/base.html:286
+msgid "Destination Phone Number"
+msgstr "Zieltelefonnummer"
+
+#: src/py_phone_caller_ui/templates/base.html:254
+#: src/py_phone_caller_ui/templates/base.html:292
+msgid "E.164 international format (e.g. +393349246425)."
+msgstr "Internationales E.164-Format (z. B. +393349246425)."
+
+#: src/py_phone_caller_ui/templates/base.html:269
+msgid "Speech Audio Message"
+msgstr "Sprach-Audionachricht"
+
+#: src/py_phone_caller_ui/templates/base.html:272
+msgid ""
+"Synthesized into speech via Silero Neural TTS and played to the SIP "
+"channel."
+msgstr ""
+"Über Silero Neural TTS in Sprache synthetisiert und auf dem SIP-Kanal "
+"abgespielt."
+
+#: src/py_phone_caller_ui/templates/base.html:276
+msgid "Dispatch Test Call"
+msgstr "Testanruf senden"
+
+#: src/py_phone_caller_ui/templates/base.html:297
+msgid "SMS Message Text"
+msgstr "SMS-Nachrichtentext"
+
+#: src/py_phone_caller_ui/templates/base.html:300
+msgid ""
+"Dispatched via On-Premise GSM Modem (/dev/ttyUSB) with automatic Twilio "
+"fallback."
+msgstr ""
+"Wird über lokales GSM-Modem (/dev/ttyUSB) mit automatischem Twilio-"
+"Fallback versendet."
+
+#: src/py_phone_caller_ui/templates/base.html:304
+msgid "Send Test SMS"
+msgstr "Test-SMS senden"
+
+#: src/py_phone_caller_ui/templates/base.html:342
+msgid "Help & Documentation"
+msgstr "Hilfe und Dokumentation"
+
+#: src/py_phone_caller_ui/templates/base.html:354
+msgid "Help Center"
+msgstr "Hilfe-Center"
+
+#: src/py_phone_caller_ui/templates/base.html:355
+msgid "Sovereign Voice & SMS Alerting"
+msgstr "Souveräne Sprach- und SMS-Alarmierung"
+
+#: src/py_phone_caller_ui/templates/base.html:365
+msgid "Search help topics..."
+msgstr "Hilfethemen suchen..."
+
+#: src/py_phone_caller_ui/templates/base.html:372
+msgid "Current section:"
+msgstr "Aktueller Bereich:"
+
+#: src/py_phone_caller_ui/templates/base.html:372
+#: src/py_phone_caller_ui/templates/base.html:776
+msgid "Overview"
+msgstr "Übersicht"
+
+#: src/py_phone_caller_ui/templates/base.html:383
+#: src/py_phone_caller_ui/templates/base.html:762
+msgid "Address Book & On-Call"
+msgstr "Adressbuch & Bereitschaft (On-Call)"
+
+#: src/py_phone_caller_ui/templates/base.html:388
+msgid "E.164 Phone Numbers:"
+msgstr "E.164-Telefonnummern:"
+
+#: src/py_phone_caller_ui/templates/base.html:388
+msgid ""
+"Store phone numbers with country code (+39...) to dial properly through "
+"Asterisk ARI and send SMS."
+msgstr ""
+"Speichern Sie Telefonnummern mit Ländervorwahl (+39...), um sie "
+"ordnungsgemäß über Asterisk ARI zu wählen und SMS zu senden."
+
+#: src/py_phone_caller_ui/templates/base.html:389
+msgid "On-Call Availability:"
+msgstr "Bereitschaftsverfügbarkeit:"
+
+#: src/py_phone_caller_ui/templates/base.html:389
+msgid ""
+"Define start/end schedule intervals. Active contacts in the current "
+"window are selected automatically."
+msgstr ""
+"Definieren Sie Start-/End-Zeitintervalle. Aktive Kontakte im aktuellen "
+"Zeitfenster werden automatisch ausgewählt."
+
+#: src/py_phone_caller_ui/templates/base.html:390
+msgid "Escalation Priority:"
+msgstr "Eskalationspriorität:"
+
+#: src/py_phone_caller_ui/templates/base.html:390
+msgid ""
+"Priority 0 is Primary Responder, 1 is Secondary, 2-3 Backup, 4 Duty "
+"Supervisor."
+msgstr ""
+"Priorität 0 ist Ersthelfer, 1 Zweithelfer, 2-3 Backup, 4 Diensthabender "
+"Vorgesetzter."
+
+#: src/py_phone_caller_ui/templates/base.html:391
+msgid "CSV Operations:"
+msgstr "CSV-Operationen:"
+
+#: src/py_phone_caller_ui/templates/base.html:391
+msgid "Import or export entire contact databases at any time."
+msgstr ""
+"Importieren oder exportieren Sie jederzeit vollständige "
+"Kontaktdatenbanken."
+
+#: src/py_phone_caller_ui/templates/base.html:400
+#: src/py_phone_caller_ui/templates/base.html:763
+msgid "Scheduled Calls & Speech"
+msgstr "Geplante Anrufe & Sprache"
+
+#: src/py_phone_caller_ui/templates/base.html:405
+msgid "Neural TTS Engine:"
+msgstr "Neuronale TTS-Engine:"
+
+#: src/py_phone_caller_ui/templates/base.html:405
+msgid ""
+"Message text is automatically synthesized into clear 8kHz/16kHz audio "
+"using Silero Neural TTS."
+msgstr ""
+"Der Nachrichtentext wird mit Silero Neural TTS automatisch in klares "
+"8-kHz-/16-kHz-Audio umgewandelt."
+
+#: src/py_phone_caller_ui/templates/base.html:406
+msgid "Audio Caching:"
+msgstr "Audio-Zwischenspeicherung:"
+
+#: src/py_phone_caller_ui/templates/base.html:406
+msgid ""
+"Synthesized audio is cached locally by message hash for instant zero-"
+"latency playback."
+msgstr ""
+"Synthetisiertes Audio wird lokal nach Nachrichten-Hash "
+"zwischengespeichert, für sofortige latenzfreie Wiedergabe."
+
+#: src/py_phone_caller_ui/templates/base.html:407
+msgid "Smart Recipient Picker:"
+msgstr "Intelligente Empfängerauswahl:"
+
+#: src/py_phone_caller_ui/templates/base.html:407
+msgid ""
+"Choose a specific contact or select \"Use current On-call\" to resolve "
+"on-duty responders."
+msgstr ""
+"Wählen Sie einen bestimmten Kontakt oder \"Aktuelle Bereitschaft "
+"verwenden\", um zuständige Personen zu ermitteln."
+
+#: src/py_phone_caller_ui/templates/base.html:416
+#: src/py_phone_caller_ui/templates/base.html:764
+msgid "Managed Calls & DTMF"
+msgstr "Verwaltete Anrufe & DTMF"
+
+#: src/py_phone_caller_ui/templates/base.html:421
+msgid "Asterisk ARI Integration:"
+msgstr "Asterisk-ARI-Integration:"
+
+#: src/py_phone_caller_ui/templates/base.html:421
+msgid ""
+"Channels are initiated via Asterisk REST Interface and placed in Stasis "
+"bridge."
+msgstr ""
+"Kanäle werden über die Asterisk-REST-Schnittstelle initiiert und in die "
+"Stasis-Bridge geleitet."
+
+#: src/py_phone_caller_ui/templates/base.html:422
+msgid "DTMF 4 Acknowledgment:"
+msgstr "DTMF-4-Bestätigung:"
+
+#: src/py_phone_caller_ui/templates/base.html:422
+msgid ""
+"The recipient presses 4 to acknowledge the alert, marking it acknowledged"
+" and terminating retries."
+msgstr ""
+"Der Empfänger drückt 1 zur Bestätigung des Alarms, was ihn als bestätigt "
+"markiert und Wiederholungen beendet."
+
+#: src/py_phone_caller_ui/templates/base.html:423
+msgid "Automatic Retries:"
+msgstr "Automatische Wiederholungen:"
+
+#: src/py_phone_caller_ui/templates/base.html:423
+msgid ""
+"Unanswered calls automatically retry according to retry count and backoff"
+" configuration."
+msgstr ""
+"Unbeantwortete Anrufe werden basierend auf Wiederholungsanzahl und "
+"Backoff-Konfiguration automatisch wiederholt."
+
+#: src/py_phone_caller_ui/templates/base.html:432
+#: src/py_phone_caller_ui/templates/base.html:765
+msgid "SMS & GSM Modems"
+msgstr "SMS & GSM-Modems"
+
+#: src/py_phone_caller_ui/templates/base.html:437
+msgid "On-Premise Hardware Modems:"
+msgstr "Lokale Hardware-Modems:"
+
+#: src/py_phone_caller_ui/templates/base.html:437
+msgid ""
+"SMS is dispatched directly via serial AT commands (/dev/ttyUSB) without "
+"external dependencies."
+msgstr ""
+"SMS werden direkt über serielle AT-Befehle (/dev/ttyUSB) ohne externe "
+"Abhängigkeiten versendet."
+
+#: src/py_phone_caller_ui/templates/base.html:438
+msgid "Carrier Failover:"
+msgstr "Betreiber-Failover:"
+
+#: src/py_phone_caller_ui/templates/base.html:438
+msgid ""
+"If GSM signal is lost or modem fails, failover to secondary gateway (e.g."
+" Twilio) triggers automatically."
+msgstr ""
+"Bei Verlust des GSM-Signals oder Ausfall des Modems wird automatisch auf "
+"das sekundäre Gateway (z. B. Twilio) umgeschaltet."
+
+#: src/py_phone_caller_ui/templates/base.html:439
+msgid "Full Delivery Tracking:"
+msgstr "Vollständige Zustellungsverfolgung:"
+
+#: src/py_phone_caller_ui/templates/base.html:439
+msgid ""
+"View outbound SMS logs, delivery statuses, carrier metadata, and "
+"timestamps in real time."
+msgstr ""
+"Sehen Sie ausgehende SMS-Protokolle, Zustellstatus, Netzbetreiber-"
+"Metadaten und Zeitstempel in Echtzeit."
+
+#: src/py_phone_caller_ui/templates/base.html:448
+#: src/py_phone_caller_ui/templates/base.html:766
+msgid "PBX Events & Telephony Stream"
+msgstr "PBX-Ereignisse & Telefonie-Stream"
+
+#: src/py_phone_caller_ui/templates/base.html:453
+msgid "WebSocket Event Feed:"
+msgstr "WebSocket-Ereignis-Feed:"
+
+#: src/py_phone_caller_ui/templates/base.html:453
+msgid ""
+"Real-time feed of Asterisk ARI events including StasisStart, "
+"ChannelDtmfReceived, and ChannelDestroyed."
+msgstr ""
+"Echtzeit-Feed von Asterisk-ARI-Ereignissen einschließlich StasisStart, "
+"ChannelDtmfReceived und ChannelDestroyed."
+
+#: src/py_phone_caller_ui/templates/base.html:454
+msgid "Troubleshooting Audits:"
+msgstr "Fehlerbehebungs-Audits:"
+
+#: src/py_phone_caller_ui/templates/base.html:454
+msgid ""
+"Use the event timeline to diagnose call setup delays, SIP trunk "
+"responses, and DTMF tones."
+msgstr ""
+"Nutzen Sie die Ereignis-Zeitleiste, um Verbindungsverzögerungen, SIP-"
+"Trunk-Antworten und DTMF-Töne zu diagnostizieren."
+
+#: src/py_phone_caller_ui/templates/base.html:463
+#: src/py_phone_caller_ui/templates/base.html:761
+msgid "Prometheus & Webhook Triggering"
+msgstr "Prometheus & Webhook-Auslösung"
+
+#: src/py_phone_caller_ui/templates/base.html:468
+msgid "Alertmanager Receiver:"
+msgstr "Alertmanager-Empfänger:"
+
+#: src/py_phone_caller_ui/templates/base.html:468
+msgid "Configure Alertmanager to forward firing alerts to the webhook service:"
+msgstr ""
+"Konfigurieren Sie Alertmanager so, dass auslösende Alarme an den Webhook-"
+"Dienst weitergeleitet werden:"
+
+#: src/py_phone_caller_ui/templates/base.html:472
+msgid ""
+"Incoming alerts automatically resolve duty on-call contacts, synthesize "
+"speech, and initiate emergency phone calls."
+msgstr ""
+"Eingehende Alarme ermitteln automatisch zuständige Bereitschaftskontakte,"
+" synthetisieren Sprache und leiten Notrufe ein."
+
+#: src/py_phone_caller_ui/templates/base.html:481
+msgid "Need to test right now?"
+msgstr "Möchten Sie jetzt direkt testen?"
+
+#: src/py_phone_caller_ui/templates/base.html:482
+msgid "Send a live test call or SMS from the diagnostics console."
+msgstr "Senden Sie einen Live-Testanruf oder eine SMS über die Diagnosekonsole."
+
+#: src/py_phone_caller_ui/templates/base.html:484
+msgid "Open Diagnostics Console"
+msgstr "Diagnosekonsole öffnen"
+
+#: src/py_phone_caller_ui/templates/base.html:631
+#: src/py_phone_caller_ui/templates/base.html:632
+#: src/py_phone_caller_ui/templates/base.html:643
+#: src/py_phone_caller_ui/templates/base.html:648
+msgid "Default"
+msgstr "Standard"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:11
+#: src/py_phone_caller_ui/users/templates/users/users.html:166
+msgid "Add New User"
+msgstr "Neuen Benutzer hinzufügen"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:26
+msgid "Search users by name or email..."
+msgstr "Benutzer nach Name oder E-Mail suchen..."
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:46
+#: src/py_phone_caller_ui/users/templates/users/users.html:172
+msgid "Full Name"
+msgstr "Vollständiger Name"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:54
+#: src/py_phone_caller_ui/users/templates/users/users.html:176
+msgid "Email Address"
+msgstr "E-Mail-Adresse"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:61
+msgid "Created On"
+msgstr "Erstellt am"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:62
+msgid "Last Login"
+msgstr "Letzter Login"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:74
+msgid "Yes"
+msgstr "Ja"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:76
+msgid "No"
+msgstr "Nein"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:80
+msgid "Never"
+msgstr "Nie"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:86
+#: src/py_phone_caller_ui/users/templates/users/users.html:220
+msgid "Change Password"
+msgstr "Passwort ändern"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:94
+msgid "Deactivate"
+msgstr "Deaktivieren"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:94
+msgid "Activate"
+msgstr "Aktivieren"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:100
+msgid "Delete User"
+msgstr "Benutzer löschen"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:112
+msgid "No users found"
+msgstr "Keine Benutzer gefunden"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:184
+msgid "Create User"
+msgstr "Benutzer erstellen"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:194
+msgid "User Created Successfully"
+msgstr "Benutzer erfolgreich erstellt"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:197
+msgid "A temporary password has been generated for the new user."
+msgstr "Für den neuen Benutzer wurde ein temporäres Passwort generiert."
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:200
+msgid "Important:"
+msgstr "Wichtig:"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:200
+msgid "Copy this password now. It will not be shown again!"
+msgstr "Kopieren Sie dieses Passwort jetzt. Es wird nicht wieder angezeigt!"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:210
+msgid "I've saved it"
+msgstr "Ich habe es gespeichert"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:228
+msgid "Updating password for:"
+msgstr "Passwort wird aktualisiert für:"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:233
+msgid "Current Password"
+msgstr "Aktuelles Passwort"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:238
+msgid "New Password"
+msgstr "Neues Passwort"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:242
+msgid ""
+"Must be at least 17 characters with uppercase, lowercase, numbers, and "
+"symbols."
+msgstr ""
+"Muss mindestens 17 Zeichen mit Groß-, Kleinbuchstaben, Zahlen und "
+"Symbolen enthalten."
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:247
+msgid "Confirm New Password"
+msgstr "Neues Passwort bestätigen"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:257
+msgid "Update Password"
+msgstr "Passwort aktualisieren"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:8
+msgid "PBX WebSocket Events"
+msgstr "PBX WebSocket-Ereignisse"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:26
+msgid "Search WebSocket events..."
+msgstr "WebSocket-Ereignisse suchen..."
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:46
+msgid "Time"
+msgstr "Uhrzeit"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:54
+msgid "Event Type"
+msgstr "Ereignistyp"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:62
+msgid "Asterisk Channel"
+msgstr "Asterisk-Kanal"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:68
+msgid "JSON Payload"
+msgstr "JSON-Payload"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:83
+msgid "Copy JSON"
+msgstr "JSON kopieren"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:94
+msgid "No WebSocket events found"
+msgstr "Keine WebSocket-Ereignisse gefunden"
+
+#~ msgid "Hardware Gateways & Engines"
+#~ msgstr "Hardware-Gateways & Engines"
+
+#~ msgid "SMS Gateway"
+#~ msgstr "SMS-Gateway"
+
+#~ msgid "Telephony Engine"
+#~ msgstr "Telefonie-Engine"
+
+#~ msgid "Export CSV"
+#~ msgstr "CSV exportieren"
+
+#~ msgid "Search"
+#~ msgstr "Suchen"
+
+#~ msgid "Disable"
+#~ msgstr "Deaktivieren"
+
+#~ msgid "Search managed calls..."
+#~ msgstr "Verwaltete Anrufe durchsuchen..."
+
+#~ msgid "Search contacts..."
+#~ msgstr "Kontakte durchsuchen..."
+
+#~ msgid "Search SMS..."
+#~ msgstr "SMS durchsuchen..."
+
+#~ msgid "Maximum number of call retry attempts"
+#~ msgstr "Maximale Anzahl von Anrufwiederholungsversuchen"
+
+#~ msgid "Number of dial attempts executed so far"
+#~ msgstr "Bisher ausgeführte Anrufversuche"
+
+#~ msgid "Timestamp when receiver pressed DTMF 4 to acknowledge the alert"
+#~ msgstr ""
+#~ "Zeitstempel, an dem der Empfänger DTMF"
+#~ " 4 drückte, um den Alarm zu "
+#~ "bestätigen"
+
+#~ msgid "Switch Language: Select from 8 supported locales."
+#~ msgstr "Sprache wechseln: Wählen Sie aus 8 unterstützten Sprachen."
+

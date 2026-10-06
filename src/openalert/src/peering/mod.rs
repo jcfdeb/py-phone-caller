@@ -149,11 +149,30 @@ impl PeeringService {
         }
     }
 
-    /// Starts the background UDP receiver task.
+    /// Starts the background UDP receiver and any LoRa Serial physical receiver tasks.
     pub fn start(self: Arc<Self>) {
+        let self_udp = self.clone();
         tokio::spawn(async move {
-            self.run_rx_loop().await;
+            self_udp.run_rx_loop().await;
         });
+
+        // Spawn LoRa Serial ingress loops for any configured LoraSerial nodes
+        let mut serial_devices = std::collections::HashSet::new();
+        for node in &self.config.nodes {
+            if node.link_type == crate::config::PeeringLinkType::LoraSerial {
+                let dev = node
+                    .serial_device
+                    .clone()
+                    .unwrap_or_else(|| "/dev/ttyUSB0".to_string());
+                let baud = node.baud_rate.unwrap_or(115200);
+                if serial_devices.insert((dev.clone(), baud)) {
+                    let self_lora = self.clone();
+                    tokio::spawn(async move {
+                        self_lora.run_lora_serial_rx_loop(dev, baud).await;
+                    });
+                }
+            }
+        }
     }
 
     /// Dispatches an alert to all configured peers with split-horizon origin filtering.
@@ -194,7 +213,6 @@ impl PeeringService {
 
     async fn run_rx_loop(&self) {
         let mut buf = [0u8; 1024];
-        let dedup_window = Duration::from_secs(self.config.dedup_ttl_secs);
 
         loop {
             let (len, src_addr) = match self.socket.recv_from(&mut buf).await {
@@ -207,22 +225,93 @@ impl PeeringService {
             };
 
             let datagram = &buf[..len];
+            let src_desc = format!("udp:{}", src_addr);
+            self.process_inbound_datagram(datagram, &src_desc, Some(src_addr))
+                .await;
+        }
+    }
 
-            // 1. Decrypt and authenticate using XChaCha20-Poly1305
-            let (plaintext, mut matched_peer) = match self.key_registry.try_decrypt_any(datagram) {
-                Some(res) => res,
-                None => {
-                    // Silently drop unauthenticated / corrupt bytes
-                    debug!(
-                        "⚠️ Discarded unauthenticated peering datagram ({} bytes) from {}",
-                        len, src_addr
+    async fn run_lora_serial_rx_loop(self: Arc<Self>, dev_path: String, baud_rate: u32) {
+        use crate::peering::lora::SlipDecoder;
+        use tokio::io::AsyncReadExt;
+        use tokio_serial::SerialPortBuilderExt;
+
+        let mut decoder = SlipDecoder::new();
+        let mut buf = [0u8; 256];
+
+        loop {
+            let mut port = match tokio_serial::new(&dev_path, baud_rate).open_native_async() {
+                Ok(p) => {
+                    info!(
+                        "📻 [LoRa Serial Ingress] Actively listening on {} at {} baud",
+                        dev_path, baud_rate
                     );
+                    p
+                }
+                Err(e) => {
+                    debug!(
+                        "LoRa serial port '{}' not currently available ({}). Retrying in 5s...",
+                        dev_path, e
+                    );
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 }
             };
 
-            // If matched_peer is None (decrypted via default shared key), match src_addr against configured peers
-            if matched_peer.is_none() {
+            loop {
+                match port.read(&mut buf).await {
+                    Ok(0) => {
+                        warn!(
+                            "LoRa serial port '{}' read 0 bytes (disconnected). Reconnecting...",
+                            dev_path
+                        );
+                        tokio::time::sleep(Duration::from_secs(3)).await;
+                        break;
+                    }
+                    Ok(n) => {
+                        let frames = decoder.decode_chunk(&buf[..n]);
+                        for frame in frames {
+                            let src_desc = format!("lora:{}", dev_path);
+                            self.process_inbound_datagram(&frame, &src_desc, None).await;
+                        }
+                    }
+                    Err(e) => {
+                        debug!(
+                            "LoRa serial read interrupted on '{}' ({}). Re-opening port...",
+                            dev_path, e
+                        );
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    async fn process_inbound_datagram(
+        &self,
+        datagram: &[u8],
+        src_desc: &str,
+        udp_addr: Option<std::net::SocketAddr>,
+    ) {
+        let dedup_window = Duration::from_secs(self.config.dedup_ttl_secs);
+
+        // 1. Decrypt and authenticate using XChaCha20-Poly1305
+        let (plaintext, mut matched_peer) = match self.key_registry.try_decrypt_any(datagram) {
+            Some(res) => res,
+            None => {
+                debug!(
+                    "⚠️ Discarded unauthenticated peering datagram ({} bytes) from {}",
+                    datagram.len(),
+                    src_desc
+                );
+                return;
+            }
+        };
+
+        // Match peer identity: from UDP address or LoRa serial node definition
+        if matched_peer.is_none() {
+            if let Some(src_addr) = udp_addr {
                 for peer_node in &self.config.nodes {
                     if let Ok(target_addr) = peer_node.addr.parse::<std::net::SocketAddr>()
                         && (target_addr == src_addr
@@ -233,146 +322,160 @@ impl PeeringService {
                         break;
                     }
                 }
+            } else {
+                for peer_node in &self.config.nodes {
+                    if peer_node.link_type == crate::config::PeeringLinkType::LoraSerial {
+                        matched_peer = Some(peer_node.name.clone());
+                        break;
+                    }
+                }
             }
+        }
 
-            // 2. Deserialize packed tuple binary payload
-            let packet = match PeeringPacket::deserialize(&plaintext) {
-                Ok(p) => p,
-                Err(e) => {
-                    debug!(
-                        "Failed to deserialize valid AEAD datagram from {}: {}",
-                        src_addr, e
-                    );
-                    continue;
+        // 2. Deserialize packed tuple binary payload
+        let packet = match PeeringPacket::deserialize(&plaintext) {
+            Ok(p) => p,
+            Err(e) => {
+                debug!(
+                    "Failed to deserialize valid AEAD datagram from {}: {}",
+                    src_desc, e
+                );
+                return;
+            }
+        };
+
+        // 3. Process packet variants
+        match packet {
+            PeeringPacket::RouteAdv(adv) => {
+                let mut rt = self.routing_table.write().await;
+                let via_peer = matched_peer.as_deref().unwrap_or(&adv.src);
+                rt.update_route(&adv.dst, via_peer, adv.metric, adv.hops);
+                debug!(
+                    "🗺️ Learned mesh route to '{}' via '{}' (metric: {}, hops: {})",
+                    adv.dst, via_peer, adv.metric, adv.hops
+                );
+            }
+            PeeringPacket::Ack(ack) => {
+                let mut waiters = self.ack_waiters.lock().await;
+                if let Some(tx) = waiters.remove(&ack.fp) {
+                    let _ = tx.send(());
                 }
-            };
-
-            // 3. Process packet variants
-            match packet {
-                PeeringPacket::RouteAdv(adv) => {
-                    let mut rt = self.routing_table.write().await;
-                    let via_peer = matched_peer.as_deref().unwrap_or(&adv.src);
-                    rt.update_route(&adv.dst, via_peer, adv.metric, adv.hops);
-                    debug!(
-                        "🗺️ Learned mesh route to '{}' via '{}' (metric: {}, hops: {})",
-                        adv.dst, via_peer, adv.metric, adv.hops
-                    );
-                }
-                PeeringPacket::Ack(ack) => {
-                    let mut waiters = self.ack_waiters.lock().await;
-                    if let Some(tx) = waiters.remove(&ack.fp) {
-                        let _ = tx.send(());
-                    }
-                }
-                PeeringPacket::Alert(alert_pkt) => {
-                    // Check if canary probe
-                    if alert_pkt.flags & FLAG_CANARY != 0 {
-                        if alert_pkt.flags & FLAG_ACK_REQ != 0 {
-                            self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
-                                .await;
-                        }
-                        continue;
-                    }
-
-                    // Clock skew validation (relaxed for off-grid edge nodes)
-                    if alert_pkt.ts > 0 {
-                        let now_ts = Utc::now().timestamp() as u32;
-                        let skew_tolerance = self.config.clock_skew_tolerance_secs as u32;
-                        let is_skewed = if now_ts > alert_pkt.ts {
-                            (now_ts - alert_pkt.ts) > skew_tolerance
-                        } else {
-                            (alert_pkt.ts - now_ts) > skew_tolerance
-                        };
-
-                        if is_skewed {
-                            warn!(
-                                "⏱️ Discarded peering alert 0x{:016x} due to excessive clock skew (pkt_ts: {}, now: {}, tolerance: {}s)",
-                                alert_pkt.fp, alert_pkt.ts, now_ts, skew_tolerance
-                            );
-                            continue;
-                        }
-                    }
-
-                    // Sliding-window deduplication check
+            }
+            PeeringPacket::Alert(alert_pkt) => {
+                // Check if canary probe
+                if alert_pkt.flags & FLAG_CANARY != 0 {
+                    if alert_pkt.flags & FLAG_ACK_REQ != 0
+                        && let Some(src_addr) = udp_addr
                     {
-                        let mut cache = self.dedup_cache.lock().await;
-                        let now = Instant::now();
-                        cache.retain(|_, seen_at| now.duration_since(*seen_at) < dedup_window);
-
-                        if cache.contains_key(&alert_pkt.fp) {
-                            debug!(
-                                "🛑 Dropped duplicate peering alert 0x{:016x} from {}",
-                                alert_pkt.fp, src_addr
-                            );
-                            if alert_pkt.flags & FLAG_ACK_REQ != 0 {
-                                self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
-                                    .await;
-                            }
-                            continue;
-                        }
-                        cache.insert(alert_pkt.fp, now);
-                    }
-
-                    // Respond with ACK if requested (Profile B on IP links)
-                    if alert_pkt.flags & FLAG_ACK_REQ != 0 {
                         self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
                             .await;
                     }
+                    return;
+                }
 
-                    // Convert to canonical Alert and route through daemon core
-                    let origin_name = matched_peer
-                        .clone()
-                        .unwrap_or_else(|| alert_pkt.src.clone());
-                    let alert = alert_pkt.clone().into_alert(Some(origin_name.clone()));
+                // Clock skew validation (relaxed for off-grid edge nodes)
+                if alert_pkt.ts > 0 {
+                    let now_ts = Utc::now().timestamp() as u32;
+                    let skew_tolerance = self.config.clock_skew_tolerance_secs as u32;
+                    let is_skewed = if now_ts > alert_pkt.ts {
+                        (now_ts - alert_pkt.ts) > skew_tolerance
+                    } else {
+                        (alert_pkt.ts - now_ts) > skew_tolerance
+                    };
 
-                    info!(
-                        "📥 [Peering Ingress] Ingested alert [{}] from '{}' via UDP (Severity: {:?}, Summary: \"{}\")",
-                        alert.alert_id,
-                        alert.sender.as_deref().unwrap_or("unknown"),
-                        alert.severity,
-                        alert.summary
-                    );
-
-                    // Dynamic route learning for alert sender
-                    {
-                        let mut rt = self.routing_table.write().await;
-                        let via_peer = matched_peer.as_deref().unwrap_or(&alert_pkt.src);
-                        rt.update_route(&alert_pkt.src, via_peer, 20, 1);
+                    if is_skewed {
+                        warn!(
+                            "⏱️ Discarded peering alert 0x{:016x} due to excessive clock skew (pkt_ts: {}, now: {}, tolerance: {}s)",
+                            alert_pkt.fp, alert_pkt.ts, now_ts, skew_tolerance
+                        );
+                        return;
                     }
+                }
 
-                    // Multi-hop dynamic mesh forwarding
-                    if alert_pkt.hop > 1 {
-                        let mut fwd_alert = alert.clone();
-                        fwd_alert.hop = alert_pkt.hop - 1;
-                        fwd_alert.origin_peer = Some(origin_name.clone());
+                // Sliding-window deduplication check
+                {
+                    let mut cache = self.dedup_cache.lock().await;
+                    let now = Instant::now();
+                    cache.retain(|_, seen_at| now.duration_since(*seen_at) < dedup_window);
 
-                        for (peer_name, worker) in self.workers.iter() {
-                            if peer_name == &origin_name
-                                || peer_name == &alert_pkt.src
-                                || Some(peer_name.as_str()) == alert.sender.as_deref()
-                                || Some(peer_name.as_str()) == alert.node.as_deref()
-                                || matched_peer.as_deref() == Some(peer_name.as_str())
-                            {
-                                // Strict Split-Horizon loop suppression
-                                continue;
-                            }
-                            let req = OutboundAlertRequest {
-                                alert: fwd_alert.clone(),
-                                is_failover: false,
-                            };
-                            let _ = worker.dispatch(req).await;
+                    if cache.contains_key(&alert_pkt.fp) {
+                        debug!(
+                            "🛑 Dropped duplicate peering alert 0x{:016x} from {}",
+                            alert_pkt.fp, src_desc
+                        );
+                        if alert_pkt.flags & FLAG_ACK_REQ != 0
+                            && let Some(src_addr) = udp_addr
+                        {
+                            self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                                .await;
                         }
+                        return;
                     }
+                    cache.insert(alert_pkt.fp, now);
+                }
 
-                    let eng_guard = self.engine.read().await;
-                    if let Some(ref eng) = *eng_guard {
-                        let eng_clone = eng.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = eng_clone.route_alert(alert).await {
-                                warn!("Failed to route peering ingress alert: {}", e);
-                            }
-                        });
+                // Respond with ACK if requested (Profile B on IP links)
+                if alert_pkt.flags & FLAG_ACK_REQ != 0
+                    && let Some(src_addr) = udp_addr
+                {
+                    self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                        .await;
+                }
+
+                // Convert to canonical Alert and route through daemon core
+                let origin_name = matched_peer
+                    .clone()
+                    .unwrap_or_else(|| alert_pkt.src.clone());
+                let alert = alert_pkt.clone().into_alert(Some(origin_name.clone()));
+
+                info!(
+                    "📥 [Peering Ingress] Ingested alert [{}] from '{}' via {} (Severity: {:?}, Summary: \"{}\")",
+                    alert.alert_id,
+                    alert.sender.as_deref().unwrap_or("unknown"),
+                    src_desc,
+                    alert.severity,
+                    alert.summary
+                );
+
+                // Dynamic route learning for alert sender
+                {
+                    let mut rt = self.routing_table.write().await;
+                    let via_peer = matched_peer.as_deref().unwrap_or(&alert_pkt.src);
+                    rt.update_route(&alert_pkt.src, via_peer, 20, 1);
+                }
+
+                // Multi-hop dynamic mesh forwarding
+                if alert_pkt.hop > 1 {
+                    let mut fwd_alert = alert.clone();
+                    fwd_alert.hop = alert_pkt.hop - 1;
+                    fwd_alert.origin_peer = Some(origin_name.clone());
+
+                    for (peer_name, worker) in self.workers.iter() {
+                        if peer_name == &origin_name
+                            || peer_name == &alert_pkt.src
+                            || Some(peer_name.as_str()) == alert.sender.as_deref()
+                            || Some(peer_name.as_str()) == alert.node.as_deref()
+                            || matched_peer.as_deref() == Some(peer_name.as_str())
+                        {
+                            // Strict Split-Horizon loop suppression
+                            continue;
+                        }
+                        let req = OutboundAlertRequest {
+                            alert: fwd_alert.clone(),
+                            is_failover: false,
+                        };
+                        let _ = worker.dispatch(req).await;
                     }
+                }
+
+                let eng_guard = self.engine.read().await;
+                if let Some(ref eng) = *eng_guard {
+                    let eng_clone = eng.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = eng_clone.route_alert(alert).await {
+                            warn!("Failed to route peering ingress alert: {}", e);
+                        }
+                    });
                 }
             }
         }

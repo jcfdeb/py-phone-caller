@@ -11,6 +11,7 @@ requires-python = ">=3.14, <3.15"
 dependencies = [
     "py_phone_caller_utils",
     "aiohttp>=3.9.0",
+    "pydantic>=2.13.4",
 ]
 
 [tool.setuptools.package-dir]

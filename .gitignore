@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files.
 __pycache__/
 *.py[cod]
 *$py.class
@@ -113,7 +113,7 @@ ipython_config.py
 __pypackages__/
 
 # Celery stuff
-celerybeat-schedule
+celerybeat-schedule*
 celerybeat.pid
 
 # SageMath parsed files
@@ -163,7 +163,6 @@ cython_debug/
 # Project Specific
 tests/recordings/
 tests/debug_recordings/
-local_settings.py
 settings_secret.py
 *.pid
 credentials.json
@@ -174,3 +173,8 @@ openalert.db*
 /tmp/openalert-data/*
 /assets/ansible/on-vm_py-phone-caller/group_vars/app_servers/secrets.yml
 /src/openalert/config/openalertd.toml
+
+# Downloaded TTS Models
+/src/generate_audio/pre_trained_models/*
+/src/generate_audio/audio/*
+/pre_trained_models/*

@@ -1,8 +1,24 @@
 import asyncio
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
-from src.caller_sms.caller_sms import init_app
+from src.caller_sms import (
+    InboundSmsParseError,
+    InboundSmsRequest,
+    InboundSmsResult,
+    InboundSmsService,
+    MissingSmsParameterError,
+    RustOnPremiseCarrier,
+    SendSmsRequest,
+    SendSmsResult,
+    SmsCarrier,
+    SmsDispatchService,
+    SmsQueryFilter,
+    SmsQueryService,
+    SmsStatus,
+    TwilioCarrier,
+    init_app,
+)
 from src.caller_sms.constants import CALLER_SMS_APP_ROUTE
 
 
@@ -359,3 +375,158 @@ async def test_rust_sms_utf8_message_handling(tmp_path):
     assert row[0] == "+393349246425"
     assert row[1] == utf8_text
     assert "più" in row[1]
+
+
+@pytest.mark.asyncio
+async def test_send_sms_on_premise_failure_sovereign_mode_no_fallback(cli):
+    """
+    Test that when on-premise GSM modem fails and sms_saas_fallback is False (default),
+    it fails fast without calling Twilio.
+    """
+    with (
+        patch("src.caller_sms.caller_sms.CALLER_SMS_CARRIER", "on_premise"),
+        patch("src.caller_sms.caller_sms.SMS_SAAS_FALLBACK", False),
+        patch("src.caller_sms.caller_sms.rust_on_premise.sms_sender_async") as mock_rust_sender,
+        patch("src.caller_sms.caller_sms.twilio_backend.sms_sender_async") as mock_twilio_sender,
+        patch("src.caller_sms.caller_sms.insert_sms") as mock_insert_sms,
+    ):
+        future_fail = asyncio.Future()
+        future_fail.set_exception(RuntimeError("Modem /dev/ttyUSB2 disconnected"))
+        mock_rust_sender.return_value = future_fail
+
+        resp = await cli.post(f"/{CALLER_SMS_APP_ROUTE}?message=Sovereign+Alert&phone=00393349246425")
+        assert resp.status == 500
+        data = await resp.json()
+        assert data["status"] == 500
+        assert "disconnected" in data.get("error", "")
+
+        mock_rust_sender.assert_called_once()
+        mock_twilio_sender.assert_not_called()
+        mock_insert_sms.assert_awaited_once_with(
+            phone="00393349246425",
+            message="Sovereign Alert",
+            carrier="on_premise",
+            status="failed",
+            error="Modem /dev/ttyUSB2 disconnected",
+        )
+
+
+@pytest.mark.asyncio
+async def test_send_sms_on_premise_failure_with_saas_fallback_success(cli):
+    """
+    Test that when on-premise GSM modem fails and sms_saas_fallback is True with valid Twilio creds,
+    it falls back to Twilio successfully.
+    """
+    with (
+        patch("src.caller_sms.caller_sms.CALLER_SMS_CARRIER", "on_premise"),
+        patch("src.caller_sms.caller_sms.SMS_SAAS_FALLBACK", True),
+        patch("src.caller_sms.caller_sms.TWILIO_ACCOUNT_SID", "ACtest123"),
+        patch("src.caller_sms.caller_sms.TWILIO_AUTH_TOKEN", "secret123"),
+        patch("src.caller_sms.caller_sms.TWILIO_SMS_FROM", "+1234567890"),
+        patch("src.caller_sms.caller_sms.rust_on_premise.sms_sender_async") as mock_rust_sender,
+        patch("src.caller_sms.caller_sms.twilio_backend.sms_sender_async") as mock_twilio_sender,
+        patch("src.caller_sms.caller_sms.insert_sms") as mock_insert_sms,
+    ):
+        future_rust_fail = asyncio.Future()
+        future_rust_fail.set_exception(RuntimeError("Modem buffer full"))
+        mock_rust_sender.return_value = future_rust_fail
+
+        future_twilio_ok = asyncio.Future()
+        future_twilio_ok.set_result(None)
+        mock_twilio_sender.return_value = future_twilio_ok
+
+        resp = await cli.post(f"/{CALLER_SMS_APP_ROUTE}?message=Fallback+Alert&phone=00393349246425")
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["status"] == 200
+
+        mock_rust_sender.assert_called_once()
+        mock_twilio_sender.assert_called_once_with("Fallback Alert", "00393349246425")
+        mock_insert_sms.assert_awaited_once_with(
+            phone="00393349246425",
+            message="Fallback Alert",
+            carrier="twilio_fallback",
+            status="sent",
+            error="",
+        )
+
+
+@pytest.mark.asyncio
+async def test_inbound_sms_acknowledgment(cli):
+    """
+    Test that POST /sms/inbound with ACK/OK token updates active call record acknowledge_at.
+    """
+    from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import Calls
+
+    fake_active_call = {
+        "id": "11111111-2222-3333-4444-555555555555",
+        "phone": "00393349246425",
+        "asterisk_chan": "chan-test-456",
+        "cycle_done": False,
+    }
+
+    with (
+        patch.object(Calls, "select") as mock_select,
+        patch.object(Calls, "update") as mock_update,
+        patch("src.caller_sms.caller_sms.insert_sms") as mock_insert_sms,
+    ):
+        mock_run = asyncio.Future()
+        mock_run.set_result([fake_active_call])
+        mock_where = patch.object(mock_select.return_value, "where").start()
+        mock_where.return_value.run = lambda: mock_run
+
+        mock_update_run = asyncio.Future()
+        mock_update_run.set_result(None)
+        mock_update_where = patch.object(mock_update.return_value, "where").start()
+        mock_update_where.return_value.run = lambda: mock_update_run
+
+        resp = await cli.post(
+            "/sms/inbound",
+            json={"From": "+393349246425", "Body": "ACK incident confirmed"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["status"] == 200
+        assert data["acknowledged"] is True
+        assert data["matched_calls"] == 1
+        mock_insert_sms.assert_awaited_once()
+
+
+def test_sms_schemas_and_dataclasses():
+    req = SendSmsRequest.from_dict({"phone": " 0039123456789 ", "message": " Test msg "})
+    assert req.phone == "0039123456789"
+    assert req.message == "Test msg"
+
+    with pytest.raises(MissingSmsParameterError):
+        SendSmsRequest.from_dict({"phone": "123"})
+
+    res = SendSmsResult(status_code=200, status=SmsStatus.SENT.value, carrier=SmsCarrier.TWILIO.value)
+    assert res.to_dict() == {"status": 200}
+
+    inbound = InboundSmsRequest.from_dict({"From": "+39334", "Body": "OK"})
+    assert inbound.sender_phone == "+39334"
+    assert inbound.body_text == "OK"
+
+    with pytest.raises(InboundSmsParseError):
+        InboundSmsRequest.from_dict({"From": ""})
+
+
+@pytest.mark.asyncio
+async def test_sms_dispatch_service_isolated():
+    mock_twilio = AsyncMock()
+    mock_rust = AsyncMock()
+    mock_db = AsyncMock()
+
+    service = SmsDispatchService(
+        default_carrier="twilio",
+        saas_fallback=False,
+        twilio_carrier=mock_twilio,
+        on_premise_carrier=mock_rust,
+        insert_sms_fn=mock_db,
+    )
+    req = SendSmsRequest(phone="+123", message="Hello")
+    res = await service.send_sms(req)
+    assert res.status_code == 200
+    assert res.status == "sent"
+    mock_twilio.send.assert_awaited_once_with("+123", "Hello")
+    mock_db.assert_awaited_once()

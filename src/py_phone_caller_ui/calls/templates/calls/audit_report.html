@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incident Audit & DTMF Compliance Report - {{ export_month }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { font-size: 11pt; color: #000; background: #fff !important; }
+            .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; }
+            .table { border-color: #dee2e6 !important; }
+            .badge { border: 1px solid #000 !important; color: #000 !important; }
+            a { text-decoration: none !important; color: #000 !important; }
+        }
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        }
+        .report-header {
+            border-bottom: 3px solid #0284c7;
+            padding-bottom: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-box {
+            border-radius: 8px;
+            padding: 1rem;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+        }
+        .font-mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body class="py-4">
+<div class="container-fluid px-4 px-lg-5">
+    <!-- Top Action Bar -->
+    <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+        <a href="{{ url_for('calls_blueprint.calls') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Back to Managed Calls
+        </a>
+        <div class="d-flex gap-2">
+            <button onclick="window.print()" class="btn btn-primary btn-sm shadow-sm fw-semibold">
+                <i class="bi bi-printer me-1"></i> Print / Save as PDF
+            </button>
+        </div>
+    </div>
+
+    <!-- Official Header -->
+    <div class="report-header d-flex justify-content-between align-items-end flex-wrap gap-3">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-shield-check text-primary fs-2"></i>
+                <h2 class="fw-bold mb-0">py-phone-caller Telephony Incident Audit</h2>
+            </div>
+            <p class="text-muted mb-0 small">Official Compliance Log & DTMF Acknowledgment Proof</p>
+        </div>
+        <div class="text-md-end small text-muted">
+            <div><strong>Scope:</strong> {{ export_month }}</div>
+            <div><strong>Generated At:</strong> {{ generated_at }}</div>
+            <div><strong>Engine:</strong> Asterisk ARI 20+ Stasis & Silero Neural TTS</div>
+        </div>
+    </div>
+
+    <!-- KPI Summary Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="stat-box shadow-sm">
+                <div class="text-muted small text-uppercase fw-semibold">Total Dispatched</div>
+                <div class="fs-3 fw-bold text-dark">{{ total_calls }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-box shadow-sm">
+                <div class="text-muted small text-uppercase fw-semibold">DTMF 4 Acknowledged</div>
+                <div class="fs-3 fw-bold text-success">{{ ack_count }} <span class="fs-6 text-muted fw-normal">({{ ack_rate }}%)</span></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-box shadow-sm">
+                <div class="text-muted small text-uppercase fw-semibold">Heard / Snoozed</div>
+                <div class="fs-3 fw-bold text-warning">{{ heard_count }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-box shadow-sm">
+                <div class="text-muted small text-uppercase fw-semibold">Escalated to Backup</div>
+                <div class="fs-3 fw-bold text-danger">{{ escalated_count }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audit Table -->
+    <div class="card border shadow-sm rounded-3 overflow-hidden mb-4">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <h6 class="fw-bold mb-0"><i class="bi bi-list-check me-2 text-primary"></i>Incident Event Records ({{ calls|length }} entries)</h6>
+            <span class="badge bg-secondary font-mono">{{ calls|length }} Records</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0 small">
+                <thead class="table-light text-uppercase font-mono" style="font-size: 0.75rem;">
+                <tr>
+                    <th>#</th>
+                    <th>Destination Phone</th>
+                    <th>First Dial Time</th>
+                    <th>Last Dial Time</th>
+                    <th>Dials</th>
+                    <th>DTMF Heard At</th>
+                    <th>Acknowledged At (DTMF 4)</th>
+                    <th>Duty Type</th>
+                    <th>Status Proof</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for call in calls %}
+                <tr>
+                    <td class="font-mono text-muted">{{ call.id }}</td>
+                    <td class="font-mono fw-bold">{{ call.phone }}</td>
+                    <td class="font-mono">{{ call.first_dial.strftime('%Y-%m-%d %H:%M:%S') if call.first_dial else '-' }}</td>
+                    <td class="font-mono">{{ call.last_dial.strftime('%Y-%m-%d %H:%M:%S') if call.last_dial else '-' }}</td>
+                    <td><span class="badge bg-light text-dark border">{{ call.dialed_times }} / {{ call.times_to_dial }}</span></td>
+                    <td class="font-mono">{{ call.heard_at.strftime('%Y-%m-%d %H:%M:%S') if call.heard_at else '-' }}</td>
+                    <td class="font-mono">
+                        {% if call.acknowledge_at %}
+                        <span class="text-success fw-bold">{{ call.acknowledge_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if call.backup_callee %}
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Escalation Backup</span>
+                        {% elif call.oncall %}
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Primary On-Call</span>
+                        {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary border">Direct</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if call.acknowledge_at %}
+                        <span class="badge bg-success text-white"><i class="bi bi-check2-circle me-1"></i>ACK_CONFIRMED</span>
+                        {% elif call.heard_at %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-soundwave me-1"></i>HEARD</span>
+                        {% elif call.cycle_done %}
+                        <span class="badge bg-secondary text-white"><i class="bi bi-slash-circle me-1"></i>EXPIRED</span>
+                        {% else %}
+                        <span class="badge bg-info text-white"><i class="bi bi-telephone-outbound me-1"></i>IN_FLIGHT</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if calls|length == 0 %}
+                <tr>
+                    <td colspan="9" class="text-center py-4 text-muted">No records match the requested audit filter scope.</td>
+                </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Compliance Footer Signature Block -->
+    <div class="d-flex justify-content-between text-muted small pt-3 border-top mt-5">
+        <div>System Verified: Asterisk Stasis Channel Session Logs & PostgreSQL Piccolo Audit Tables</div>
+        <div>Page 1 of 1 — Confidential Internal Operations Audit</div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>py-phone-caller NOC 24/7 Wallboard</title>
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
+    <style>
+        body {
+            background-color: #090d16 !important;
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+        .wallboard-header {
+            background: rgba(15, 23, 42, 0.95);
+            border-bottom: 2px solid #1e293b;
+            padding: 1rem 2rem;
+        }
+        .wb-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 1.25rem;
+            padding: 1.75rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            height: 100%;
+        }
+        .wb-metric-val {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.03em;
+        }
+        .wb-pulse-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+        }
+    </style>
+</head>
+<body class="p-0 m-0">
+
+    <!-- Header / Status Bar -->
+    <header class="wallboard-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-3">
+            <span class="fs-3 text-primary"><i class="bi bi-broadcast"></i></span>
+            <div>
+                <h1 class="h4 fw-bold mb-0 tracking-wide text-white">py-phone-caller NOC Operations Center</h1>
+                <small class="text-secondary">Air-Gapped Sovereign Telephony & Dispatch Wallboard</small>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-4">
+            <div class="d-flex align-items-center gap-2">
+                <span class="wb-pulse-dot bg-success"></span>
+                <span class="small fw-bold text-success text-uppercase">Live Stream Active</span>
+            </div>
+            <div class="text-secondary small fw-monospace" id="wb-clock">--:--:-- UTC</div>
+            <button class="btn btn-outline-secondary btn-sm" onclick="toggleFullScreen()" title="Full Screen (F11)">
+                <i class="bi bi-arrows-fullscreen"></i>
+            </button>
+            <a href="{{ url_for('home_blueprint.home') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-box-arrow-left me-1"></i>Standard Dashboard
+            </a>
+        </div>
+    </header>
+
+    <!-- Wallboard Main Content Grid -->
+    <main class="container-fluid p-4 flex-grow-1 d-flex flex-column gap-4">
+        <!-- 4 Primary KPI Displays -->
+        <div class="row g-4">
+            <div class="col-md-3">
+                <div class="wb-card d-flex flex-column justify-content-between border-primary border-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-uppercase text-secondary fw-bold small">Total Dispatched Calls</span>
+                        <i class="bi bi-telephone-outbound text-primary fs-3"></i>
+                    </div>
+                    <div class="wb-metric-val text-white" id="wb-total-calls">{{ metrics.total_calls }}</div>
+                    <div class="text-secondary small mt-3">Dispatched across all SIP trunks</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="wb-card d-flex flex-column justify-content-between border-success border-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-uppercase text-secondary fw-bold small">DTMF ACK Rate</span>
+                        <i class="bi bi-check2-circle text-success fs-3"></i>
+                    </div>
+                    <div class="wb-metric-val text-success" id="wb-ack-rate">{{ metrics.ack_rate }}%</div>
+                    <div class="text-secondary small mt-3"><span id="wb-ack-count">{{ metrics.ack_count }}</span> acknowledgments confirmed</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="wb-card d-flex flex-column justify-content-between border-warning border-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-uppercase text-secondary fw-bold small">Escalated to Backup</span>
+                        <i class="bi bi-shield-exclamation text-warning fs-3"></i>
+                    </div>
+                    <div class="wb-metric-val text-warning" id="wb-escalated">{{ metrics.escalated_count }}</div>
+                    <div class="text-secondary small mt-3">Transferred to secondary engineer</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="wb-card d-flex flex-column justify-content-between border-info border-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-uppercase text-secondary fw-bold small">SMS Delivered</span>
+                        <i class="bi bi-chat-left-text text-info fs-3"></i>
+                    </div>
+                    <div class="wb-metric-val text-info" id="wb-sms-count">{{ metrics.sms_delivered }}</div>
+                    <div class="text-secondary small mt-3">{{ metrics.sms_rate }}% delivery success rate</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Infrastructure & Gateway Health Section -->
+        <div class="row g-4 flex-grow-1">
+            <div class="col-lg-8">
+                <div class="wb-card">
+                    <h5 class="fw-bold mb-3 text-white"><i class="bi bi-activity me-2 text-primary"></i>Call Disposition Breakdown</h5>
+                    <div class="progress mb-4" style="height: 24px; border-radius: 12px; background-color: #1f2937;">
+                        <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="wb-bar-ack" style="width: 50%;">ACK Confirmed</div>
+                        <div class="progress-bar bg-info" id="wb-bar-heard" style="width: 20%;">Heard</div>
+                        <div class="progress-bar bg-warning" id="wb-bar-esc" style="width: 15%;">Escalated</div>
+                        <div class="progress-bar bg-danger" id="wb-bar-flight" style="width: 15%;">In-Flight</div>
+                    </div>
+                    <div class="row text-center g-3 pt-3">
+                        <div class="col-3 border-end border-secondary border-opacity-25">
+                            <span class="text-secondary small d-block">ACK Confirmed</span>
+                            <span class="fs-4 fw-bold text-success" id="wb-leg-ack">{{ metrics.ack_count }}</span>
+                        </div>
+                        <div class="col-3 border-end border-secondary border-opacity-25">
+                            <span class="text-secondary small d-block">Heard / Completed</span>
+                            <span class="fs-4 fw-bold text-info" id="wb-leg-heard">{{ metrics.heard_count }}</span>
+                        </div>
+                        <div class="col-3 border-end border-secondary border-opacity-25">
+                            <span class="text-secondary small d-block">Escalated</span>
+                            <span class="fs-4 fw-bold text-warning" id="wb-leg-esc">{{ metrics.escalated_count }}</span>
+                        </div>
+                        <div class="col-3">
+                            <span class="text-secondary small d-block">In-Flight</span>
+                            <span class="fs-4 fw-bold text-danger" id="wb-leg-flight">{{ metrics.in_flight_count }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="wb-card">
+                    <h5 class="fw-bold mb-3 text-white"><i class="bi bi-hdd-network me-2 text-success"></i>Gateway & Air-Gap Status</h5>
+                    <ul class="list-group list-group-flush bg-transparent">
+                        <li class="list-group-item bg-transparent text-light d-flex justify-content-between align-items-center border-secondary border-opacity-25 px-0 py-3">
+                            <span><i class="bi bi-cpu me-2 text-primary"></i>Asterisk ARI PBX</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1">ONLINE</span>
+                        </li>
+                        <li class="list-group-item bg-transparent text-light d-flex justify-content-between align-items-center border-secondary border-opacity-25 px-0 py-3">
+                            <span><i class="bi bi-sim me-2 text-warning"></i>Hardware GSM Modem</span>
+                            <span class="badge {% if metrics.is_gsm %}bg-success-subtle text-success border border-success-subtle{% else %}bg-secondary text-white{% endif %} px-3 py-1">
+                                {{ 'ACTIVE (SOVEREIGN)' if metrics.is_gsm else 'STANDBY / SAAS' }}
+                            </span>
+                        </li>
+                        <li class="list-group-item bg-transparent text-light d-flex justify-content-between align-items-center border-secondary border-opacity-25 px-0 py-3">
+                            <span><i class="bi bi-soundwave me-2 text-info"></i>Silero Neural TTS</span>
+                            <span class="badge bg-info-subtle text-info border border-info-subtle px-3 py-1">LOCAL ENGINE</span>
+                        </li>
+                        <li class="list-group-item bg-transparent text-light d-flex justify-content-between align-items-center border-0 px-0 py-3">
+                            <span><i class="bi bi-broadcast me-2 text-success"></i>SSE Telemetry Bus</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1" id="wb-sse-badge">CONNECTED</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('wb-clock').innerText = now.toUTCString().replace('GMT', 'UTC');
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function applyMetrics(data) {
+            if (!data) return;
+            const total = data.total_calls || 0;
+            document.getElementById('wb-total-calls').innerText = total;
+            document.getElementById('wb-ack-rate').innerText = (data.ack_rate || 0) + '%';
+            document.getElementById('wb-ack-count').innerText = data.ack_count || 0;
+            document.getElementById('wb-escalated').innerText = data.escalated_count || 0;
+            document.getElementById('wb-sms-count').innerText = data.sms_delivered || 0;
+
+            document.getElementById('wb-leg-ack').innerText = data.ack_count || 0;
+            document.getElementById('wb-leg-heard').innerText = data.heard_count || 0;
+            document.getElementById('wb-leg-esc').innerText = data.escalated_count || 0;
+            document.getElementById('wb-leg-flight').innerText = data.in_flight_count || 0;
+
+            const denom = total > 0 ? total : 1;
+            document.getElementById('wb-bar-ack').style.width = Math.round((data.ack_count || 0) / denom * 100) + '%';
+            document.getElementById('wb-bar-heard').style.width = Math.round((data.heard_count || 0) / denom * 100) + '%';
+            document.getElementById('wb-bar-esc').style.width = Math.round((data.escalated_count || 0) / denom * 100) + '%';
+            document.getElementById('wb-bar-flight').style.width = Math.round((data.in_flight_count || 0) / denom * 100) + '%';
+        }
+
+        (function initWallboardSSE() {
+            if (!window.EventSource) return;
+            const sseUrl = "{{ url_for('home_blueprint.telemetry_stream') }}";
+            const evtSource = new EventSource(sseUrl);
+
+            evtSource.addEventListener('metrics', function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    applyMetrics(data);
+                    document.getElementById('wb-sse-badge').innerText = 'CONNECTED';
+                    document.getElementById('wb-sse-badge').className = 'badge bg-success-subtle text-success border border-success-subtle px-3 py-1';
+                } catch(err) {}
+            });
+
+            evtSource.onerror = function() {
+                const badge = document.getElementById('wb-sse-badge');
+                if (badge) {
+                    badge.innerText = 'RECONNECTING...';
+                    badge.className = 'badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-1';
+                }
+            };
+        })();
+
+        // Fallback polling
+        setInterval(async () => {
+            try {
+                const res = await fetch("{{ url_for('home_blueprint.api_dashboard_metrics') }}");
+                if (res.ok) {
+                    const data = await res.json();
+                    applyMetrics(data);
+                }
+            } catch(e) {}
+        }, 15000);
+    </script>
+</body>
+</html>

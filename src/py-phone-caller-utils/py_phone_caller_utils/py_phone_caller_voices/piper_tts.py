@@ -73,6 +73,12 @@ def parse_arguments():
         help="Path to the .onnx.json config file",
     )
     parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="Speech speed multiplier (1.0 = normal, 0.85 = slower/clearer)",
+    )
+    parser.add_argument(
         "--output", type=Path, default=OUTPUT_WAV_PATH, help="Output WAV file path"
     )
     return parser.parse_args()
@@ -107,8 +113,12 @@ def main() -> None:
         return
 
     logger.info(f"Synthesizing text: '{args.text}'")
+    # length_scale is inverse of speed: lower length_scale -> faster speech, higher -> slower
+    length_scale = 1.0 / max(0.2, min(5.0, args.speed)) if args.speed > 0 else 1.0
+    from piper.config import SynthesisConfig
+    syn_config = SynthesisConfig(length_scale=length_scale)
     audio_bytes = b"".join(
-        chunk.audio_int16_bytes for chunk in voice.synthesize(args.text)
+        chunk.audio_int16_bytes for chunk in voice.synthesize(args.text, syn_config=syn_config)
     )
 
     logger.info(f"Synthesized {len(audio_bytes)} bytes of audio.")
