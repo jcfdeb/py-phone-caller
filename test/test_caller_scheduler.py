@@ -1,8 +1,21 @@
+from datetime import datetime, timezone
 import pytest
 from unittest.mock import patch, MagicMock
 from aiohttp import web
 
-from src.caller_scheduler.caller_scheduler import schedule_this_call, init_app
+from src.caller_scheduler import (
+    CallSchedulerService,
+    CeleryTaskDispatcher,
+    InvalidScheduleTimeError,
+    MissingScheduleParameterError,
+    PriorityQueue,
+    ScheduleCallRequest,
+    ScheduleCallResponse,
+    TaskEnqueueError,
+    TimezoneConverter,
+    init_app,
+    schedule_this_call,
+)
 from py_phone_caller_utils.tasks.celery_task import do_this_call
 from py_phone_caller_utils.tasks.post_to_caller_register import (
     insert_the_scheduled_call,
@@ -144,3 +157,71 @@ def test_record_dead_letter_task():
                 tb_str="Traceback..."
             )
             mock_insert.assert_called_once()
+
+
+def test_schemas_schedule_call_request():
+    req = ScheduleCallRequest.from_dict({
+        "phone": " 0039123456789 ",
+        "message": " Hello World ",
+        "scheduled_at": " 2026-10-01 10:00:00 ",
+        "priority": "9",
+        "lang": "en",
+    })
+    assert req.phone == "0039123456789"
+    assert req.message == "Hello World"
+    assert req.scheduled_at == "2026-10-01 10:00:00"
+    assert req.priority == 9
+    assert req.lang == "en"
+
+    with pytest.raises(MissingScheduleParameterError):
+        ScheduleCallRequest.from_dict({"phone": "123"})
+
+
+def test_priority_queue_mapping():
+    assert PriorityQueue.from_priority(9) == PriorityQueue.P0
+    assert PriorityQueue.from_priority(8) == PriorityQueue.P0
+    assert PriorityQueue.from_priority(7) == PriorityQueue.P2
+    assert PriorityQueue.from_priority(0) == PriorityQueue.P2
+
+
+def test_timezone_converter():
+    tz_conv = TimezoneConverter("UTC")
+    utc_dt = tz_conv.to_utc("2026-10-01 12:00:00")
+    assert utc_dt.hour == 12
+    assert utc_dt.tzinfo is not None
+
+    with pytest.raises(InvalidScheduleTimeError):
+        tz_conv.to_utc("not-a-valid-time-string")
+
+
+def test_celery_task_dispatcher():
+    mock_task = MagicMock()
+    dispatcher = CeleryTaskDispatcher(task_target=mock_task)
+    eta = datetime.now(timezone.utc)
+    dispatcher.dispatch("123", "msg", eta, 5, "telephony.p2", lang="es")
+    mock_task.apply_async.assert_called_once_with(
+        ["123", "msg"],
+        priority=5,
+        queue="telephony.p2",
+        eta=eta,
+        kwargs={"lang": "es"},
+    )
+
+    mock_task.apply_async.side_effect = RuntimeError("Broker down")
+    with pytest.raises(TaskEnqueueError):
+        dispatcher.dispatch("123", "msg", eta, 5, "telephony.p2")
+
+
+def test_call_scheduler_service():
+    mock_disp = MagicMock()
+    service = CallSchedulerService(dispatcher=mock_disp, tz_converter=TimezoneConverter("UTC"))
+    req = ScheduleCallRequest(
+        phone="0039123",
+        message="Alert",
+        scheduled_at="2026-10-01 15:00:00",
+        priority=8,
+    )
+    res = service.schedule(req)
+    assert res.status == 200
+    mock_disp.dispatch.assert_called_once()
+    assert mock_disp.dispatch.call_args.kwargs["queue"] == "telephony.p0"

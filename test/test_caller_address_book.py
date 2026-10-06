@@ -1,9 +1,15 @@
 import pytest
 from unittest.mock import patch, AsyncMock
-from src.caller_address_book.caller_address_book import init_app, ContactCSVRow
+from src.caller_address_book.caller_address_book import (
+    init_app,
+    ContactCSVRow,
+    _get_active_service,
+)
 from src.caller_address_book.constants import (
     CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT,
     CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT,
+    CALLER_ADDRESS_BOOK_ROUTE_MODIFY_CONTACT,
+    CALLER_ADDRESS_BOOK_ROUTE_DELETE_CONTACT,
 )
 
 
@@ -27,10 +33,102 @@ async def test_get_on_call_contact_not_found(cli):
 
 
 @pytest.mark.asyncio
+async def test_get_on_call_contact_success(cli):
+    with patch(
+        "src.caller_address_book.caller_address_book.get_on_call_contact"
+    ) as mock_get:
+        mock_get.return_value = {"phone_number": "+39012345678"}
+        resp = await cli.get(f"/{CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT}")
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["phone_number"] == "+39012345678"
+
+
+@pytest.mark.asyncio
 async def test_add_contact_invalid_json(cli):
     resp = await cli.post(f"/{CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT}", data="not json")
     assert resp.status == 400
     assert await resp.text() == "Invalid JSON body"
+
+
+@pytest.mark.asyncio
+async def test_add_contact_success(cli):
+    with patch(
+        "src.caller_address_book.caller_address_book.add_contact",
+        new_callable=AsyncMock,
+        return_value="uuid-12345",
+    ) as mock_add:
+        resp = await cli.post(
+            f"/{CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT}",
+            json={"name": "Alice", "phone_number": "+39334111222"},
+        )
+        assert resp.status == 201
+        data = await resp.json()
+        assert data["id"] == "uuid-12345"
+
+
+@pytest.mark.asyncio
+async def test_modify_contact_success(cli):
+    with patch(
+        "src.caller_address_book.caller_address_book.modify_contact",
+        new_callable=AsyncMock,
+        return_value=1,
+    ) as mock_mod:
+        resp = await cli.put(
+            f"/{CALLER_ADDRESS_BOOK_ROUTE_MODIFY_CONTACT}/uuid-12345",
+            json={"name": "Alice Updated"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["updated"] == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_contact_success(cli):
+    with patch(
+        "src.caller_address_book.caller_address_book.delete_contacts",
+        new_callable=AsyncMock,
+        return_value=2,
+    ) as mock_del:
+        resp = await cli.delete(
+            f"/{CALLER_ADDRESS_BOOK_ROUTE_DELETE_CONTACT}",
+            json={"ids": ["id-1", "id-2"]},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["deleted"] == 2
+
+
+@pytest.mark.asyncio
+async def test_export_csv_endpoint(cli):
+    fake_rows = [
+        {
+            "id": "1",
+            "name": "Alice",
+            "surname": "Smith",
+            "address": "",
+            "zip_code": "",
+            "city": "",
+            "state": "",
+            "country": "",
+            "phone_number": "+39333",
+            "enabled": True,
+            "created_time": "2026-10-06",
+            "annotations": "",
+            "on_call_availability": [],
+        }
+    ]
+    with patch(
+        "src.caller_address_book.caller_address_book.AddressBook.select",
+        new_callable=AsyncMock,
+        return_value=fake_rows,
+    ):
+        resp = await cli.get("/contacts_export_csv")
+        assert resp.status == 200
+        assert "text/csv" in resp.headers["Content-Type"]
+        body = await resp.text()
+        assert "Alice" in body
+        assert "+39333" in body
 
 
 def test_contact_csv_row_pydantic_validation():

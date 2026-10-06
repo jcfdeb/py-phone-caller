@@ -156,9 +156,10 @@
                     <div class="d-flex align-items-center justify-content-between gap-2">
                         <span>{{ call.get("message") }}</span>
                         {% if call.get("msg_chk_sum") %}
+                        {% set audio_file = (call.get("msg_chk_sum") ~ "_" ~ call.get("lang") ~ ".wav") if call.get("lang") else (call.get("msg_chk_sum") ~ ".wav") %}
                         <button type="button" class="btn btn-outline-info btn-sm p-1 rounded-circle flex-shrink-0" 
                                 style="width: 28px; height: 28px; line-height: 1;" 
-                                onclick="playTtsAudio('{{ call.get('msg_chk_sum') }}.wav', this)"
+                                onclick="playTtsAudio('{{ audio_file }}', this)"
                                 title="{{ _('Play Synthesized Neural Alert Audio') }}">
                             <i class="bi bi-play-fill"></i>
                         </button>
@@ -182,8 +183,7 @@
                             {% set firing_end_time = first_dial + timedelta(seconds=seconds_to_forget) %}
                             {% if current_time <= firing_end_time %}
                                 <button class="btn btn-warning btn-sm ack-button shadow-sm fw-bold px-3" 
-                                        data-asterisk-chan="{{ call.get('asterisk_chan') }}"
-                                        onclick="acknowledgeCall('{{ call.get("asterisk_chan") }}', this)">
+                                        data-asterisk-chan="{{ call.get('asterisk_chan') }}">
                                     <i class="bi bi-check-circle me-1"></i>{{ _('Ack') }}
                                 </button>
                             {% else %}
@@ -282,8 +282,11 @@
 {% block extra_js %}
 <script>
     function acknowledgeCall(asteriskChan, element) {
-        if (!asteriskChan) {
-            console.error('No asterisk_chan provided');
+        if (!asteriskChan || !element) {
+            console.error('Invalid acknowledgeCall parameters');
+            return false;
+        }
+        if (element.disabled) {
             return false;
         }
         element.disabled = true;
@@ -297,33 +300,42 @@
                 return { ok: response.ok, status: response.status, data: data };
             })
             .then(({ ok, status, data }) => {
+                const parent = element ? element.parentNode : null;
                 if (ok && (status === 200 || data.status === 200)) {
                     showToast('Success', data.message || 'Call acknowledged successfully', 'success');
-                    element.parentNode.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+                    if (parent) {
+                        parent.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+                    }
                 } else {
                     showToast('Note', data.message || 'Call acknowledged but outside firing period', 'warning');
-                    element.disabled = false;
-                    element.innerHTML = originalContent;
+                    if (element && element.parentNode) {
+                        element.disabled = false;
+                        element.innerHTML = originalContent;
+                    }
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
                 showToast('Error', 'Communication error with backend: ' + error.message, 'danger');
-                element.disabled = false;
-                element.innerHTML = originalContent;
+                if (element && element.parentNode) {
+                    element.disabled = false;
+                    element.innerHTML = originalContent;
+                }
             });
 
         return false; 
     }
 
-    // Attach click listeners to all Ack buttons on DOMContentLoaded
+    // Delegated click listener for all Ack buttons (including dynamically rendered rows)
     document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.ack-button').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                const asteriskChan = this.getAttribute('data-asterisk-chan');
-                acknowledgeCall(asteriskChan, this);
-            });
+        document.addEventListener('click', function(e) {
+            const button = e.target.closest('.ack-button');
+            if (!button) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (button.disabled) return;
+            const asteriskChan = button.getAttribute('data-asterisk-chan');
+            acknowledgeCall(asteriskChan, button);
         });
     });
 

@@ -1,8 +1,24 @@
 import asyncio
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
-from src.caller_sms.caller_sms import init_app
+from src.caller_sms import (
+    InboundSmsParseError,
+    InboundSmsRequest,
+    InboundSmsResult,
+    InboundSmsService,
+    MissingSmsParameterError,
+    RustOnPremiseCarrier,
+    SendSmsRequest,
+    SendSmsResult,
+    SmsCarrier,
+    SmsDispatchService,
+    SmsQueryFilter,
+    SmsQueryService,
+    SmsStatus,
+    TwilioCarrier,
+    init_app,
+)
 from src.caller_sms.constants import CALLER_SMS_APP_ROUTE
 
 
@@ -454,7 +470,6 @@ async def test_inbound_sms_acknowledgment(cli):
         patch.object(Calls, "update") as mock_update,
         patch("src.caller_sms.caller_sms.insert_sms") as mock_insert_sms,
     ):
-        # Mock chaining for select().where().run()
         mock_run = asyncio.Future()
         mock_run.set_result([fake_active_call])
         mock_where = patch.object(mock_select.return_value, "where").start()
@@ -475,3 +490,43 @@ async def test_inbound_sms_acknowledgment(cli):
         assert data["acknowledged"] is True
         assert data["matched_calls"] == 1
         mock_insert_sms.assert_awaited_once()
+
+
+def test_sms_schemas_and_dataclasses():
+    req = SendSmsRequest.from_dict({"phone": " 0039123456789 ", "message": " Test msg "})
+    assert req.phone == "0039123456789"
+    assert req.message == "Test msg"
+
+    with pytest.raises(MissingSmsParameterError):
+        SendSmsRequest.from_dict({"phone": "123"})
+
+    res = SendSmsResult(status_code=200, status=SmsStatus.SENT.value, carrier=SmsCarrier.TWILIO.value)
+    assert res.to_dict() == {"status": 200}
+
+    inbound = InboundSmsRequest.from_dict({"From": "+39334", "Body": "OK"})
+    assert inbound.sender_phone == "+39334"
+    assert inbound.body_text == "OK"
+
+    with pytest.raises(InboundSmsParseError):
+        InboundSmsRequest.from_dict({"From": ""})
+
+
+@pytest.mark.asyncio
+async def test_sms_dispatch_service_isolated():
+    mock_twilio = AsyncMock()
+    mock_rust = AsyncMock()
+    mock_db = AsyncMock()
+
+    service = SmsDispatchService(
+        default_carrier="twilio",
+        saas_fallback=False,
+        twilio_carrier=mock_twilio,
+        on_premise_carrier=mock_rust,
+        insert_sms_fn=mock_db,
+    )
+    req = SendSmsRequest(phone="+123", message="Hello")
+    res = await service.send_sms(req)
+    assert res.status_code == 200
+    assert res.status == "sent"
+    mock_twilio.send.assert_awaited_once_with("+123", "Hello")
+    mock_db.assert_awaited_once()

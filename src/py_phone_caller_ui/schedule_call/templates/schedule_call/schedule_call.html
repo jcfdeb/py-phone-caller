@@ -32,7 +32,7 @@
                             <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
                             <input class="form-control border-start-0 ps-0" type="search" placeholder="{{ _('Search scheduled calls...') }}"
                                    aria-label="{{ _('Search') }}" name="search" value="{{ search_query }}">
-                            {% if search_query %}
+                            {% if search_query %}:
                             <a href="{{ url_for('schedule_call_blueprint.schedule_call', per_page=per_page, sort_by=sort_by, sort_order=sort_order) }}"
                                class="btn btn-outline-secondary d-flex align-items-center"><i class="bi bi-x-lg"></i></a>
                             {% endif %}
@@ -58,6 +58,7 @@
                 </th>
                 <th>{{ _('Phone Number') }}</th>
                 <th>{{ _('Message') }}</th>
+                <th>{{ _('Language') }}</th>
                 <th>
                     <a href="{{ url_for('schedule_call_blueprint.schedule_call', sort_by='inserted_time', sort_order='asc' if sort_by != 'inserted_time' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
                         {{ _('Inserted At') }}
@@ -77,12 +78,19 @@
             </tr>
             </thead>
             <tbody>
-            {% for element in paginated_data %}
+            {% for element in paginated_data %}:
             {% set call = table_data[element] %}
             <tr>
                 <td><span class="badge bg-light text-dark border">{{ element }}</span></td>
                 <td><span class="fw-bold text-primary">{{ call.get("phone") }}</span></td>
                 <td class="small">{{ call.get("message") }}</td>
+                <td>
+                    {% if call.get("lang") %}
+                        <span class="badge bg-light text-dark border"><i class="bi bi-translate text-primary me-1"></i>{{ call.get("lang") }}</span>
+                    {% else %}
+                        <span class="badge bg-light text-muted border">-</span>
+                    {% endif %}
+                </td>
                 <td class="small text-muted">{{ call.get("inserted_at").strftime("%d/%m/%Y %H:%M:%S") if call.get("inserted_at") else "-" }}</td>
                 <td>
                     <span class="badge {{ 'bg-primary-subtle text-primary border border-primary-subtle' if call.get('scheduled_at') > now else 'bg-secondary-subtle text-secondary border border-secondary-subtle' }}">
@@ -94,7 +102,7 @@
             {% endfor %}
             {% if paginated_data|length == 0 %}
             <tr>
-                <td colspan="5" class="text-center py-5 text-muted">
+                <td colspan="6" class="text-center py-5 text-muted">
                     <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
                     {{ _('No scheduled calls found') }}{% if search_query %} {{ _('for') }} "{{ search_query }}"{% endif %}
                 </td>

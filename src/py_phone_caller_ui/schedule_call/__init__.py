@@ -10,7 +10,9 @@ import csv
 import io
 import datetime
 import pytz
+import aiohttp
 from py_phone_caller_utils.config import settings
+from py_phone_caller_utils.checksums import gen_msg_chk_sum
 
 LOCAL_TIMEZONE = settings.scheduled_calls.local_timezone
 local_tz = pytz.timezone(LOCAL_TIMEZONE)
@@ -84,7 +86,7 @@ async def export_csv():
     output = io.StringIO()
     writer = csv.writer(output)
 
-    writer.writerow(["ID", "Phone", "Message", "Inserted At", "Scheduled At"])
+    writer.writerow(["ID", "Phone", "Message", "Language", "Inserted At", "Scheduled At"])
 
     for call in filtered_calls:
         writer.writerow(
@@ -92,6 +94,7 @@ async def export_csv():
                 call["id"],
                 call["phone"],
                 call["message"],
+                call.get("lang", ""),
                 call["inserted_at"],
                 call["scheduled_at"],
             ]
@@ -130,7 +133,7 @@ async def schedule_call():
     all_calls = await select_scheduled_calls()
 
     for call in all_calls:
-        if call.get("inserted_at"):\
+        if call.get("inserted_at"):
             call["inserted_at"] = localize_datetime(call.get("inserted_at"))
         if call.get("scheduled_at"):
             call["scheduled_at"] = localize_datetime(call.get("scheduled_at"))
@@ -235,6 +238,7 @@ async def schedule_picker():
             query_args.get("phone"),
             query_args.get("message"),
             f"{query_args.get('scheduled_date')} {query_args.get('scheduled_time')}",
+            lang=lang,
         )
         if status_code_register != 200:
             return {
@@ -246,5 +250,22 @@ async def schedule_picker():
             "status": 500,
             "message": "'caller_register' unreachable, check your settings",
         }
+
+    # Pre-generate TTS audio so it is cached immediately
+    try:
+        msg_text = query_args.get("message")
+        if msg_text:
+            chksum = await gen_msg_chk_sum(msg_text)
+            audio_host = settings.get("generate_audio.generate_audio_host") or "127.0.0.1"
+            audio_port = settings.get("generate_audio.generate_audio_port") or 8082
+            if audio_host in ("192.168.101.17", "192.168.101.111"):
+                audio_host = "127.0.0.1"
+            gen_params = {"message": msg_text, "msg_chk_sum": chksum}
+            if lang:
+                gen_params["lang"] = lang
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                await session.post(f"http://{audio_host}:{audio_port}/make_audio", params=gen_params)
+    except Exception:
+        pass
 
     return "Scheduled OK"

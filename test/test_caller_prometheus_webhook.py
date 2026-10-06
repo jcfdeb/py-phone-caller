@@ -1,8 +1,18 @@
 import time
 import pytest
 from unittest.mock import patch, AsyncMock
-from src.caller_prometheus_webhook.caller_prometheus_webhook import (
+from src.caller_prometheus_webhook import (
+    AlertNotificationService,
+    AsteriskCallClient,
+    CallerSmsClient,
+    DeduplicationService,
+    DispatchItem,
+    NotificationMode,
+    PrometheusAlert,
+    WebhookPayload,
     init_app,
+)
+from src.caller_prometheus_webhook.caller_prometheus_webhook import (
     the_alert_description,
     start_the_asterisk_call,
     send_message_to_caller_sms,
@@ -26,6 +36,7 @@ def reset_dedup(monkeypatch):
 from src.caller_prometheus_webhook.constants import (
     PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY,
     PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY,
+    PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_BEFORE_CALL,
     PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_AND_SMS,
 )
 
@@ -63,6 +74,23 @@ async def test_sms_only_endpoint(cli):
     ) as mock_producer:
         resp = await cli.post(
             f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY}", json=payload
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["status"] == "200"
+        mock_producer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_sms_before_call_endpoint(cli):
+    payload = {
+        "alerts": [{"status": "firing", "annotations": {"description": "SMS Before Call Alert"}}]
+    }
+    with patch(
+        "src.caller_prometheus_webhook.caller_prometheus_webhook.producer"
+    ) as mock_producer:
+        resp = await cli.post(
+            f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_BEFORE_CALL}", json=payload
         )
         assert resp.status == 200
         data = await resp.json()
@@ -131,3 +159,56 @@ async def test_alert_deduplication(cli):
         assert resp2.status == 200
         # Call count remains 1 because duplicate alert was discarded
         assert mock_producer.call_count == 1
+
+
+def test_schemas_dataclasses():
+    alert = PrometheusAlert.from_dict({
+        "status": "firing",
+        "annotations": {"description": "High memory"},
+        "labels": {"severity": "critical"},
+    })
+    assert alert.is_firing is True
+    assert alert.description == "High memory"
+
+    payload = WebhookPayload.from_dict({
+        "receiver": "webhook_receiver",
+        "alerts": [
+            {"status": "resolved", "annotations": {"description": "Old issue"}},
+            {"status": "firing", "annotations": {"description": "Current issue"}},
+        ],
+    })
+    assert payload.firing_descriptions == ["Current issue"]
+    assert payload.receiver == "webhook_receiver"
+
+
+@pytest.mark.asyncio
+async def test_deduplication_service_in_memory():
+    dedup = DeduplicationService(ttl_seconds=1, use_redis=False)
+    is_dup1 = await dedup.is_duplicate("Message 1")
+    assert is_dup1 is False
+    is_dup2 = await dedup.is_duplicate("Message 1")
+    assert is_dup2 is True
+
+    # After TTL
+    time.sleep(1.1)
+    is_dup3 = await dedup.is_duplicate("Message 1")
+    assert is_dup3 is False
+
+
+@pytest.mark.asyncio
+async def test_alert_notification_service_strategy():
+    mock_call = AsyncMock()
+    mock_call.place_call.return_value = True
+    mock_sms = AsyncMock()
+    mock_sms.send_sms.return_value = True
+
+    svc = AlertNotificationService(call_client=mock_call, sms_client=mock_sms)
+    await svc.execute_action("123", "msg", NotificationMode.CALL_ONLY.value)
+    mock_call.place_call.assert_called_once_with("123", "msg")
+
+    await svc.execute_action("456", "msg2", NotificationMode.SMS_ONLY.value)
+    mock_sms.send_sms.assert_called_once_with("456", "msg2")
+
+    await svc.execute_action("789", "msg3", NotificationMode.CALL_AND_SMS.value)
+    assert mock_sms.send_sms.call_count == 2
+    assert mock_call.place_call.call_count == 2

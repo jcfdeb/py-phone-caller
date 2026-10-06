@@ -29,7 +29,13 @@ def localize_datetime(dt):
 
 from py_phone_caller_utils.py_phone_caller_db.db_caller_register import select_calls
 
-from .constants import CALL_REGISTER_ENDPOINT
+from .constants import (
+    CALL_REGISTER_ENDPOINT,
+    CALL_REGISTER_HOST,
+    CALL_REGISTER_PORT,
+    CALL_REGISTER_HTTP_SCHEME,
+    CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE,
+)
 
 
 calls_blueprint = Blueprint(
@@ -330,9 +336,20 @@ async def proxy_acknowledge():
         ), 400
 
     try:
-        response = requests.get(
-            f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={asterisk_chan}", timeout=5
-        )
+        try:
+            response = requests.get(
+                f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={asterisk_chan}", timeout=5
+            )
+        except Exception as exc:
+            if CALL_REGISTER_HOST in ("192.168.101.17", "192.168.101.111"):
+                try:
+                    fallback_url = f"{CALL_REGISTER_HTTP_SCHEME}://127.0.0.1:{CALL_REGISTER_PORT}/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}?asterisk_chan={asterisk_chan}"
+                    response = requests.get(fallback_url, timeout=5)
+                except Exception:
+                    raise exc
+            else:
+                raise exc
+
         try:
             resp_json = response.json()
         except Exception:
@@ -363,12 +380,24 @@ async def api_bulk_acknowledge():
     success_count = 0
     for chan in channels:
         try:
-            resp = requests.get(f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={chan}", timeout=3)
-            if resp.status_code == 200:
+            try:
+                resp = requests.get(f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={chan}", timeout=3)
+            except Exception as exc:
+                if CALL_REGISTER_HOST in ("192.168.101.17", "192.168.101.111"):
+                    try:
+                        fallback_url = f"{CALL_REGISTER_HTTP_SCHEME}://127.0.0.1:{CALL_REGISTER_PORT}/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}?asterisk_chan={chan}"
+                        resp = requests.get(fallback_url, timeout=3)
+                    except Exception:
+                        resp = None
+                else:
+                    resp = None
+
+            if resp is not None and resp.status_code == 200:
                 success_count += 1
                 results.append({"channel": chan, "status": 200, "success": True})
             else:
-                results.append({"channel": chan, "status": resp.status_code, "success": False})
+                status_code = resp.status_code if resp is not None else 500
+                results.append({"channel": chan, "status": status_code, "success": False})
         except Exception as exc:
             results.append({"channel": chan, "status": 500, "error": str(exc), "success": False})
 

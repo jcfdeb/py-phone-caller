@@ -7,9 +7,11 @@ when an audio file is ready to be played.
 """
 
 import asyncio
+import glob
 import logging
 import os
 import pathlib
+import re
 import sys
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -185,6 +187,14 @@ async def is_audio_ready(request):
     filename = resolve_audio_filename(msg_chk_sum, lang)
     output_path = os.path.join(script_dir, SERVING_AUDIO_FOLDER, filename)
     exists = await asyncio.to_thread(wave_file_exists, output_path)
+    if not exists:
+        stem = msg_chk_sum.split("_", 1)[0]
+        abs_folder = os.path.join(script_dir, SERVING_AUDIO_FOLDER)
+        matches = glob.glob(os.path.join(abs_folder, f"{stem}_*.wav"))
+        if not matches:
+            matches = glob.glob(os.path.join(abs_folder, f"{stem}.wav"))
+        if matches:
+            exists = any(wave_file_exists(m) for m in matches)
 
     return web.json_response({"exists": exists})
 
@@ -253,6 +263,37 @@ async def create_audio(request):
     return web.json_response({"status": status_code, "cached": False})
 
 
+async def serve_audio(request: web.Request) -> web.StreamResponse:
+    """
+    Serves generated TTS wave audio files with transparent fallback
+    between exact language-scoped filenames and base checksum filenames.
+    """
+    filename = request.match_info.get("filename", "")
+    if not filename or not re.match(r"^[a-zA-Z0-9_\-.]+\.wav$", filename):
+        raise web.HTTPBadRequest(reason="Invalid audio filename")
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    abs_audio_folder = os.path.join(script_dir, SERVING_AUDIO_FOLDER)
+    file_path = os.path.join(abs_audio_folder, filename)
+
+    if not os.path.isfile(file_path):
+        stem = filename[:-4] if filename.endswith(".wav") else filename
+        if "_" not in stem:
+            matches = glob.glob(os.path.join(abs_audio_folder, f"{stem}_*.wav"))
+            if matches:
+                file_path = sorted(matches)[0]
+        else:
+            base_chk = stem.split("_", 1)[0]
+            base_file = os.path.join(abs_audio_folder, f"{base_chk}.wav")
+            if os.path.isfile(base_file):
+                file_path = base_file
+
+    if os.path.isfile(file_path) and wave_file_exists(file_path):
+        return web.FileResponse(file_path)
+
+    raise web.HTTPNotFound(reason=f"Audio file '{filename}' not found")
+
+
 async def get_languages(request: web.Request) -> web.Response:
     """
     Returns the list of available languages for the active TTS engine
@@ -273,6 +314,7 @@ async def init_app():
     app.router.add_post(f"/{GENERATE_AUDIO_APP_ROUTE}", create_audio)
     app.router.add_get(f"/{IS_AUDIO_READY_ENDPOINT}", is_audio_ready)
     app.router.add_get(f"/{LANGUAGES_ENDPOINT}", get_languages)
+    app.router.add_get(f"/{SERVING_AUDIO_FOLDER}/{{filename}}", serve_audio)
 
     app.router.add_static(
         f"/{SERVING_AUDIO_FOLDER}/",

@@ -276,10 +276,6 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
         item["flag"] = LANGUAGE_FLAGS.get(item["code"], "")
 
     all_languages: List[Dict[str, Any]] = list(active_langs)
-    seen_normalized = {
-        LANGUAGE_ALIASES.get(item["code"].lower(), item["code"].lower())
-        for item in active_langs
-    }
     seen_codes = {item["code"] for item in active_langs}
 
     offline_engines = [
@@ -292,8 +288,7 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
             continue
         for m in installed[eng_key]:
             c = m["code"]
-            norm = LANGUAGE_ALIASES.get(c.lower(), c.lower())
-            if norm not in seen_normalized and c not in seen_codes:
+            if c not in seen_codes:
                 all_languages.append({
                     "code": c,
                     "name": m["name"],
@@ -302,14 +297,12 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
                     "is_default": False,
                     "flag": LANGUAGE_FLAGS.get(c, ""),
                 })
-                seen_normalized.add(norm)
                 seen_codes.add(c)
 
     if current_engine != TTSEngine.KOKORO and installed["kokoro_tts"]["ready"]:
         for v in installed["kokoro_tts"]["voices"]:
             lang_code = _kokoro_voice_to_lang(v)
-            norm = LANGUAGE_ALIASES.get(lang_code.lower(), lang_code.lower())
-            if norm not in seen_normalized and lang_code not in seen_codes:
+            if lang_code not in seen_codes:
                 all_languages.append({
                     "code": lang_code,
                     "voice": v,
@@ -319,7 +312,6 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
                     "is_default": False,
                     "flag": LANGUAGE_FLAGS.get(lang_code, ""),
                 })
-                seen_normalized.add(norm)
                 seen_codes.add(lang_code)
 
     return {
@@ -346,6 +338,31 @@ def resolve_engine_for_language(
         return current_engine
 
     installed = scan_installed_languages(base_models_dir)["installed_models"]
+
+    # 1. Exact match against installed models:
+    def _exact_match(eng: TTSEngine) -> bool:
+        if eng == TTSEngine.KOKORO:
+            if clean_lang == KOKORO_LANG:
+                return True
+            return any(
+                _kokoro_voice_to_lang(v) == clean_lang
+                for v in installed.get("kokoro_tts", {}).get("voices", [])
+            )
+        key = eng.value
+        return any(
+            m["code"] == clean_lang
+            for m in installed.get(key, [])
+        )
+
+    if _exact_match(current_engine):
+        return current_engine
+
+    candidate_order = (TTSEngine.FACEBOOK_MMS, TTSEngine.PIPER, TTSEngine.SILERO, TTSEngine.KOKORO)
+    for candidate in candidate_order:
+        if candidate != current_engine and _exact_match(candidate):
+            return candidate
+
+    # 2. Normalized alias match fallback
     norm = LANGUAGE_ALIASES.get(clean_lang.lower(), clean_lang.lower())
 
     def _supports(eng: TTSEngine) -> bool:
@@ -361,11 +378,11 @@ def resolve_engine_for_language(
                 "z": "zf_xiaobei", "zh": "zf_xiaobei",
             }
             target_v = voice_map.get(clean_lang) or voice_map.get(norm)
-            if target_v and target_v in installed["kokoro_tts"].get("voices", []):
+            if target_v and target_v in installed.get("kokoro_tts", {}).get("voices", []):
                 return True
             return any(
                 _kokoro_voice_to_lang(v) in (clean_lang, norm)
-                for v in installed["kokoro_tts"].get("voices", [])
+                for v in installed.get("kokoro_tts", {}).get("voices", [])
             )
         key = eng.value
         return any(
@@ -373,11 +390,11 @@ def resolve_engine_for_language(
             for m in installed.get(key, [])
         )
 
-    # 1. Prefer active engine if it supports the requested language
+    # Prefer active engine if it supports the requested language
     if _supports(current_engine):
         return current_engine
 
-    # 2. Check offline fallback candidates in priority order
+    # Check offline fallback candidates in priority order
     for candidate in (TTSEngine.SILERO, TTSEngine.PIPER, TTSEngine.FACEBOOK_MMS, TTSEngine.KOKORO):
         if _supports(candidate):
             return candidate

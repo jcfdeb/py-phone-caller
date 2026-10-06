@@ -4,6 +4,17 @@ import importlib
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from py_phone_caller_ui.app import app
+from py_phone_caller_ui.schemas import (
+    LocaleMeta,
+    TextDirection,
+    ServiceEndpointSummary,
+    AdminBootstrapResult,
+)
+from py_phone_caller_ui.services import (
+    LocaleService,
+    AdminBootstrapService,
+    UserAuthenticationService,
+)
 
 db_user = importlib.import_module(
     "py_phone_caller_utils.py_phone_caller_db.db_user"
@@ -500,7 +511,9 @@ async def test_get_noc_dashboard_metrics_calculation():
         {"id": "s3", "status": "failed"},
     ]
 
-    with patch("py_phone_caller_ui.home.telemetry.get_redis_client") as mock_redis,          patch("py_phone_caller_ui.home.telemetry.select_calls", new_callable=AsyncMock) as mock_sel_calls,          patch("py_phone_caller_ui.home.telemetry.select_sms", new_callable=AsyncMock) as mock_sel_sms:
+    with patch("py_phone_caller_ui.home.telemetry.get_redis_client") as mock_redis, \
+         patch("py_phone_caller_ui.home.telemetry.select_calls", new_callable=AsyncMock) as mock_sel_calls, \
+         patch("py_phone_caller_ui.home.telemetry.select_sms", new_callable=AsyncMock) as mock_sel_sms:
 
         mock_r = MagicMock()
         mock_r.get = AsyncMock(return_value=None)
@@ -585,7 +598,7 @@ def test_wallboard_view(mock_metrics, client):
         assert response.status_code == 200
         assert b"NOC Operations Center" in response.data
         assert b"90.0%" in response.data
-        assert b"data-bs-theme=\"dark\"" in response.data
+        assert b'data-bs-theme="dark"' in response.data
 
 
 def test_quick_diagnostics_validation(client):
@@ -801,3 +814,40 @@ def test_api_bulk_acknowledge(mock_get, client):
         data = res.get_json()
         assert data["total"] == 2
         assert data["acknowledged"] == 2
+
+
+def test_locale_service_resolution_and_negotiation():
+    svc = LocaleService()
+    assert svc.resolve_locale("it-IT") == "it"
+    assert svc.resolve_locale("es_ES") == "es"
+    assert svc.resolve_locale("zh-CN") == "zh"
+    assert svc.resolve_locale("unknown-lang") is None
+
+    # Priority 1: session
+    assert svc.negotiate_locale(session_locale="fr", cookie_locale="de") == "fr"
+    # Priority 2: cookie
+    assert svc.negotiate_locale(session_locale=None, cookie_locale="de") == "de"
+    # Priority 3: header matcher
+    assert svc.negotiate_locale(session_locale=None, cookie_locale=None, header_matcher=lambda candidates: "ru") == "ru"
+    # Fallback: default 'en'
+    assert svc.negotiate_locale(session_locale=None, cookie_locale=None, header_matcher=lambda candidates: None) == "en"
+
+
+def test_schemas_dataclasses():
+    meta = LocaleMeta(code="it", name="Italiano", flag="🇮🇹", direction=TextDirection.LTR)
+    assert meta.to_dict() == {"name": "Italiano", "flag": "🇮🇹", "dir": "ltr"}
+
+    boot = AdminBootstrapResult(admin_user="admin", already_initialized=True)
+    assert boot.already_initialized is True
+    assert boot.created is False
+
+
+def test_user_authentication_service():
+    mock_loader = MagicMock(return_value={"id": "1", "email": "test@example.com"})
+    auth_svc = UserAuthenticationService(loader_fn=mock_loader)
+    user = auth_svc.load_user("1")
+    assert user is not None
+    assert user.username == "test@example.com"
+
+    mock_loader.return_value = None
+    assert auth_svc.load_user("non-existent") is None

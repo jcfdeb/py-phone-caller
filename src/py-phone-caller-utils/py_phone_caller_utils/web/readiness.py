@@ -135,7 +135,8 @@ async def check_asterisk_pjsip_trunk(
     from aiohttp import ClientSession, BasicAuth, ClientTimeout
 
     try:
-        url = f"{ari_url.rstrip('/')}/ari/endpoints/PJSIP/{trunk_resource}"
+        endpoint_name = trunk_resource.split("/", 1)[-1] if "/" in trunk_resource else trunk_resource
+        url = f"{ari_url.rstrip('/')}/ari/endpoints/PJSIP/{endpoint_name}"
         auth = BasicAuth(username, secret) if username and secret else None
         async with ClientSession(timeout=ClientTimeout(total=2.5)) as session:
             async with session.get(url, auth=auth) as resp:

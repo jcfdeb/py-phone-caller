@@ -153,6 +153,7 @@ def text_to_speech_kokoro_tts(
         "h": "hf_alpha", "i": "if_sara", "j": "jf_alpha", "p": "pf_dora", "z": "zf_xiaobei",
         "en": "af_heart", "es": "ef_dora", "fr": "ff_siwis", "hi": "hf_alpha",
         "it": "if_sara", "ja": "jf_alpha", "pt": "pf_dora", "zh": "zf_xiaobei",
+        "spa": "ef_dora", "eng": "af_heart", "fra": "ff_siwis", "ita": "if_sara",
     }
 
     target_lang = language or KOKORO_LANG
@@ -167,7 +168,10 @@ def text_to_speech_kokoro_tts(
         current_file_dir, PRE_TRAINED_MODELS_FOLDER, KOKORO_MODELS_FOLDER
     )
 
-    kokoro_lang_reverse = {"en": "a", "es": "e", "fr": "f", "hi": "h", "it": "i", "ja": "j", "pt": "p", "zh": "z"}
+    kokoro_lang_reverse = {
+        "en": "a", "es": "e", "fr": "f", "hi": "h", "it": "i", "ja": "j", "pt": "p", "zh": "z",
+        "eng": "a", "spa": "e", "fra": "f", "ita": "i",
+    }
     kokoro_cli_lang = kokoro_lang_reverse.get(target_lang, target_lang)
 
     cmd = [

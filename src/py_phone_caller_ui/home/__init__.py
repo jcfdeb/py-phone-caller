@@ -16,6 +16,7 @@ from flask import Blueprint, Response, jsonify, redirect, render_template, reque
 from flask_login import login_required, logout_user
 
 from py_phone_caller_utils.config import settings
+from py_phone_caller_utils.checksums import gen_msg_chk_sum
 from py_phone_caller_utils.event_bus import subscribe_events
 from .telemetry import get_noc_dashboard_metrics
 
@@ -121,6 +122,22 @@ async def test_call_dispatch():
 
     if not phone:
         return jsonify({"success": False, "error": "Phone number is required."}), 400
+
+    # Pre-generate TTS audio so it is cached immediately
+    try:
+        if message:
+            chksum = await gen_msg_chk_sum(message)
+            audio_host = settings.get("generate_audio.generate_audio_host") or "127.0.0.1"
+            audio_port = settings.get("generate_audio.generate_audio_port") or 8082
+            if audio_host in ("192.168.101.17", "192.168.101.111"):
+                audio_host = "127.0.0.1"
+            gen_params = {"message": message, "msg_chk_sum": chksum}
+            if lang:
+                gen_params["lang"] = lang
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                await session.post(f"http://{audio_host}:{audio_port}/make_audio", params=gen_params)
+    except Exception as tts_err:
+        logger.warning("Pre-generation of test call audio failed: %s", tts_err)
 
     call_port = getattr(settings.asterisk_call, "asterisk_call_port", 8081)
     call_route = str(getattr(settings.asterisk_call, "asterisk_call_app_route_place_call", "place_call")).lstrip("/")

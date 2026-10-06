@@ -2,15 +2,18 @@
 Py Phone Caller UI application.
 
 Flask-based web UI for managing calls, schedules, users, WS events, address
-book, and SMS. Integrates with the backend services and exposes multiple blueprints.
+book, and SMS. Integrates with backend services and exposes multiple blueprints.
 Features full internationalization (i18n) across 10 locales via Flask-Babel
 and a real-time NOC Telemetry Dashboard.
 """
 
+from __future__ import annotations
 import asyncio
 import logging
 import os
 import sys
+from datetime import datetime, timedelta
+from typing import Any
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.dirname(current_dir)
@@ -21,22 +24,23 @@ if current_dir in sys.path:
 if src_dir not in sys.path:
     sys.path.append(src_dir)
 
-
-from py_phone_caller_ui.calls import calls_blueprint
-from flask import Flask, render_template, url_for, jsonify, Response, request, session, redirect
+import pytz
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_babel import Babel, gettext as _
-from py_phone_caller_utils.web.swagger import generate_swagger_ui_html, build_openapi_schema
 from flask_login import LoginManager
-from py_phone_caller_ui.home import home_blueprint
-from py_phone_caller_ui.login import login_blueprint
-from py_phone_caller_ui.schedule_call import schedule_call_blueprint
-from py_phone_caller_ui.users import users_blueprint
-from py_phone_caller_ui.ws_events import ws_events_blueprint
-from py_phone_caller_ui.address_book import address_book_blueprint
-from py_phone_caller_ui.sms import sms_blueprint
 
 from py_phone_caller_utils.env_validator import run_startup_health_banner
-run_startup_health_banner('py_phone_caller_ui')
+run_startup_health_banner("py_phone_caller_ui")
+
 from py_phone_caller_utils.login.user import User
 from py_phone_caller_utils.py_phone_caller_db.db_user import (
     ensure_admin_user_exists,
@@ -44,23 +48,58 @@ from py_phone_caller_utils.py_phone_caller_db.db_user import (
     reset_admin_password_if_needed,
 )
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_flask_app
-from datetime import datetime, timedelta
-import pytz
+from py_phone_caller_utils.web.swagger import build_openapi_schema, generate_swagger_ui_html
 
+from py_phone_caller_ui.address_book import address_book_blueprint
+from py_phone_caller_ui.calls import calls_blueprint
 from py_phone_caller_ui.constants import (
-    UI_SESSION_PROTECTION,
-    UI_SECRET_KEY,
-    UI_LISTEN_ON_HOST,
-    UI_LISTEN_ON_PORT,
-    UI_ADMIN_USER,
     LOG_FORMATTER,
     LOG_LEVEL,
+    UI_ADMIN_USER,
+    UI_LISTEN_ON_HOST,
+    UI_LISTEN_ON_PORT,
+    UI_SECRET_KEY,
+    UI_SESSION_PROTECTION,
 )
+from py_phone_caller_ui.exceptions import (
+    AdminBootstrapError,
+    LocaleResolutionError,
+    UiError,
+    UserAuthenticationError,
+)
+from py_phone_caller_ui.home import home_blueprint
+from py_phone_caller_ui.login import login_blueprint
+from py_phone_caller_ui.schedule_call import schedule_call_blueprint
+from py_phone_caller_ui.schemas import (
+    AdminBootstrapResult,
+    LocaleMeta,
+    ServiceEndpointSummary,
+    TextDirection,
+)
+from py_phone_caller_ui.services import (
+    LOCALE_ALIASES,
+    SUPPORTED_LOCALES,
+    AdminBootstrapService,
+    LocaleService,
+    UserAuthenticationService,
+)
+from py_phone_caller_ui.sms import sms_blueprint
+from py_phone_caller_ui.users import users_blueprint
+from py_phone_caller_ui.ws_events import ws_events_blueprint
 
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 logging.info(f"Logging initialized with level {LOG_LEVEL}")
 
 init_telemetry("py_phone_caller_ui")
+
+# Core domain services
+_locale_service = LocaleService(
+    supported_locales=SUPPORTED_LOCALES,
+    aliases=LOCALE_ALIASES,
+    default_locale="en",
+)
+_auth_service = UserAuthenticationService(loader_fn=load_user_by_id)
+_admin_service = AdminBootstrapService(admin_user=UI_ADMIN_USER)
 
 login_manager = LoginManager()
 login_manager.session_protection = UI_SESSION_PROTECTION
@@ -77,97 +116,21 @@ instrument_flask_app(app)
 app.config["SECRET_KEY"] = UI_SECRET_KEY
 app.config["SESSION_PERMANENT"] = False
 
-# i18n & Locales Configuration
-SUPPORTED_LOCALES = {
-    "en": {"name": "English", "flag": "🇬🇧", "dir": "ltr"},
-    "es": {"name": "Español", "flag": "🇪🇸", "dir": "ltr"},
-    "it": {"name": "Italiano", "flag": "🇮🇹", "dir": "ltr"},
-    "de": {"name": "Deutsch", "flag": "🇩🇪", "dir": "ltr"},
-    "fr": {"name": "Français", "flag": "🇫🇷", "dir": "ltr"},
-    "ru": {"name": "Русский", "flag": "🇷🇺", "dir": "ltr"},
-    "zh": {"name": "中文 (Chinese)", "flag": "🇨🇳", "dir": "ltr"},
-    "hi": {"name": "हिन्दी (Hindi)", "flag": "🇮🇳", "dir": "ltr"},
-    "he": {"name": "עברית (Hebrew)", "flag": "🇮🇱", "dir": "rtl"},
-    "ar": {"name": "العربية (Arabic)", "flag": "🇸🇦", "dir": "rtl"},
-}
-
-LOCALE_ALIASES = {
-    "zh_cn": "zh",
-    "zh-cn": "zh",
-    "zh_hans": "zh",
-    "zh-hans": "zh",
-    "zh_sg": "zh",
-    "zh-sg": "zh",
-    "zh_tw": "zh",
-    "zh-tw": "zh",
-    "hi_in": "hi",
-    "hi-in": "hi",
-    "es_es": "es",
-    "es-es": "es",
-    "it_it": "it",
-    "it-it": "it",
-    "de_de": "de",
-    "de-de": "de",
-    "fr_fr": "fr",
-    "fr-fr": "fr",
-    "ru_ru": "ru",
-    "ru-ru": "ru",
-    "en_us": "en",
-    "en-us": "en",
-    "en_gb": "en",
-    "en-gb": "en",
-    "he_il": "he",
-    "he-il": "he",
-    "ar_sa": "ar",
-    "ar-sa": "ar",
-    "ar_eg": "ar",
-    "ar-eg": "ar",
-    "ar_ae": "ar",
-    "ar-ae": "ar",
-}
-
 
 def resolve_locale(code: str | None) -> str | None:
-    """
-    Resolves standard or regional language code to a supported UI locale.
-    """
-    if not code:
-        return None
-    normalized = code.strip().lower().replace("-", "_")
-    if normalized in SUPPORTED_LOCALES:
-        return normalized
-    if normalized in LOCALE_ALIASES:
-        return LOCALE_ALIASES[normalized]
-    prefix = normalized.split("_")[0]
-    if prefix in SUPPORTED_LOCALES:
-        return prefix
-    return None
+    """Resolves standard or regional language code to a supported UI locale."""
+    return _locale_service.resolve_locale(code)
 
 
-def get_locale():
-    """
-    Negotiates locale with persistent priority:
-    1. Explicit session preference
-    2. Persistent HTTP cookie
-    3. Accept-Language header best match
-    4. Default fallback: 'en'
-    """
-    if "locale" in session:
-        resolved = resolve_locale(session["locale"])
-        if resolved:
-            return resolved
+def get_locale() -> str:
+    """Negotiates locale with persistent priority cascade."""
+    session_loc = session.get("locale")
     cookie_loc = request.cookies.get("locale")
-    if cookie_loc:
-        resolved = resolve_locale(cookie_loc)
-        if resolved:
-            return resolved
-    candidates = list(SUPPORTED_LOCALES.keys()) + list(LOCALE_ALIASES.keys())
-    best = request.accept_languages.best_match(candidates)
-    if best:
-        resolved = resolve_locale(best)
-        if resolved:
-            return resolved
-    return "en"
+    return _locale_service.negotiate_locale(
+        session_locale=session_loc,
+        cookie_locale=cookie_loc,
+        header_matcher=request.accept_languages.best_match,
+    )
 
 
 app.config["BABEL_DEFAULT_LOCALE"] = "en"
@@ -183,12 +146,12 @@ login_manager.login_view = "login_blueprint.login"
 
 
 @app.context_processor
-def inject_now():
+def inject_now() -> dict[str, Any]:
     return {"now": datetime.now(pytz.utc), "timedelta": timedelta}
 
 
 @app.context_processor
-def inject_locale_info():
+def inject_locale_info() -> dict[str, Any]:
     curr = get_locale()
     return {
         "current_locale": curr,
@@ -199,11 +162,9 @@ def inject_locale_info():
 
 
 @app.route("/set_locale/<lang_code>")
-def set_locale(lang_code):
-    """
-    Switches the UI language, persisting choice in session and long-lived cookie.
-    """
-    resolved = resolve_locale(lang_code)
+def set_locale(lang_code: str) -> Response:
+    """Switches the UI language, persisting choice in session and long-lived cookie."""
+    resolved = _locale_service.resolve_locale(lang_code)
     lang = resolved if resolved else "en"
     session["locale"] = lang
     target = request.referrer or url_for("home_blueprint.home")
@@ -213,42 +174,20 @@ def set_locale(lang_code):
 
 
 @login_manager.unauthorized_handler
-def unauthorized():
-    """
-    Handles unauthorized access attempts by rendering the unauthorized page.
-
-    This function returns the unauthorized.html template with a link to the login page.
-
-    Returns:
-        flask.Response: The rendered HTML unauthorized page.
-
-    https://flask-login.readthedocs.io/en/latest/#customizing-the-login-process
-    """
-
+def unauthorized() -> str:
+    """Handles unauthorized access attempts by rendering the unauthorized page."""
     return render_template(
         "unauthorized.html", login_url=url_for("login_blueprint.login")
     )
 
 
 @login_manager.user_loader
-def load_user(user_id):
-    """
-    Loads a user for Flask-Login based on the provided user ID.
-
-    This function retrieves the user record from the database and returns a User object if found, or None otherwise.
-
-    Args:
-        user_id (str): The unique identifier of the user.
-
-    Returns:
-        User or None: The User object if found, or None if the user does not exist.
-    """
-    loaded_user = load_user_by_id(user_id)
-    if loaded_user is None:
-        return None
-    return User(username=loaded_user.get("email"))
+def load_user(user_id: str) -> User | None:
+    """Loads a user for Flask-Login based on the provided user ID."""
+    return _auth_service.load_user(user_id)
 
 
+# Register modular blueprints
 app.register_blueprint(login_blueprint)
 app.register_blueprint(home_blueprint)
 app.register_blueprint(calls_blueprint)
@@ -261,7 +200,7 @@ app.register_blueprint(sms_blueprint)
 
 # OpenAPI 3.0 /docs Swagger UI specification for the Web Dashboard
 @app.route("/docs")
-def ui_swagger_docs():
+def ui_swagger_docs() -> Response:
     return Response(
         generate_swagger_ui_html(
             title="py-phone-caller Web UI API",
@@ -272,7 +211,7 @@ def ui_swagger_docs():
 
 
 @app.route("/docs/swagger.json")
-def ui_swagger_json():
+def ui_swagger_json() -> Response:
     schema = build_openapi_schema(
         title="py-phone-caller Web UI",
         description="Web dashboard, metrics visualization, and administrative REST endpoints",
@@ -308,33 +247,18 @@ def ui_swagger_json():
     return jsonify(schema)
 
 
-async def _setup_admin_user_async():
+async def _setup_admin_user_async() -> None:
     """Internal async function to handle admin user setup."""
     created_admin_password = await ensure_admin_user_exists(UI_ADMIN_USER)
     if created_admin_password is None:
         await reset_admin_password_if_needed(UI_ADMIN_USER)
 
 
-def setup_admin_user():
+def setup_admin_user() -> None:
     """
-    Ensures that an admin user exists and resets the admin password if required by environment settings.
-
-    This function checks environment variables and the user table, performing password reset or admin user creation as needed.
-
-    Returns:
-        None
+    Ensures that an admin user exists and resets the admin password if required.
     """
-    is_reseted = os.environ.get("UI_ADMIN_PASSWORD_RESETED")
-    logging.debug(f"Checking admin user setup. UI_ADMIN_PASSWORD_RESETED: {is_reseted}")
-
-    if not is_reseted:
-        logging.debug("Performing admin user setup...")
-        try:
-            asyncio.run(_setup_admin_user_async())
-            os.environ["UI_ADMIN_PASSWORD_RESETED"] = "True"
-            logging.debug("Admin user setup completed successfully.")
-        except Exception as e:
-            logging.error(f"Failed to setup admin user: {e}", exc_info=True)
+    _admin_service.bootstrap()
 
 
 setup_admin_user()

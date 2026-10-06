@@ -30,6 +30,7 @@ class ScheduledCalls(Table):
     call_chk_sum = Varchar(length=64, default="")
     inserted_at = Timestamp(default=TimestampNow())
     scheduled_at = Timestamp(default=TimestampNow())
+    lang = Varchar(length=32, default="")
 
 
 class Users(Table):
@@ -74,6 +75,7 @@ class Calls(Table):
     oncall = Boolean(default=False)
     backup_callee = Boolean(default=False)
     call_backup_callee_number_calls = SmallInt(default=0)
+    lang = Varchar(length=32, default="")
 
 
 class AddressBook(Table):

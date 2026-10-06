@@ -15,6 +15,8 @@ from src.asterisk_caller.asterisk_caller import gen_headers
 from src.asterisk_caller.asterisk_caller import send_ari_continue
 from src.asterisk_caller.asterisk_caller import OnCallPhoneUnavailable
 from src.asterisk_caller.asterisk_caller import _resolve_oncall_phone
+from src.asterisk_caller.asterisk_caller import _format_phone
+from src.asterisk_caller.asterisk_caller import get_asterisk_query_string
 
 ASTERISK_CHAN = "1646889318"
 
@@ -304,3 +306,75 @@ async def test_asterisk_caller_ready_probe_with_trunk(aiohttp_client, monkeypatc
     assert "asterisk_ari" in data["checks"]
     assert "pjsip_trunk" in data["checks"]
     assert data["checks"]["pjsip_trunk"]["ready"] is True
+
+
+# ---------------------------------------------------------------------------
+# Extra behavioral lock-in tests
+# ---------------------------------------------------------------------------
+
+def test_format_phone():
+    assert _format_phone("+39123456789") == "0039123456789"
+    assert _format_phone("0039123456789") == "0039123456789"
+    assert _format_phone("12345") == "12345"
+
+
+@pytest.mark.asyncio
+async def test_get_asterisk_query_string():
+    qs1 = await get_asterisk_query_string("PJSIP/provider-trunk", "+39123456")
+    assert "endpoint=PJSIP/0039123456@provider-trunk" in qs1
+
+    qs2 = await get_asterisk_query_string("SIP/{phone}@custom-trunk", "+39987654")
+    assert "endpoint=SIP/0039987654@custom-trunk" in qs2
+
+    qs3 = await get_asterisk_query_string("Local", "100")
+    assert "endpoint=Local/100" in qs3
+
+
+@pytest.mark.asyncio
+async def test_endpoint_call_to_queue(aiohttp_client):
+    from src.asterisk_caller.asterisk_caller import init_app
+    app = await init_app()
+    client = await aiohttp_client(app)
+
+    resp = await client.post("/call_to_queue", json={"phone": "0039123456", "message": "Queue alert"})
+    assert resp.status == 200
+    assert await resp.json() == {"status": 200}
+
+    # Should have queued item in asterisk_caller.CALL_QUEUE
+    item = asterisk_caller.CALL_QUEUE.get(timeout=2.0)
+    assert item["phone"] == "0039123456"
+    assert item["message"] == "Queue alert"
+
+
+@pytest.mark.asyncio
+async def test_endpoint_place_call_missing_params(aiohttp_client):
+    from src.asterisk_caller.asterisk_caller import init_app
+    app = await init_app()
+    client = await aiohttp_client(app)
+
+    resp = await client.post("/place_call", json={"phone": "12345"})
+    assert resp.status == 400
+
+
+@pytest.mark.asyncio
+async def test_endpoint_asterisk_play_success(aiohttp_client):
+    from src.asterisk_caller.asterisk_caller import init_app
+    app = await init_app()
+    client = await aiohttp_client(app)
+
+    with patch("src.asterisk_caller.asterisk_caller.ClientSession") as mock_session_cls, \
+         patch("src.asterisk_caller.asterisk_caller.send_ari_continue", new_callable=AsyncMock) as mock_cont:
+        mock_resp = AsyncMock()
+        mock_resp.status = 201
+        mock_session = AsyncMock()
+        mock_session.post.return_value = mock_resp
+        mock_session.__aenter__.return_value = mock_session
+        mock_session_cls.return_value = mock_session
+
+        resp = await client.post(
+            "/play",
+            json={"asterisk_chan": "PJSIP/chan-01", "msg_chk_sum": "hash123", "lang": "it"},
+        )
+        assert resp.status == 200
+        assert await resp.json() == {"status": 201}
+        mock_cont.assert_called_once()
