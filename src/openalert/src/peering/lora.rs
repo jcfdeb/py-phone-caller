@@ -1,12 +1,12 @@
 //! # Physical LoRa Hardware Transceiver Driver
 //!
 //! Provides native serial/UART communication over `/dev/ttyUSB*`, `/dev/ttyS*`, or `/dev/serial0`
-//! with SLIP framing (RFC 1055), exact Semtech SX126x/SX127x air-time modeling, and an ETSI 1%
-//! duty-cycle regulator with emergency priority queues.
+//! with SLIP framing (RFC 1055), exact Semtech SX126x/SX127x air-time modeling, an ETSI 1%
+//! duty-cycle regulator with emergency priority queues, and physical RF signal telemetry.
 
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-// tracing imports unused in lora.rs
 
 pub const SLIP_END: u8 = 0xC0;
 pub const SLIP_ESC: u8 = 0xDB;
@@ -86,6 +86,62 @@ pub fn slip_decode_chunk(chunk: &[u8]) -> Vec<Vec<u8>> {
     decoder.decode_chunk(chunk)
 }
 
+/// Radio frequency signal telemetry extracted from LoRa frame trailers or module registers.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub struct LoraRfTelemetry {
+    /// Received Signal Strength Indicator in dBm (e.g. -120 to -30).
+    pub rssi_dbm: i16,
+    /// Signal-to-Noise Ratio in dB (e.g. -20.0 to +10.0).
+    pub snr_db: f32,
+}
+
+impl LoraRfTelemetry {
+    /// Constructs telemetry directly from dBm and dB values.
+    pub fn new(rssi_dbm: i16, snr_db: f32) -> Self {
+        Self { rssi_dbm, snr_db }
+    }
+
+    /// Converts raw SX126x/SX127x modem trailer bytes (raw RSSI, signed SNR/4) into engineering units.
+    pub fn from_raw_trailer(raw_rssi: u8, raw_snr: u8) -> Self {
+        let rssi_dbm = if raw_rssi > 127 {
+            (raw_rssi as i16) - 256
+        } else {
+            -(raw_rssi as i16)
+        };
+        let snr_db = (raw_snr as i8 as f32) / 4.0;
+        Self { rssi_dbm, snr_db }
+    }
+
+    /// Encodes telemetry into standard 2-byte trailer `[raw_rssi, raw_snr]`.
+    pub fn to_raw_trailer(&self) -> (u8, u8) {
+        let raw_rssi = self.rssi_dbm.unsigned_abs().min(255) as u8;
+        let raw_snr = ((self.snr_db * 4.0).clamp(-128.0, 127.0) as i8) as u8;
+        (raw_rssi, raw_snr)
+    }
+}
+
+/// Appends a 2-byte RF telemetry trailer to a payload before SLIP encoding.
+pub fn append_lora_rf_trailer(payload: &[u8], telemetry: LoraRfTelemetry) -> Vec<u8> {
+    let (r, s) = telemetry.to_raw_trailer();
+    let mut out = Vec::with_capacity(payload.len() + 2);
+    out.extend_from_slice(payload);
+    out.push(r);
+    out.push(s);
+    out
+}
+
+/// Attempts to parse and strip a 2-byte RF telemetry trailer from the end of a received frame.
+pub fn strip_lora_rf_trailer(frame: &[u8]) -> (&[u8], Option<LoraRfTelemetry>) {
+    if frame.len() >= 2 {
+        let raw_rssi = frame[frame.len() - 2];
+        let raw_snr = frame[frame.len() - 1];
+        let telemetry = LoraRfTelemetry::from_raw_trailer(raw_rssi, raw_snr);
+        (&frame[..frame.len() - 2], Some(telemetry))
+    } else {
+        (frame, None)
+    }
+}
+
 /// LoRa physical radio modulation parameters for air-time calculations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoraModulation {
@@ -125,28 +181,19 @@ impl Default for LoraModulation {
 }
 
 impl LoraModulation {
-    /// Calculates theoretical air-time in milliseconds for a given payload size (Semtech SX126x/SX127x formula).
+    /// Calculates theoretical air-time in milliseconds for a given packet payload length (bytes).
     pub fn calculate_air_time_ms(&self, payload_bytes: usize) -> f64 {
-        let sf = self.spreading_factor.clamp(7, 12) as f64;
         let bw_hz = (self.bandwidth_khz * 1000) as f64;
-        let cr = self.coding_rate.clamp(1, 4) as f64;
-        let n_preamble = self.preamble_symbols as f64;
+        let sf = self.spreading_factor as f64;
+        let t_sym = (1u64 << self.spreading_factor) as f64 / bw_hz;
 
-        // Symbol duration (seconds)
-        let t_sym = (2.0f64.powf(sf)) / bw_hz;
+        let t_preamble = (self.preamble_symbols as f64 + 4.25) * t_sym;
 
-        // Preamble duration
-        let t_preamble = (n_preamble + 4.25) * t_sym;
-
-        // Payload symbol count
-        let de = if self.low_data_rate_optimization {
-            1.0
-        } else {
-            0.0
-        };
-        let ih = if self.explicit_header { 0.0 } else { 1.0 };
-        let crc = if self.crc_enabled { 1.0 } else { 0.0 };
         let pl = payload_bytes as f64;
+        let de = if self.low_data_rate_optimization { 1.0 } else { 0.0 };
+        let cr = self.coding_rate as f64;
+        let crc = if self.crc_enabled { 1.0 } else { 0.0 };
+        let ih = if self.explicit_header { 0.0 } else { 1.0 };
 
         let num = 8.0 * pl - 4.0 * sf + 28.0 + 16.0 * crc - 20.0 * ih;
         let den = 4.0 * (sf - 2.0 * de);
@@ -332,6 +379,23 @@ mod tests {
         let d3 = decoder.decode_chunk(&enc2[4..]);
         assert_eq!(d3.len(), 1);
         assert_eq!(d3[0], p2);
+    }
+
+    #[test]
+    fn test_lora_rf_telemetry_trailer_roundtrip() {
+        let telemetry = LoraRfTelemetry::new(-75, 6.25);
+        let (raw_r, raw_s) = telemetry.to_raw_trailer();
+        let decoded = LoraRfTelemetry::from_raw_trailer(raw_r, raw_s);
+        assert_eq!(decoded.rssi_dbm, -75);
+        assert!((decoded.snr_db - 6.25).abs() < 0.01);
+
+        let payload = b"Test Alert Body";
+        let with_trailer = append_lora_rf_trailer(payload, telemetry);
+        assert_eq!(with_trailer.len(), payload.len() + 2);
+
+        let (body, parsed_telem) = strip_lora_rf_trailer(&with_trailer);
+        assert_eq!(body, payload);
+        assert_eq!(parsed_telem, Some(decoded));
     }
 
     #[test]

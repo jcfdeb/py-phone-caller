@@ -37,6 +37,8 @@ use tokio::net::UdpSocket;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 
+type LoraPendingReceivers = Arc<Mutex<HashMap<String, (u32, mpsc::Receiver<Vec<u8>>)>>>;
+
 /// Central peering manager orchestrating UDP sockets, crypto, actor workers, and inbound routing.
 pub struct PeeringService {
     config: PeeringConfig,
@@ -50,7 +52,7 @@ pub struct PeeringService {
     storage: Option<Arc<Storage>>,
     #[allow(dead_code)]
     lora_transmitters: Arc<HashMap<String, mpsc::Sender<Vec<u8>>>>,
-    lora_pending_receivers: Arc<Mutex<HashMap<String, (u32, mpsc::Receiver<Vec<u8>>)>>>,
+    lora_pending_receivers: LoraPendingReceivers,
 }
 
 impl PeeringService {
@@ -153,9 +155,15 @@ impl PeeringService {
 
     /// Returns live diagnostics across all configured peering workers and circuit breakers.
     pub async fn get_diagnostics(&self) -> PeeringStatusReport {
+        let rt = self.routing_table.read().await;
         let mut peers = Vec::new();
         for worker in self.workers.values() {
-            let diag = worker.get_diagnostics(self.storage.as_deref()).await;
+            let mut diag = worker.get_diagnostics(self.storage.as_deref()).await;
+            if let Some(rf) = rt.get_peer_rf_telemetry(&diag.name) {
+                diag.rssi_dbm = Some(rf.avg_rssi_dbm);
+                diag.snr_db = Some(rf.avg_snr_db);
+                diag.rf_penalty = Some(rf.penalty);
+            }
             peers.push(diag);
         }
         peers.sort_by(|a, b| a.name.cmp(&b.name));
@@ -267,6 +275,7 @@ impl PeeringService {
 
         let mut decoder = SlipDecoder::new();
         let mut read_buf = [0u8; 256];
+        let mut supervisor = crate::watchdog::UsbPortSupervisor::new(&dev_path, 3);
 
         loop {
             let port = match tokio_serial::new(&dev_path, baud_rate).open_native_async() {
@@ -275,6 +284,7 @@ impl PeeringService {
                         "📻 [LoRa Serial Duplex] Actively opened {} at {} baud",
                         dev_path, baud_rate
                     );
+                    supervisor.record_success();
                     p
                 }
                 Err(e) => {
@@ -282,6 +292,10 @@ impl PeeringService {
                         "LoRa serial port '{}' not currently available ({}). Retrying in 5s...",
                         dev_path, e
                     );
+                    if let Ok(true) = supervisor.record_failure() {
+                        info!("🔌 Triggered autonomous USB reset for '{}'; waiting 2s for kernel re-enumeration", dev_path);
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 }
@@ -298,10 +312,15 @@ impl PeeringService {
                                     "LoRa serial port '{}' read 0 bytes (disconnected). Reconnecting...",
                                     dev_path
                                 );
+                                if let Ok(true) = supervisor.record_failure() {
+                                    info!("🔌 Triggered autonomous USB reset for '{}'; waiting 2s for kernel re-enumeration", dev_path);
+                                    tokio::time::sleep(Duration::from_secs(2)).await;
+                                }
                                 tokio::time::sleep(Duration::from_secs(3)).await;
                                 break;
                             }
                             Ok(n) => {
+                                supervisor.record_success();
                                 let frames = decoder.decode_chunk(&read_buf[..n]);
                                 for frame in frames {
                                     let src_desc = format!("lora:{}", dev_path);
@@ -313,6 +332,10 @@ impl PeeringService {
                                     "LoRa serial read interrupted on '{}' ({}). Re-opening port...",
                                     dev_path, e
                                 );
+                                if let Ok(true) = supervisor.record_failure() {
+                                    info!("🔌 Triggered autonomous USB reset for '{}'; waiting 2s for kernel re-enumeration", dev_path);
+                                    tokio::time::sleep(Duration::from_secs(2)).await;
+                                }
                                 tokio::time::sleep(Duration::from_secs(2)).await;
                                 break;
                             }
@@ -323,12 +346,21 @@ impl PeeringService {
                             Some(packet) => {
                                 if let Err(e) = writer.write_all(&packet).await {
                                     warn!("LoRa serial write_all error on '{}': {}", dev_path, e);
+                                    if let Ok(true) = supervisor.record_failure() {
+                                        info!("🔌 Triggered autonomous USB reset for '{}'; waiting 2s for kernel re-enumeration", dev_path);
+                                        tokio::time::sleep(Duration::from_secs(2)).await;
+                                    }
                                     break;
                                 }
                                 if let Err(e) = writer.flush().await {
                                     warn!("LoRa serial flush error on '{}': {}", dev_path, e);
+                                    if let Ok(true) = supervisor.record_failure() {
+                                        info!("🔌 Triggered autonomous USB reset for '{}'; waiting 2s for kernel re-enumeration", dev_path);
+                                        tokio::time::sleep(Duration::from_secs(2)).await;
+                                    }
                                     break;
                                 }
+                                supervisor.record_success();
                             }
                             None => {
                                 return;
@@ -348,18 +380,26 @@ impl PeeringService {
     ) {
         let dedup_window = Duration::from_secs(self.config.dedup_ttl_secs);
 
-        // 1. Decrypt and authenticate using XChaCha20-Poly1305
-        let (plaintext, mut matched_peer) = match self.key_registry.try_decrypt_any(datagram) {
-            Some(res) => res,
+        // 1. Decrypt and authenticate using XChaCha20-Poly1305 (with optional LoRa RF trailer)
+        let (actual_decrypted, rf_telemetry) = match self.key_registry.try_decrypt_any(datagram) {
+            Some(res) => (res, None),
             None => {
-                debug!(
-                    "⚠️ Discarded unauthenticated peering datagram ({} bytes) from {}",
-                    datagram.len(),
-                    src_desc
-                );
-                return;
+                let (stripped, telem) = crate::peering::lora::strip_lora_rf_trailer(datagram);
+                match self.key_registry.try_decrypt_any(stripped) {
+                    Some(res) => (res, telem),
+                    None => {
+                        debug!(
+                            "⚠️ Discarded unauthenticated peering datagram ({} bytes) from {}",
+                            datagram.len(),
+                            src_desc
+                        );
+                        return;
+                    }
+                }
             }
         };
+
+        let (plaintext, mut matched_peer) = actual_decrypted;
 
         // Match peer identity: from UDP address or LoRa serial node definition
         if matched_peer.is_none() {
@@ -381,6 +421,18 @@ impl PeeringService {
                         break;
                     }
                 }
+            }
+        }
+
+        if let Some(ref peer_name) = matched_peer
+            && let Some(telem) = rf_telemetry
+        {
+            let penalty = self.routing_table.write().await.update_peer_rf_telemetry(peer_name, telem.rssi_dbm, telem.snr_db);
+            let eng_guard = self.engine.read().await;
+            if let Some(ref eng) = *eng_guard {
+                eng.metrics().peering_rf_rssi_dbm.with_label_values(&[peer_name]).set(telem.rssi_dbm as f64);
+                eng.metrics().peering_rf_snr_db.with_label_values(&[peer_name]).set(telem.snr_db as f64);
+                eng.metrics().peering_rf_penalty_points.with_label_values(&[peer_name]).set(penalty as f64);
             }
         }
 

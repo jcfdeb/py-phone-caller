@@ -3691,6 +3691,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
+ "libc",
  "postcard",
  "prometheus",
  "rand 0.9.5",

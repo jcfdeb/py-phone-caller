@@ -22,20 +22,43 @@ pub struct InboundSms {
     pub body: String,
 }
 
+use crate::watchdog::UsbPortSupervisor;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 /// Serial AT Modem controller.
 #[derive(Debug, Clone)]
 pub struct ModemDriver {
     pub port_path: String,
     pub baud_rate: u32,
+    supervisor: Arc<Mutex<UsbPortSupervisor>>,
 }
 
 impl ModemDriver {
     /// Creates a new driver instance for the designated serial port.
     pub fn new(port_path: impl Into<String>, baud_rate: u32) -> Self {
+        let p = port_path.into();
+        let supervisor = Arc::new(Mutex::new(UsbPortSupervisor::new(&p, 3)));
         Self {
-            port_path: port_path.into(),
+            port_path: p,
             baud_rate,
+            supervisor,
         }
+    }
+
+    /// Records an I/O failure and triggers autonomous USB reset if threshold is reached.
+    pub async fn record_failure(&self) {
+        let mut sup = self.supervisor.lock().await;
+        if let Ok(true) = sup.record_failure() {
+            tracing::info!("🔌 Triggered autonomous USB reset for cellular modem '{}'", self.port_path);
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    }
+
+    /// Records successful communication.
+    pub async fn record_success(&self) {
+        let mut sup = self.supervisor.lock().await;
+        sup.record_success();
     }
 
     /// Resolves the effective serial port path.

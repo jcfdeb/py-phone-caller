@@ -51,6 +51,7 @@
 //! - [`peering`]: Decentralized UDP peering and out-of-band failover backhaul.
 //! - [`cli`]: Operational diagnostics and status inspection CLI.
 //! - [`sms`]: Cellular GSM/LTE SMS gateway (serial AT modem ingress, egress, and persistence).
+//! - [`watchdog`]: Autonomous hardware supervisors and kernel-level USB bus reset management.
 
 pub mod bitchat;
 pub mod cli;
@@ -67,6 +68,7 @@ pub mod peering;
 pub mod sms;
 pub mod storage;
 pub mod templates;
+pub mod watchdog;
 
 pub use bitchat::BitChatService;
 pub use config::AppConfig;
@@ -74,5 +76,6 @@ pub use engine::AlertEngine;
 pub use metrics::OpenAlertMetrics;
 pub use sms::SmsService;
 pub use storage::Storage;
+pub use watchdog::UsbPortSupervisor;
 
 pub use nostr_relay::EmbeddedNostrRelay;

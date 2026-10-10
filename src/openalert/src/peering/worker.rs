@@ -73,6 +73,9 @@ impl PeerWorkerHandle {
             circuit_state: cb.state(),
             consecutive_failures: cb.consecutive_failures(),
             spooled_count,
+            rssi_dbm: None,
+            snr_db: None,
+            rf_penalty: None,
         }
     }
 
