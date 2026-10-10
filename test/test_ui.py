@@ -851,3 +851,121 @@ def test_user_authentication_service():
 
     mock_loader.return_value = None
     assert auth_svc.load_user("non-existent") is None
+
+
+@pytest.mark.asyncio
+async def test_get_cluster_health_structure():
+    from py_phone_caller_ui.home.health import get_cluster_health
+    health = await get_cluster_health()
+    assert "gateway" in health
+    assert "iam" in health
+    assert "database" in health
+    assert "redis" in health
+    assert "asterisk" in health
+    assert "sms" in health
+    assert health["overall"] in ("healthy", "warning", "degraded")
+    assert "badge" in health["gateway"]
+    assert "badge" in health["iam"]
+
+
+def test_api_cluster_health_endpoint(client):
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        res = client.get("/api/cluster_health")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert "gateway" in data
+        assert "overall" in data
+        assert "badge" in data["database"]
+
+
+def test_unified_openapi_developer_portal(client):
+    res = client.get("/api/docs")
+    assert res.status_code == 200
+    html = res.data.decode("utf-8")
+    assert "py-phone-caller Unified API Portal" in html
+    assert "SwaggerUIBundle" in html
+    assert "/api/v1/alerts/docs/swagger.json" in html
+    assert "/api/v1/telephony/docs/swagger.json" in html
+
+
+def test_comprehensive_openapi_swagger_json(client):
+    """
+    Validates that /docs/swagger.json returns a valid OpenAPI 3.0.3 specification
+    documenting all Web UI endpoints, request bodies, schemas, and security schemes.
+    """
+    res = client.get("/docs/swagger.json")
+    assert res.status_code == 200
+    spec = res.get_json()
+    assert spec["openapi"] == "3.0.3"
+    assert "py-phone-caller Web UI & Operations Center" in spec["info"]["title"]
+    assert "paths" in spec
+    paths = spec["paths"]
+
+    assert "/" in paths
+    assert "/wallboard" in paths
+    assert "/api/dashboard_metrics" in paths
+    assert "/api/cluster_health" in paths
+    assert "/api/telemetry_stream" in paths
+    assert "/api/global_search" in paths
+    assert "/api/quick_oncall_status" in paths
+    assert "/api/quick_oncall_toggle" in paths
+    assert "/api/diagnostics/test_call" in paths
+    assert "/api/diagnostics/test_sms" in paths
+    assert "/api/audio_proxy/{filename}" in paths
+    assert "/api/languages" in paths
+    assert "/calls" in paths
+    assert "/calls/export_csv" in paths
+    assert "/calls/audit_report" in paths
+    assert "/calls/proxy_acknowledge" in paths
+    assert "/calls/api/bulk_acknowledge" in paths
+    assert "/schedule_call" in paths
+    assert "/schedule_call/export_csv" in paths
+    assert "/schedule_picker" in paths
+    assert "/address_book" in paths
+    assert "/address_book/api/add" in paths
+    assert "/address_book/api/modify/{contact_id}" in paths
+    assert "/address_book/api/delete" in paths
+    assert "/address_book/export_csv" in paths
+    assert "/address_book/import_csv" in paths
+    assert "/address_book/calendar" in paths
+    assert "/address_book/calendar/export_csv" in paths
+    assert "/address_book/calendar/import_csv" in paths
+    assert "/sms" in paths
+    assert "/sms/export_csv" in paths
+    assert "/ws_events" in paths
+    assert "/ws_events/export_csv" in paths
+    assert "/users" in paths
+    assert "/users/add" in paths
+    assert "/users/change_password" in paths
+    assert "/users/toggle_active" in paths
+    assert "/users/delete" in paths
+    assert "/login" in paths
+    assert "/logout" in paths
+    assert "/oauth2/login" in paths
+    assert "/oauth2/callback" in paths
+    assert "/health" in paths
+    assert "/metrics" in paths
+    assert "/set_locale/{lang_code}" in paths
+
+    test_call_post = paths["/api/diagnostics/test_call"]["post"]
+    assert "requestBody" in test_call_post
+    assert "description" in test_call_post
+    assert "responses" in test_call_post
+
+    add_contact_post = paths["/address_book/api/add"]["post"]
+    assert "requestBody" in add_contact_post
+    assert "responses" in add_contact_post
+
+    bulk_ack_post = paths["/calls/api/bulk_acknowledge"]["post"]
+    assert "requestBody" in bulk_ack_post
+
+    assert "components" in spec
+    assert "securitySchemes" in spec["components"]
+    assert "cookieAuth" in spec["components"]["securitySchemes"]
+    assert "bearerAuth" in spec["components"]["securitySchemes"]
+    assert "schemas" in spec["components"]

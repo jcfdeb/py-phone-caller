@@ -87,6 +87,11 @@ class WebhookPayload:
                 return [alert.description]
         return []
 
+    @property
+    def all_firing_descriptions(self) -> list[str]:
+        """Returns the descriptions of all firing alerts in the payload."""
+        return [alert.description for alert in self.alerts if alert.is_firing]
+
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> WebhookPayload:
         """

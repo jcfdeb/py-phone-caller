@@ -251,7 +251,6 @@ async def schedule_picker():
             "message": "'caller_register' unreachable, check your settings",
         }
 
-    # Pre-generate TTS audio so it is cached immediately
     try:
         msg_text = query_args.get("message")
         if msg_text:

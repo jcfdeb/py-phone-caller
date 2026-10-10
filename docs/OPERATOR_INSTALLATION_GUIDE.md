@@ -185,7 +185,12 @@ Only the reverse proxy (Caddy/Nginx) and Asterisk PBX are meant to be reachable,
 
 | Port | Protocol | Service | Description |
 | :--- | :--- | :--- | :--- |
-| **80 / 443** | TCP | Caddy Reverse Proxy | Web UI and API entrypoint |
+| **80 / 443** | TCP | Public Web / TLS Entrypoint | Reverse proxy entrypoint (Caddy, Nginx, or Apache 2) |
+| **9080 / 9443** | TCP | Apache APISIX Gateway | Enterprise API Gateway HTTP / HTTPS ingress |
+| **9001** | TCP | APISIX Dashboard | Web Management UI for APISIX Gateway |
+| **8180 / 8443** | TCP | Keycloak IAM | OIDC SSO & Identity Provider HTTP / HTTPS |
+| **9009** | TCP | Keycloak Management | Keycloak health and metrics probe endpoint |
+| **2379** | TCP | etcd (loopback) | APISIX Configuration Store (127.0.0.1 only) |
 | **5000** | TCP | `py_phone_caller_ui` | Internal Web Management UI |
 | **8081** | TCP | `asterisk_caller` | Call Queue & Outbound Call REST API |
 | **8082** | TCP | `generate_audio` | Neural TTS Audio Generation API |
@@ -206,7 +211,7 @@ Only the reverse proxy (Caddy/Nginx) and Asterisk PBX are meant to be reachable,
 
 ## 4. Method A: Automated Deployment with Ansible (On-VM / Systemd)
 
-The Ansible automation under `assets/ansible/` takes a freshly provisioned VM
+The Ansible automation under `deploy/ansible/` takes a freshly provisioned VM
 to a working platform: PostgreSQL, Redis/Valkey, Asterisk with ARI, and the
 eleven Python services as systemd units behind a reverse proxy.
 
@@ -235,15 +240,15 @@ Budget roughly **45 minutes**, most of it waiting for `uv sync` to download
 > trunk on the test host); and `py_phone_caller_remove_build_deps`.
 >
 > The step-by-step runbook with expected output at every step is
-> [`assets/ansible/deploy_all/README.md`](../assets/ansible/deploy_all/README.md).
+> [`deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md).
 
 ### 4.1 Choosing an Entry Point
 
 | Directory | Deploys | Use when |
 | :--- | :--- | :--- |
-| `assets/ansible/deploy_all/` | Asterisk **and** the services | The PBX shares the machine (most common) |
-| `assets/ansible/on-vm_py-phone-caller/` | The services only | Asterisk is a separate host or already managed |
-| `assets/ansible/asterisk_py-phone-caller/` | Asterisk only | You are building the PBX first, or separately |
+| `deploy/ansible/deploy_all/` | Asterisk **and** the services | The PBX shares the machine (most common) |
+| `deploy/ansible/on-vm_py-phone-caller/` | The services only | Asterisk is a separate host or already managed |
+| `deploy/ansible/asterisk_py-phone-caller/` | Asterisk only | You are building the PBX first, or separately |
 
 All three share one inventory (`on-vm_py-phone-caller/inventory`) and one set
 of `group_vars`, so the steps below apply to any of them. Commands are shown
@@ -281,7 +286,7 @@ a CI runner. It does **not** have to be the target.
 
 ```bash
 git clone https://github.com/jcfdeb/py-phone-caller.git
-cd py-phone-caller/assets/ansible/deploy_all
+cd py-phone-caller/deploy/ansible/deploy_all
 
 ansible-galaxy collection install -r requirements.yml
 ansible-galaxy collection list | grep -E 'ansible.posix|community.general|community.postgresql'
@@ -505,7 +510,7 @@ Wrote .../group_vars/app_servers/secrets.yml (0600, encrypt it with ansible-vaul
 
 Both are git-ignored: they mirror your live configuration, credentials and
 phone numbers included. Committed samples live in
-`assets/ansible/on-vm_py-phone-caller/examples/`.
+`deploy/ansible/on-vm_py-phone-caller/examples/`.
 
 > **`group_vars/app_servers/` must remain a directory.** Ansible reads every
 > file inside a `group_vars/<group>/` directory, but auto-loads a *plain* file
@@ -544,7 +549,7 @@ first, or write the fresh copy elsewhere with `--secrets-output`.
 
 ### 4.6 Declaring the Deployment Topology
 
-`assets/ansible/on-vm_py-phone-caller/group_vars/all.yml` holds everything
+`deploy/ansible/on-vm_py-phone-caller/group_vars/all.yml` holds everything
 that describes *this host* rather than the application. It is committed, and
 it is merged **last**, so regenerating the files from 4.5 never clobbers it.
 
@@ -763,15 +768,17 @@ ansible-playbook deploy_py-phone-caller.yml
 | Phase | Tag | What it does |
 | :--- | :--- | :--- |
 | Validate | `always` | Six assertions: every config section present, database settings set, no placeholder credentials, remote DB has an admin password, on-premise SMS declares modems, `/etc/hosts` entries well formed |
+| Credentials | `always` | Control-node Ansible Vault password generation & resolution for database, web UI, Keycloak IAM, and APISIX |
 | Prerequisites | `prereqs` | `/etc/hosts` block, OS packages, EPEL/CRB on RHEL, ffmpeg, Redis or Valkey, PostgreSQL server, Rust toolchain when on-premise SMS is selected |
 | Service account | `user` | `py-phone-caller` system user, `nologin` shell, home `/opt/py-phone-caller`; joins `dialout` for on-premise SMS |
 | Source | `source` | rsync of the repository preserving its layout; `--delete` is protected against removing the venv, TTS models, rendered config and Cargo target |
 | Python env | `install` | Installs `uv`, **verifies it landed**, `uv sync --frozen --all-packages --no-dev`, builds and installs the native SMS engine, **verifies it imports** |
 | Database | `database` | `pg_hba` for loopback passwords, role, database, `ALL` on schema `public`, `uuid-ossp` + `pgcrypto` |
+| Gateway & IAM | `gateway` | Deploys etcd, Apache APISIX, APISIX Dashboard, Keycloak OIDC, sets up realms, roles, users, and routing rules (when enabled) |
 | Configuration | `config` | Renders `settings.toml` (0640) and `.secrets.toml` (0600), each validated with `tomllib` **before** being moved into place |
 | Reverse proxy | `caddy` | Conflict check, then install and configure Caddy (skipped when disabled) |
-| Firewall | `firewall` | firewalld or ufw: SSH plus 80/443 |
-| systemd | `systemd` | Eleven units, every one ordered after `caller-register`; units dropped from the list are stopped, disabled and removed |
+| Firewall | `firewall` | firewalld or ufw: SSH plus 80/443 (and 9080/9443/8180/8443 when gateway is enabled) |
+| systemd | `systemd` | Eleven microservices units (plus 4 gateway units if enabled), every service ordered after `caller-register` |
 | Cleanup | `cleanup` | Opt-in removal of the build toolchain |
 
 The long step is `uv sync`: roughly 3 GB of wheels (`torch` 502 MB,
@@ -968,6 +975,17 @@ server {
 Keep `py_phone_caller_manage_firewall: true` either way — see the warning in
 section 3.
 
+#### With Enterprise Apache APISIX Gateway & Keycloak SSO
+
+For environments requiring centralized Single Sign-On (SSO), 3-tier Role-Based Access Control (RBAC), and Machine-to-Machine (M2M) API protection:
+
+- **Unified Ingress**: Apache APISIX acts as the secure entrypoint, handling path-based routing (`/` to Web UI, `/api/*` to REST endpoints, `/webhook` to Alertmanager).
+- **Centralized Identity**: Keycloak provides identity federation, user management, and JWT token issuance.
+- **OIDC PKCE Flow**: The Web UI uses standard OpenID Connect authorization code flow with PKCE (`/oauth2/login`, `/oauth2/callback`, `/oauth2/logout`) with fallback to local database authentication.
+- **M2M Token Verification**: Machine clients (such as Prometheus Alertmanager) request OAuth2 client credential tokens to access protected alert ingestion endpoints.
+
+👉 For comprehensive manual and automated deployment instructions, consult the **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**.
+
 ---
 
 ### 4.12 Day-2 Operations and Tags
@@ -976,8 +994,8 @@ section 3.
 
 ```bash
 vim src/config/settings.toml
-assets/ansible/tools/toml_to_ansible_vars.py
-cd assets/ansible/deploy_all
+deploy/ansible/tools/toml_to_ansible_vars.py
+cd deploy/ansible/deploy_all
 ansible-playbook deploy_py-phone-caller_stack.yml --tags config
 ```
 
@@ -1057,9 +1075,9 @@ Each unit receives
 those two TOML files — no guessing from `__file__` or the working directory.
 
 The complete variable reference lives in
-[`assets/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md`](../assets/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md),
+[`deploy/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md`](../deploy/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md),
 and the step-by-step runbook in
-[`assets/ansible/deploy_all/README.md`](../assets/ansible/deploy_all/README.md).
+[`deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md).
 
 ---
 
@@ -1113,18 +1131,18 @@ export VERSION="1.0.0"
 
 ```bash
 # Create the environment directory
-mkdir -p assets/docker-compose/env
+mkdir -p deploy/compose/env
 
 # Convert base settings
 uv run python assets/scripts/config/toml_to_dynaconf_env.py \
   --input src/config/settings.toml \
-  --output assets/docker-compose/env/py-phone-caller.env
+  --output deploy/compose/env/py-phone-caller.env
 
 # Convert secrets (if present)
 uv run python assets/scripts/config/toml_to_dynaconf_env.py \
   --ignore-missing \
   --input src/config/.secrets.toml \
-  --output assets/docker-compose/env/py-phone-caller.secrets.env
+  --output deploy/compose/env/py-phone-caller.secrets.env
 ```
 
 If Asterisk is running on the host machine outside containers, ensure `settings.toml` or your environment overrides Asterisk host:
@@ -1136,10 +1154,10 @@ export ASTERISK_HOST="host.containers.internal" # For Docker/Podman host communi
 
 ### 5.4 Starting the Compose Stack
 
-Navigate to `assets/docker-compose/` and start the stack in detached mode:
+Navigate to `deploy/compose/` and start the stack in detached mode:
 
 ```bash
-cd assets/docker-compose
+cd deploy/compose
 docker compose up -d
 ```
 *(Or `podman compose up -d`)*
@@ -1345,21 +1363,43 @@ curl "http://10.0.55.251:8085/get_sms"
 
 ### 7.1 Prometheus Alertmanager Webhook
 
-In your Alertmanager configuration (`alertmanager.yml`), add a webhook receiver:
+In your Alertmanager configuration (`alertmanager.yml`), configure a webhook receiver according to your deployment model:
+
+#### Option 1: Direct Webhook (Standalone LAN / Without APISIX or Keycloak)
+
+For deployments running inside a private trusted LAN or VPN where microservices are accessed directly without an identity gateway:
 
 ```yaml
 receivers:
   - name: "py-phone-caller"
     webhook_configs:
       - url: "http://10.0.55.251:8084/sms_before_call" # Sends SMS, waits 120s, then calls if unacknowledged
-        send_resolved: true
+        send_resolved: false
 ```
 
-Available webhook routes:
-- `/call_only`: Immediately triggers voice calls for alerts.
-- `/sms_only`: Dispatches SMS notifications only.
-- `/sms_before_call`: Sends an SMS first; if the alert remains firing after `sms_before_call_wait_seconds` (default 120s), places a voice call.
-- `/call_and_sms`: Simultaneously sends an SMS and places a voice call.
+#### Option 2: Enterprise M2M Webhook (With Apache APISIX & Keycloak SSO)
+
+For production environments published behind Apache APISIX with Keycloak Machine-to-Machine authentication:
+
+```yaml
+receivers:
+  - name: "py-phone-caller-m2m"
+    webhook_configs:
+      - url: "https://alerts.example.com/api/v1/alerts/call_only"
+        send_resolved: false
+        http_config:
+          oauth2:
+            client_id: "py-phone-caller-m2m"
+            client_secret: "<VAULT_M2M_SECRET>"
+            token_url: "https://alerts.example.com/realms/py-phone-caller/protocol/openid-connect/token"
+            scopes: ["email", "profile"]
+```
+
+#### Available webhook routes:
+- `/call_only` (or `/api/v1/alerts/call_only` via APISIX): Immediately triggers voice calls for alerts.
+- `/sms_only` (or `/api/v1/alerts/sms_only` via APISIX): Dispatches SMS notifications only.
+- `/sms_before_call` (or `/api/v1/alerts/sms_before_call` via APISIX): Sends an SMS first; if the alert remains firing after `sms_before_call_wait_seconds` (default 120s), places a voice call.
+- `/call_and_sms` (or `/api/v1/alerts/call_and_sms` via APISIX): Simultaneously sends an SMS and places a voice call.
 
 ---
 
@@ -1430,7 +1470,7 @@ the cause is fixed.
 
 | Message | Cause and fix |
 | :--- | :--- |
-| `py_phone_caller_config / py_phone_caller_config_secrets are empty` | The converter has not run, or its output is not in `group_vars/app_servers/` **as a directory**. Run `assets/ansible/tools/toml_to_ansible_vars.py`, then confirm with `ansible-inventory --host <host>`. |
+| `py_phone_caller_config / py_phone_caller_config_secrets are empty` | The converter has not run, or its output is not in `group_vars/app_servers/` **as a directory**. Run `deploy/ansible/tools/toml_to_ansible_vars.py`, then confirm with `ansible-inventory --host <host>`. |
 | `Placeholder credentials are still in place` | `.secrets.toml` still contains `change_me` / `super_secure_password`. Set real values and regenerate the vars (§4.4, §4.5). |
 | `db_host ... is not local, so the role cannot use peer authentication` | Supply `py_phone_caller_db_admin_password`, or set `py_phone_caller_manage_database: false` and provision by hand (§4.6). |
 | `caller_sms_carrier is 'on_premise' but caller_sms.modems is empty` | Add at least one `[[caller_sms.modems]]` entry with a `port`. |
@@ -1619,7 +1659,7 @@ audio with pydub. Enable RPM Fusion or install `ffmpeg` manually, then re-run
       `caller_sms_carrier`, UI admin e-mail (§4.4).
 - [ ] `src/config/.secrets.toml` holds real credentials — no `change_me` or
       `super_secure_password` left (§4.4).
-- [ ] `assets/ansible/tools/toml_to_ansible_vars.py` run; `ansible-inventory
+- [ ] `deploy/ansible/tools/toml_to_ansible_vars.py` run; `ansible-inventory
       --host <host>` shows all three variables loaded (§4.5).
 - [ ] `group_vars/all.yml` declares the topology, and the reverse-proxy
       decision is made (§4.6).

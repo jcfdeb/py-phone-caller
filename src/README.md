@@ -285,12 +285,12 @@ For container deployments, prefer generated Dynaconf env files instead of copyin
 ```bash
 uv run python assets/scripts/config/toml_to_dynaconf_env.py \
   --input src/config/settings.toml \
-  --output assets/docker-compose/env/py-phone-caller.env
+  --output deploy/compose/env/py-phone-caller.env
 
 uv run python assets/scripts/config/toml_to_dynaconf_env.py \
   --ignore-missing \
   --input src/config/.secrets.toml \
-  --output assets/docker-compose/env/py-phone-caller.secrets.env
+  --output deploy/compose/env/py-phone-caller.secrets.env
 ```
 
 The generated files contain `DYNACONF_SECTION__KEY` variables and are consumed by Docker Compose through `env_file`.
@@ -300,7 +300,7 @@ The generated files contain `DYNACONF_SECTION__KEY` variables and are consumed b
 ## 🚀 Running Services
 
 ### Option 1: Docker Compose (Recommended)
-See [`assets/docker-compose/README.md`](../assets/docker-compose/README.md) for Docker deployment.
+See [`deploy/compose/README.md`](../deploy/compose/README.md) for Docker deployment.
 
 ### Option 2: Local Development
 Each service can be run locally with:
@@ -316,7 +316,7 @@ uv run python -m asterisk_caller.asterisk_caller
 ```
 
 ### Option 3: Ansible Deployment
-See [`assets/ansible/deploy_all/README.md`](../assets/ansible/deploy_all/README.md) for production deployment.
+See [`deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md) for production deployment.
 
 ---
 
@@ -398,21 +398,21 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv run maturin develop --manifest-path py_
 Use Ansible for production deployments:
 
 ```bash
-cd assets/ansible/deploy_all
+cd deploy/ansible/deploy_all
 ansible-playbook deploy_py-phone-caller_stack.yml
 ```
 
-See the [deployment README](../assets/ansible/deploy_all/README.md) for detailed instructions.
+See the [deployment README](../deploy/ansible/deploy_all/README.md) for detailed instructions.
 
 ### Docker Compose Deployment
 For containerized deployments:
 
 ```bash
-cd assets/docker-compose
+cd deploy/compose
 docker compose up -d
 ```
 
-See the [Docker Compose README](../assets/docker-compose/README.md) for configuration options.
+See the [Docker Compose README](../deploy/compose/README.md) for configuration options.
 
 ---
 
@@ -429,9 +429,9 @@ See the [Docker Compose README](../assets/docker-compose/README.md) for configur
 ## 📚 Additional Resources
 
 - **Main Project README**: [`../README.md`](../README.md)
-- **Ansible Deployment**: [`../assets/ansible/deploy_all/README.md`](../assets/ansible/deploy_all/README.md)
-- **Docker Compose**: [`../assets/docker-compose/README.md`](../assets/docker-compose/README.md)
-- **Asterisk Role**: [`../assets/ansible/asterisk_py-phone-caller/README.md`](../assets/ansible/asterisk_py-phone-caller/README.md)
+- **Ansible Deployment**: [`../deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md)
+- **Docker Compose**: [`../deploy/compose/README.md`](../deploy/compose/README.md)
+- **Asterisk Role**: [`../deploy/ansible/asterisk_py-phone-caller/README.md`](../deploy/ansible/asterisk_py-phone-caller/README.md)
 
 ---
 

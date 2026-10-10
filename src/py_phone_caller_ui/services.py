@@ -226,7 +226,7 @@ class UserAuthenticationService:
 
     def load_user(self, user_id: str) -> User | None:
         """
-        Loads a User domain instance by ID from the database.
+        Loads a User domain instance by ID from the database and session context.
 
         Args:
             user_id: Unique string identifier of the user.
@@ -237,4 +237,18 @@ class UserAuthenticationService:
         loaded_user = self.loader_fn(user_id)
         if loaded_user is None:
             return None
-        return User(username=loaded_user.get("email"))
+
+        roles: list[str] = []
+        try:
+            from flask import has_request_context, session
+            if has_request_context():
+                roles = session.get("roles", [])
+        except Exception:
+            roles = []
+
+        return User(
+            username=loaded_user.get("email"),
+            roles=roles,
+            email=loaded_user.get("email"),
+            id=str(user_id),
+        )

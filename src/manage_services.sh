@@ -51,12 +51,7 @@ LOG_DIR="$RUN_DIR/logs"
 
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
-# Configuration discovery: prefer dist configuration if present, otherwise default src/config
-if [[ -d "$REPO_ROOT/docs/openalert/dist/py-phone-caller/config" ]]; then
-    export CALLER_CONFIG_DIR="$REPO_ROOT/docs/openalert/dist/py-phone-caller/config"
-else
-    export CALLER_CONFIG_DIR="$REPO_ROOT/src/config"
-fi
+export CALLER_CONFIG_DIR="${CALLER_CONFIG_DIR:-$REPO_ROOT/src/config}"
 
 export PYTHONPATH="$REPO_ROOT/src:$REPO_ROOT/src/py-phone-caller-utils"
 export PICCOLO_CONF="py_phone_caller_utils.py_phone_caller_db.piccolo_conf"

@@ -37,6 +37,7 @@ from flask import (
 )
 from flask_babel import Babel, gettext as _
 from flask_login import LoginManager
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from py_phone_caller_utils.env_validator import run_startup_health_banner
 run_startup_health_banner("py_phone_caller_ui")
@@ -48,7 +49,7 @@ from py_phone_caller_utils.py_phone_caller_db.db_user import (
     reset_admin_password_if_needed,
 )
 from py_phone_caller_utils.telemetry import init_telemetry, instrument_flask_app
-from py_phone_caller_utils.web.swagger import build_openapi_schema, generate_swagger_ui_html
+from py_phone_caller_utils.web.swagger import generate_swagger_ui_html
 
 from py_phone_caller_ui.address_book import address_book_blueprint
 from py_phone_caller_ui.calls import calls_blueprint
@@ -69,6 +70,7 @@ from py_phone_caller_ui.exceptions import (
 )
 from py_phone_caller_ui.home import home_blueprint
 from py_phone_caller_ui.login import login_blueprint
+from py_phone_caller_ui.openapi import get_ui_openapi_spec
 from py_phone_caller_ui.schedule_call import schedule_call_blueprint
 from py_phone_caller_ui.schemas import (
     AdminBootstrapResult,
@@ -92,7 +94,6 @@ logging.info(f"Logging initialized with level {LOG_LEVEL}")
 
 init_telemetry("py_phone_caller_ui")
 
-# Core domain services
 _locale_service = LocaleService(
     supported_locales=SUPPORTED_LOCALES,
     aliases=LOCALE_ALIASES,
@@ -115,6 +116,12 @@ instrument_flask_app(app)
 
 app.config["SECRET_KEY"] = UI_SECRET_KEY
 app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+app.wsgi_app = ProxyFix(
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1
+)
 
 
 def resolve_locale(code: str | None) -> str | None:
@@ -187,7 +194,6 @@ def load_user(user_id: str) -> User | None:
     return _auth_service.load_user(user_id)
 
 
-# Register modular blueprints
 app.register_blueprint(login_blueprint)
 app.register_blueprint(home_blueprint)
 app.register_blueprint(calls_blueprint)
@@ -198,7 +204,6 @@ app.register_blueprint(address_book_blueprint)
 app.register_blueprint(sms_blueprint)
 
 
-# OpenAPI 3.0 /docs Swagger UI specification for the Web Dashboard
 @app.route("/docs")
 def ui_swagger_docs() -> Response:
     return Response(
@@ -212,38 +217,7 @@ def ui_swagger_docs() -> Response:
 
 @app.route("/docs/swagger.json")
 def ui_swagger_json() -> Response:
-    schema = build_openapi_schema(
-        title="py-phone-caller Web UI",
-        description="Web dashboard, metrics visualization, and administrative REST endpoints",
-        version="1.0.0",
-        paths={
-            "/": {
-                "get": {
-                    "summary": "Home dashboard with real-time KPI metrics and call resolution statistics"
-                }
-            },
-            "/api/dashboard_metrics": {
-                "get": {
-                    "summary": "Real-time NOC Telemetry metrics JSON for dashboard widgets"
-                }
-            },
-            "/set_locale/{lang_code}": {
-                "get": {
-                    "summary": "Set current session & cookie UI language"
-                }
-            },
-            "/calls/": {"get": {"summary": "Call registry log view"}},
-            "/address_book/": {"get": {"summary": "Address book contact manager"}},
-            "/sms/": {"get": {"summary": "SMS delivery history and message logs"}},
-            "/schedule_call/": {"get": {"summary": "Call scheduling interface"}},
-            "/users/": {"get": {"summary": "User management"}},
-            "/ws_events/": {
-                "get": {"summary": "Live WebSocket Stasis call events view"}
-            },
-            "/health": {"get": {"summary": "Application health check"}},
-            "/metrics": {"get": {"summary": "Prometheus metrics endpoint"}},
-        },
-    )
+    schema = get_ui_openapi_spec()
     return jsonify(schema)
 
 

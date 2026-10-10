@@ -39,7 +39,7 @@ class SmsPayload(BaseModel):
     @field_validator("phone")
     @classmethod
     def validate_phone(cls, v: str) -> str:
-        # Normalize spaces and dashes
+        """Strips whitespace, parentheses, and dashes, verifying valid E.164/international format."""
         cleaned = re.sub(r"[\s\-\(\)]", "", v)
         if not re.match(r"^\+?[0-9]{5,20}$", cleaned):
             raise ValueError(f"Invalid phone number format: '{v}'")

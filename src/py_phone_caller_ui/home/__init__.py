@@ -12,13 +12,15 @@ import re
 from typing import Any, Dict
 
 import aiohttp
-from flask import Blueprint, Response, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, jsonify, redirect, render_template, request, session, url_for
 from flask_login import login_required, logout_user
 
 from py_phone_caller_utils.config import settings
 from py_phone_caller_utils.checksums import gen_msg_chk_sum
 from py_phone_caller_utils.event_bus import subscribe_events
+from .health import get_cluster_health
 from .telemetry import get_noc_dashboard_metrics
+from py_phone_caller_utils.web.swagger import generate_unified_swagger_portal_html
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,17 @@ home_blueprint = Blueprint(
 @home_blueprint.route("/logout")
 @login_required
 def logout():
+    auth_provider = session.get("auth_provider")
+    id_token = session.get("id_token")
     logout_user()
+    session.clear()
+
+    if auth_provider == "oauth2":
+        from py_phone_caller_utils.auth.oidc import get_oidc_client
+        oidc = get_oidc_client()
+        if oidc.is_configured:
+            return redirect(oidc.get_logout_url(id_token=id_token))
+
     return redirect(url_for("login_blueprint.login"))
 
 
@@ -46,24 +58,88 @@ async def api_dashboard_metrics():
     return jsonify(metrics)
 
 
+@home_blueprint.route("/api/docs")
+@home_blueprint.route("/api/docs/")
+def api_docs_portal():
+    """
+    Unified OpenAPI 3.0 Developer Portal aggregating all microservices.
+    Allows interactive 'Try it out' and Keycloak Bearer token authentication.
+    """
+    html = generate_unified_swagger_portal_html()
+    return Response(html, mimetype="text/html")
+
+
+@home_blueprint.route("/api/cluster_health")
+@login_required
+async def api_cluster_health():
+    """
+    Returns real-time gateway and microservice cluster health HUD data in JSON format.
+    """
+    health = await get_cluster_health()
+    return jsonify(health)
+
+
 @home_blueprint.route("/api/telemetry_stream")
 @login_required
-async def telemetry_stream():
+def telemetry_stream():
     """
     Server-Sent Events (SSE) stream endpoint.
     Streams live telemetry metrics and telephony state transitions in real time.
+    Uses a thread-safe synchronous generator compatible with WSGI servers.
     """
-    async def event_generator():
-        # Yield initial state immediately
-        initial_metrics = await get_noc_dashboard_metrics()
-        yield f"event: metrics\ndata: {json.dumps(initial_metrics)}\n\n"
+    def event_generator():
+        import queue
+        import threading
 
-        async for event in subscribe_events():
-            # Broadcast telephony/SMS event
-            yield f"event: telephony_event\ndata: {json.dumps(event)}\n\n"
-            # Follow with updated metrics
-            fresh_metrics = await get_noc_dashboard_metrics()
-            yield f"event: metrics\ndata: {json.dumps(fresh_metrics)}\n\n"
+        try:
+            initial_metrics = asyncio.run(get_noc_dashboard_metrics())
+            yield f"event: metrics\ndata: {json.dumps(initial_metrics)}\n\n"
+        except Exception as exc:
+            logger.debug("Failed to fetch initial telemetry metrics: %s", exc)
+
+        q = queue.Queue(maxsize=100)
+        stop_event = threading.Event()
+
+        def listener():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            async def _sub():
+                try:
+                    async for ev in subscribe_events():
+                        if stop_event.is_set():
+                            break
+                        fresh = await get_noc_dashboard_metrics()
+                        q.put((ev, fresh))
+                except Exception as sub_err:
+                    logger.debug("SSE telemetry subscriber exited: %s", sub_err)
+
+            try:
+                loop.run_until_complete(_sub())
+            finally:
+                loop.close()
+
+        t = threading.Thread(target=listener, daemon=True)
+        t.start()
+
+        try:
+            while not stop_event.is_set():
+                try:
+                    item = q.get(timeout=15.0)
+                    ev, fresh = item
+                    yield f"event: telephony_event\ndata: {json.dumps(ev)}\n\n"
+                    yield f"event: metrics\ndata: {json.dumps(fresh)}\n\n"
+                except queue.Empty:
+                    try:
+                        fresh = asyncio.run(get_noc_dashboard_metrics())
+                        yield ": keep-alive\n\n"
+                        yield f"event: metrics\ndata: {json.dumps(fresh)}\n\n"
+                    except Exception:
+                        yield ": keep-alive\n\n"
+        except (GeneratorExit, StopIteration):
+            pass
+        finally:
+            stop_event.set()
 
     return Response(
         event_generator(),
@@ -94,8 +170,8 @@ async def test_sms_dispatch():
     url = f"http://127.0.0.1:{sms_port}/{sms_route}"
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json={"phone": phone, "message": message}, timeout=10.0) as resp:
+        async with aiohttp.ClientSession() as session_http:
+            async with session_http.post(url, json={"phone": phone, "message": message}, timeout=10.0) as resp:
                 resp_json = await resp.json()
                 if resp.status == 200:
                     return jsonify({"success": True, "details": resp_json, "service": "caller_sms", "target": phone})
@@ -123,7 +199,6 @@ async def test_call_dispatch():
     if not phone:
         return jsonify({"success": False, "error": "Phone number is required."}), 400
 
-    # Pre-generate TTS audio so it is cached immediately
     try:
         if message:
             chksum = await gen_msg_chk_sum(message)
@@ -134,8 +209,8 @@ async def test_call_dispatch():
             gen_params = {"message": message, "msg_chk_sum": chksum}
             if lang:
                 gen_params["lang"] = lang
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                await session.post(f"http://{audio_host}:{audio_port}/make_audio", params=gen_params)
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session_http:
+                await session_http.post(f"http://{audio_host}:{audio_port}/make_audio", params=gen_params)
     except Exception as tts_err:
         logger.warning("Pre-generation of test call audio failed: %s", tts_err)
 
@@ -152,8 +227,8 @@ async def test_call_dispatch():
         payload["language"] = lang
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=10.0) as resp:
+        async with aiohttp.ClientSession() as session_http:
+            async with session_http.post(url, json=payload, timeout=10.0) as resp:
                 resp_json = await resp.json()
                 if resp.status == 200:
                     return jsonify({"success": True, "details": resp_json, "service": "asterisk_caller", "target": phone})
@@ -182,16 +257,18 @@ async def wallboard():
 async def home():
     """
     Renders the NOC Dashboard home page for authenticated users,
-    providing telemetry KPIs, lifecycle breakdowns, gateway health, and navigation links.
+    providing telemetry KPIs, lifecycle breakdowns, gateway health HUD, and navigation links.
 
     Returns:
         flask.Response: The rendered HTML home page.
     """
     metrics = await get_noc_dashboard_metrics()
+    cluster_health = await get_cluster_health()
 
     return render_template(
         "home.html",
         metrics=metrics,
+        cluster_health=cluster_health,
         home_url=url_for("home_blueprint.home"),
         calls_url=url_for("calls_blueprint.calls"),
         ws_events_url=url_for("ws_events_blueprint.ws_events"),
@@ -219,8 +296,8 @@ async def api_audio_proxy(filename: str):
 
     target_url = f"http://{audio_host}:{audio_port}/audio/{filename}"
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4)) as session:
-            async with session.get(target_url) as resp:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4)) as session_http:
+            async with session_http.get(target_url) as resp:
                 if resp.status == 200:
                     data = await resp.read()
                     return Response(data, mimetype="audio/wav")
@@ -243,8 +320,8 @@ async def api_languages():
 
     target_url = f"http://{audio_host}:{audio_port}/languages"
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
-            async with session.get(target_url) as resp:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session_http:
+            async with session_http.get(target_url) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return jsonify(data)
@@ -272,7 +349,6 @@ async def api_global_search():
     query = request.args.get("q", "").strip().lower()
     results = []
 
-    # 1. Navigation Targets
     nav_links = [
         {"title": "NOC Dashboard", "category": "Navigation", "icon": "bi-speedometer2", "url": url_for("home_blueprint.home")},
         {"title": "24/7 Wallboard", "category": "Navigation", "icon": "bi-display", "url": url_for("home_blueprint.wallboard")},
@@ -283,20 +359,20 @@ async def api_global_search():
         {"title": "SMS Gateway & Logs", "category": "Navigation", "icon": "bi-chat-dots", "url": url_for("sms_blueprint.sms")},
         {"title": "Asterisk WS Events", "category": "Navigation", "icon": "bi-broadcast-pin", "url": url_for("ws_events_blueprint.ws_events")},
         {"title": "User Management", "category": "Navigation", "icon": "bi-people", "url": url_for("users_blueprint.users")},
+        {"title": "OpenAPI Developer Portal", "category": "API", "icon": "bi-code-square", "url": "/api/docs"},
     ]
 
     for item in nav_links:
         if not query or query in item["title"].lower():
             results.append(item)
 
-    # 2. Search Address Book Contacts
     try:
         from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import AddressBook
         contacts = await AddressBook.select()
         for c in contacts:
             name = f"{c.get('name', '')} {c.get('surname', '')}".strip()
-            phone = c.get('phone_number', '') or ''
-            city = c.get('city', '') or ''
+            phone = c.get("phone_number", "") or ""
+            city = c.get("city", "") or ""
             searchable = f"{name} {phone} {city}".lower()
             if query and query in searchable:
                 results.append({
@@ -309,14 +385,13 @@ async def api_global_search():
     except Exception as exc:
         logger.debug(f"Search contacts failed: {exc}")
 
-    # 3. Search Calls
     try:
         from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import Calls
         calls = await Calls.select().order_by(Calls.first_dial, ascending=False).limit(20)
         for c in calls:
-            phone = c.get('phone', '') or ''
-            msg = c.get('message', '') or ''
-            chan = c.get('asterisk_chan', '') or ''
+            phone = c.get("phone", "") or ""
+            msg = c.get("message", "") or ""
+            chan = c.get("asterisk_chan", "") or ""
             searchable = f"{phone} {msg} {chan}".lower()
             if query and query in searchable:
                 results.append({

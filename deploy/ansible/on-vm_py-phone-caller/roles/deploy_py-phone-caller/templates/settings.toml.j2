@@ -1,0 +1,68 @@
+{#
+    Renders py_phone_caller_final_config as TOML.
+
+    _ppc_render_secrets = false -> every key except py_phone_caller_secret_paths
+    _ppc_render_secrets = true  -> only the keys in py_phone_caller_secret_paths
+
+    JSON scalars are a strict subset of TOML values, so "| to_json" gives
+    correct quoting and escaping for strings, numbers, booleans and arrays.
+#}
+# Managed by Ansible (role: deploy_py-phone-caller). Local edits are lost on
+# the next run. Change src/config/{{ '{settings,.secrets}' }}.toml, regenerate the
+# group_vars with deploy/ansible/tools/toml_to_ansible_vars.py, and re-deploy.
+{% for section, values in py_phone_caller_final_config.items() %}
+{% set scalars = [] %}
+{% set subtables = [] %}
+{% set tablearrays = [] %}
+{% for key, value in values.items() %}
+{% set is_secret = (section ~ '.' ~ key) in py_phone_caller_secret_paths %}
+{% if is_secret == _ppc_render_secrets %}
+{% if value is mapping %}
+{% set _ = subtables.append((key, value)) %}
+{% elif value is sequence and value is not string and value | length > 0 and value[0] is mapping %}
+{% set _ = tablearrays.append((key, value)) %}
+{% else %}
+{% set _ = scalars.append((key, value)) %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if scalars or subtables or tablearrays %}
+
+[{{ section }}]
+{% for key, value in scalars %}
+{{ key }} = {{ value | to_json }}
+{% endfor %}
+{% for key, table in subtables %}
+{% set subscalars = [] %}
+{% set subsubtables = [] %}
+{% for subkey, subvalue in table.items() %}
+{% if subvalue is mapping %}
+{% set _ = subsubtables.append((subkey, subvalue)) %}
+{% else %}
+{% set _ = subscalars.append((subkey, subvalue)) %}
+{% endif %}
+{% endfor %}
+
+[{{ section }}.{{ key }}]
+{% for subkey, subvalue in subscalars %}
+{{ subkey }} = {{ subvalue | to_json }}
+{% endfor %}
+{% for subkey, subsubtable in subsubtables %}
+
+[{{ section }}.{{ key }}.{{ subkey }}]
+{% for subsubkey, subsubvalue in subsubtable.items() %}
+{{ subsubkey }} = {{ subsubvalue | to_json }}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% for key, rows in tablearrays %}
+{% for row in rows %}
+
+[[{{ section }}.{{ key }}]]
+{% for subkey, subvalue in row.items() %}
+{{ subkey }} = {{ subvalue | to_json }}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endfor %}

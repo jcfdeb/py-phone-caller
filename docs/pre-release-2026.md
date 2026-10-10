@@ -135,10 +135,10 @@ The Docker Compose stack was updated to match the new configuration model.
 
 Important changes:
 
-- Services use generated env files from `assets/docker-compose/env/`.
+- Services use generated env files from `deploy/compose/env/`.
 - Raw project config is not baked into images.
 - Compose validation was run successfully.
-- Documentation was added or updated under `assets/docker-compose/README.md`.
+- Documentation was added or updated under `deploy/compose/README.md`.
 
 Current expectation:
 

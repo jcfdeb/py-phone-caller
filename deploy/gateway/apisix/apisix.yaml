@@ -1,0 +1,140 @@
+# =============================================================================
+# Apache APISIX Gateway Declarative Configuration for py-phone-caller
+# =============================================================================
+# Routes incoming edge traffic from ports 80/443 (9080/9443) to local microservices.
+# Default upstream host is host.containers.internal (or 192.168.101.17 in distributed dev).
+# =============================================================================
+
+routes:
+  # ---------------------------------------------------------------------------
+  # 1. py_phone_caller_ui: Dashboard, Managed Calls, and Static Assets
+  # ---------------------------------------------------------------------------
+  - id: route-ui-root
+    uri: /*
+    name: "Web UI Dashboard & Static"
+    priority: 1
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:5000": 1
+    plugins:
+      proxy-rewrite:
+        use_real_request_uri_unsafe: true
+
+  # ---------------------------------------------------------------------------
+  # 2. asterisk_caller: Telephony & ARI Control
+  # ---------------------------------------------------------------------------
+  - id: route-telephony
+    uri: /api/v1/telephony/*
+    name: "Telephony Outbound API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/telephony/(.*)", "/$1"]
+      limit-req:
+        rate: 10
+        burst: 20
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:8081": 1
+
+  # ---------------------------------------------------------------------------
+  # 3. generate_audio: Neural Offline Voice Synthesis & Preview Streaming
+  # ---------------------------------------------------------------------------
+  - id: route-audio
+    uri: /api/v1/audio/*
+    name: "Voice Synthesis & Audio Streaming"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/audio/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:8082": 1
+
+  # ---------------------------------------------------------------------------
+  # 4. caller_register: Call State, Acknowledgment, and Audit Journal
+  # ---------------------------------------------------------------------------
+  - id: route-registry
+    uri: /api/v1/registry/*
+    name: "Call Registry & Audit Trail"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/registry/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:8083": 1
+
+  # ---------------------------------------------------------------------------
+  # 5. caller_prometheus_webhook: Ingress Webhook with Rate-Limiting Protection
+  # ---------------------------------------------------------------------------
+  - id: route-alerts
+    uri: /api/v1/alerts/*
+    name: "Prometheus Alertmanager Webhook Ingress"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/alerts/(.*)", "/$1"]
+      limit-req:
+        rate: 15
+        burst: 30
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:8084": 1
+
+  # ---------------------------------------------------------------------------
+  # 6. caller_sms: Sovereign GSM Modem & Twilio Gateway
+  # ---------------------------------------------------------------------------
+  - id: route-sms
+    uri: /api/v1/sms/*
+    name: "SMS Dispatch API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/sms/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:8085": 1
+
+  # ---------------------------------------------------------------------------
+  # 7. caller_scheduler: Deferred Call Scheduler & Queue
+  # ---------------------------------------------------------------------------
+  - id: route-schedules
+    uri: /api/v1/schedules/*
+    name: "Call Scheduler API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/schedules/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:8086": 1
+
+  # ---------------------------------------------------------------------------
+  # 8. caller_address_book: Contact Roster & On-Duty Query
+  # ---------------------------------------------------------------------------
+  - id: route-contacts
+    uri: /api/v1/contacts/*
+    name: "Address Book Roster API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/contacts/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.containers.internal:8087": 1
+#END

@@ -8,7 +8,9 @@ call-only, SMS-only, SMS-before-call, and call-and-SMS.
 from __future__ import annotations
 import sys
 from typing import Any
+import logging
 from aiohttp import web
+from py_phone_caller_utils.auth import get_oidc_client
 
 from py_phone_caller_utils.config import settings
 from py_phone_caller_utils.web import create_service_catalog, setup_swagger_routes
@@ -32,7 +34,7 @@ def _resolve_service(request: web.Request) -> AlertNotificationService:
     mod = sys.modules.get("src.caller_prometheus_webhook.caller_prometheus_webhook") or sys.modules.get(
         "caller_prometheus_webhook.caller_prometheus_webhook"
     )
-    if mod and hasattr(mod, "_get_active_service"):
+    if mod and hasattr(mod, "_get_active_service"):\
         return mod._get_active_service()
     return request.app.get("alert_service")
 
@@ -46,6 +48,10 @@ async def handle_webhook_request(request: web.Request, action_mode: str) -> web.
     """
     Common handler for processing Prometheus Alertmanager webhooks.
 
+    Validates optional Machine-to-Machine (M2M) Bearer tokens when auth is required,
+    delegates incoming payloads to the notification service (or legacy patched handler),
+    and enforces deduplication windows.
+
     Args:
         request: Incoming aiohttp Request.
         action_mode: Mode string (call_only, sms_only, sms_before_call, call_and_sms).
@@ -53,10 +59,32 @@ async def handle_webhook_request(request: web.Request, action_mode: str) -> web.
     Returns:
         JSON response with HTTP 200.
     """
+    require_auth = bool(
+        settings.get("caller_prometheus_webhook", {}).get("require_auth", False)
+        or getattr(getattr(settings, "auth", None), "m2m_required", False)
+    )
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        oidc = get_oidc_client()
+        claims = oidc.verify_token(token, required_role="alert-operator" if require_auth else None)
+        if claims:
+            client_id = claims.get("azp") or claims.get("client_id") or claims.get("sub", "m2m-client")
+            logging.info(f"Accepted alert webhook from authenticated M2M client '{client_id}'")
+        elif require_auth:
+            return web.json_response(
+                {"error": "Unauthorized", "message": "Invalid or expired Bearer token"},
+                status=401,
+            )
+    elif require_auth:
+        return web.json_response(
+            {"error": "Unauthorized", "message": "Missing Authorization: Bearer token header"},
+            status=401,
+        )
+
     mod = sys.modules.get("src.caller_prometheus_webhook.caller_prometheus_webhook") or sys.modules.get(
         "caller_prometheus_webhook.caller_prometheus_webhook"
     )
-    # Check if legacy data_from_alert_manager is monkeypatched
     if mod and hasattr(mod, "data_from_alert_manager"):
         await mod.data_from_alert_manager(request, action_mode)
     else:

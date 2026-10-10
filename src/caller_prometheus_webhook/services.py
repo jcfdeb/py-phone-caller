@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Core business logic and services for the caller_prometheus_webhook service.
 
@@ -6,7 +7,6 @@ dispatching, and strategy-based notification execution (call only, SMS only,
 SMS before call, call and SMS).
 """
 
-from __future__ import annotations
 import asyncio
 import hashlib
 import logging
@@ -16,6 +16,7 @@ from typing import Any, Awaitable, Callable, Sequence
 from py_phone_caller_utils.config import settings
 
 from caller_prometheus_webhook.clients import AsteriskCallClient, CallerSmsClient
+from caller_prometheus_webhook.coalescing import AlertCoalescer
 from caller_prometheus_webhook.schemas import (
     NotificationMode,
     PrometheusAlert,
@@ -34,7 +35,7 @@ class DeduplicationService:
         self,
         ttl_seconds: int = 180,
         cache_max_size: int = 500,
-        use_redis: bool = True,
+        use_redis: bool | None = None,
     ) -> None:
         """
         Initializes the DeduplicationService.
@@ -42,11 +43,16 @@ class DeduplicationService:
         Args:
             ttl_seconds: Sliding window duration in seconds.
             cache_max_size: Maximum entries in the local cache before pruning.
-            use_redis: Whether to attempt Redis-backed deduplication first.
+            use_redis: Whether to attempt Redis-backed deduplication. Defaults to False unless configured.
         """
         self.ttl_seconds = ttl_seconds
         self.cache_max_size = cache_max_size
-        self.use_redis = use_redis
+        if use_redis is None:
+            self.use_redis = bool(
+                settings.get("caller_prometheus_webhook", {}).get("use_redis_dedup", False)
+            )
+        else:
+            self.use_redis = use_redis
         self._local_cache: dict[str, float] = {}
 
     def clear(self) -> None:
@@ -71,7 +77,8 @@ class DeduplicationService:
             try:
                 import redis.asyncio as aioredis
 
-                queue_url = settings.get("QUEUE", {}).get("QUEUE_URL", "redis://redis:6379/7")
+                queue_cfg = settings.get("QUEUE", {})
+                queue_url = queue_cfg.get("queue_url") or queue_cfg.get("QUEUE_URL", "redis://redis.lan:6379/7")
                 r = aioredis.from_url(queue_url, socket_connect_timeout=1)
                 key = f"alert:dedup:{msg_hash}"
                 was_set = await r.set(key, "1", ex=ttl, nx=True)
@@ -101,11 +108,15 @@ class AlertNotificationService:
     """
     Service responsible for orchestrating alert notification delivery.
 
+    Dispatches alerts using strategy-based mappings for different notification modes,
+    orchestrates background worker queues, and enforces sliding-window deduplication.
+
     Attributes:
         call_client: Client to place phone calls.
         sms_client: Client to send SMS messages.
         dedup_service: Service to verify and enforce deduplication.
         sms_wait_seconds: Delay before phone call when using SMS-before-call strategy.
+        coalescer: Alert storm coalescing engine.
     """
 
     def __init__(
@@ -114,22 +125,24 @@ class AlertNotificationService:
         sms_client: CallerSmsClient,
         dedup_service: DeduplicationService | None = None,
         sms_wait_seconds: float = 30.0,
+        coalescer: AlertCoalescer | None = None,
     ) -> None:
         """
-        Initializes the notification service.
+        Initializes the notification service and maps notification modes to executable handlers.
 
         Args:
             call_client: Client to trigger phone calls.
             sms_client: Client to dispatch SMS messages.
             dedup_service: Alert deduplication service.
             sms_wait_seconds: Wait delay before phone call in SMS-before-call mode.
+            coalescer: Alert storm coalescing engine.
         """
         self.call_client = call_client
         self.sms_client = sms_client
         self.dedup_service = dedup_service or DeduplicationService()
         self.sms_wait_seconds = sms_wait_seconds
+        self.coalescer = coalescer or AlertCoalescer()
 
-        # Strategy dictionary mapping notification mode to executable handler
         self._action_dispatch: dict[str, Callable[[str, str], Awaitable[None]]] = {
             NotificationMode.CALL_ONLY.value: self.do_call_only,
             NotificationMode.SMS_ONLY.value: self.do_sms_only,
@@ -236,7 +249,7 @@ class AlertNotificationService:
         producer_tasks = [
             asyncio.create_task(queue.put((message, rcv))) for rcv in receivers
         ]
-        consumer_tasks = [asyncio.create_task(_consumer())]\
+        consumer_tasks = [asyncio.create_task(_consumer())]
 
         await asyncio.gather(*producer_tasks)
         await queue.join()
@@ -253,6 +266,10 @@ class AlertNotificationService:
         """
         Processes an incoming webhook payload from Alertmanager.
 
+        Filters out inactive or resolved alerts, checks sliding-window deduplication,
+        applies alert coalescing when multiple alerts fire simultaneously, and
+        dispatches notifications to recipient queues.
+
         Args:
             payload_data: Raw JSON payload.
             action_mode: Notification action mode.
@@ -265,19 +282,38 @@ class AlertNotificationService:
         webhook = WebhookPayload.from_dict(payload_data)
         firing_messages = webhook.firing_descriptions
 
-        # Early return guard clause
         if not firing_messages:
             return False
 
-        dispatched = False
+        coalesce_enabled = bool(
+            settings.get("caller_prometheus_webhook", {}).get("coalesce_alerts", False)
+            or settings.get("caller_prometheus_webhook", {}).get("coalescing_enabled", False)
+        )
+        firing_messages = (
+            webhook.all_firing_descriptions if coalesce_enabled else webhook.firing_descriptions
+        )
+
+        unique_firing: list[str] = []
         for msg in firing_messages:
             if await self.dedup_service.is_duplicate(msg, ttl_seconds=dedup_window):
                 logging.info(
                     f"Deduplicated repeating alert within {dedup_window}s window. Skipping duplicate calls."
                 )
                 continue
+            unique_firing.append(msg)
 
-            await self.process_queue(msg, receivers, action_mode)
+        if not unique_firing:
+            return False
+
+        dispatched = False
+        if coalesce_enabled and len(unique_firing) > 1:
+            incident = self.coalescer.coalesce_descriptions(unique_firing)
+            msg_to_send = incident.detailed_sms if action_mode == NotificationMode.SMS_ONLY.value else incident.summary_message
+            await self.process_queue(msg_to_send, receivers, action_mode)
             dispatched = True
+        else:
+            for msg in unique_firing:
+                await self.process_queue(msg, receivers, action_mode)
+                dispatched = True
 
         return dispatched

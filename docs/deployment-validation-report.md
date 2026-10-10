@@ -25,23 +25,23 @@ During the initial installation runs on fresh virtual machines, several environm
 - Built all 11 microservice images with `VERSION=1.0.0`, tagged for `artifacts.py-phone-caller.lan:5000/*`, and pushed them to the local registry.
 - Populated the PyPI repository with the Python 3.14 wheel cache so host VMs could run `uv sync` offline.
 
-#### 2. Asterisk Ansible Role (`assets/ansible/asterisk_py-phone-caller`)
+#### 2. Asterisk Ansible Role (`deploy/ansible/asterisk_py-phone-caller`)
 - **ARI General Configuration**: Added `community.general.ini_file` task to ensure `[general]` `enabled=yes`, `pretty=yes`, and `allowed_origins=*` are set in `ari.conf` alongside user authentication.
 - **Enterprise Linux 10 Compatibility**: Added binary detection (`stat /usr/sbin/asterisk`) in `install_RedHat.yml` to skip EPEL package checks when Asterisk is already present or built from source on EL10.
 - **Sound Asset Handling**: Corrected sound directory resolution in `configure.yml` to check `/var/lib/asterisk/sounds/en` and avoid unneeded external HTTP sound downloads.
 
-#### 3. Host-Level On-VM Ansible Role (`assets/ansible/on-vm_py-phone-caller`)
+#### 3. Host-Level On-VM Ansible Role (`deploy/ansible/on-vm_py-phone-caller`)
 - **Python 3.14 `uv` Runtime Setup**: Configured automated workspace synchronization via `uv sync --frozen --no-dev` using the local PyPI index (`http://artifacts.py-phone-caller.lan:8080/simple`).
 - **Rust Engine Build**: Automated compilation of `librust_engine.so` via `cargo build --release` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` for Python 3.14 ABI stability.
 - **Unattended Database Setup**: Configured automated role creation, database provisioning, permissions, and extensions (`uuid-ossp`, `pgcrypto`) before initializing Piccolo migrations with `caller_register`.
 
-#### 4. Docker & Podman Compose Automation (`assets/docker-compose`)
+#### 4. Docker & Podman Compose Automation (`deploy/compose`)
 - **Inter-Service Discovery**: Added standard Dynaconf environment variables (`DYNACONF_COMMONS__ASTERISK_HOST=host.containers.internal`, `DYNACONF_CALL_REGISTER__CALL_REGISTER_HOST=caller_register`, etc.) in `x-common-env` so containers automatically communicate across the bridge network.
 - **Multi-Stage FFMPEG & TTS Pre-Packaging**: Updated `src/generate_audio/Dockerfile` with multi-stage static ffmpeg extraction and build-time model pre-caching for Facebook MMS, Piper, and Kokoro TTS.
 - **Fully Qualified Image Identifiers**: Updated infrastructure services to `docker.io/library/postgres:17-alpine`, `docker.io/library/redis:7-alpine`, and `docker.io/library/caddy:2-alpine` to prevent registry resolution ambiguity under Podman.
 
 #### 5. SMS Carrier Configuration (Twilio for Virtual Machines)
-- Updated `caller_sms_carrier` to `twilio` in both `src/config/settings.toml` and Ansible defaults (`assets/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/defaults/main.yml`).
+- Updated `caller_sms_carrier` to `twilio` in both `src/config/settings.toml` and Ansible defaults (`deploy/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/defaults/main.yml`).
 - Virtual machines without attached physical GSM/LTE serial modems (e.g., `/dev/ttyUSB*`) now route outbound SMS notifications through the Twilio backend instead of attempting hardware modem discovery.
 
 ---
@@ -81,7 +81,7 @@ OVERALL STATUS                                🎉 100% PASSED      🎉 100% PA
 
 #### 1. Deploying on Host VMs with Ansible (`ubuntu-on-premise` / `rocky10-on-premise`)
 ```bash
-# From assets/ansible/on-vm_py-phone-caller:
+# From deploy/ansible/on-vm_py-phone-caller:
 ansible-playbook -i "<target-ip>," deploy_on_vm.yml \
   -e "ansible_user=admin ansible_become=true" \
   -e "py_phone_caller_pbx_host=<target-ip>"
@@ -90,22 +90,22 @@ ansible-playbook -i "<target-ip>," deploy_on_vm.yml \
 #### 2. Deploying with Docker Compose (`ubuntu-compose`)
 ```bash
 # 1. Install Asterisk on the host via Ansible:
-cd assets/ansible/asterisk_py-phone-caller
+cd deploy/ansible/asterisk_py-phone-caller
 ansible-playbook -i "10.0.55.215," deploy_asterisk.yml -e "ansible_user=admin ansible_become=true"
 
 # 2. Launch the 14-container stack on the host:
-cd assets/docker-compose
+cd deploy/compose
 MY_DOCKER_REGISTRY=artifacts.py-phone-caller.lan:5000 VERSION=1.0.0 docker compose up -d
 ```
 
 #### 3. Deploying with Podman Compose (`rocky10-compose`)
 ```bash
 # 1. Install Asterisk on the host via Ansible:
-cd assets/ansible/asterisk_py-phone-caller
+cd deploy/ansible/asterisk_py-phone-caller
 ansible-playbook -i "10.0.55.252," deploy_asterisk.yml -e "ansible_user=admin ansible_become=true"
 
 # 2. Launch the 14-container stack with Podman:
-cd assets/docker-compose
+cd deploy/compose
 sudo env PATH=$PATH:/usr/local/bin MY_DOCKER_REGISTRY=artifacts.py-phone-caller.lan:5000 VERSION=1.0.0 podman-compose up -d
 ```
 

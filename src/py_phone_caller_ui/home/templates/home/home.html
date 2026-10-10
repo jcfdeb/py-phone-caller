@@ -29,11 +29,106 @@
         border-radius: 6px;
         overflow: hidden;
     }
+    .health-hud-card {
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 1rem;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+        transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .health-badge-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+        transition: all 0.2s ease-in-out;
+    }
+    .health-badge-item:hover {
+        background: #ffffff;
+        border-color: rgba(59, 130, 246, 0.4);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+    }
+    .health-badge-text {
+        color: #1e293b;
+    }
+    [data-bs-theme="dark"] .health-hud-card {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+    }
+    [data-bs-theme="dark"] .health-badge-item {
+        background: rgba(15, 23, 42, 0.6) !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    }
+    [data-bs-theme="dark"] .health-badge-item:hover {
+        background: rgba(30, 41, 59, 0.9) !important;
+        border-color: rgba(59, 130, 246, 0.4) !important;
+    }
+    [data-bs-theme="dark"] .health-badge-text {
+        color: #f1f5f9 !important;
+    }
+    .pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container main-container">
+    <!-- Real-Time Gateway & Cluster Health HUD -->
+    <div class="card border-0 shadow-sm health-hud-card p-3 mb-4" id="cluster-health-hud">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 rounded-pill small">
+                    <span class="spinner-grow spinner-grow-sm text-success me-1" role="status" style="width: 0.5rem; height: 0.5rem;"></span>
+                    <strong class="text-uppercase tracking-wider small">Cluster Health HUD</strong>
+                </span>
+                <span class="small text-secondary" id="hud-last-sync">Auto-sync 10s</span>
+            </div>
+            <!-- Live Status Badges -->
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <!-- Gateway Ingress -->
+                <div class="badge health-badge-item px-3 py-2 rounded-pill d-flex align-items-center gap-2" id="hud-gw" title="{{ cluster_health.gateway.detail if cluster_health else 'APISIX Ingress' }}">
+                    <span class="pulse-dot {% if cluster_health and cluster_health.gateway.status == 'healthy' %}bg-success{% elif cluster_health and cluster_health.gateway.status == 'standalone' %}bg-info{% else %}bg-warning{% endif %}" id="hud-gw-dot"></span>
+                    <i class="bi bi-shield-check text-info"></i>
+                    <span class="small fw-semibold health-badge-text" id="hud-gw-text">{{ cluster_health.gateway.badge if cluster_health else 'APISIX Ingress' }}</span>
+                </div>
+                <!-- IAM Keycloak -->
+                <div class="badge health-badge-item px-3 py-2 rounded-pill d-flex align-items-center gap-2" id="hud-iam" title="{{ cluster_health.iam.detail if cluster_health else 'Keycloak IAM' }}">
+                    <span class="pulse-dot {% if cluster_health and cluster_health.iam.status == 'healthy' %}bg-success{% elif cluster_health and cluster_health.iam.status == 'local' %}bg-secondary{% else %}bg-warning{% endif %}" id="hud-iam-dot"></span>
+                    <i class="bi bi-key text-warning"></i>
+                    <span class="small fw-semibold health-badge-text" id="hud-iam-text">{{ cluster_health.iam.badge if cluster_health else 'Keycloak IAM' }}</span>
+                </div>
+                <!-- Asterisk ARI -->
+                <div class="badge health-badge-item px-3 py-2 rounded-pill d-flex align-items-center gap-2" id="hud-ari" title="{{ cluster_health.asterisk.detail if cluster_health else 'Asterisk ARI' }}">
+                    <span class="pulse-dot {% if cluster_health and cluster_health.asterisk.status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}" id="hud-ari-dot"></span>
+                    <i class="bi bi-telephone-inbound text-primary"></i>
+                    <span class="small fw-semibold health-badge-text" id="hud-ari-text">{{ cluster_health.asterisk.badge if cluster_health else 'Asterisk ARI' }}</span>
+                </div>
+                <!-- PostgreSQL DB -->
+                <div class="badge health-badge-item px-3 py-2 rounded-pill d-flex align-items-center gap-2" id="hud-db" title="{{ cluster_health.database.detail if cluster_health else 'PostgreSQL' }}">
+                    <span class="pulse-dot {% if cluster_health and cluster_health.database.status == 'healthy' %}bg-success{% else %}bg-danger{% endif %}" id="hud-db-dot"></span>
+                    <i class="bi bi-database text-success"></i>
+                    <span class="small fw-semibold health-badge-text" id="hud-db-text">{{ cluster_health.database.badge if cluster_health else 'PostgreSQL' }}</span>
+                </div>
+                <!-- Redis Broker -->
+                <div class="badge health-badge-item px-3 py-2 rounded-pill d-flex align-items-center gap-2" id="hud-redis" title="{{ cluster_health.redis.detail if cluster_health else 'Redis Broker' }}">
+                    <span class="pulse-dot {% if cluster_health and cluster_health.redis.status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}" id="hud-redis-dot"></span>
+                    <i class="bi bi-hdd-network text-info"></i>
+                    <span class="small fw-semibold health-badge-text" id="hud-redis-text">{{ cluster_health.redis.badge if cluster_health else 'Redis Broker' }}</span>
+                </div>
+                <!-- SMS Carrier -->
+                <div class="badge health-badge-item px-3 py-2 rounded-pill d-flex align-items-center gap-2" id="hud-sms" title="{{ cluster_health.sms.detail if cluster_health else 'SMS Carrier' }}">
+                    <span class="pulse-dot {% if cluster_health and cluster_health.sms.status == 'healthy' %}bg-success{% else %}bg-secondary{% endif %}" id="hud-sms-dot"></span>
+                    <i class="bi bi-chat-dots text-success"></i>
+                    <span class="small fw-semibold health-badge-text" id="hud-sms-text">{{ cluster_health.sms.badge if cluster_health else 'SMS Engine' }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- NOC Live Telephony & Incident Dashboard Banner -->
     <div class="card border-0 shadow-sm rounded-4 p-4 mb-5">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 pb-3 mb-4 border-bottom">
@@ -305,6 +400,43 @@
         }
     }
 
+    // Real-Time Gateway & Cluster Health HUD Polling
+    async function updateClusterHealthHUD() {
+        try {
+            const res = await fetch("{{ url_for('home_blueprint.api_cluster_health') }}");
+            if (!res.ok) return;
+            const data = await res.json();
+            
+            function updateBadge(idPrefix, comp) {
+                if (!comp) return;
+                const txt = document.getElementById(idPrefix + '-text');
+                const badge = document.getElementById(idPrefix);
+                const dot = document.getElementById(idPrefix + '-dot');
+                if (txt && comp.badge) txt.innerText = comp.badge;
+                if (badge && comp.detail) badge.title = comp.detail;
+                if (dot && comp.status) {
+                    dot.className = 'pulse-dot ' + (
+                        comp.status === 'healthy' ? 'bg-success' :
+                        (comp.status === 'standalone' || comp.status === 'local') ? 'bg-info' :
+                        comp.status === 'warning' ? 'bg-warning' : 'bg-danger'
+                    );
+                }
+            }
+
+            updateBadge('hud-gw', data.gateway);
+            updateBadge('hud-iam', data.iam);
+            updateBadge('hud-ari', data.asterisk);
+            updateBadge('hud-db', data.database);
+            updateBadge('hud-redis', data.redis);
+            updateBadge('hud-sms', data.sms);
+
+            const syncEl = document.getElementById('hud-last-sync');
+            if (syncEl) syncEl.innerText = 'Synced ' + new Date().toLocaleTimeString();
+        } catch(e) {
+            console.debug('Cluster Health HUD sync error:', e);
+        }
+    }
+
     // Connect to Server-Sent Events (SSE) for Real-Time Telemetry Stream
     (function initSSE() {
         if (!window.EventSource) return;
@@ -328,7 +460,6 @@
         });
 
         evtSource.onerror = function() {
-            // EventSource will auto-reconnect
             console.debug('SSE disconnected, reconnecting in background...');
         };
     })();
@@ -343,35 +474,6 @@
         } catch(e) {}
     }
     setInterval(refreshNocMetrics, 15000);
-        try {
-            const res = await fetch("{{ url_for('home_blueprint.api_dashboard_metrics') }}");
-            if (!res.ok) return;
-            const data = await res.json();
-            
-            const total = data.total_calls || 0;
-            document.getElementById('kpi-total-calls').innerText = total;
-            document.getElementById('kpi-ack-rate').innerText = data.ack_rate + '%';
-            document.getElementById('kpi-ack-count').innerText = data.ack_count;
-            document.getElementById('kpi-escalated-calls').innerText = data.escalated_count;
-            document.getElementById('kpi-sms-delivered').innerText = data.sms_delivered;
-            
-            document.getElementById('legend-ack').innerText = data.ack_count;
-            document.getElementById('legend-heard').innerText = data.heard_count;
-            document.getElementById('legend-escalated').innerText = data.escalated_count;
-            document.getElementById('legend-flight').innerText = data.in_flight_count;
-
-            const denom = total > 0 ? total : 1;
-            document.getElementById('bar-ack').style.width = Math.round(data.ack_count / denom * 100) + '%';
-            document.getElementById('bar-heard').style.width = Math.round(data.heard_count / denom * 100) + '%';
-            document.getElementById('bar-escalated').style.width = Math.round(data.escalated_count / denom * 100) + '%';
-            document.getElementById('bar-flight').style.width = Math.round(data.in_flight_count / denom * 100) + '%';
-            
-            const now = new Date();
-            document.getElementById('noc-last-update').innerText = 'Updated ' + now.toLocaleTimeString();
-        } catch (e) {
-            console.debug('Dashboard metrics auto-refresh failed:', e);
-        }
-    }
-    setInterval(refreshNocMetrics, 10000);
+    setInterval(updateClusterHealthHUD, 10000);
 </script>
 {% endblock %}

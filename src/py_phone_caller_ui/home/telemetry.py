@@ -22,6 +22,9 @@ async def get_noc_dashboard_metrics() -> Dict[str, Any]:
     """
     Computes real-time NOC Telemetry metrics with 5-second Redis caching.
     Ensures sub-5ms UI dashboard loads with zero DB query contention.
+
+    Aggregates DTMF acknowledgment rates, in-flight calls, escalated lines,
+    SMS delivery percentages, and resolves hardware GSM gateway indicators.
     """
     cache_key = "py_phone_caller:ui:noc_metrics"
     try:
@@ -78,7 +81,6 @@ async def get_noc_dashboard_metrics() -> Dict[str, Any]:
     sms_failed = sum(1 for s in all_sms if s.get("status") == "failed")
     sms_rate = round((sms_delivered / total_sms * 100), 1) if total_sms > 0 else 100.0
 
-    # Hardware & Gateway indicators
     carrier = getattr(settings.caller_sms, "caller_sms_carrier", "on_premise")
     is_gsm = carrier == "on_premise"
 

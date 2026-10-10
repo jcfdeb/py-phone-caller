@@ -226,13 +226,28 @@
             const sseUrl = "{{ url_for('home_blueprint.telemetry_stream') }}";
             const evtSource = new EventSource(sseUrl);
 
+            function setConnected() {
+                const badge = document.getElementById('wb-sse-badge');
+                if (badge) {
+                    badge.innerText = 'CONNECTED';
+                    badge.className = 'badge bg-success-subtle text-success border border-success-subtle px-3 py-1';
+                }
+            }
+
+            evtSource.onopen = function() {
+                setConnected();
+            };
+
             evtSource.addEventListener('metrics', function(e) {
                 try {
                     const data = JSON.parse(e.data);
                     applyMetrics(data);
-                    document.getElementById('wb-sse-badge').innerText = 'CONNECTED';
-                    document.getElementById('wb-sse-badge').className = 'badge bg-success-subtle text-success border border-success-subtle px-3 py-1';
+                    setConnected();
                 } catch(err) {}
+            });
+
+            evtSource.addEventListener('telephony_event', function(e) {
+                setConnected();
             });
 
             evtSource.onerror = function() {

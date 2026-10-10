@@ -20,6 +20,8 @@ This document is the authoritative API and microservices reference for **py-phon
    - [3.9 asterisk_ws_monitor (WebSocket Daemon)](#39-asterisk_ws_monitor-websocket-daemon)
    - [3.10 asterisk_recaller (Background Retry Daemon)](#310-asterisk_recaller-background-retry-daemon)
    - [3.11 celery_worker (Background Task Consumer)](#311-celery_worker-background-task-consumer)
+   - [3.12 apache_apisix (Port 9080 / 9443, Dashboard 9001)](#312-apache_apisix-port-9080--9443-dashboard-9001)
+   - [3.13 keycloak (Port 8180 / 8443, Management 9009)](#313-keycloak-port-8180--8443-management-9009)
 4. [Shared Library: `py_phone_caller_utils`](#4-shared-library-py_phone_caller_utils)
 5. [Database Models & Schemas (Piccolo ORM)](#5-database-models--schemas-piccolo-orm)
 
@@ -40,6 +42,9 @@ This document is the authoritative API and microservices reference for **py-phon
 | **`asterisk_ws_monitor`** | *N/A* | WebSocket Client | Listens to Asterisk ARI events, triggers audio generation & playback |
 | **`asterisk_recaller`** | *N/A* | Background Daemon | Automated polling loop for retrying unacknowledged calls |
 | **`celery_worker`** | *N/A* | Redis Task Consumer | Background execution worker for scheduled call dispatch |
+| **`apache_apisix`** | `9080` / `9443` | HTTP / HTTPS Gateway | Unified API gateway routing ingress to UI, Keycloak, and microservices |
+| **`apisix_dashboard`** | `9001` | HTTP (Manager API) | Visual dashboard and Manager API for APISIX routes and upstream management |
+| **`keycloak`** | `8180` / `8443` | OIDC / OAuth2 IAM | Enterprise identity provider, OpenID Connect SSO, and role management |
 
 ---
 
@@ -347,13 +352,19 @@ Flask web interface and Backend-for-Frontend (BFF). Includes full internationali
 
 - **Blueprints & Capabilities**:
   - `home`: Main dashboard with quick action cards, system status, and live TTS audio preview (`POST /proxy_tts_preview` and `GET /proxy_languages`).
-  - `login`: Operator authentication gate and session management.
+  - `login`: Operator authentication gate and session management (supports Keycloak OIDC SSO and local database fallback).
   - `calls`: Real-time call history table with search, pagination, bulk acknowledgment (`POST /proxy_acknowledge`), and incident audit reporting (`GET /calls/audit_report`).
   - `sms`: Managed SMS history table with carrier tags, status badges, details modal with message lifecycle stepper, and monthly CSV export.
   - `address_book`: Contact list, on-call window creator, quick on-call toggle, and interactive coverage calendar.
   - `schedule_call`: Scheduled call queue with creation modal and cancellation controls.
   - `ws_events`: Live Asterisk WebSocket event log inspector with JSON view modal.
   - `users`: User account administration, password reset, and role management.
+
+#### Authentication Endpoints:
+- `GET /login` / `POST /login`: Local fallback login form. Authenticates against the PostgreSQL `users` table via Argon2/scrypt.
+- `GET /oauth2/login`: Initiates Keycloak OIDC Single Sign-On flow with PKCE code challenge.
+- `GET /oauth2/callback`: Processes the authorization code returned by Keycloak, validates ID token claims, maps roles (`alert-admin`, `alert-operator`, `alert-viewer`), and establishes the session.
+- `GET /oauth2/logout`: Clears the local Flask session and redirects to Keycloak's end-session endpoint to terminate SSO.
 
 ---
 
@@ -382,6 +393,30 @@ Flask web interface and Backend-for-Frontend (BFF). Includes full internationali
 
 ---
 
+### 3.12 `apache_apisix` (Port 9080 / 9443, Dashboard 9001)
+
+Cloud-native API Gateway that acts as the single ingress entry point behind the edge reverse proxy.
+
+- **Ingress Routing Table**:
+  - `/realms/*`, `/resources/*`, `/admin/*`: Proxied to Keycloak (`127.0.0.1:8180`).
+  - `/api/v1/*`: Proxied to backend microservices.
+  - `/*`: Proxied to `py_phone_caller_ui` (`127.0.0.1:5000`).
+- **APISIX Dashboard**: Port `9001` (authenticated Manager API).
+
+---
+
+### 3.13 `keycloak` (Port 8180 / 8443, Management 9009)
+
+Enterprise Identity and Access Management (IAM) provider.
+
+- **OIDC Discovery**: `GET /realms/py-phone-caller/.well-known/openid-configuration`
+- **Token Endpoint**: `POST /realms/py-phone-caller/protocol/openid-connect/token`
+- **Authorization Endpoint**: `GET /realms/py-phone-caller/protocol/openid-connect/auth`
+- **End Session / Logout**: `POST /realms/py-phone-caller/protocol/openid-connect/logout`
+- **Admin Console**: `https://<domain>/admin` (Master Realm Admin)
+
+---
+
 ## 4. Shared Library: `py_phone_caller_utils`
 
 The workspace shared library provides:
@@ -392,6 +427,7 @@ The workspace shared library provides:
 - **`py_phone_caller_voices`**: Multi-engine TTS synthesis wrappers (`kokoro_tts.py`, `silero_tts.py`, `piper_tts.py`, `facebook_mms.py`, `aws_polly.py`, `google_gtts.py`).
 - **`sms`**: Native Rust bindings (`rust_engine`) and Twilio async clients.
 - **`web`**: Shared utilities for parameter extraction, service catalogs, readiness probes, and Asterisk ARI Circuit Breakers.
+- **`auth`**: OpenID Connect token validator, PKCE challenge verifiers, and role resolver.
 
 ---
 

@@ -73,7 +73,6 @@ from caller_prometheus_webhook.services import (
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
 init_telemetry("caller_prometheus_webhook")
 
-# Singleton deduplication service and backward-compatible module cache
 _dedup_service = DeduplicationService()
 _LOCAL_DEDUP_CACHE = _dedup_service._local_cache
 
@@ -101,10 +100,6 @@ def _get_active_service() -> AlertNotificationService:
         ),
     )
 
-
-# ---------------------------------------------------------------------------
-# Backward-compatible function facades
-# ---------------------------------------------------------------------------
 
 async def is_duplicate_alert(message: str, ttl_seconds: int = 180) -> bool:
     """Checks whether an alert message has been seen recently."""

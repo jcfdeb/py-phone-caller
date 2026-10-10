@@ -1,0 +1,40 @@
+[Unit]
+Description=Keycloak IAM Service for py-phone-caller
+Documentation=https://www.keycloak.org/
+After=network-online.target {{ py_phone_caller_postgres_service }}.service
+Wants=network-online.target
+{% if py_phone_caller_manage_local_postgres | bool %}
+Requires={{ py_phone_caller_postgres_service }}.service
+{% endif %}
+
+[Service]
+Type=exec
+Restart=always
+RestartSec=10s
+ExecStartPre=-/usr/bin/podman stop keycloak
+ExecStartPre=-/usr/bin/podman rm keycloak
+ExecStart=/usr/bin/podman run --name keycloak --net=host \
+  -v /etc/py-phone-caller/certs:/opt/keycloak/certs:ro,Z \
+  -v /var/lib/py-phone-caller/keycloak:/opt/keycloak/data:Z \
+  -e KC_DB=postgres \
+  -e KC_DB_URL=jdbc:postgresql://127.0.0.1:{{ py_phone_caller_final_config.database.db_port | default(5432) }}/{{ py_phone_caller_keycloak_db_name }} \
+  -e KC_DB_USERNAME={{ py_phone_caller_keycloak_db_user }} \
+  -e KC_DB_PASSWORD={{ _ppc_keycloak_db_password }} \
+  -e KEYCLOAK_ADMIN={{ py_phone_caller_keycloak_admin_user }} \
+  -e KEYCLOAK_ADMIN_PASSWORD={{ _ppc_keycloak_admin_password }} \
+  -e KC_HTTPS_CERTIFICATE_FILE=/opt/keycloak/certs/gateway.crt \
+  -e KC_HTTPS_CERTIFICATE_KEY_FILE=/opt/keycloak/certs/gateway.key \
+  -e KC_HTTPS_PORT={{ py_phone_caller_keycloak_https_port }} \
+  -e KC_HTTP_PORT={{ py_phone_caller_keycloak_http_port }} \
+  -e KC_HEALTH_ENABLED=true \
+  -e KC_METRICS_ENABLED=true \
+  -e KC_PROXY_HEADERS=xforwarded \
+{% if py_phone_caller_public_url | default('', true) | length > 0 %}
+  -e KC_HOSTNAME={{ py_phone_caller_public_url }} \
+  -e KC_HOSTNAME_STRICT=true \
+{% endif %}
+  {{ py_phone_caller_keycloak_image }} start-dev --http-management-port=9009
+ExecStop=/usr/bin/podman stop -t 10 keycloak
+
+[Install]
+WantedBy=multi-user.target

@@ -1,12 +1,7 @@
-# Byte-compiled / optimized / DLL files.
-__pycache__/
+# Python
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -20,106 +15,13 @@ parts/
 sdist/
 var/
 wheels/
-pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   the case for dependencies. However, see the pipenv note above.
-#poetry.lock
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/#use-project-config
-.pdm.toml
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule*
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
+# Virtual environments
 .env
 .venv
 env/
@@ -128,53 +30,99 @@ ENV/
 env.bak/
 venv.bak/
 
-# Other
-docs/**/dist/
-docs/openalert/dist/peering/03-circuit-breaker-spool/data/*/*.db*
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+.fleet/
+.junie/
 
-# Project Specific
-tests/recordings/
-tests/debug_recordings/
-settings_secret.py
-*.pid
-credentials.json
-token.json
+# Testing & CI
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# Asterisk & Audio runtime artifacts
+/assets/asterisk/audio/*.wav
+/assets/asterisk/audio/*.sln
+/assets/asterisk/audio/*.mp3
+/src/generate_audio/audio/*.wav
+/src/generate_audio/audio/*.sln
+/src/generate_audio/audio/*.mp3
+/tmp/*.wav
+/tmp/*.sln
+/tmp/*.mp3
+
+# SMS database runtime
+/tmp/sms.db*
+/tmp/*.db*
+
+# Node / Web UI build artifacts (if applicable)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Documentation build
+site/
+_build/
+
+# Local configuration overrides and secrets
+/src/config/.secrets.toml
+/src/config/secrets.toml
+*.local.toml
+.secrets.toml
+
+# SSL/TLS certificates and keys generated locally
+*.key
+*.crt
+*.pem
+*.csr
+
+# Backups
+*.bak
+*.orig
+*~
+
+# uv cache
+.uv/
+
 token.pickle
 /docs/site/*
 openalert.db*
 /tmp/openalert-data/*
-/assets/ansible/on-vm_py-phone-caller/group_vars/app_servers/secrets.yml
+/deploy/ansible/on-vm_py-phone-caller/group_vars/app_servers/secrets.yml
 /src/openalert/config/openalertd.toml
 
 # Downloaded TTS Models
 /src/generate_audio/pre_trained_models/*
 /src/generate_audio/audio/*
 /pre_trained_models/*
+# Ansible generated secrets & local credential files
+deploy/ansible/**/credentials/
+credentials/
+*.env
+.vault_pass
+.vault_pass*
+*.vault_pass

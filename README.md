@@ -151,9 +151,10 @@ The native Rust engine automatically communicates over the AT command interface 
 
 ## Deployment Options
 
-- Ansible all-in-one stack: `assets/ansible/deploy_all/README.md`
-- Ansible roles: `assets/ansible/asterisk_py-phone-caller/README.md` and `assets/ansible/on-vm_py-phone-caller/README.md`
-- Docker Compose stack (Asterisk external): `assets/docker-compose/README.md`
+- **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**: Production-grade setup with Apache APISIX, Keycloak OIDC authentication, 3-tier RBAC (`alert-admin`, `alert-operator`, `alert-viewer`), and Ansible Vault credential hardening. Includes step-by-step manual and automated paths.
+- **Ansible all-in-one stack**: `deploy/ansible/deploy_all/README.md`
+- **Ansible roles**: `deploy/ansible/asterisk_py-phone-caller/README.md` and `deploy/ansible/on-vm_py-phone-caller/README.md`
+- **Docker Compose stack (Asterisk external)**: `deploy/compose/README.md`
 
 ## Quick Start
 
@@ -165,26 +166,25 @@ Pick one path.
    - `src/config/settings.toml`: set `[commons] asterisk_host`, `asterisk_user`, and `asterisk_web_port` if different.
    - `src/config/.secrets.toml`: set `[commons] asterisk_pass` to your ARI password.
    - If Asterisk runs on the Docker host, use `asterisk_host = "host.containers.internal"`.
-   - Asterisk setup details: `assets/ansible/asterisk_py-phone-caller/README.md`
+   - Asterisk setup details: `deploy/ansible/asterisk_py-phone-caller/README.md`
 2. Create the Compose environment files:
    ```bash
    uv run python assets/scripts/config/toml_to_dynaconf_env.py \
      --input src/config/settings.toml \
-     --output assets/docker-compose/env/py-phone-caller.env
+     --output deploy/compose/env/py-phone-caller.env
 
    uv run python assets/scripts/config/toml_to_dynaconf_env.py \
      --ignore-missing \
      --input src/config/.secrets.toml \
-     --output assets/docker-compose/env/py-phone-caller.secrets.env
+     --output deploy/compose/env/py-phone-caller.secrets.env
 
-   cd assets/docker-compose
+   cd deploy/compose
    cat > .env <<'EOF'
    POSTGRES_PASSWORD=change_me
    CADDY_DOMAIN_NAME=py-phone-caller.lan
    UI_USER_RESET_PASSWORD=false
    EOF
    ```
-   Set `UI_USER_RESET_PASSWORD=true` only for intentional first-time admin bootstrap or password reset, then set it back to `false` after retrieving the generated password from the UI logs.
 3. Build and start the stack:
    ```bash
    docker compose build
@@ -197,7 +197,7 @@ Pick one path.
 5. Open the UI and retrieve the admin password:
    - UI: http://localhost:5000 (or the Caddy domain you set).
    - Admin email defaults to `admin@py-phone-caller.link` (change via `ui_admin_user`).
-   - If `UI_USER_RESET_PASSWORD=true`, the generated password is logged by `py_phone_caller_ui`:
+   - If `UI_USER_RESET_PASSWORD=true`, the first-run password is generated and logged by `py_phone_caller_ui`:
      ```bash
      docker compose logs -f py_phone_caller_ui
      ```
@@ -206,14 +206,14 @@ Pick one path.
 
 1. Go to the playbook directory:
    ```bash
-   cd assets/ansible/deploy_all
+   cd deploy/ansible/deploy_all
    ```
 2. Install required collection:
    ```bash
    ansible-galaxy collection install community.general
    ```
 3. Edit the inventory:
-   - `assets/ansible/on-vm_py-phone-caller/inventory`
+   - `deploy/ansible/on-vm_py-phone-caller/inventory`
 4. Edit `deploy_py-phone-caller_stack.yml` and set at least:
    - `ari_password`
    - `sip_username`
@@ -252,6 +252,7 @@ Pick one path.
 
 ## Documentation
 
+- **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** - Step-by-step manual and automated guide for Apache APISIX & Keycloak OIDC.
 - **[Master Documentation Library](doc/README.md)** - Comprehensive documentation map, architectural guides, and operational manuals.
 - **[Release 1.0.1 Notes & Enhancement Report](docs/1.0.1-release.md)** - Detailed release summary for v1.0.1 enhancements.
 - **[Operator Installation Guide (A to Z)](doc/OPERATOR_INSTALLATION_GUIDE.md)** - Step-by-step production installation for Ansible, Docker/Podman Compose, and Native Systemd.
@@ -278,7 +279,7 @@ Pick one path.
 - [Generate Audio](src/generate_audio/README.md) - Text-to-speech service for generating call audio files.
 - [py-phone-caller-utils](src/py-phone-caller-utils/README.md) - Shared utility library for config, DB, TTS, SMS, and telemetry helpers.
 - [py_phone_caller_ui](src/py_phone_caller_ui/README.md) - Flask web UI for calls, schedules, users, and WS events.
-- [Ansible: deploy all](assets/ansible/deploy_all/README.md) - One-command Ansible playbook for the full Asterisk + py-phone-caller stack.
-- [Ansible: Asterisk role](assets/ansible/asterisk_py-phone-caller/README.md) - Role to install and configure Asterisk PBX for this system.
-- [Ansible: py-phone-caller role](assets/ansible/on-vm_py-phone-caller/README.md) - Role to deploy the microservices stack on a VM or server.
-- [Docker Compose stack](assets/docker-compose/README.md) - Containerized full-stack deployment (requires an external Asterisk).
+- [Ansible: deploy all](deploy/ansible/deploy_all/README.md) - One-command Ansible playbook for the full Asterisk + py-phone-caller stack.
+- [Ansible: Asterisk role](deploy/ansible/asterisk_py-phone-caller/README.md) - Role to install and configure Asterisk PBX for this system.
+- [Ansible: py-phone-caller role](deploy/ansible/on-vm_py-phone-caller/README.md) - Role to deploy the microservices stack on a VM or server.
+- [Docker Compose stack](deploy/compose/README.md) - Containerized full-stack deployment (requires an external Asterisk).

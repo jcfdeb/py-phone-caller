@@ -1,0 +1,23 @@
+# Managed by Ansible (role: deploy_py-phone-caller)
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key:
+      - name: admin
+        key: "{{ py_phone_caller_apisix_admin_token }}"
+        role: admin
+  etcd:
+    host:
+      - "http://127.0.0.1:2379"
+    prefix: "/apisix"
+    timeout: 30
+
+apisix:
+  node_listen:
+    - port: {{ py_phone_caller_gateway_http_port }}
+  ssl:
+    listen:
+      - port: {{ py_phone_caller_gateway_https_port }}
+    ssl_trusted_certificate: "/opt/certs/gateway.crt"

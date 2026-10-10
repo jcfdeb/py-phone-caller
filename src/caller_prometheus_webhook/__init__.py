@@ -1,3 +1,4 @@
+from caller_prometheus_webhook.coalescing import AlertCoalescer, CoalescingBuffer, CoalescedIncident
 """
 caller_prometheus_webhook package.
 
@@ -52,7 +53,10 @@ from caller_prometheus_webhook.caller_prometheus_webhook import (
 )
 
 __all__ = [
+    "AlertCoalescer",
     "AlertNotificationService",
+    "CoalescingBuffer",
+    "CoalescedIncident",
     "AsteriskCallClient",
     "CallerSmsClient",
     "DeduplicationError",

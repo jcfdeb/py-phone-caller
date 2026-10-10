@@ -13,6 +13,7 @@ doc/
 ├── README.md                           # 📍 You are here: Master Documentation Index
 │
 ├── 🚀 Operations & Deployment
+│   ├── ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md # 🛡️ Enterprise APISIX Gateway & Keycloak SSO Guide
 │   ├── OPERATOR_INSTALLATION_GUIDE.md  # 🌟 Master A-to-Z Operator Installation & Runbook
 │   ├── freepbx-asterisk-setup-guide.md # 📞 FreePBX & Asterisk ARI Dialplan Setup (Visual)
 │   ├── virtualbox-setup.md             # 💻 Local VirtualBox Dual-NIC Lab Environment
@@ -40,6 +41,8 @@ doc/
 ## 📑 Core Documentation Index
 
 ### 1. 🚀 Operations & Deployment
+- **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**  
+  *Step-by-step manual and automated deployment guide for all experience levels.* Complete copy-and-paste walkthrough for Apache APISIX unified API gateway, Keycloak OIDC IAM, 3-tier RBAC (`alert-admin`, `alert-operator`, `alert-viewer`), public TLS termination, and Ansible Vault credential hardening.
 - **[Operator Installation Guide (A to Z)](OPERATOR_INSTALLATION_GUIDE.md)**  
   *The authoritative, beginner-friendly deployment guide.* Covers prerequisites, system sizing, network port allocations, automated Ansible on-VM deployments (Ubuntu/Debian/RHEL/Rocky/AlmaLinux), containerized Docker & Podman Compose stacks, unattended PostgreSQL 17 database provisioning, first-time admin account bootstrap, and smoke testing.
 - **[FreePBX & Asterisk ARI Setup Guide](freepbx-asterisk-setup-guide.md)**  
@@ -91,7 +94,8 @@ doc/
 
 | If you are... | Start here: |
 | :--- | :--- |
-| **A Sysadmin / SRE deploying for the first time** | ➡️ **[Operator Installation Guide (A to Z)](OPERATOR_INSTALLATION_GUIDE.md)** |
+| **A Sysadmin / SRE deploying with Single Sign-On (SSO)** | ➡️ **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** |
+| **A Sysadmin / SRE deploying standalone for the first time** | ➡️ **[Operator Installation Guide (A to Z)](OPERATOR_INSTALLATION_GUIDE.md)** |
 | **A Telephony / PBX Administrator** | ➡️ **[FreePBX & Asterisk ARI Setup Guide](freepbx-asterisk-setup-guide.md)** |
 | **A Developer integrating with the REST API** | ➡️ **[Services and Endpoints Reference](services-and-endpoints.md)** |
 | **A Software Engineer contributing code** | ➡️ **[UV Workspace & Migration Guide](uv-migration-and-workspace-guide.md)** |
@@ -103,8 +107,7 @@ doc/
 ## 🔒 Security & Deployment Notice
 
 > [!WARNING]
-> **py-phone-caller** is designed to run exclusively within **trusted local area networks (LANs)** or isolated VLANs behind firewalls.
+> **py-phone-caller** is designed to run within **trusted local area networks (LANs)** or isolated VLANs behind firewalls and gateways.
 > 
 > - **Never expose internal service ports (`8081`–`8087`) to the public Internet.**
-> - Only the Web UI (`5000`) should be accessible to operators, ideally protected behind a reverse proxy (e.g. Caddy, Nginx) with TLS termination and authentication.
-> - For full security recommendations, consult the [1.0.0 Release Hardening Document](1.0.0-release.md).
+> - Use the **[Enterprise Gateway & Keycloak SSO](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** for public access with TLS termination, APISIX routing, and OIDC identity authentication.

@@ -192,9 +192,9 @@ test/test_ui.py ....................                                     [100%]
 ## 5. Deployment & Operational Readiness
 
 ### 5.1 Container & Orchestration Assets
-- **Docker Compose (`assets/docker-compose/docker-compose.yml`)**: Fully configured with healthchecks, private network bridges, and environment variable bindings.
+- **Docker Compose (`deploy/compose/docker-compose.yml`)**: Fully configured with healthchecks, private network bridges, and environment variable bindings.
 - **Image Builder (`src/build_all_images.sh`)**: Builds all 11 microservice images with multi-tagging (`localhost/<svc>:latest` and `<svc>:1.0.0`).
-- **Ansible Automation (`assets/ansible/`)**: Configurable host mappings, systemd service templates, and automated environment file generation.
+- **Ansible Automation (`deploy/ansible/`)**: Configurable host mappings, systemd service templates, and automated environment file generation.
 
 ### 5.2 Recommended Startup Sequence
 To ensure reliable orchestration during boot or disaster recovery:

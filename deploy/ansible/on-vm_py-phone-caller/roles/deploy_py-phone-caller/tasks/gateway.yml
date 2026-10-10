@@ -1,0 +1,197 @@
+---
+# ===========================================================================
+# Apache APISIX & Keycloak IAM Gateway Deployment
+# ===========================================================================
+
+- name: Ensure Podman is installed
+  ansible.builtin.package:
+    name:
+      - podman
+    state: present
+
+- name: Ensure gateway directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "/etc/py-phone-caller"
+    - "/etc/py-phone-caller/certs"
+    - "/etc/py-phone-caller/apisix"
+    - "/var/lib/py-phone-caller/etcd"
+    - "/var/lib/py-phone-caller/keycloak"
+
+- name: Check if self-signed TLS certificate exists
+  ansible.builtin.stat:
+    path: /etc/py-phone-caller/certs/gateway.crt
+  register: _ppc_gateway_cert_stat
+
+- name: Generate self-signed TLS certificate for Gateway & Keycloak
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes -days 3650 -newkey rsa:2048
+      -keyout /etc/py-phone-caller/certs/gateway.key
+      -out /etc/py-phone-caller/certs/gateway.crt
+      -subj "/CN={{ ansible_host | default(inventory_hostname) }}"
+      -addext "subjectAltName = DNS:localhost,DNS:{{ ansible_host | default(inventory_hostname) }},DNS:py-phone-caller.link,IP:127.0.0.1"
+  when: not _ppc_gateway_cert_stat.stat.exists
+
+- name: Ensure TLS key permissions are readable by container services
+  ansible.builtin.file:
+    path: /etc/py-phone-caller/certs/gateway.key
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render APISIX configuration
+  ansible.builtin.template:
+    src: apisix_config.yaml.j2
+    dest: /etc/py-phone-caller/apisix/config.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  register: _ppc_apisix_conf
+
+- name: Render APISIX Dashboard configuration
+  ansible.builtin.template:
+    src: apisix_dashboard_conf.yaml.j2
+    dest: /etc/py-phone-caller/apisix/dashboard_conf.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  register: _ppc_apisix_dash_conf
+
+- name: Render APISIX declarative routes
+  ansible.builtin.template:
+    src: apisix_routes.yaml.j2
+    dest: /etc/py-phone-caller/apisix/apisix.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Copy gateway setup scripts to target
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/opt/py-phone-caller/bin/{{ item }}"
+    owner: py-phone-caller
+    group: py-phone-caller
+    mode: "0750"
+  loop:
+    - setup_keycloak.py
+    - setup_apisix_routes.py
+
+- name: Install Gateway container systemd units
+  ansible.builtin.template:
+    src: "{{ item.template }}"
+    dest: "/etc/systemd/system/{{ item.unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { template: "service-etcd.j2", unit: "py-phone-caller-etcd.service" }
+    - { template: "service-apisix.j2", unit: "py-phone-caller-apisix.service" }
+    - { template: "service-apisix-dashboard.j2", unit: "py-phone-caller-apisix-dashboard.service" }
+    - { template: "service-keycloak.j2", unit: "py-phone-caller-keycloak.service" }
+  register: _ppc_gateway_units
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _ppc_gateway_units.changed
+
+- name: Enable and start Gateway container services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - py-phone-caller-etcd.service
+    - py-phone-caller-apisix.service
+    - py-phone-caller-apisix-dashboard.service
+    - py-phone-caller-keycloak.service
+
+- name: Restart APISIX Gateway when configuration changes
+  ansible.builtin.systemd:
+    name: py-phone-caller-apisix.service
+    state: restarted
+  when: _ppc_apisix_conf.changed
+
+- name: Restart APISIX Dashboard when configuration changes
+  ansible.builtin.systemd:
+    name: py-phone-caller-apisix-dashboard.service
+    state: restarted
+  when: _ppc_apisix_dash_conf.changed
+
+- name: Wait for Keycloak IAM service port to be open
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ py_phone_caller_keycloak_http_port }}"
+    state: started
+    timeout: 120
+
+- name: Wait for Keycloak IAM service to respond
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ py_phone_caller_keycloak_http_port }}/realms/master"
+    status_code: [200, 404, 302]
+  register: _ppc_kc_health
+  retries: 30
+  delay: 3
+  until: _ppc_kc_health.status in [200, 404, 302]
+
+- name: Provision Keycloak realm, roles, clients, and users
+  ansible.builtin.command:
+    cmd: >-
+      {{ py_phone_caller_venv_dir }}/bin/python
+      /opt/py-phone-caller/bin/setup_keycloak.py
+  environment:
+    KEYCLOAK_URL: "http://127.0.0.1:{{ py_phone_caller_keycloak_http_port }}"
+    KEYCLOAK_ADMIN_USER: "{{ py_phone_caller_keycloak_admin_user }}"
+    KEYCLOAK_ADMIN_PASS: "{{ _ppc_keycloak_admin_password }}"
+    KEYCLOAK_REALM: "{{ py_phone_caller_keycloak_realm }}"
+    KEYCLOAK_M2M_SECRET: "{{ _ppc_keycloak_m2m_client_secret }}"
+    KEYCLOAK_PUBLIC_URL: "{{ _ppc_effective_public_url }}"
+    KEYCLOAK_USER_ADMIN_PASS: "{{ _ppc_keycloak_user_admin_password }}"
+    KEYCLOAK_USER_OPERATOR_PASS: "{{ _ppc_keycloak_user_operator_password }}"
+    KEYCLOAK_USER_VIEWER_PASS: "{{ _ppc_keycloak_user_viewer_password }}"
+  register: _ppc_kc_setup
+  changed_when: "'created' in _ppc_kc_setup.stdout or 'updated' in _ppc_kc_setup.stdout"
+  retries: 5
+  delay: 4
+  until: _ppc_kc_setup.rc == 0
+
+- name: Wait for APISIX Dashboard port to be open
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ py_phone_caller_gateway_dashboard_port }}"
+    state: started
+    timeout: 60
+
+- name: Provision APISIX Gateway routes via Manager API
+  ansible.builtin.command:
+    cmd: >-
+      {{ py_phone_caller_venv_dir }}/bin/python
+      /opt/py-phone-caller/bin/setup_apisix_routes.py
+  environment:
+    APISIX_DASHBOARD_URL: "http://127.0.0.1:{{ py_phone_caller_gateway_dashboard_port }}"
+    APISIX_DASHBOARD_USER: "{{ py_phone_caller_apisix_dashboard_user }}"
+    APISIX_DASHBOARD_PASS: "{{ _ppc_apisix_dashboard_password }}"
+    UPSTREAM_HOST: "{{ py_phone_caller_service_host }}"
+    KEYCLOAK_PORT: "{{ py_phone_caller_keycloak_http_port }}"
+  register: _ppc_apisix_setup
+  changed_when: "'created' in _ppc_apisix_setup.stdout"
+  retries: 5
+  delay: 4
+  until: _ppc_apisix_setup.rc == 0
+
+- name: Synchronize Web UI local fallback admin password in PostgreSQL
+  ansible.builtin.command:
+    cmd: >-
+      {{ py_phone_caller_venv_dir }}/bin/python -c
+      "import asyncio; from py_phone_caller_utils.py_phone_caller_db.db_user import update_password; asyncio.run(update_password('{{ py_phone_caller_final_config.py_phone_caller_ui.ui_admin_user | default('admin@py-phone-caller.link') }}', '{{ _ppc_web_ui_admin_password }}'))"
+  environment:
+    CALLER_CONFIG_DIR: "{{ py_phone_caller_install_dir }}/app/config"
+    PICCOLO_CONF: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+  no_log: true
+  changed_when: true
