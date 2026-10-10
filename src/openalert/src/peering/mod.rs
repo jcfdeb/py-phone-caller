@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 
 /// Central peering manager orchestrating UDP sockets, crypto, actor workers, and inbound routing.
@@ -48,6 +48,9 @@ pub struct PeeringService {
     routing_table: Arc<RwLock<RoutingTable>>,
     engine: Arc<RwLock<Option<Arc<AlertEngine>>>>,
     storage: Option<Arc<Storage>>,
+    #[allow(dead_code)]
+    lora_transmitters: Arc<HashMap<String, mpsc::Sender<Vec<u8>>>>,
+    lora_pending_receivers: Arc<Mutex<HashMap<String, (u32, mpsc::Receiver<Vec<u8>>)>>>,
 }
 
 impl PeeringService {
@@ -71,6 +74,27 @@ impl PeeringService {
         let ack_waiters: AckWaiters = Arc::new(Mutex::new(HashMap::new()));
         let mut workers = HashMap::new();
 
+        let mut lora_tx_map = HashMap::new();
+        let mut lora_rx_map = HashMap::new();
+
+        for node in &config.nodes {
+            if node.link_type == crate::config::PeeringLinkType::LoraSerial {
+                let dev = node
+                    .serial_device
+                    .clone()
+                    .unwrap_or_else(|| "/dev/ttyUSB0".to_string());
+                let baud = node.baud_rate.unwrap_or(115200);
+
+                if !lora_tx_map.contains_key(&dev) {
+                    let (tx, rx) = mpsc::channel::<Vec<u8>>(128);
+                    lora_tx_map.insert(dev.clone(), tx);
+                    lora_rx_map.insert(dev, (baud, rx));
+                }
+            }
+        }
+
+        let lora_transmitters = Arc::new(lora_tx_map);
+
         for node in &config.nodes {
             let key = *key_registry
                 .get_key_for_peer(&node.name)
@@ -89,6 +113,7 @@ impl PeeringService {
                 config.circuit_breaker.base_cooldown_secs,
                 config.circuit_breaker.max_cooldown_secs,
                 config.circuit_breaker.canary_timeout_ms,
+                lora_transmitters.clone(),
             );
             workers.insert(node.name.clone(), handle);
         }
@@ -109,6 +134,8 @@ impl PeeringService {
             routing_table: Arc::new(RwLock::new(RoutingTable::new())),
             engine: Arc::new(RwLock::new(None)),
             storage,
+            lora_transmitters,
+            lora_pending_receivers: Arc::new(Mutex::new(lora_rx_map)),
         })
     }
 
@@ -149,30 +176,27 @@ impl PeeringService {
         }
     }
 
-    /// Starts the background UDP receiver and any LoRa Serial physical receiver tasks.
+    /// Starts the background UDP receiver and any LoRa Serial physical duplex tasks.
     pub fn start(self: Arc<Self>) {
         let self_udp = self.clone();
         tokio::spawn(async move {
             self_udp.run_rx_loop().await;
         });
 
-        // Spawn LoRa Serial ingress loops for any configured LoraSerial nodes
-        let mut serial_devices = std::collections::HashSet::new();
-        for node in &self.config.nodes {
-            if node.link_type == crate::config::PeeringLinkType::LoraSerial {
-                let dev = node
-                    .serial_device
-                    .clone()
-                    .unwrap_or_else(|| "/dev/ttyUSB0".to_string());
-                let baud = node.baud_rate.unwrap_or(115200);
-                if serial_devices.insert((dev.clone(), baud)) {
-                    let self_lora = self.clone();
-                    tokio::spawn(async move {
-                        self_lora.run_lora_serial_rx_loop(dev, baud).await;
-                    });
-                }
+        // Spawn LoRa Serial duplex loops for any configured LoraSerial nodes
+        let self_lora = self.clone();
+        tokio::spawn(async move {
+            let receivers = {
+                let mut guard = self_lora.lora_pending_receivers.lock().await;
+                std::mem::take(&mut *guard)
+            };
+            for (dev, (baud, rx)) in receivers {
+                let s = self_lora.clone();
+                tokio::spawn(async move {
+                    s.run_lora_serial_duplex_loop(dev, baud, rx).await;
+                });
             }
-        }
+        });
     }
 
     /// Dispatches an alert to all configured peers with split-horizon origin filtering.
@@ -231,19 +255,24 @@ impl PeeringService {
         }
     }
 
-    async fn run_lora_serial_rx_loop(self: Arc<Self>, dev_path: String, baud_rate: u32) {
+    async fn run_lora_serial_duplex_loop(
+        self: Arc<Self>,
+        dev_path: String,
+        baud_rate: u32,
+        mut tx_rx: mpsc::Receiver<Vec<u8>>,
+    ) {
         use crate::peering::lora::SlipDecoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio_serial::SerialPortBuilderExt;
 
         let mut decoder = SlipDecoder::new();
-        let mut buf = [0u8; 256];
+        let mut read_buf = [0u8; 256];
 
         loop {
-            let mut port = match tokio_serial::new(&dev_path, baud_rate).open_native_async() {
+            let port = match tokio_serial::new(&dev_path, baud_rate).open_native_async() {
                 Ok(p) => {
                     info!(
-                        "📻 [LoRa Serial Ingress] Actively listening on {} at {} baud",
+                        "📻 [LoRa Serial Duplex] Actively opened {} at {} baud",
                         dev_path, baud_rate
                     );
                     p
@@ -258,30 +287,53 @@ impl PeeringService {
                 }
             };
 
+            let (mut reader, mut writer) = tokio::io::split(port);
+
             loop {
-                match port.read(&mut buf).await {
-                    Ok(0) => {
-                        warn!(
-                            "LoRa serial port '{}' read 0 bytes (disconnected). Reconnecting...",
-                            dev_path
-                        );
-                        tokio::time::sleep(Duration::from_secs(3)).await;
-                        break;
-                    }
-                    Ok(n) => {
-                        let frames = decoder.decode_chunk(&buf[..n]);
-                        for frame in frames {
-                            let src_desc = format!("lora:{}", dev_path);
-                            self.process_inbound_datagram(&frame, &src_desc, None).await;
+                tokio::select! {
+                    read_res = reader.read(&mut read_buf) => {
+                        match read_res {
+                            Ok(0) => {
+                                warn!(
+                                    "LoRa serial port '{}' read 0 bytes (disconnected). Reconnecting...",
+                                    dev_path
+                                );
+                                tokio::time::sleep(Duration::from_secs(3)).await;
+                                break;
+                            }
+                            Ok(n) => {
+                                let frames = decoder.decode_chunk(&read_buf[..n]);
+                                for frame in frames {
+                                    let src_desc = format!("lora:{}", dev_path);
+                                    self.process_inbound_datagram(&frame, &src_desc, None).await;
+                                }
+                            }
+                            Err(e) => {
+                                debug!(
+                                    "LoRa serial read interrupted on '{}' ({}). Re-opening port...",
+                                    dev_path, e
+                                );
+                                tokio::time::sleep(Duration::from_secs(2)).await;
+                                break;
+                            }
                         }
                     }
-                    Err(e) => {
-                        debug!(
-                            "LoRa serial read interrupted on '{}' ({}). Re-opening port...",
-                            dev_path, e
-                        );
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                        break;
+                    outbound = tx_rx.recv() => {
+                        match outbound {
+                            Some(packet) => {
+                                if let Err(e) = writer.write_all(&packet).await {
+                                    warn!("LoRa serial write_all error on '{}': {}", dev_path, e);
+                                    break;
+                                }
+                                if let Err(e) = writer.flush().await {
+                                    warn!("LoRa serial flush error on '{}': {}", dev_path, e);
+                                    break;
+                                }
+                            }
+                            None => {
+                                return;
+                            }
+                        }
                     }
                 }
             }

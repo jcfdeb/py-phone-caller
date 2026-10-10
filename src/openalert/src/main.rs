@@ -277,6 +277,8 @@ async fn main() -> Result<()> {
         args.get(2)
             .cloned()
             .unwrap_or_else(|| "config/openalertd.toml".to_string())
+    } else if (subcommand == "--config" || subcommand == "-c") && args.len() > 2 {
+        args[2].clone()
     } else if !subcommand.is_empty() && !subcommand.starts_with('-') {
         subcommand.to_string()
     } else {
