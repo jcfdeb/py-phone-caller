@@ -36,6 +36,7 @@
         <a href="#services">Services</a>
         <a href="#capabilities">Capabilities</a>
         <a href="#deploy">Deploy</a>
+        <a href="openalert/" target="_blank" rel="noopener">OpenAlert NOC</a>
       </nav>
       <div class="nav-actions">
         <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav">
@@ -65,6 +66,11 @@
     <main id="main-content">
       <section class="hero">
         <div class="hero-copy">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;">
+            <span class="chip" style="color: var(--teal); border-color: rgba(92, 214, 199, 0.4); font-weight: 500;">🚀 Release v1.0.1</span>
+            <span class="chip" style="color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); font-weight: 500;">🛡️ Enterprise Hardened</span>
+            <span class="chip" style="color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 500;">🦀 OpenAlert v0.2.0 Hub</span>
+          </div>
           <p class="eyebrow">Emergency-grade alerting and response</p>
           <h1>Command every call, every time.</h1>
           <p class="lead">
@@ -75,19 +81,20 @@
           <div class="cta">
             <a class="btn primary" href="#architecture">View architecture</a>
             <a class="btn ghost" href="#services">Explore services</a>
+            <a class="btn ghost" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/1.0.1-release.md" target="_blank" rel="noopener">Release notes</a>
             <a class="btn ghost" href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener">View on GitHub</a>
           </div>
           <div class="hero-stats">
             <div class="stat">
-              <div class="stat-value">11</div>
-              <div class="stat-label">microservices</div>
+              <div class="stat-value">14</div>
+              <div class="stat-label">services & gateways</div>
             </div>
             <div class="stat">
               <div class="stat-value">5</div>
               <div class="stat-label">TTS engines</div>
             </div>
             <div class="stat">
-              <div class="stat-value">8081-8087</div>
+              <div class="stat-value">8081-9443</div>
               <div class="stat-label">service ports</div>
             </div>
           </div>
@@ -179,10 +186,10 @@
       <section id="services" class="section">
         <div class="section-head">
           <p class="eyebrow">Microservice lineup</p>
-          <h2>11 services, one coordinated response</h2>
+          <h2>14 services, one coordinated response</h2>
           <p>
-            Each service is independently deployable, Docker-ready, and wired through REST APIs and
-            asynchronous queues.
+            Each service is independently deployable, Docker-ready, and wired through Apache APISIX edge routing,
+            Keycloak IAM single sign-on, REST APIs, and asynchronous queues.
           </p>
           <p class="doc-link">
             <a href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener">View repository on GitHub</a>
@@ -285,6 +292,30 @@
             </div>
             <div class="tag">Shared core</div>
           </a>
+          <a class="service-card" style="--delay: 0.6s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md">
+            <h3>apache_apisix</h3>
+            <p>Unified edge API gateway with SSL termination, dynamic path rewriting, rate limiting, and OIDC auth.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 9080 / 9443</span>
+            </div>
+            <div class="tag">API Gateway</div>
+          </a>
+          <a class="service-card" style="--delay: 0.65s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md">
+            <h3>keycloak_iam</h3>
+            <p>Enterprise identity and access management providing SSO, RBAC roles, and M2M credentials.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8180 / 8443</span>
+            </div>
+            <div class="tag">IAM / SSO</div>
+          </a>
+          <a class="service-card" style="--delay: 0.7s" href="openalert/">
+            <h3>openalertd</h3>
+            <p>Decentralized emergency alerting bridge (LoRa RF, BitChat BLE, Nostr) with embedded NOC control plane.</p>
+            <div class="service-meta">
+              <span class="meta-chip">Port 8090</span>
+            </div>
+            <div class="tag">Decentralized</div>
+          </a>
         </div>
       </section>
 
@@ -301,6 +332,14 @@
             <h3>Web UI tour</h3>
             <p>See dashboards, schedules, call history, and live event logs in a guided walkthrough.</p>
             <a class="btn ghost small" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/web-ui-tour/README.md" target="_blank" rel="noopener">Open the tour</a>
+          </div>
+          <div class="panel">
+            <h3>Enterprise SSO & Gateway</h3>
+            <p>Single sign-on across the UI and OpenAlert NOC with Keycloak OIDC and Apache APISIX edge security.</p>
+          </div>
+          <div class="panel">
+            <h3>Managed SMS & Lifecycle Stepper</h3>
+            <p>Real-time delivery progression stepper (Ingested &rarr; Dispatched &rarr; Delivered/Failed) with auto-refresh.</p>
           </div>
           <div class="panel">
             <h3>Alert-first delivery</h3>
@@ -339,11 +378,15 @@
         </div>
         <div class="stack-chips">
           <span>Asterisk PBX</span>
-          <span>Python 3.12</span>
+          <span>Python 3.12+</span>
+          <span>Apache APISIX</span>
+          <span>Keycloak IAM</span>
+          <span>Rust (OpenAlert)</span>
           <span>Celery + Redis</span>
           <span>PostgreSQL 18 (also 15)</span>
+          <span>Kokoro TTS</span>
           <span>Dynaconf</span>
-          <span>Docker</span>
+          <span>Docker / Podman</span>
           <span>Ansible</span>
           <span>OpenTelemetry</span>
         </div>
@@ -408,6 +451,21 @@
                 <td>5000</td>
                 <td>Web dashboard</td>
               </tr>
+              <tr>
+                <td>apache_apisix</td>
+                <td>9080 / 9443</td>
+                <td>Unified Edge API Gateway & SSL</td>
+              </tr>
+              <tr>
+                <td>keycloak</td>
+                <td>8180 / 8443</td>
+                <td>IAM OIDC Realms & Admin Console</td>
+              </tr>
+              <tr>
+                <td>openalertd</td>
+                <td>8090</td>
+                <td>Decentralized Bridge & NOC Dashboard</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -425,6 +483,9 @@
           </p>
           <p class="doc-link">
             <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/OPERATOR_INSTALLATION_GUIDE.md" target="_blank" rel="noopener">Operator Installation Guide (A to Z)</a>
+          </p>
+          <p class="doc-link">
+            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/1.0.1-release.md" target="_blank" rel="noopener">Release 1.0.1 Notes & Upgrade Guide</a>
           </p>
           <p class="doc-link">
             <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md" target="_blank" rel="noopener">Enterprise APISIX Gateway & Keycloak SSO Guide</a>

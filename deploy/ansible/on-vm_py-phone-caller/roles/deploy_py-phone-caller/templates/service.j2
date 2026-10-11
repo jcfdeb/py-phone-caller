@@ -33,7 +33,7 @@ Environment=PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
 Environment=UI_USER_RESET_PASSWORD={{ (py_phone_caller_ui_reset_password | bool) | ternary('true', 'false') }}
 {% endif %}
 {% if item.type | default('module') == 'gunicorn' %}
-ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn --workers {{ item.workers | default(4) }} --bind {{ _ppc_ui_host }}:{{ _ppc_ui_port }} py_phone_caller_ui.app:app
+ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn --worker-class {{ item.worker_class | default("gthread") }} --workers {{ item.workers | default(4) }} --threads {{ item.threads | default(16) }} --timeout {{ item.timeout | default(120) }} --bind {{ _ppc_ui_host }}:{{ _ppc_ui_port }} py_phone_caller_ui.app:app
 {% elif item.type | default('module') == 'celery' %}
 ExecStart={{ py_phone_caller_venv_dir }}/bin/celery --app {{ item.celery_app }} worker --loglevel={{ py_phone_caller_final_config.logs.log_level | default('INFO') | lower }}
 {% else %}

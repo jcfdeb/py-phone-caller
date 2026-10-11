@@ -1,6 +1,6 @@
 [package]
 name = "openalertd"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["OpenAlert Contributors"]
 description = "Mission-critical decentralized alert router, Nostr pub/sub bus, and telephony bridge"

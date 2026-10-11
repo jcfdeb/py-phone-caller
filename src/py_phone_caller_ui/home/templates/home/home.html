@@ -454,7 +454,8 @@
             try {
                 const ev = JSON.parse(e.data);
                 if (ev && ev.event_type) {
-                    showToast('Telephony Event', ev.event_type + (ev.channel_state ? ' (' + ev.channel_state + ')' : ''), 'info');
+                    const desc = ev.channel_state ? 'Channel: ' + (ev.asterisk_chan || 'ARI') + ' (' + ev.channel_state + ')' : (ev.asterisk_chan || 'Telephony Stream');
+                    showToast('PBX Event: ' + ev.event_type, desc, 'info');
                 }
             } catch(err) {}
         });
@@ -462,6 +463,12 @@
         evtSource.onerror = function() {
             console.debug('SSE disconnected, reconnecting in background...');
         };
+
+        function closeSSE() {
+            try { evtSource.close(); } catch(e) {}
+        }
+        window.addEventListener('beforeunload', closeSSE);
+        window.addEventListener('pagehide', closeSSE);
     })();
 
     // Fallback polling every 15s in case SSE is blocked by proxies

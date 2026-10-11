@@ -2886,3 +2886,62 @@ async fn test_dynaconf_style_environment_overrides() {
 
     println!("✅ Dynaconf-style environment variable overrides (OPENALERT_<SECTION>__<KEY>) verified in integration test!");
 }
+
+
+#[tokio::test]
+async fn test_dashboard_test_alert_routing_and_rapid_dispatch() {
+    let mut config = test_config();
+    config.py_phone_caller.webhooks = vec![openalertd::config::WebhookEndpointConfig {
+        url: "http://127.0.0.1:8084/sms_before_call".to_string(),
+        priority: Some(1),
+        timeout_seconds: 5.0,
+        max_retries: 1,
+        delay: 0,
+        auth: None,
+    }];
+
+    let engine = std::sync::Arc::new(openalertd::engine::AlertEngine::new(config).expect("engine creation"));
+
+    // 1. Rapid test alerts with identical summary must NOT be dropped by content deduplication
+    let test_alert_1 = openalertd::models::Alert {
+        alert_id: format!("test-{:x}", chrono::Utc::now().timestamp_millis()),
+        severity: openalertd::models::AlertSeverity::Critical,
+        summary: "Substation Power Grid Anomaly".to_string(),
+        description: None,
+        source: openalertd::models::AlertSource::Rest,
+        sender: None,
+        node: None,
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["py-phone-caller".to_string()],
+        origin_peer: None,
+        hop: 3,
+    };
+
+    let (is_dup_1, _) = engine.is_duplicate_alert(&test_alert_1).await;
+    assert!(!is_dup_1, "First test alert must not be duplicate");
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+    let test_alert_2 = openalertd::models::Alert {
+        alert_id: format!("test-{:x}", chrono::Utc::now().timestamp_millis() + 100),
+        severity: openalertd::models::AlertSeverity::Critical,
+        summary: "Substation Power Grid Anomaly".to_string(),
+        description: None,
+        source: openalertd::models::AlertSource::Rest,
+        sender: None,
+        node: None,
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["py-phone-caller".to_string()],
+        origin_peer: None,
+        hop: 3,
+    };
+
+    let (is_dup_2, _) = engine.is_duplicate_alert(&test_alert_2).await;
+    assert!(!is_dup_2, "Rapid second test alert with same summary must bypass content dedup");
+
+    // 2. Exact same alert_id MUST be recognized as duplicate
+    let (is_dup_exact, _) = engine.is_duplicate_alert(&test_alert_1).await;
+    assert!(is_dup_exact, "Exact alert_id replay must still be duplicate");
+
+    println!("✅ Dashboard test alert routing and rapid dispatch deduplication bypass verified!");
+}

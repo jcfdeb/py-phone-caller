@@ -90,6 +90,7 @@ def telemetry_stream():
     def event_generator():
         import queue
         import threading
+        import time
 
         try:
             initial_metrics = asyncio.run(get_noc_dashboard_metrics())
@@ -122,25 +123,30 @@ def telemetry_stream():
         t = threading.Thread(target=listener, daemon=True)
         t.start()
 
+        last_metrics_refresh = time.time()
         try:
             while not stop_event.is_set():
                 try:
-                    item = q.get(timeout=15.0)
+                    item = q.get(timeout=1.0)
                     ev, fresh = item
                     yield f"event: telephony_event\ndata: {json.dumps(ev)}\n\n"
                     yield f"event: metrics\ndata: {json.dumps(fresh)}\n\n"
+                    last_metrics_refresh = time.time()
                 except queue.Empty:
-                    try:
-                        fresh = asyncio.run(get_noc_dashboard_metrics())
-                        yield ": keep-alive\n\n"
-                        yield f"event: metrics\ndata: {json.dumps(fresh)}\n\n"
-                    except Exception:
-                        yield ": keep-alive\n\n"
-        except (GeneratorExit, StopIteration):
+                    now = time.time()
+                    if now - last_metrics_refresh >= 15.0:
+                        last_metrics_refresh = now
+                        try:
+                            fresh = asyncio.run(get_noc_dashboard_metrics())
+                            yield f"event: metrics\ndata: {json.dumps(fresh)}\n\n"
+                        except Exception:
+                            pass
+                    # Heartbeat comment every 1.0s to instantly catch client disconnects (broken pipe)
+                    yield ": keep-alive\n\n"
+        except (GeneratorExit, StopIteration, BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
             stop_event.set()
-
     return Response(
         event_generator(),
         mimetype="text/event-stream",

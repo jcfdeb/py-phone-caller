@@ -59,3 +59,5 @@ _ppc_ui_host: "{{ py_phone_caller_final_config.py_phone_caller_ui.ui_listen_on_h
 _ppc_ui_port: "{{ py_phone_caller_final_config.py_phone_caller_ui.ui_listen_on_port | default(5000) }}"
 # 0.0.0.0 is a bind address, not a destination: Caddy must dial loopback.
 _ppc_ui_upstream_host: "{{ '127.0.0.1' if _ppc_ui_host in ['0.0.0.0', '::', ''] else _ppc_ui_host }}"
+# Upstream ingress destination: APISIX HTTP port if gateway is enabled, else direct UI port
+_ppc_ingress_upstream: "{{ ('127.0.0.1:' ~ (py_phone_caller_gateway_http_port | string)) if (py_phone_caller_manage_gateway | default(false) | bool) else (_ppc_ui_upstream_host ~ ':' ~ (_ppc_ui_port | string)) }}"

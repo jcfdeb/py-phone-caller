@@ -118,6 +118,14 @@ app.config["SECRET_KEY"] = UI_SECRET_KEY
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 604800
+
+
+@app.after_request
+def add_static_cache_headers(response: Response) -> Response:
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    return response
 
 app.wsgi_app = ProxyFix(
     app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1

@@ -457,6 +457,9 @@ py_phone_caller_services:
     description: "py-phone-caller: web dashboard"
     type: gunicorn
     workers: 4
+    threads: 16
+    worker_class: gthread
+    timeout: 120
   - name: celery_worker
     description: "py-phone-caller: Celery background worker"
     type: celery

@@ -36,7 +36,7 @@
       Listeners: {{ _ppc_foreign_listeners | join(' | ') }}.
       {% endif %}
       Either set py_phone_caller_manage_caddy=false and point the existing
-      proxy at {{ _ppc_ui_upstream_host }}:{{ _ppc_ui_port }}, or remove the
+      proxy at {{ _ppc_ingress_upstream }}, or remove the
       other proxy. Set py_phone_caller_caddy_force=true to install anyway.
     quiet: true
   vars:

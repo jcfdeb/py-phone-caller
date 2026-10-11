@@ -118,7 +118,8 @@
             </tr>
             </thead>
             <tbody>
-            {% if paginated_data %}\n                {% for key in paginated_data %}{% set row = table_data[key] %}
+            {% if paginated_data %}
+                {% for key in paginated_data %}{% set row = table_data[key] %}
                 <tr>
                     <td class="fw-semibold text-secondary">{{ key + 1 }}</td>
                     <td>
@@ -397,4 +398,63 @@
                     button.getAttribute('data-created-at'),
                     button.getAttribute('data-message'),
                     button.getAttribute('data-error')
-                );\n            });\n        }\n    });\n\n    (function(){\n        const STORAGE_KEY = 'sms_auto_refresh_seconds';\n        const selectId = 'autoRefreshSelect';\n        const countdownId = 'autoRefreshCountdown';\n        let timerId = null;\n        let remaining = 0;\n\n        function updateCountdownText() {\n            const el = document.getElementById(countdownId);\n            if (!el) return;\n            const sel = document.getElementById(selectId);\n            const secs = parseInt(sel?.value || '0', 10) || 0;\n            if (secs === 0) {\n                el.textContent = '';\n                el.style.display = 'none';\n                return;\n            }\n            el.style.display = 'inline-block';\n            el.textContent = `${remaining}s`;\n            el.className = remaining <= 3 ? 'badge bg-danger ms-2' : 'badge bg-info-subtle text-info border border-info-subtle ms-2';\n        }\n\n        function start(seconds) {\n            if (timerId) clearInterval(timerId);\n            const sel = document.getElementById(selectId);\n            if (sel) sel.value = String(seconds);\n            localStorage.setItem(STORAGE_KEY, String(seconds));\n\n            if (!seconds) { remaining = 0; updateCountdownText(); return; }\n            remaining = seconds;\n            updateCountdownText();\n            timerId = setInterval(() => {\n                if (document.hidden) return;\n                remaining--;\n                if (remaining <= 0) {\n                    clearInterval(timerId);\n                    window.location.reload();\n                    return;\n                }\n                updateCountdownText();\n            }, 1000);\n        }\n\n        document.addEventListener('DOMContentLoaded', () => {\n            const saved = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;\n            const sel = document.getElementById(selectId);\n            if (sel) {\n                sel.value = String(saved);\n                sel.addEventListener('change', (e) => start(parseInt(e.target.value, 10) || 0));\n            }\n            if (saved > 0) start(saved);\n        });\n    })();\n</script>\n{% endblock %}\n
+                );
+            });
+        }
+    });
+
+    (function(){
+        const STORAGE_KEY = 'sms_auto_refresh_seconds';
+        const selectId = 'autoRefreshSelect';
+        const countdownId = 'autoRefreshCountdown';
+        let timerId = null;
+        let remaining = 0;
+
+        function updateCountdownText() {
+            const el = document.getElementById(countdownId);
+            if (!el) return;
+            const sel = document.getElementById(selectId);
+            const secs = parseInt(sel?.value || '0', 10) || 0;
+            if (secs === 0) {
+                el.textContent = '';
+                el.style.display = 'none';
+                return;
+            }
+            el.style.display = 'inline-block';
+            el.textContent = `${remaining}s`;
+            el.className = remaining <= 3 ? 'badge bg-danger ms-2' : 'badge bg-info-subtle text-info border border-info-subtle ms-2';
+        }
+
+        function start(seconds) {
+            if (timerId) clearInterval(timerId);
+            const sel = document.getElementById(selectId);
+            if (sel) sel.value = String(seconds);
+            localStorage.setItem(STORAGE_KEY, String(seconds));
+
+            if (!seconds) { remaining = 0; updateCountdownText(); return; }
+            remaining = seconds;
+            updateCountdownText();
+            timerId = setInterval(() => {
+                if (document.hidden) return;
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(timerId);
+                    window.location.reload();
+                    return;
+                }
+                updateCountdownText();
+            }, 1000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
+            const sel = document.getElementById(selectId);
+            if (sel) {
+                sel.value = String(saved);
+                sel.addEventListener('change', (e) => start(parseInt(e.target.value, 10) || 0));
+            }
+            if (saved > 0) start(saved);
+        });
+    })();
+</script>
+{% endblock %}

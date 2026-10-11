@@ -6,8 +6,8 @@
 {% endif %}
 
 {{ caddy_domain_name | default(':80', true) }} {
-	encode gzip
-	reverse_proxy {{ _ppc_ui_upstream_host }}:{{ _ppc_ui_port }}
+	encode zstd gzip
+	reverse_proxy {{ _ppc_ingress_upstream }}
 {% if caddy_domain_name is search('\.(lan|local|internal|test)$') %}
 	# Non-public suffix: ACME cannot issue for it, so use Caddy's local CA.
 	tls internal

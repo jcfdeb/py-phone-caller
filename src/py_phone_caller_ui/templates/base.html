@@ -10,10 +10,14 @@
             document.documentElement.setAttribute('data-bs-theme', savedTheme);
         })();
     </script>
-    <!-- Google Fonts for Universal CJK (Chinese) and Devanagari (Hindi) Glyphs -->
+    <!-- Google Fonts for Universal CJK (Chinese) and Devanagari (Hindi) Glyphs (Non-blocking) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Sans:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Sans:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Sans:wght@400;500;600;700&display=swap">
+    </noscript>
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
@@ -960,26 +964,6 @@
         loadQuickOncallStatus();
     });
 
-    // Global Real-Time SSE Telephony & Live Event Notification Listener
-    (function initGlobalTelephonySSE() {
-        if (!window.EventSource) return;
-        const sseUrl = "{{ url_for('home_blueprint.telemetry_stream') }}";
-        const evtSource = new EventSource(sseUrl);
-
-        evtSource.addEventListener('telephony_event', function(e) {
-            try {
-                const ev = JSON.parse(e.data);
-                if (ev && ev.event_type) {
-                    const desc = ev.channel_state ? 'Channel: ' + (ev.asterisk_chan || 'ARI') + ' (' + ev.channel_state + ')' : (ev.asterisk_chan || 'Telephony Stream');
-                    showToast('PBX Event: ' + ev.event_type, desc, 'info');
-                }
-            } catch(err) {}
-        });
-
-        evtSource.onerror = function() {
-            // Reconnect handled automatically by EventSource
-        };
-    })();
 </script>
 
 {% block extra_js %}{% endblock %}

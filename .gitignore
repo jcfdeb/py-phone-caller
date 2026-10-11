@@ -126,3 +126,15 @@ credentials/
 .vault_pass
 .vault_pass*
 *.vault_pass
+/data/openalert_chain_fog.db
+/data/openalert_chain_fog.db-shm
+/data/openalert_chain_fog.db-wal
+/data/openalert_chain_gateway.db
+/data/openalert_chain_gateway.db-shm
+/data/openalert_chain_gateway.db-wal
+/data/openalert_lora.db
+/data/openalert_lora.db-shm
+/data/openalert_lora.db-wal
+/data/openalert_station_beta.db
+/data/openalert_station_beta.db-shm
+/data/openalert_station_beta.db-wal

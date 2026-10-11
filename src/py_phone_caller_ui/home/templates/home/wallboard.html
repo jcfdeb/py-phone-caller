@@ -257,6 +257,12 @@
                     badge.className = 'badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-1';
                 }
             };
+
+            function closeWallboardSSE() {
+                try { evtSource.close(); } catch(e) {}
+            }
+            window.addEventListener('beforeunload', closeWallboardSSE);
+            window.addEventListener('pagehide', closeWallboardSSE);
         })();
 
         // Fallback polling
