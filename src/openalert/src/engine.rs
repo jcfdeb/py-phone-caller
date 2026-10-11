@@ -346,14 +346,17 @@ impl AlertEngine {
         check_keys.push(fp.clone());
 
         // Key 3: Normalized content key (summary + severity + sender)
-        let clean_summary = alert.summary.trim();
-        if !clean_summary.is_empty() {
-            let sender_str = alert.sender.as_deref().unwrap_or("");
-            let content_key = format!(
-                "content:{}:{:?}:{}",
-                clean_summary, alert.severity, sender_str
-            );
-            check_keys.push(content_key);
+        // Manual operator test alerts bypass identical content suppression to allow rapid testing.
+        if !alert.alert_id.starts_with("test-") {
+            let clean_summary = alert.summary.trim();
+            if !clean_summary.is_empty() {
+                let sender_str = alert.sender.as_deref().unwrap_or("");
+                let content_key = format!(
+                    "content:{}:{:?}:{}",
+                    clean_summary, alert.severity, sender_str
+                );
+                check_keys.push(content_key);
+            }
         }
 
         // 1. Fast in-memory check
@@ -614,7 +617,7 @@ impl AlertEngine {
                         });
                     }
                 }
-                "webhook" | "py_phone_caller" => {
+                "webhook" | "py_phone_caller" | "py-phone-caller" | "telephony" | "call" => {
                     let dispatcher = self.webhook_dispatcher.clone();
                     let outbound_alert = alert.clone();
                     let storage_opt = self.storage.clone();

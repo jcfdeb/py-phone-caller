@@ -1,0 +1,160 @@
+---
+# Every include carries "apply: tags:" as well as its own "tags:".
+#
+# A tag on an include_tasks applies only to the include statement; the tasks
+# inside inherit nothing. Without "apply", "--tags config" runs the include
+# and then filters out everything it included - the play reports ok=N,
+# changed=0 and quietly does nothing at all.
+
+- name: Load OS-family variables
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
+  tags: always
+
+- name: Fail on unsupported platforms
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['Debian', 'RedHat']
+    fail_msg: >-
+      deploy_py-phone-caller supports Debian/Ubuntu and RHEL/Rocky only;
+      this host reports os_family={{ ansible_facts['os_family'] }}.
+  tags: always
+
+- name: Build the effective configuration
+  ansible.builtin.set_fact:
+    py_phone_caller_final_config: >-
+      {{ py_phone_caller_config_defaults
+         | combine(py_phone_caller_config, recursive=True)
+         | combine(py_phone_caller_config_secrets, recursive=True)
+         | combine(py_phone_caller_config_overrides, recursive=True) }}
+  tags: always
+
+- name: Determine public gateway base URL
+  ansible.builtin.set_fact:
+    _ppc_effective_public_url: >-
+      {{ py_phone_caller_public_url
+         if (py_phone_caller_public_url | default('', true) | length > 0)
+         else ('https://' ~ (ansible_host | default(inventory_hostname)) ~ ':' ~ (py_phone_caller_gateway_https_port | string)) }}
+  when: py_phone_caller_manage_gateway | bool
+  tags: always
+
+- name: Resolve credentials and passwords (Method 1)
+  ansible.builtin.include_tasks:
+    file: credentials.yml
+    apply:
+      tags: [always]
+  tags: always
+
+- name: Inject gateway and Keycloak auth parameters
+  ansible.builtin.set_fact:
+    py_phone_caller_final_config: >-
+      {{ py_phone_caller_final_config
+         | combine({
+             'gateway': {
+                 'behind_gateway': true,
+                 'gateway_public_url': _ppc_effective_public_url,
+                 'trusted_proxy_header': 'X-Forwarded-For'
+             },
+             'auth': {
+                 'provider': 'keycloak',
+                 'local_fallback_enabled': true,
+                 'oauth2': {
+                     'enabled': true,
+                     'issuer_url': _ppc_effective_public_url ~ '/realms/' ~ py_phone_caller_keycloak_realm,
+                     'client_id': py_phone_caller_keycloak_ui_client_id,
+                     'client_secret': '',
+                     'redirect_uri': _ppc_effective_public_url ~ '/oauth2/callback'
+                 }
+             }
+           }, recursive=True) }}
+  when: py_phone_caller_manage_gateway | bool
+  tags: always
+
+- name: Validate the effective configuration
+  ansible.builtin.include_tasks:
+    file: validate.yml
+    apply:
+      tags: [always]
+  tags: always
+
+- name: Install system prerequisites
+  ansible.builtin.include_tasks:
+    file: prereqs.yml
+    apply:
+      tags: [prereqs]
+  tags: prereqs
+
+- name: Create the service account
+  ansible.builtin.include_tasks:
+    file: user.yml
+    apply:
+      tags: [user]
+  tags: user
+
+- name: Deliver the application source
+  ansible.builtin.include_tasks:
+    file: source.yml
+    apply:
+      tags: [source]
+  tags: source
+
+- name: Build the Python environment
+  ansible.builtin.include_tasks:
+    file: install.yml
+    apply:
+      tags: [install]
+  tags: install
+
+- name: Provision PostgreSQL
+  ansible.builtin.include_tasks:
+    file: database.yml
+    apply:
+      tags: [database]
+  when: py_phone_caller_manage_database | bool
+  tags: database
+
+- name: Deploy API Gateway and Keycloak IAM
+  ansible.builtin.include_tasks:
+    file: gateway.yml
+    apply:
+      tags: [gateway]
+  when: py_phone_caller_manage_gateway | bool
+  tags: gateway
+
+- name: Render the runtime configuration
+  ansible.builtin.include_tasks:
+    file: config.yml
+    apply:
+      tags: [config]
+  tags: config
+
+- name: Configure the Caddy reverse proxy
+  ansible.builtin.include_tasks:
+    file: caddy.yml
+    apply:
+      tags: [caddy]
+  when: py_phone_caller_manage_caddy | bool
+  tags: caddy
+
+- name: Configure the firewall
+  ansible.builtin.include_tasks:
+    file: firewall.yml
+    apply:
+      tags: [firewall]
+  when: py_phone_caller_manage_firewall | bool
+  tags: firewall
+
+- name: Install the systemd units
+  ansible.builtin.include_tasks:
+    file: systemd.yml
+    apply:
+      tags: [systemd]
+  when: py_phone_caller_manage_services | bool
+  tags: systemd
+
+- name: Remove build dependencies
+  ansible.builtin.include_tasks:
+    file: cleanup.yml
+    apply:
+      tags: [cleanup]
+  when: py_phone_caller_remove_build_deps | bool
+  tags: cleanup

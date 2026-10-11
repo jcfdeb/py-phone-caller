@@ -1,0 +1,1555 @@
+
+msgid ""
+msgstr ""
+"Project-Id-Version: py-phone-caller 1.Report-Msgid-Bugs-ToPOT-Creation-"
+"Date: 2026-10-02 12:00+000PO-Revision-Date: 2026-10-02 12:00+000Language:"
+" zMIME-Version: 1.Content-Type: text/plain; charset=UTF-Content-Transfer-"
+"Encoding: 8bi\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-04 20:48+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: zh\n"
+"Language-Team: zh <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:3
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:8
+#: src/py_phone_caller_ui/home/templates/home/home.html:257
+#: src/py_phone_caller_ui/templates/base.html:71
+msgid "Address Book"
+msgstr "通讯录"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:11
+msgid "Show Calendar"
+msgstr "显示日历"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:15
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:90
+msgid "CSV Ops"
+msgstr "CSV 操作"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:18
+msgid "Export Contacts"
+msgstr "导出联系人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:20
+msgid "Import Contacts"
+msgstr "导入联系人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:24
+msgid "Learn how On-Call rotations and availability work"
+msgstr "了解值班轮换和可用时间段的工作原理"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:25
+msgid "On-Call Guide"
+msgstr "值班指南"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:28
+msgid "Add Contact"
+msgstr "添加联系人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:40
+msgid "Search contacts..."
+msgstr "搜索联系人..."
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:45
+msgid "Sort by"
+msgstr "排序方式"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:47
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:79
+msgid "Created"
+msgstr "创建时间"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:48
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:148
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:269
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:224
+msgid "Name"
+msgstr "姓名"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:49
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:225
+msgid "Phone"
+msgstr "电话"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:50
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:162
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:283
+msgid "Enabled"
+msgstr "已启用"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:56
+msgid "Order"
+msgstr "顺序"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:58
+msgid "Descending"
+msgstr "降序"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:59
+msgid "Ascending"
+msgstr "升序"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:65
+msgid "Filter"
+msgstr "筛选"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "Contact Name"
+msgstr "联系人姓名"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:76
+msgid "First and last name of the responder"
+msgstr "响应人的名和姓"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:59
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "Phone Number"
+msgstr "电话号码"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:77
+msgid "E.164 formatted number dialed for voice calls and SMS"
+msgstr "用于语音呼叫和短信拨打的 E.164 格式号码"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:160
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:281
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:132
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:102
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:272
+msgid "Status"
+msgstr "状态"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:78
+msgid "Only active contacts receive automated alerts"
+msgstr "仅已激活的联系人会收到自动警报"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:80
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:117
+#: src/py_phone_caller_ui/users/templates/users/users.html:63
+msgid "Actions"
+msgstr "操作"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:93
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+#: src/py_phone_caller_ui/users/templates/users/users.html:60
+msgid "Active"
+msgstr "已激活"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:95
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:163
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:284
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Disabled"
+msgstr "已禁用"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:128
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:243
+msgid "No contacts found in address book"
+msgstr "通讯录中未找到联系人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:142
+msgid "Add New Contact"
+msgstr "添加新联系人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:152
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:273
+msgid "Surname"
+msgstr "姓氏"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:156
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:277
+msgid "International format starting with + (e.g. +393349246425)"
+msgstr "以 + 开头的国际格式（例如 +393349246425）"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:167
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:288
+msgid "Address"
+msgstr "地址"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:171
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:292
+msgid "ZIP Code"
+msgstr "邮政编码"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:175
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:296
+msgid "City"
+msgstr "城市"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:179
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:300
+msgid "Country"
+msgstr "国家"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:183
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:304
+msgid "Annotations"
+msgstr "备注"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:191
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:312
+msgid "On-call Availability Windows"
+msgstr "值班可用时间窗口"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:195
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:316
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:160
+msgid "Start Date"
+msgstr "开始日期"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:199
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:320
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:164
+msgid "Start Time"
+msgstr "开始时间"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:203
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:324
+msgid "End Date"
+msgstr "结束日期"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:207
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:328
+msgid "End Time"
+msgstr "结束时间"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:232
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:353
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:440
+msgid "Priority"
+msgstr "优先级"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:211
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:332
+msgid "Priority 0 is dialed first, followed by 1, 2, 3, 4"
+msgstr "优先拨打优先级 0，其次是 1、2、3、4"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:222
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:343
+msgid "Add"
+msgstr "添加"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:230
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:351
+msgid "Start (local)"
+msgstr "开始 (本地)"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:231
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:352
+msgid "End (local)"
+msgstr "结束 (本地)"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:233
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:354
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:226
+msgid "Action"
+msgstr "操作"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:241
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:362
+msgid "Clear all"
+msgstr "清除全部"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:250
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:371
+#: src/py_phone_caller_ui/users/templates/users/users.html:183
+#: src/py_phone_caller_ui/users/templates/users/users.html:256
+msgid "Cancel"
+msgstr "取消"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:251
+msgid "Save Contact"
+msgstr "保存联系人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:262
+msgid "Edit Contact"
+msgstr "编辑联系人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:372
+msgid "Save Changes"
+msgstr "保存更改"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:389
+msgid "Address Book & On-Call Rotation Guide"
+msgstr "通讯录与值班轮换指南"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:391
+msgid ""
+"How contact availability, priority escalation, and calendar routing "
+"operate."
+msgstr "联系人可用性、优先级递增以及日历路由的运作方式。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:402
+msgid "Contact Details & Phone Numbers"
+msgstr "联系人详情与电话号码"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:405
+msgid ""
+"Contacts must include standard E.164 phone numbers (e.g. +393349246425) "
+"to dial properly through Asterisk ARI SIP trunks and GSM modems."
+msgstr ""
+"联系人必须包含标准 E.164 电话号码（例如 +393349246425），以便通过 Asterisk ARI SIP 中继和 GSM "
+"调制解调器正确拨号。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:408
+msgid "Eligible for automated incident calls and SMS."
+msgstr "有资格接收自动故障警报呼叫与短信。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:409
+msgid "Excluded from on-call selection and escalation."
+msgstr "不参与值班人员选择和警报升级流程。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:417
+msgid "Availability Windows & Timezones"
+msgstr "可用时间段与时区"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:420
+msgid ""
+"Availability is specified in your local browser timezone. The system "
+"automatically converts and stores windows in UTC for accurate global "
+"scheduling."
+msgstr "可用时间段按您浏览器的本地时区设置。系统会自动将其转换并以 UTC 格式存储，以确保全球调度的准确性。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:423
+msgid ""
+"Contacts without explicit windows are considered available 24/7 if "
+"enabled."
+msgstr "未明确设置时间段的联系人如果在启用状态，则默认全天候 24/7 可用。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:431
+msgid "Priority Levels & Escalation Rules"
+msgstr "优先级级别与升级规则"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:434
+msgid ""
+"When an incident or scheduled call dispatches, the system queries "
+"contacts active right now and orders them by Priority:"
+msgstr "当触发故障呼叫或计划呼叫时，系统会查询当前处于可用状态的联系人并按优先级排序："
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:441
+msgid "Role"
+msgstr "角色"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:442
+msgid "Dispatch Behavior"
+msgstr "分发行为"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:448
+msgid "Primary Responder"
+msgstr "第一响应人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:449
+msgid "First contact dialed when an alert triggers."
+msgstr "警报触发时首先拨打的联系人。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:453
+msgid "Secondary Responder"
+msgstr "第二响应人"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:454
+msgid "Contact dialed if Primary fails to answer or acknowledge with DTMF 4."
+msgstr "第一响应人未接听或未按 DTMF 4 确认时拨打的联系人。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:458
+msgid "Tier 2 / Team Backup"
+msgstr "第二梯队 / 团队替补"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:459
+msgid "Escalation fallback for high-severity incidents."
+msgstr "高严重级别事件的升级后备人选。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:463
+msgid "Duty Supervisor / Final Fallback"
+msgstr "值班主管 / 最终后备"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:464
+msgid "Notified only when earlier tiers are exhausted."
+msgstr "仅在前面所有梯队均未响应时才通知。"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/address_book.html:474
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:354
+msgid "Got it"
+msgstr "知道了"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:3
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:83
+msgid "On-call Calendar"
+msgstr "值班日历"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:86
+msgid "Back to List"
+msgstr "返回列表"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:96
+msgid "Export Current Month"
+msgstr "导出当月数据"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:100
+msgid "Import Windows"
+msgstr "导入可用时段"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:122
+msgid "Preview uses UTC times"
+msgstr "预览采用 UTC 时间"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:129
+msgid "Jump to Date"
+msgstr "跳转至日期"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:138
+msgid "Mon"
+msgstr "周一"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:139
+msgid "Tue"
+msgstr "周二"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:140
+msgid "Wed"
+msgstr "周三"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:141
+msgid "Thu"
+msgstr "周四"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:142
+msgid "Fri"
+msgstr "周五"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:143
+msgid "Sat"
+msgstr "周六"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:144
+msgid "Sun"
+msgstr "周日"
+
+#: src/py_phone_caller_ui/address_book/templates/address_book/calendar.html:153
+msgid "No on-call"
+msgstr "无值班安排"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:3
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:17
+#: src/py_phone_caller_ui/home/templates/home/home.html:195
+#: src/py_phone_caller_ui/templates/base.html:47
+msgid "Managed Calls"
+msgstr "托管通话"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:21
+msgid "Bulk Acknowledge"
+msgstr "批量确认"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:25
+msgid "Incident Audit Report"
+msgstr "事件审计报告"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:28
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:17
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:26
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:11
+msgid "Export CSV"
+msgstr "导出 CSV"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:44
+msgid "Search managed calls..."
+msgstr "搜索受管通话..."
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:45
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:50
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:34
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:39
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:43
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:48
+#: src/py_phone_caller_ui/users/templates/users/users.html:27
+#: src/py_phone_caller_ui/users/templates/users/users.html:32
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:27
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:32
+msgid "Search"
+msgstr "搜索"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:56
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:54
+msgid "Auto refresh:"
+msgstr "自动刷新:"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:58
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:56
+msgid "Disable"
+msgstr "禁用"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:77
+msgid "Select All Active Calls"
+msgstr "选择所有活跃通话"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:81
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:53
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:76
+msgid "Element"
+msgstr "元素"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:87
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:82
+msgid "Id"
+msgstr "ID"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:88
+msgid "Callee"
+msgstr "被叫方"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:89
+msgid "Flags"
+msgstr "标记"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:90
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:60
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:186
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:91
+msgid "Message"
+msgstr "消息内容"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:91
+msgid "Channel"
+msgstr "通道"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:94
+msgid "To Dial"
+msgstr "待拨打"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:94
+msgid "Maximum number of call retry attempts"
+msgstr ""
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:102
+msgid "Dialed"
+msgstr "已拨打"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:102
+msgid "Number of dial attempts executed so far"
+msgstr ""
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:110
+msgid "First Dial"
+msgstr "首次拨打"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:118
+msgid "Last Dial"
+msgstr "末次拨打"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:126
+msgid "Acknowledgement"
+msgstr "确认"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:126
+msgid "Timestamp when receiver pressed DTMF 4 to acknowledge the alert"
+msgstr ""
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:149
+msgid "Primary On-call request"
+msgstr "主要值班请求"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:149
+msgid "On Call"
+msgstr "值班中"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:152
+msgid "Backup call"
+msgstr "备用通话"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:152
+msgid "Backup"
+msgstr "备用"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:162
+msgid "Play Synthesized Neural Alert Audio"
+msgstr "播放合成的神经语音警报"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:176
+msgid "Completed"
+msgstr "已完成"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:186
+msgid "Ack"
+msgstr "确认"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:189
+msgid "Expired"
+msgstr "已过期"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:192
+msgid "Pending"
+msgstr "待处理"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:202
+msgid "No managed calls found"
+msgstr "未找到受管通话"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:202
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:99
+#: src/py_phone_caller_ui/users/templates/users/users.html:112
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:94
+msgid "for"
+msgstr "关于"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:217
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:114
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:208
+#: src/py_phone_caller_ui/users/templates/users/users.html:127
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:110
+msgid "Items per page:"
+msgstr "每页条目数:"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:256
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:258
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:149
+msgid "Export to CSV"
+msgstr "导出为 CSV"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:262
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:264
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:330
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:155
+msgid "Select Month and Year"
+msgstr "选择月份和年份"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:264
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:332
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:157
+msgid "Data is exported one month at a time for optimal performance."
+msgstr "按月导出数据以获得最佳性能。"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:268
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:269
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:336
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:161
+msgid "Download CSV"
+msgstr "下载 CSV"
+
+#: src/py_phone_caller_ui/calls/templates/calls/calls.html:271
+msgid "View / Print Monthly Audit Report"
+msgstr "查看 / 打印月度审计报告"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:42
+msgid "Live Telephony NOC Dashboard"
+msgstr "实时电话 NOC 控制面板"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:44
+msgid "Mission-critical incident response & dispatch telemetry"
+msgstr "关键任务事件响应与调度遥测"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:45
+#: src/py_phone_caller_ui/templates/base.html:176
+msgid "Offline-ready call orchestration."
+msgstr "离线就绪的通话编排。"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:52
+msgid "Hardware GSM Modem"
+msgstr "硬件 GSM 调制解调器"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:57
+msgid "SaaS Fallback"
+msgstr "SaaS 回退"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:62
+msgid "Asterisk ARI Connected"
+msgstr "Asterisk ARI 已连接"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:73
+msgid "Total Calls Dispatched"
+msgstr "总调度通话数"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:80
+msgid "dispatched"
+msgstr "已发送"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:89
+msgid "DTMF Acknowledgment Rate"
+msgstr "DTMF 确认率"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:105
+msgid "Escalated Calls"
+msgstr "升级通话"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:114
+msgid "backup callee"
+msgstr "备用被叫方"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:123
+msgid "SMS Delivery Status"
+msgstr "短信送达状态"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:130
+msgid "Delivered"
+msgstr "已送达"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:132
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:147
+msgid "Failed"
+msgstr "失败"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:143
+msgid "Call Lifecycle Breakdown"
+msgstr "通话生命周期分解"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:164
+msgid "Acknowledged"
+msgstr "已确认"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:169
+msgid "Heard / Snoozed"
+msgstr "已收听 / 稍后"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:174
+msgid "Escalated"
+msgstr "已升级"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:179
+msgid "In Flight"
+msgstr "进行中"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:196
+msgid "Track and manage outgoing calls"
+msgstr "跟踪和管理呼出电话"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:210
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:3
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:23
+#: src/py_phone_caller_ui/templates/base.html:53
+msgid "Managed SMS"
+msgstr "托管短信"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:211
+msgid "Track and inspect SMS messages"
+msgstr "跟踪和检查短信"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:226
+#: src/py_phone_caller_ui/templates/base.html:59
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:3
+msgid "PBX Events"
+msgstr "PBX 事件"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:227
+msgid "Real-time Asterisk events"
+msgstr "实时 Asterisk 事件"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:242
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:192
+#: src/py_phone_caller_ui/templates/base.html:65
+msgid "Schedule Call"
+msgstr "安排通话"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:243
+msgid "Plan future call activities"
+msgstr "规划未来的通话活动"
+
+#: src/py_phone_caller_ui/home/templates/home/home.html:258
+msgid "Manage your contacts"
+msgstr "管理您的联系人"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:3
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:8
+msgid "Scheduled Calls"
+msgstr "计划通话"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:10
+msgid "Learn how scheduled calls and speech synthesis work"
+msgstr "了解计划呼叫和语音合成的工作原理"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:11
+msgid "Scheduler Guide"
+msgstr "调度器指南"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:14
+msgid "New Scheduled Call"
+msgstr "新建计划通话"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:33
+msgid "Search scheduled calls..."
+msgstr "搜索计划通话..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:63
+msgid "Inserted At"
+msgstr "插入时间"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:71
+msgid "Scheduled Time"
+msgstr "计划时间"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:99
+msgid "No scheduled calls found"
+msgstr "未找到计划通话"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:153
+msgid "Schedule a New Call"
+msgstr "安排新通话"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:168
+msgid "E.164 format or select an active responder via Contacts button"
+msgstr "E.164 格式，或通过“通讯录”按钮选择当前在岗响应人"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:170
+msgid "Enter number..."
+msgstr "输入号码..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:171
+msgid "Select from Address Book or auto-pick current On-call"
+msgstr "从通讯录中选择，或自动获取当前值班人员"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:172
+msgid "Contacts"
+msgstr "联系人"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:178
+#: src/py_phone_caller_ui/templates/base.html:259
+msgid "Voice Language"
+msgstr "语音语言"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:181
+#: src/py_phone_caller_ui/templates/base.html:262
+msgid "Loading available languages..."
+msgstr "正在加载可用语言..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:183
+#: src/py_phone_caller_ui/templates/base.html:264
+msgid "Languages served by the active TTS audio engine."
+msgstr "当前活跃的TTS语音引擎所支持的语言。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:186
+msgid "Synthesized into voice audio and played when the recipient answers"
+msgstr "合成为语音音频并在对方接听时播放"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:187
+msgid "Enter the message to be read..."
+msgstr "输入待朗读的消息..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:205
+msgid "Select Contact"
+msgstr "选择联系人"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:211
+msgid "Filter by name, surname or number..."
+msgstr "按名字、姓氏或号码筛选..."
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:216
+msgid "Use current On-call"
+msgstr "使用当前值班员"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:238
+msgid "Select"
+msgstr "选择"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:289
+msgid "Scheduled Calls & Voice Synthesis Guide"
+msgstr "计划呼叫与语音合成指南"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:291
+msgid "Automated telephony job execution, TTS synthesis, and DTMF confirmation."
+msgstr "自动化电话作业执行、TTS 语音合成与 DTMF 确认。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:302
+msgid "Timing & Job Execution"
+msgstr "调度时机与任务执行"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:305
+msgid ""
+"Scheduled calls are stored and triggered asynchronously by Celery and "
+"Redis at the exact local date and time configured."
+msgstr "计划呼叫由 Celery 和 Redis 存储，并在配置的本地确切日期和时间异步触发。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:308
+msgid ""
+"Once reached, the system initiates an Asterisk Stasis application channel"
+" to the destination."
+msgstr "到达时间后，系统将向目的地发起 Asterisk Stasis 应用程序通道。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:316
+msgid "Neural TTS Audio Generation"
+msgstr "神经 TTS 语音生成"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:319
+msgid ""
+"Your message text is automatically synthesized into clear 8kHz/16kHz WAV "
+"audio using Silero Neural TTS."
+msgstr "您的消息文本通过 Silero 神经 TTS 自动合成为清晰的 8kHz/16kHz WAV 音频。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:322
+msgid ""
+"Audio is cached locally by message hash to ensure zero latency on "
+"repeated notifications."
+msgstr "音频按消息哈希在本地缓存，确保重复通知时零延迟播放。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:330
+msgid "Contact Picker & Live On-Call"
+msgstr "联系人选择器与实时值班人员"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:333
+msgid ""
+"Click the Contacts button next to the phone field to pick any saved "
+"contact, or click \"Use current On-call\" to automatically resolve who is"
+" on duty right now."
+msgstr "点击电话字段旁边的“通讯录”按钮可选择已保存的联系人，或点击“使用当前值班人员”自动解析当前在岗人员。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:341
+msgid "DTMF Acknowledgment & Retries"
+msgstr "DTMF 按键确认与重试机制"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:344
+msgid ""
+"When the recipient answers, the audio message plays continuously until "
+"they press DTMF 4 to acknowledge, or the maximum ring duration expires."
+msgstr "当接听人接听电话时，语音消息将循环播放，直到其按下数字键 1 (DTMF 1) 进行确认，或达到最大响铃超时时间。"
+
+#: src/py_phone_caller_ui/schedule_call/templates/schedule_call/schedule_call.html:347
+msgid ""
+"Unacknowledged calls will retry according to your configured retry count "
+"and backoff interval."
+msgstr "未确认的呼叫将根据配置的重试次数和退避间隔时间自动重新拨打。"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:42
+msgid "Search SMS by phone, message, carrier, status..."
+msgstr "按电话、消息、运营商、状态搜索短信..."
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:85
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:264
+msgid "Recipient Phone"
+msgstr "接收方电话"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:94
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:268
+msgid "Carrier"
+msgstr "运营商"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:94
+msgid ""
+"SMS transmission gateway: Asterisk dongle, Gammu GSM modem, or cloud "
+"gateway"
+msgstr "短信发送网关：Asterisk 调制解调器、Gammu GSM 调制解调器或云网关"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:102
+msgid "Delivery lifecycle: Pending, Sent, Delivered, or Failed"
+msgstr "送达生命周期：待发送 (Pending)、已发送 (Sent)、已送达 (Delivered) 或失败 (Failed)"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:110
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:276
+msgid "Created At"
+msgstr "创建于"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:116
+msgid "Error / Notes"
+msgstr "错误 / 备注"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:143
+msgid "Sent"
+msgstr "已发送"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:149
+msgid "Duplicate Ignored"
+msgstr "重复项已忽略"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:158
+msgid "No Data"
+msgstr "无数据"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:180
+msgid "Details"
+msgstr "详情"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:190
+msgid "No SMS records found"
+msgstr "未找到短信记录"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:191
+msgid "Try clearing your search query"
+msgstr "请尝试清空搜索关键字"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:191
+msgid "Sent SMS records will appear here"
+msgstr "已发送的短信记录将显示在此处"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:248
+msgid "SMS Details"
+msgstr "短信详情"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:255
+msgid "Record ID"
+msgstr "记录 ID"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:283
+msgid "Audit Lifecycle Progression"
+msgstr "审计生命周期进度"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:303
+msgid "Message Content"
+msgstr "消息内容"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:308
+msgid "Error Details"
+msgstr "错误详情"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:313
+#: src/py_phone_caller_ui/templates/base.html:334
+msgid "Close"
+msgstr "关闭"
+
+#: src/py_phone_caller_ui/sms/templates/sms/sms.html:324
+msgid "Export SMS to CSV"
+msgstr "导出短信为 CSV"
+
+#: src/py_phone_caller_ui/templates/base.html:41
+msgid "Home"
+msgstr "首页"
+
+#: src/py_phone_caller_ui/templates/base.html:78
+msgid "Quick On-Call: View and toggle active on-duty emergency responders."
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:80
+msgid "On-Call"
+msgstr "值班指南"
+
+#: src/py_phone_caller_ui/templates/base.html:85
+msgid "Active On-Call Responders"
+msgstr "第二响应人"
+
+#: src/py_phone_caller_ui/templates/base.html:86
+msgid "Manage Roster"
+msgstr "托管短信"
+
+#: src/py_phone_caller_ui/templates/base.html:89
+msgid "Loading roster..."
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:96
+msgid "Quick Search & Command Palette (Ctrl+K)"
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:104
+msgid ""
+"Telephony & SMS Diagnostics Console: Test live SIP ARI calls and SMS "
+"dispatching."
+msgstr "语音与短信诊断控制台：测试实时 SIP ARI 呼叫与短信分发。"
+
+#: src/py_phone_caller_ui/templates/base.html:106
+msgid "Diagnostics"
+msgstr "诊断"
+
+#: src/py_phone_caller_ui/templates/base.html:112
+msgid "Help Center: Press ? for documentation and operational guides."
+msgstr "帮助中心：按 ? 查看文档与操作指南。"
+
+#: src/py_phone_caller_ui/templates/base.html:119
+msgid "Toggle Theme: Switch between light and dark night mode."
+msgstr "切换主题：在浅色与深色夜间模式之间切换。"
+
+#: src/py_phone_caller_ui/templates/base.html:127
+msgid "Switch Language"
+msgstr "切换语言"
+
+#: src/py_phone_caller_ui/templates/base.html:147
+msgid "Session"
+msgstr "会话"
+
+#: src/py_phone_caller_ui/templates/base.html:152
+msgid "NOC Wallboard (24/7)"
+msgstr "NOC监控大屏 (24/7)"
+
+#: src/py_phone_caller_ui/templates/base.html:154
+#: src/py_phone_caller_ui/users/templates/users/users.html:3
+#: src/py_phone_caller_ui/users/templates/users/users.html:8
+msgid "User Management"
+msgstr "用户管理"
+
+#: src/py_phone_caller_ui/templates/base.html:159
+msgid "Logout"
+msgstr "登出"
+
+#: src/py_phone_caller_ui/templates/base.html:190
+msgid "Search calls, contacts, schedules, or actions... (Esc to close)"
+msgstr ""
+
+#: src/py_phone_caller_ui/templates/base.html:223
+msgid "Telephony & SMS Diagnostics Console"
+msgstr "电话与短信诊断控制台"
+
+#: src/py_phone_caller_ui/templates/base.html:225
+msgid ""
+"Trigger immediate test calls or SMS to verify PBX trunk and GSM modem "
+"gateways."
+msgstr "触发即时测试电话或短信以验证 PBX 中继和 GSM 调制解调器网关。"
+
+#: src/py_phone_caller_ui/templates/base.html:236
+msgid "Outbound Test Call"
+msgstr "出站测试呼叫"
+
+#: src/py_phone_caller_ui/templates/base.html:239
+msgid "Outbound Test SMS"
+msgstr "出站测试短信"
+
+#: src/py_phone_caller_ui/templates/base.html:248
+#: src/py_phone_caller_ui/templates/base.html:286
+msgid "Destination Phone Number"
+msgstr "目标电话号码"
+
+#: src/py_phone_caller_ui/templates/base.html:254
+#: src/py_phone_caller_ui/templates/base.html:292
+msgid "E.164 international format (e.g. +393349246425)."
+msgstr "E.164 国际格式（例如 +393349246425）。"
+
+#: src/py_phone_caller_ui/templates/base.html:269
+msgid "Speech Audio Message"
+msgstr "语音音频消息"
+
+#: src/py_phone_caller_ui/templates/base.html:272
+msgid ""
+"Synthesized into speech via Silero Neural TTS and played to the SIP "
+"channel."
+msgstr "通过 Silero 神经 TTS 合成为语音并在 SIP 通道中播放。"
+
+#: src/py_phone_caller_ui/templates/base.html:276
+msgid "Dispatch Test Call"
+msgstr "发送测试呼叫"
+
+#: src/py_phone_caller_ui/templates/base.html:297
+msgid "SMS Message Text"
+msgstr "短信文本"
+
+#: src/py_phone_caller_ui/templates/base.html:300
+msgid ""
+"Dispatched via On-Premise GSM Modem (/dev/ttyUSB) with automatic Twilio "
+"fallback."
+msgstr "通过本地 GSM 调制解调器 (/dev/ttyUSB) 发送，并具有自动 Twilio 故障转移。"
+
+#: src/py_phone_caller_ui/templates/base.html:304
+msgid "Send Test SMS"
+msgstr "发送测试短信"
+
+#: src/py_phone_caller_ui/templates/base.html:342
+msgid "Help & Documentation"
+msgstr "帮助与文档"
+
+#: src/py_phone_caller_ui/templates/base.html:354
+msgid "Help Center"
+msgstr "帮助中心"
+
+#: src/py_phone_caller_ui/templates/base.html:355
+msgid "Sovereign Voice & SMS Alerting"
+msgstr "主权语音与短信告警"
+
+#: src/py_phone_caller_ui/templates/base.html:365
+msgid "Search help topics..."
+msgstr "搜索帮助主题..."
+
+#: src/py_phone_caller_ui/templates/base.html:372
+msgid "Current section:"
+msgstr "当前部分："
+
+#: src/py_phone_caller_ui/templates/base.html:372
+#: src/py_phone_caller_ui/templates/base.html:776
+msgid "Overview"
+msgstr "概述"
+
+#: src/py_phone_caller_ui/templates/base.html:383
+#: src/py_phone_caller_ui/templates/base.html:762
+msgid "Address Book & On-Call"
+msgstr "通讯录与值班排班"
+
+#: src/py_phone_caller_ui/templates/base.html:388
+msgid "E.164 Phone Numbers:"
+msgstr "E.164 电话号码："
+
+#: src/py_phone_caller_ui/templates/base.html:388
+msgid ""
+"Store phone numbers with country code (+39...) to dial properly through "
+"Asterisk ARI and send SMS."
+msgstr "使用国家/地区代码（+39...）存储电话号码，以便通过 Asterisk ARI 正确拨号并发送短信。"
+
+#: src/py_phone_caller_ui/templates/base.html:389
+msgid "On-Call Availability:"
+msgstr "值班可用性："
+
+#: src/py_phone_caller_ui/templates/base.html:389
+msgid ""
+"Define start/end schedule intervals. Active contacts in the current "
+"window are selected automatically."
+msgstr "定义开始/结束时间间隔。系统会自动选择当前窗口内的活跃联系人。"
+
+#: src/py_phone_caller_ui/templates/base.html:390
+msgid "Escalation Priority:"
+msgstr "升级优先级："
+
+#: src/py_phone_caller_ui/templates/base.html:390
+msgid ""
+"Priority 0 is Primary Responder, 1 is Secondary, 2-3 Backup, 4 Duty "
+"Supervisor."
+msgstr "优先级 0 为主响应人，1 为次要响应人，2-3 为备用，4 为值班主管。"
+
+#: src/py_phone_caller_ui/templates/base.html:391
+msgid "CSV Operations:"
+msgstr "CSV 操作："
+
+#: src/py_phone_caller_ui/templates/base.html:391
+msgid "Import or export entire contact databases at any time."
+msgstr "随时导入或导出整个联系人数据库。"
+
+#: src/py_phone_caller_ui/templates/base.html:400
+#: src/py_phone_caller_ui/templates/base.html:763
+msgid "Scheduled Calls & Speech"
+msgstr "预约呼叫与语音"
+
+#: src/py_phone_caller_ui/templates/base.html:405
+msgid "Neural TTS Engine:"
+msgstr "神经 TTS 引擎："
+
+#: src/py_phone_caller_ui/templates/base.html:405
+msgid ""
+"Message text is automatically synthesized into clear 8kHz/16kHz audio "
+"using Silero Neural TTS."
+msgstr "使用 Silero 神经 TTS 将消息文本自动合成为清晰的 8kHz/16kHz 音频。"
+
+#: src/py_phone_caller_ui/templates/base.html:406
+msgid "Audio Caching:"
+msgstr "音频缓存："
+
+#: src/py_phone_caller_ui/templates/base.html:406
+msgid ""
+"Synthesized audio is cached locally by message hash for instant zero-"
+"latency playback."
+msgstr "合成的音频通过消息哈希在本地缓存，以实现零延迟即时播放。"
+
+#: src/py_phone_caller_ui/templates/base.html:407
+msgid "Smart Recipient Picker:"
+msgstr "智能收件人选择器："
+
+#: src/py_phone_caller_ui/templates/base.html:407
+msgid ""
+"Choose a specific contact or select \"Use current On-call\" to resolve "
+"on-duty responders."
+msgstr "选择特定联系人或选择“使用当前值班”以自动匹配值班响应人。"
+
+#: src/py_phone_caller_ui/templates/base.html:416
+#: src/py_phone_caller_ui/templates/base.html:764
+msgid "Managed Calls & DTMF"
+msgstr "受管呼叫与DTMF"
+
+#: src/py_phone_caller_ui/templates/base.html:421
+msgid "Asterisk ARI Integration:"
+msgstr "Asterisk ARI 集成："
+
+#: src/py_phone_caller_ui/templates/base.html:421
+msgid ""
+"Channels are initiated via Asterisk REST Interface and placed in Stasis "
+"bridge."
+msgstr "通道通过 Asterisk REST 接口启动并置于 Stasis 桥接中。"
+
+#: src/py_phone_caller_ui/templates/base.html:422
+msgid "DTMF 4 Acknowledgment:"
+msgstr "DTMF 4 确认："
+
+#: src/py_phone_caller_ui/templates/base.html:422
+msgid ""
+"The recipient presses 4 to acknowledge the alert, marking it acknowledged"
+" and terminating retries."
+msgstr "接收者按 1 确认警报，将其标记为已确认并终止重试。"
+
+#: src/py_phone_caller_ui/templates/base.html:423
+msgid "Automatic Retries:"
+msgstr "自动重试："
+
+#: src/py_phone_caller_ui/templates/base.html:423
+msgid ""
+"Unanswered calls automatically retry according to retry count and backoff"
+" configuration."
+msgstr "未接听的呼叫会根据重试次数和退避策略自动重试。"
+
+#: src/py_phone_caller_ui/templates/base.html:432
+#: src/py_phone_caller_ui/templates/base.html:765
+msgid "SMS & GSM Modems"
+msgstr "短信与GSM调制解调器"
+
+#: src/py_phone_caller_ui/templates/base.html:437
+msgid "On-Premise Hardware Modems:"
+msgstr "本地硬件调制解调器："
+
+#: src/py_phone_caller_ui/templates/base.html:437
+msgid ""
+"SMS is dispatched directly via serial AT commands (/dev/ttyUSB) without "
+"external dependencies."
+msgstr "短信通过串口 AT 命令 (/dev/ttyUSB) 直接发送，无需外部依赖。"
+
+#: src/py_phone_caller_ui/templates/base.html:438
+msgid "Carrier Failover:"
+msgstr "运营商故障转移："
+
+#: src/py_phone_caller_ui/templates/base.html:438
+msgid ""
+"If GSM signal is lost or modem fails, failover to secondary gateway (e.g."
+" Twilio) triggers automatically."
+msgstr "如果 GSM 信号丢失或调制解调器发生故障，将自动触发切换到辅助网关（例如 Twilio）。"
+
+#: src/py_phone_caller_ui/templates/base.html:439
+msgid "Full Delivery Tracking:"
+msgstr "完整送达追踪："
+
+#: src/py_phone_caller_ui/templates/base.html:439
+msgid ""
+"View outbound SMS logs, delivery statuses, carrier metadata, and "
+"timestamps in real time."
+msgstr "实时查看出站短信日志、送达状态、运营商元数据和时间戳。"
+
+#: src/py_phone_caller_ui/templates/base.html:448
+#: src/py_phone_caller_ui/templates/base.html:766
+msgid "PBX Events & Telephony Stream"
+msgstr "PBX事件与电话流"
+
+#: src/py_phone_caller_ui/templates/base.html:453
+msgid "WebSocket Event Feed:"
+msgstr "WebSocket 事件流："
+
+#: src/py_phone_caller_ui/templates/base.html:453
+msgid ""
+"Real-time feed of Asterisk ARI events including StasisStart, "
+"ChannelDtmfReceived, and ChannelDestroyed."
+msgstr ""
+"包含 StasisStart、ChannelDtmfReceived 和 ChannelDestroyed 的 Asterisk ARI "
+"实时事件流。"
+
+#: src/py_phone_caller_ui/templates/base.html:454
+msgid "Troubleshooting Audits:"
+msgstr "故障排查审计："
+
+#: src/py_phone_caller_ui/templates/base.html:454
+msgid ""
+"Use the event timeline to diagnose call setup delays, SIP trunk "
+"responses, and DTMF tones."
+msgstr "利用事件时间线诊断呼叫建立延迟、SIP 中继响应和 DTMF 双音多频信号。"
+
+#: src/py_phone_caller_ui/templates/base.html:463
+#: src/py_phone_caller_ui/templates/base.html:761
+msgid "Prometheus & Webhook Triggering"
+msgstr "Prometheus与Webhook触发"
+
+#: src/py_phone_caller_ui/templates/base.html:468
+msgid "Alertmanager Receiver:"
+msgstr "Alertmanager 接收器："
+
+#: src/py_phone_caller_ui/templates/base.html:468
+msgid "Configure Alertmanager to forward firing alerts to the webhook service:"
+msgstr "配置 Alertmanager 将触发的告警转发到 Webhook 服务："
+
+#: src/py_phone_caller_ui/templates/base.html:472
+msgid ""
+"Incoming alerts automatically resolve duty on-call contacts, synthesize "
+"speech, and initiate emergency phone calls."
+msgstr "接收到的告警会自动解析值班联系人、合成语音并启动紧急呼叫。"
+
+#: src/py_phone_caller_ui/templates/base.html:481
+msgid "Need to test right now?"
+msgstr "需要立即测试吗？"
+
+#: src/py_phone_caller_ui/templates/base.html:482
+msgid "Send a live test call or SMS from the diagnostics console."
+msgstr "从诊断控制台发送实时测试呼叫或短信。"
+
+#: src/py_phone_caller_ui/templates/base.html:484
+msgid "Open Diagnostics Console"
+msgstr "打开诊断控制台"
+
+#: src/py_phone_caller_ui/templates/base.html:631
+#: src/py_phone_caller_ui/templates/base.html:632
+#: src/py_phone_caller_ui/templates/base.html:643
+#: src/py_phone_caller_ui/templates/base.html:648
+msgid "Default"
+msgstr "默认"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:11
+#: src/py_phone_caller_ui/users/templates/users/users.html:166
+msgid "Add New User"
+msgstr "添加新用户"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:26
+msgid "Search users by name or email..."
+msgstr "按姓名或电子邮件搜索用户..."
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:46
+#: src/py_phone_caller_ui/users/templates/users/users.html:172
+msgid "Full Name"
+msgstr "全名"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:54
+#: src/py_phone_caller_ui/users/templates/users/users.html:176
+msgid "Email Address"
+msgstr "电子邮件地址"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:61
+msgid "Created On"
+msgstr "创建于"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:62
+msgid "Last Login"
+msgstr "最后登录"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:74
+msgid "Yes"
+msgstr "是"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:76
+msgid "No"
+msgstr "否"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:80
+msgid "Never"
+msgstr "从不"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:86
+#: src/py_phone_caller_ui/users/templates/users/users.html:220
+msgid "Change Password"
+msgstr "修改密码"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:94
+msgid "Deactivate"
+msgstr "停用"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:94
+msgid "Activate"
+msgstr "启用"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:100
+msgid "Delete User"
+msgstr "删除用户"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:112
+msgid "No users found"
+msgstr "未找到用户"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:184
+msgid "Create User"
+msgstr "创建用户"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:194
+msgid "User Created Successfully"
+msgstr "用户创建成功"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:197
+msgid "A temporary password has been generated for the new user."
+msgstr "已为新用户生成临时密码。"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:200
+msgid "Important:"
+msgstr "重要提示:"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:200
+msgid "Copy this password now. It will not be shown again!"
+msgstr "请立即复制此密码。它将不会再次显示！"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:210
+msgid "I've saved it"
+msgstr "我已经保存"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:228
+msgid "Updating password for:"
+msgstr "更新密码："
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:233
+msgid "Current Password"
+msgstr "当前密码"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:238
+msgid "New Password"
+msgstr "新密码"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:242
+msgid ""
+"Must be at least 17 characters with uppercase, lowercase, numbers, and "
+"symbols."
+msgstr "必须至少 17 个字符，包含大写、小写字母、数字和符号。"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:247
+msgid "Confirm New Password"
+msgstr "确认新密码"
+
+#: src/py_phone_caller_ui/users/templates/users/users.html:257
+msgid "Update Password"
+msgstr "更新密码"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:8
+msgid "PBX WebSocket Events"
+msgstr "PBX WebSocket 事件"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:26
+msgid "Search WebSocket events..."
+msgstr "搜索 WebSocket 事件..."
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:46
+msgid "Time"
+msgstr "时间"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:54
+msgid "Event Type"
+msgstr "事件类型"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:62
+msgid "Asterisk Channel"
+msgstr "Asterisk 通道"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:68
+msgid "JSON Payload"
+msgstr "JSON 有效负载"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:83
+msgid "Copy JSON"
+msgstr "复制 JSON"
+
+#: src/py_phone_caller_ui/ws_events/templates/ws_events/ws_events.html:94
+msgid "No WebSocket events found"
+msgstr "未找到 WebSocket 事件"
+
+#~ msgid "Hardware Gateways & Engines"
+#~ msgstr "硬件网关与引擎"
+
+#~ msgid "SMS Gateway"
+#~ msgstr "短信网关"
+
+#~ msgid "Telephony Engine"
+#~ msgstr "电话引擎"
+
+#~ msgid "Export CSV"
+#~ msgstr "导出 CSV"
+
+#~ msgid "Search"
+#~ msgstr "搜索"
+
+#~ msgid "Disable"
+#~ msgstr "禁用"
+
+#~ msgid "Search managed calls..."
+#~ msgstr "搜索托管通话..."
+
+#~ msgid "Search contacts..."
+#~ msgstr "搜索联系人..."
+
+#~ msgid "Search SMS..."
+#~ msgstr "搜索短信..."
+
+#~ msgid "Maximum number of call retry attempts"
+#~ msgstr "最大呼叫重试尝试次数"
+
+#~ msgid "Number of dial attempts executed so far"
+#~ msgstr "迄今已执行的拨号尝试次数"
+
+#~ msgid "Timestamp when receiver pressed DTMF 4 to acknowledge the alert"
+#~ msgstr "接收方按下 DTMF 4 确认警报的时间戳"
+
+#~ msgid "Switch Language: Select from 8 supported locales."
+#~ msgstr "切换语言：从 8 种受支持的语言中选择。"
+

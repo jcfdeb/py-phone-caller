@@ -378,6 +378,15 @@ pub struct PeerDiagnostics {
     pub circuit_state: crate::peering::circuit_breaker::CircuitState,
     pub consecutive_failures: u32,
     pub spooled_count: usize,
+    /// Real-time Received Signal Strength Indicator in dBm (if RF link).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub rssi_dbm: Option<i16>,
+    /// Real-time Signal-to-Noise Ratio in dB (if RF link).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub snr_db: Option<f32>,
+    /// Calculated dynamic RF degradation penalty points.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub rf_penalty: Option<u32>,
 }
 
 /// Webhook egress status report.

@@ -6,20 +6,20 @@ A comprehensive guide to the **Multi-Package UV Workspace** architecture in `py-
 
 ## 1. Overview & Architecture
 
-`py-phone-caller` is organized as a **Multi-Package UV Workspace** targeting **Python 3.14.x**. This modern packaging structure replaces legacy `requirements.in` and `requirements.txt` files with standard PEP 621 metadata, declarative dependency boundaries, and a single unified lockfile ([`uv.lock`](file:///home/jcf/Workspace/Antigravity/py-phone-caller/uv.lock)).
+`py-phone-caller` is organized as a **Multi-Package UV Workspace** targeting **Python 3.14.x**. This modern packaging structure replaces legacy `requirements.in` and `requirements.txt` files with standard PEP 621 metadata, declarative dependency boundaries, and a single unified lockfile ([`uv.lock`](../uv.lock)).
 
 ### Key Advantages of UV Workspaces
 
 1. **Deterministic & Fast Dependency Resolution**:
-   A single root [`uv.lock`](file:///home/jcf/Workspace/Antigravity/py-phone-caller/uv.lock) locks 187 dependencies across all microservices simultaneously in sub-second time, ensuring zero dependency drift across environments.
+   A single root [`uv.lock`](../uv.lock) locks 187 dependencies across all microservices simultaneously in sub-second time, ensuring zero dependency drift across environments.
 2. **Granular Microservice Isolation**:
-   Heavy machine learning and audio libraries (`torch`, `torchaudio`, `transformers`, `piper-tts`, `soundfile`) are isolated to [`generate_audio`](file:///home/jcf/Workspace/Antigravity/py-phone-caller/src/generate_audio/pyproject.toml) and not forced onto lightweight REST APIs like `asterisk_caller` or `caller_register`.
+   Heavy machine learning and audio libraries (`torch`, `torchaudio`, `transformers`, `piper-tts`, `soundfile`) are isolated to [`generate_audio`](../src/generate_audio/pyproject.toml) and not forced onto lightweight REST APIs like `asterisk_caller` or `caller_register`.
 3. **Automatic Editable Inter-Package Linking**:
-   [`py_phone_caller_utils`](file:///home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils/pyproject.toml) is linked editably in the project `.venv`. Any change made inside the shared utility library is instantly reflected across all 11 microservices without manual re-installation.
+   [`py_phone_caller_utils`](../src/py-phone-caller-utils/pyproject.toml) is linked editably in the project `.venv`. Any change made inside the shared utility library is instantly reflected across all 11 microservices without manual re-installation.
 4. **No Path Hacking**:
    Eliminates manual `sys.path.append` or custom `PYTHONPATH` tricks in Dockerfiles and development scripts.
 5. **Python 3.14.x Native**:
-   The workspace is pinned to Python 3.14 via [`.python-version`](file:///home/jcf/Workspace/Antigravity/py-phone-caller/.python-version) and `requires-python = ">=3.14, <3.15"`.
+   The workspace is pinned to Python 3.14 via [`.python-version`](../.python-version) and `requires-python = ">=3.14, <3.15"`.
 
 ---
 
@@ -275,7 +275,7 @@ uv publish --publish-url "https://gitlab.com/api/v4/projects/<PROJECT_ID>/packag
 
 ## 8. Rust SMS Engine (`sms_rust_backend`) with Maturin
 
-The [`py_phone_caller_utils`](file:///home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils) package includes a high-performance native Rust extension used when `caller_sms` is configured with `caller_sms_carrier = "on_premise"`.
+The [`py_phone_caller_utils`](../src/py-phone-caller-utils) package includes a high-performance native Rust extension used when `caller_sms` is configured with `caller_sms_carrier = "on_premise"`.
 
 The Rust backend is built using **[Maturin](https://www.maturin.rs/)** and **PyO3**:
 
@@ -325,7 +325,7 @@ To build all container images across the stack:
 ## 10. Troubleshooting & FAQ
 
 ### Q: `dynaconf.nodes.AccessError` when running tests or scripts locally?
-**Answer**: Dynaconf expects credentials in `src/config/.secrets.toml` or via environment variables prefixed with `DYNACONF_`. For testing, [`pytest.ini`](file:///home/jcf/Workspace/Antigravity/py-phone-caller/pytest.ini) automatically injects dummy test credentials. For manual runs, copy sample settings:
+**Answer**: Dynaconf expects credentials in `src/config/.secrets.toml` or via environment variables prefixed with `DYNACONF_`. For testing, [`pytest.ini`](../pytest.ini) automatically injects dummy test credentials. For manual runs, copy sample settings:
 ```bash
 cp src/config/settings.toml src/config/.secrets.toml
 ```

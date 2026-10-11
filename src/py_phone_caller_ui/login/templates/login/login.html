@@ -24,6 +24,29 @@
                         <p class="text-muted mb-0">Sign in to manage py-phone-caller operations</p>
                     </div>
 
+                    {% if error %}
+                    <div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>{{ error }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% if oauth2_enabled %}
+                    <div class="mb-4">
+                        <a href="{{ oauth2_login_url }}" class="btn btn-outline-primary w-100 py-2 rounded-pill shadow-sm d-flex align-items-center justify-content-center fw-medium" style="font-size: 0.95rem; white-space: nowrap;">
+                            <i class="bi bi-shield-lock-fill me-2 fs-5"></i> Sign in with Single Sign-On
+                        </a>
+                    </div>
+                    {% if local_fallback_enabled %}
+                    <div class="d-flex align-items-center my-3">
+                        <hr class="flex-grow-1 my-0 text-muted">
+                        <span class="px-3 text-muted small text-uppercase">or local account</span>
+                        <hr class="flex-grow-1 my-0 text-muted">
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
+                    {% if not oauth2_enabled or local_fallback_enabled %}
                     <form action="{{ url_for('login_blueprint.login') }}" method="post">
                         <div class="form-floating mb-3">
                             <input type="email" class="form-control" id="email" name="email"
@@ -36,20 +59,14 @@
                             <label for="password">Password</label>
                         </div>
 
-                        {% if error %}
-                        <div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            <div>{{ error }}</div>
-                        </div>
-                        {% endif %}
-
                         <button class="btn btn-primary w-100 btn-lg rounded-pill shadow-sm" type="submit">
                             Sign In <i class="bi bi-arrow-right ms-2"></i>
                         </button>
                     </form>
+                    {% endif %}
                 </div>
                 <div class="card-footer bg-transparent border-0 text-center pb-4">
-                    <small class="text-muted"><i class="bi bi-hdd-network me-1"></i>Local assets only · &copy; 2026
+                    <small class="text-muted"><i class="bi bi-hdd-network me-1"></i>Local assets only &copy; 2026
                         py-phone-caller</small>
                 </div>
             </div>

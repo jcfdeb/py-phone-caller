@@ -189,9 +189,16 @@ pub async fn query_spool(base_url: &str) -> Result<SpoolStats, String> {
         return Err(format!("Daemon returned HTTP status {}", resp.status()));
     }
 
-    resp.json::<SpoolStats>()
+    #[derive(serde::Deserialize)]
+    struct SpoolEnvelope {
+        spool: Option<SpoolStats>,
+    }
+
+    let env = resp.json::<SpoolEnvelope>()
         .await
-        .map_err(|e| format!("Failed to parse daemon spool response: {}", e))
+        .map_err(|e| format!("Failed to parse daemon spool response: {}", e))?;
+
+    env.spool.ok_or_else(|| "Spool is not enabled or stats unavailable".to_string())
 }
 
 /// Pretty prints the status report to stdout.

@@ -1,0 +1,15 @@
+# Managed by Ansible (role: deploy_py-phone-caller).
+{% if caddy_email %}
+{
+	email {{ caddy_email }}
+}
+{% endif %}
+
+{{ caddy_domain_name | default(':80', true) }} {
+	encode zstd gzip
+	reverse_proxy {{ _ppc_ingress_upstream }}
+{% if caddy_domain_name is search('\.(lan|local|internal|test)$') %}
+	# Non-public suffix: ACME cannot issue for it, so use Caddy's local CA.
+	tls internal
+{% endif %}
+}

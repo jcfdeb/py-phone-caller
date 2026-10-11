@@ -542,8 +542,8 @@
         <!-- Top Navigation -->
         <nav class="top-nav">
             <div class="nav-badges">
-                <span class="badge badge-frozen">❄️ Feature Frozen v0.1.0</span>
-                <span class="badge badge-tests">🛡️ 92/92 Tests Passed</span>
+                <span class="badge badge-frozen" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border-color: rgba(16, 185, 129, 0.3);">🛡️ Production Hardened v0.2.0</span>
+                <span class="badge badge-tests">✅ 99/99 Tests Passed</span>
                 <span class="badge badge-rust">🦀 Pure Rust 2024</span>
             </div>
             <div>
@@ -725,6 +725,82 @@
                 </div>
             </div>
 
+            <!-- Autonomous USB Reset Supervisor -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">🔌</div>
+                        <div class="card-title">Autonomous Kernel USB Reset Watchdog</div>
+                    </div>
+                    <div class="card-body">
+                        Self-healing hardware supervisor for unattended field kits. Resolves character devices (<code>/dev/ttyACM*</code>, <code>/dev/ttyUSB*</code>) up Linux sysfs hierarchies to trigger kernel <code>ioctl(USBDEVFS_RESET)</code> hardware power cycles and sysfs unbind/bind resets upon repeated I/O timeouts, auto-recovering hung USB-UART bridges without reboots.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">ioctl(USBDEVFS_RESET)</span>
+                    <span class="tag">Sysfs Traversal</span>
+                    <span class="tag">Auto-Healing</span>
+                    <span class="tag">Rate-Limited</span>
+                </div>
+            </div>
+
+            <!-- RF Link Telemetry & Distance-Vector Biasing -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">📡</div>
+                        <div class="card-title">Physical RF Telemetry & Link Biasing</div>
+                    </div>
+                    <div class="card-body">
+                        Attaches and parses compact 2-byte in-band trailers (<code>[raw_rssi, raw_snr]</code>) to physical LoRa frames. Calculates quadratic RF degradation penalties (<code>P_rf</code>) to dynamically steer distance-vector routing away from noisy or marginal links, exposing live telemetry via Prometheus gauges and the NOC Status API.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">RSSI / SNR</span>
+                    <span class="tag">Quadratic Cost</span>
+                    <span class="tag">Route Biasing</span>
+                    <span class="tag">Prometheus</span>
+                </div>
+            </div>
+
+            <!-- Field-Certified Physical LoRa Multi-Hop Chain -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">🛰️</div>
+                        <div class="card-title">Certified Physical LoRa Multi-Hop Chain</div>
+                    </div>
+                    <div class="card-body">
+                        Field-certified end-to-end multi-hop emergency traversal using dual Waveshare Semtech SX1262 transceivers (868.0 MHz). Propagates sensor alarms from off-grid Field FOG nodes &rarr; Edge Gateway &rarr; WireGuard VPN &rarr; Cloud VM Hub &rarr; Asterisk PBX voice calls with interactive keypad DTMF acknowledgment.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">SX1262 868MHz</span>
+                    <span class="tag">Dual-Dongle</span>
+                    <span class="tag">Multi-Hop Mesh</span>
+                    <span class="tag">DTMF Ack</span>
+                </div>
+            </div>
+
+            <!-- APISIX & Keycloak SSO Edge Gateway -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">🔑</div>
+                        <div class="card-title">Enterprise APISIX & Keycloak SSO</div>
+                    </div>
+                    <div class="card-body">
+                        Exposed at <code>https://py-phone-caller.link/openalert</code> through Apache APISIX edge gateway with Keycloak OpenID Connect authentication. Features dynamic response-rewriting for collision-free path isolation and unbuffered Server-Sent Events (SSE) live telemetry streaming with zero backend code changes.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">Apache APISIX</span>
+                    <span class="tag">Keycloak OIDC</span>
+                    <span class="tag">Single Sign-On</span>
+                    <span class="tag">Zero Code Change</span>
+                </div>
+            </div>
+
             <!-- Cellular SMS Gateway -->
             <div class="card">
                 <div>
@@ -887,16 +963,16 @@
         </div>
 
         <!-- Quality & Verification -->
-        <h2 class="section-title">Feature Freeze & Quality Assurance</h2>
+        <h2 class="section-title">Hardened Release & Quality Assurance</h2>
         <p class="section-intro">
-            At milestone v0.1.0, <code>openalertd</code> is officially <strong>feature frozen</strong>. All core protocols, cryptographic handshakes, and operator interfaces are fully specified, verified, and locked:
+            At milestone v0.2.0, <code>openalertd</code> is officially <strong>hardened and field-certified</strong>. All core protocols, hardware auto-recovery supervisors, RF telemetry algorithms, and enterprise edge gateway integrations are fully tested and locked:
         </p>
 
         <div class="feature-grid">
             <div class="card" style="border-left: 4px solid var(--success);">
-                <div class="card-title" style="color: var(--success);">🛡️ 92/92 Automated Tests</div>
+                <div class="card-title" style="color: var(--success);">✅ 99/99 Automated Tests</div>
                 <div class="card-body">
-                    Zero test failures. Comprehensive test matrix covers multi-node dynamic mesh forwarding, split-horizon suppression, replay-attack prevention, NIP-04/44/59 onion wrapping, modem AT command parsing, and live SSE streaming.
+                    Zero test failures (53 unit tests + 46 integration tests). Comprehensive test matrix covers kernel USB supervisor recovery, mock sysfs resolution, RF telemetry trailer codecs, quadratic link cost calculation, multi-hop mesh forwarding, split-horizon suppression, NIP-04/44/59 onion wrapping, and live SSE streaming.
                 </div>
             </div>
             <div class="card" style="border-left: 4px solid var(--cyan);">
@@ -918,9 +994,9 @@
             <div class="footer-links">
                 <a href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
                 <span>&bull;</span>
-                <a href="https://github.com/jcfdeb/py-phone-caller/tree/feature/openalert/docs/openalert" target="_blank" rel="noopener noreferrer">Documentation</a>
+                <a href="https://github.com/jcfdeb/py-phone-caller/tree/main/docs/openalert" target="_blank" rel="noopener noreferrer">Documentation</a>
                 <span>&bull;</span>
-                <a href="https://github.com/jcfdeb/py-phone-caller/tree/feature/openalert/src/openalert" target="_blank" rel="noopener noreferrer">Source Code</a>
+                <a href="https://github.com/jcfdeb/py-phone-caller/tree/main/src/openalert" target="_blank" rel="noopener noreferrer">Source Code</a>
                 <span>&bull;</span>
                 <a href="https://x.com/gladstein/status/2092304843037884677" target="_blank" rel="noopener noreferrer">HRF Grant Announcement</a>
             </div>

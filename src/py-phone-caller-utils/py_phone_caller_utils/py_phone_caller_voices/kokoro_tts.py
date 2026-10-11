@@ -105,6 +105,12 @@ def parse_arguments():
         help="Language code: a=American English, b=British English, e=Spanish, f=French, h=Hindi, i=Italian, j=Japanese, p=Portuguese, z=Chinese",
     )
     parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="Speech speed rate multiplier (default 1.0, e.g. 0.85 for high clarity)",
+    )
+    parser.add_argument(
         "--output", type=Path, required=True, help="Output WAV file path"
     )
     parser.add_argument(
@@ -185,7 +191,7 @@ def main():
             pipeline = KPipeline(lang_code=args.lang)
             voice_to_use = args.voice_name
 
-        generator = pipeline(args.text, voice=voice_to_use, speed=1)
+        generator = pipeline(args.text, voice=voice_to_use, speed=args.speed)
 
         full_audio = []
         for _, _, audio in generator:

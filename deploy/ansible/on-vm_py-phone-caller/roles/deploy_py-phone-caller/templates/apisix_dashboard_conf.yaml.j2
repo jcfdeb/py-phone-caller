@@ -1,0 +1,33 @@
+# Managed by Ansible (role: deploy_py-phone-caller)
+conf:
+  listen:
+    port: {{ py_phone_caller_gateway_dashboard_port }}
+  allow_list:
+    - 127.0.0.1
+    - ::1
+  etcd:
+    endpoints:
+      - 127.0.0.1:2379
+  log:
+    error_log:
+      level: warn
+      file_path: logs/error.log
+    access_log:
+      file_path: logs/access.log
+
+authentication:
+  secret: "{{ _ppc_apisix_dashboard_password }}"
+  expire_time: 3600
+  users:
+    - username: "{{ py_phone_caller_apisix_dashboard_user }}"
+      password: "{{ _ppc_apisix_dashboard_password }}"
+
+plugins:
+  - api-breaker
+  - authz-keycloak
+  - cors
+  - limit-count
+  - limit-req
+  - openid-connect
+  - prometheus
+  - proxy-rewrite

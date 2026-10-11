@@ -15,6 +15,8 @@ This document provides a comprehensive technical architecture and sequence flow 
 7. [Prometheus Alertmanager & Monitoring Ingestion Pipeline](#7-prometheus-alertmanager--monitoring-ingestion-pipeline)
 8. [Scheduled Calls & Background Celery Worker Pipeline](#8-scheduled-calls--background-celery-worker-pipeline)
 9. [Air-Gapped & Offline Architecture Principles](#9-air-gapped--offline-architecture-principles)
+10. [Enterprise API Gateway & Keycloak IAM Ingress Architecture](#10-enterprise-api-gateway--keycloak-iam-ingress-architecture)
+11. [OIDC Single Sign-On (SSO) & M2M Token Authentication Sequence Flows](#11-oidc-single-sign-on-sso--m2m-token-authentication-sequence-flows)
 
 ---
 
@@ -372,3 +374,119 @@ sequenceDiagram
 2. **Pre-Packaged TTS Models**: Machine learning models for Kokoro TTS, Piper, and Facebook MMS are pre-downloaded during container build or deployment setup into `pre_trained_models/`. Synthesis runs 100% on local CPUs with zero Hugging Face or PyPI network requests at runtime.
 3. **Multi-Package UV Locking**: All Python dependencies are locked in a single root `uv.lock`. Offline container builds and Ansible synchronizations install exclusively from local caches or on-premise PyPI mirrors.
 4. **Local Telemetry & Storage**: Telemetry spans and Prometheus metrics export over standard OTLP/HTTP to internal collectors without sending data outside the trusted network.
+
+---
+
+## 10. Enterprise API Gateway & Keycloak IAM Ingress Architecture
+
+In production environments, direct exposure of internal microservice ports (`8081`–`8087`, `5000`) is prohibited. Instead, incoming user and machine traffic passes through an enterprise perimeter ingress layer composed of **Apache APISIX** and **Keycloak IAM**:
+
+```mermaid
+flowchart TB
+    subgraph Clients[" External Traffic "]
+        direction TB
+        Browser["Operator Browser<br/>(HTTPS / WSS)"]
+        Prometheus["Prometheus Alertmanager<br/>(HTTP / JSON Webhook)"]
+        AdminCLI["SRE / Admin CLI<br/>(cURL / REST API)"]
+    end
+
+    subgraph EdgeIngress[" Public Ingress & TLS Termination "]
+        direction TB
+        TLS["Public Reverse Proxy<br/>(Apache 2 / Nginx / Caddy)<br/>Port 80 / 443 (Let's Encrypt TLS)"]
+    end
+
+    subgraph GatewayIAM[" Enterprise Gateway & Identity Layer "]
+        direction TB
+        APISIX["Apache APISIX Gateway<br/>(Port 9080 / 9443)<br/>Route Matching & Token Verification"]
+        ETCD[("etcd Cluster<br/>(Port 2379 / Loopback)")]
+        KC["Keycloak IAM<br/>(Port 8180 / 8443)<br/>Realm: py-phone-caller"]
+        APISIX <--> ETCD
+    end
+
+    subgraph InternalMicroservices[" Internal Microservice Mesh (127.0.0.1 / Bridge) "]
+        direction TB
+        UI["py_phone_caller_ui<br/>(Port 5000)"]
+        WEBHOOK["caller_prometheus_webhook<br/>(Port 8084)"]
+        REST_APIS["Internal REST APIs<br/>(:8081 - :8087)"]
+        AST["Asterisk PBX<br/>(:8088 ARI / 5060 SIP)"]
+    end
+
+    Browser -->|TLS 443| TLS
+    Prometheus -->|TLS 443| TLS
+    AdminCLI -->|TLS 443| TLS
+
+    TLS -->|"Proxy to APISIX (:9080)"| APISIX
+    TLS -->|"Direct or Proxied /auth (:8180)"| KC
+
+    APISIX -->|"Path / (Web UI & Static)"| UI
+    APISIX -->|"Path /webhook (Alert Ingestion)"| WEBHOOK
+    APISIX -->|"Path /api/* (Internal Proxy)"| REST_APIS
+```
+
+### Key Security Guardrails:
+1. **Network Boundary**: Internal service ports (5000, 8081-8087) bind to `0.0.0.0` or bridge IPs, but are strictly shielded from public routing by host packet filters (`ufw` / `firewalld`).
+2. **Reverse Proxy Offloading**: Public TLS is terminated either by Apache 2 / Nginx / Caddy at ports 80/443, proxying to APISIX on port 9080 with proper `X-Forwarded-For` and `X-Forwarded-Proto` headers.
+3. **Role-Based Access Control (RBAC)**: Keycloak realm `py-phone-caller` manages 3 distinct realm roles:
+   - `alert-admin`: Full access to user management, phone configuration, and alert escalation.
+   - `alert-operator`: Can view live calls, acknowledge alerts, and trigger manual notifications.
+   - `alert-viewer`: Read-only access to call histories and audit logs.
+
+---
+
+## 11. OIDC Single Sign-On (SSO) & M2M Token Authentication Sequence Flows
+
+### 11.1 Web UI OpenID Connect (OIDC) Flow with PKCE
+
+For human operators logging into the management portal:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Operator Browser
+    participant Gateway as APISIX Gateway (:9080)
+    participant UI as py_phone_caller_ui (:5000)
+    participant Keycloak as Keycloak IAM (:8180)
+
+    User->>Gateway: GET /
+    Gateway->>UI: Proxy GET /
+    UI-->>User: 302 Redirect to /login
+    User->>UI: Click "Login with Keycloak SSO"
+    UI->>UI: Generate PKCE code_verifier & code_challenge (S256)
+    UI-->>User: 302 Redirect to Keycloak /auth?response_type=code&code_challenge=...
+    User->>Keycloak: Present credentials (Username / Password / 2FA)
+    Keycloak-->>User: 302 Redirect to UI /oauth2/callback?code=AUTH_CODE
+    User->>UI: GET /oauth2/callback?code=AUTH_CODE
+    UI->>Keycloak: POST /protocol/openid-connect/token (code + code_verifier)
+    Keycloak-->>UI: 200 OK (id_token, access_token, refresh_token)
+    UI->>Keycloak: GET /protocol/openid-connect/userinfo
+    Keycloak-->>UI: 200 OK (username, roles: ["alert-admin"])
+    UI->>UI: Establish Flask session & set secure session cookie
+    UI-->>User: 302 Redirect to / (Dashboard rendered with Operator profile)
+```
+
+> [!NOTE]
+> If Keycloak is unreachable, operators can still log in using the **Local Emergency Fallback** form directly on `/login`, authenticating against the local PostgreSQL `users` table.
+
+### 11.2 Machine-to-Machine (M2M) Alert Ingestion Flow
+
+For automated monitoring systems (e.g. Prometheus Alertmanager) pushing incident payloads:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant AM as Prometheus Alertmanager
+    participant KC as Keycloak IAM (:8180)
+    participant APISIX as APISIX Gateway (:9080)
+    participant Webhook as caller_prometheus_webhook (:8084)
+    participant Caller as asterisk_caller (:8081)
+
+    AM->>KC: POST /realms/py-phone-caller/protocol/openid-connect/token<br/>(grant_type=client_credentials, client_id=py-phone-caller-m2m)
+    KC-->>AM: 200 OK {"access_token": "JWT_TOKEN", "expires_in": 300}
+    AM->>APISIX: POST /webhook<br/>Authorization: Bearer JWT_TOKEN<br/>{"alerts": [{"status": "firing", "labels": {"alertname": "HostDown"}}]}
+    APISIX->>APISIX: Verify JWT token signature, expiry, and realm issuer
+    APISIX->>Webhook: Forward POST /webhook (stripped or validated)
+    Webhook->>Caller: POST /call_to_queue (Initiate emergency phone call)
+    Caller-->>Webhook: 200 OK
+    Webhook-->>APISIX: 200 OK
+    APISIX-->>AM: 200 OK {"status": "dispatched"}
+```

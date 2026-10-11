@@ -2,7 +2,7 @@
 //!
 //! Provides native Prometheus and OpenTelemetry-aligned metrics exposition
 //! covering alert ingestion, deduplication, storage depth, webhook circuit breakers,
-//! BitChat peers, and runtime process telemetry.
+//! BitChat peers, LoRa RF physical signal telemetry, and runtime process telemetry.
 
 use crate::error::{OpenAlertError, Result};
 use prometheus::{
@@ -29,6 +29,12 @@ pub struct OpenAlertMetrics {
     pub storage_alerts_count: GaugeVec,
     /// Number of active BitChat BLE mesh peers currently known.
     pub bitchat_peers_connected: GaugeVec,
+    /// Real-time Received Signal Strength Indicator (RSSI) in dBm per LoRa peer.
+    pub peering_rf_rssi_dbm: GaugeVec,
+    /// Real-time Signal-to-Noise Ratio (SNR) in dB per LoRa peer.
+    pub peering_rf_snr_db: GaugeVec,
+    /// Applied RF degradation link penalty points per peer.
+    pub peering_rf_penalty_points: GaugeVec,
 }
 
 impl OpenAlertMetrics {
@@ -115,6 +121,37 @@ impl OpenAlertMetrics {
         )
         .map_err(|e| OpenAlertError::Config(format!("Metric registration error: {}", e)))?;
 
+        // Real-time RF signal metrics
+        let peering_rf_rssi_dbm = register_gauge_vec_with_registry!(
+            opts!(
+                "peering_rf_rssi_dbm",
+                "Real-time Received Signal Strength Indicator (RSSI) in dBm for LoRa peer"
+            ),
+            &["peer"],
+            registry
+        )
+        .map_err(|e| OpenAlertError::Config(format!("Metric registration error: {}", e)))?;
+
+        let peering_rf_snr_db = register_gauge_vec_with_registry!(
+            opts!(
+                "peering_rf_snr_db",
+                "Real-time Signal-to-Noise Ratio (SNR) in dB for LoRa peer"
+            ),
+            &["peer"],
+            registry
+        )
+        .map_err(|e| OpenAlertError::Config(format!("Metric registration error: {}", e)))?;
+
+        let peering_rf_penalty_points = register_gauge_vec_with_registry!(
+            opts!(
+                "peering_rf_penalty_points",
+                "Applied dynamic RF degradation penalty points for peer"
+            ),
+            &["peer"],
+            registry
+        )
+        .map_err(|e| OpenAlertError::Config(format!("Metric registration error: {}", e)))?;
+
         Ok(Self {
             registry,
             alerts_received_total,
@@ -124,6 +161,9 @@ impl OpenAlertMetrics {
             webhook_circuit_breaker_state,
             storage_alerts_count,
             bitchat_peers_connected,
+            peering_rf_rssi_dbm,
+            peering_rf_snr_db,
+            peering_rf_penalty_points,
         })
     }
 

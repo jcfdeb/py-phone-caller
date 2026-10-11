@@ -65,7 +65,7 @@ PGHOST=postgresql.lan PGUSER=postgres PGPASSWORD=secret ./assets/scripts/db/init
 
 ## 3. Ansible Automation
 
-In the Ansible deployment playbook (`assets/ansible/on-vm_py-phone-caller` or `assets/ansible/deploy_all`):
+In the Ansible deployment playbook (`deploy/ansible/on-vm_py-phone-caller` or `deploy/ansible/deploy_all`):
 - Pass `py_phone_caller_db_admin_user` (default: `postgres`) and `py_phone_caller_db_admin_password` (via Ansible Vault `vault_db_admin_password`).
 - Ansible automatically provisions the role, database, privileges, and extensions unattended before starting the services.
 - When `caller_register` starts, Piccolo ORM automatically applies migrations and ensures all tables and models are up to date.

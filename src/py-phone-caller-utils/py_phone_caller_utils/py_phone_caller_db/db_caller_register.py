@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from py_phone_caller_utils.config import settings
+from py_phone_caller_utils.redis_lock import call_mutex
 from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import (
     Calls,
 )
@@ -12,6 +13,19 @@ logging.basicConfig(
 
 RUNTIME_LOOP_IN_ERROR = "got Future attached to a different loop"
 RUNTIME_LOOP_ERROR_MESSAGE = "This may indicate that database operations are being performed in different event loops."
+
+
+class MsgChkSumResult(tuple):
+    """
+    Two-tuple (message, msg_chk_sum) preserving backward-compatible unpacking,
+    with an optional lang attribute.
+    """
+    lang: str = ""
+
+    def __new__(cls, msg, chk, lang=""):
+        instance = super().__new__(cls, (msg, chk))
+        instance.lang = lang or ""
+        return instance
 
 
 async def insert_into_db(
@@ -26,6 +40,7 @@ async def insert_into_db(
     times_to_dial,
     oncall=False,
     backup_callee=False,
+    lang="",
 ):
     """
     Inserts a new call record into the database with the provided call details.
@@ -44,6 +59,7 @@ async def insert_into_db(
         times_to_dial (int): The maximum number of dial attempts.
         oncall (bool): Whether this is an oncall call.
         backup_callee (bool): Whether this is a backup call.
+        lang (str): Language code for voice audio synthesis.
 
     Returns:
         None
@@ -67,10 +83,11 @@ async def insert_into_db(
                 acknowledge_at=datetime.min,
                 oncall=oncall,
                 backup_callee=backup_callee,
+                lang=lang or "",
             )
         )
         logging.info(
-            f"New cycle for the number '{phone}' with the message '{message}' starting at '{first_dial}'."
+            f"New cycle for the number '{phone}' with the message '{message}' starting at '{first_dial}' (lang='{lang}')."
         )
     except RuntimeError as e:
         if "RUNTIME_LOOP_IN_ERROR" in str(e):
@@ -83,7 +100,7 @@ async def insert_into_db(
 
 
 async def update_the_call_db_record(
-    call_chk_sum, current_call_id, current_dialed_times, asterisk_chan, phone, message
+    call_chk_sum, current_call_id, current_dialed_times, asterisk_chan, phone, message, lang=None
 ):
     """
     Updates an existing call record in the database with new dial information.
@@ -98,6 +115,7 @@ async def update_the_call_db_record(
         asterisk_chan (str): The identifier of the Asterisk channel.
         phone (str): The recipient's phone number.
         message (str): The message associated with the call.
+        lang (str, optional): Target language override if provided.
 
     Returns:
         None
@@ -123,13 +141,17 @@ async def update_the_call_db_record(
             )
             new_dialed_times = times_to_dial
 
-        await Calls.update(
-            {
-                Calls.last_dial: datetime.now(UTC).replace(tzinfo=None),
-                Calls.dialed_times: new_dialed_times,
-                Calls.asterisk_chan: asterisk_chan,
-            }
-        ).where((Calls.call_chk_sum == call_chk_sum) & (Calls.id == current_call_id))
+        update_fields = {
+            Calls.last_dial: datetime.now(UTC).replace(tzinfo=None),
+            Calls.dialed_times: new_dialed_times,
+            Calls.asterisk_chan: asterisk_chan,
+        }
+        if lang:
+            update_fields[Calls.lang] = str(lang)
+
+        await Calls.update(update_fields).where(
+            (Calls.call_chk_sum == call_chk_sum) & (Calls.id == current_call_id)
+        )
         logging.info(
             f"Updating the call status for the number '{phone}' with the message '{message}'. UUID: '{current_call_id}'"
         )
@@ -194,7 +216,7 @@ async def get_current_call_id(seconds_to_forget, call_chk_sum):
     try:
         current_call_id = await Calls.raw(
             "SELECT id from calls where ((AGE((SELECT timezone('utc', now())),first_dial))"
-            + f" < (SELECT {seconds_to_forget} * '1 seconds'::interval)) AND call_chk_sum='{str(call_chk_sum)}';",
+            + f" < (SELECT {seconds_to_forget} * '1 seconds'::interval)) AND call_chk_sum='{str(call_chk_sum)}';"
         )
         try:
             return current_call_id[0].get("id")
@@ -282,6 +304,11 @@ async def check_call_yet_present(call_chk_sum, phone, message):
 
 
 async def update_acknowledgement(asterisk_chan):
+    async with call_mutex(asterisk_chan):
+        return await _update_acknowledgement_impl(asterisk_chan)
+
+
+async def _update_acknowledgement_impl(asterisk_chan):
     """
     Updates the acknowledgement timestamp and marks the call cycle as done for the specified Asterisk channel,
     but only if the call is within the firing period.
@@ -389,6 +416,11 @@ async def _mark_related_oncall_records_done(msg_chk_sum, current_time):
 
 
 async def update_heard_at(asterisk_chan):
+    async with call_mutex(asterisk_chan):
+        return await _update_heard_at_impl(asterisk_chan)
+
+
+async def _update_heard_at_impl(asterisk_chan):
     """
     Updates the 'heard_at' timestamp for the specified Asterisk channel in the database.
 
@@ -419,22 +451,26 @@ async def get_msg_chk_sum(asterisk_chan):
     """
     Retrieves the message and its checksum for the specified Asterisk channel from the database.
 
-    This asynchronous function queries the Calls table for the message and msg_chk_sum fields for the given channel.
+    This asynchronous function queries the Calls table for the message, msg_chk_sum, and lang fields for the given channel.
 
     Args:
         asterisk_chan (str): The identifier of the Asterisk channel.
 
     Returns:
-        tuple: A tuple containing the message and its checksum, or (None, None) if not found.
+        tuple: A MsgChkSumResult containing (message, checksum) with .lang property, or (None, None) if not found.
     """
 
     try:
         message_and_msg_chk_sum = await Calls.select(
-            Calls.msg_chk_sum, Calls.message
+            Calls.msg_chk_sum, Calls.message, Calls.lang
         ).where(Calls.asterisk_chan == asterisk_chan)
-        return (
-            message_and_msg_chk_sum[0].get("message", None),
-            message_and_msg_chk_sum[0].get("msg_chk_sum", None),
+        if not message_and_msg_chk_sum:
+            return None, None
+        rec = message_and_msg_chk_sum[0]
+        return MsgChkSumResult(
+            rec.get("message", None),
+            rec.get("msg_chk_sum", None),
+            rec.get("lang", "") or "",
         )
     except IndexError:
         return None, None

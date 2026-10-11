@@ -4,23 +4,25 @@ from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables
 
 
 async def insert_scheduled_call(
-    phone, message, call_chk_sum, inserted_at, scheduled_at
+    phone, message, call_chk_sum, inserted_at, scheduled_at, lang=""
 ):
     """
-    Inserts a new scheduled call record into the ScheduledCalls table.
+    Inserts a scheduled call record into the ScheduledCalls table in the database.
 
-    This asynchronous function ensures the table exists and inserts a new scheduled call with the provided details.
+    This asynchronous function adds a new scheduled call entry with the specified parameters.
 
     Args:
         phone (str): The recipient's phone number.
         message (str): The message content for the scheduled call.
         call_chk_sum (str): The checksum of the call.
-        inserted_at (datetime): The timestamp when the record was inserted.
-        scheduled_at (datetime): The scheduled time for the call.
+        inserted_at (datetime): The timestamp when the call was inserted.
+        scheduled_at (datetime): The timestamp when the call is scheduled to be made.
+        lang (str): Language code for voice audio synthesis.
 
     Returns:
         None
     """
+
     await ScheduledCalls.insert(
         ScheduledCalls(
             phone=phone,
@@ -28,17 +30,19 @@ async def insert_scheduled_call(
             call_chk_sum=call_chk_sum,
             inserted_at=inserted_at,
             scheduled_at=scheduled_at,
+            lang=lang or "",
         )
     )
 
 
 async def select_scheduled_calls():
     """
-    Retrieves all scheduled call records from the ScheduledCalls table.
+    Retrieves all scheduled call records from the ScheduledCalls table in the database.
 
-    This asynchronous function ensures the table exists and returns all stored scheduled call records.
+    This asynchronous function queries and returns all records from the ScheduledCalls table.
 
     Returns:
-        list: A list of all scheduled call records in the database.
+        list: A list of all scheduled call records.
     """
+
     return await ScheduledCalls.select()

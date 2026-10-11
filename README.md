@@ -15,13 +15,15 @@ The system is built as a set of microservices that communicate over HTTP and que
 
 ## Key Features
 
-- Outbound calls via Asterisk ARI with retry and escalation logic.
-- Prometheus Alertmanager webhook integration.
-- Multi-engine TTS gTTS, AWS Polly, Facebook MMS, Piper, Kokoro.
-- SMS delivery via Twilio or an on-premise USB modem backend.
-- Scheduling and queue-backed processing with Celery/Redis.
-- Contact and on-call rotation management.
-- Web UI for call history, scheduling, users, and events.
+- **Outbound Voice Calls**: Originated via Asterisk ARI with automated retry and backup escalation logic.
+- **Prometheus Alertmanager Integration**: Native webhook supporting call-only, SMS-only, simultaneous, or SMS-before-call escalation.
+- **Multi-Engine Neural TTS**: Kokoro-82M, Silero, Piper ONNX, Facebook MMS, AWS Polly, and Google gTTS with dynamic language discovery, speech rate control, and automated model preloading.
+- **Dynamic Language & Engine Routing**: Intelligent fallback resolving language aliases and delegating to installed offline models across engines.
+- **SMS Delivery**: Dual-backend support for cloud delivery via Twilio API or local air-gapped delivery via on-premise USB GSM/LTE modems (native Rust engine).
+- **Scheduling & Priority Queues**: Redis and Celery-backed execution supporting priority queues (P0 emergency routing) and scheduled delivery.
+- **Contact & On-Call Rotations**: Multi-tiered address book with time-windowed on-call coverage, priority rankings, and interactive calendar.
+- **Multilingual Web UI**: Flask management console with internationalization (`Flask-Babel`), RTL layout support (Arabic, Hebrew), European translations (German, Spanish, French, Italian, English), live TTS audio preview, bulk call acknowledgment, and incident audit reporting.
+- **Enterprise Resilience**: Asterisk ARI Circuit Breakers, distributed Redis locks, standardized health/readiness probes, and OpenTelemetry instrumentation.
 
 ## Architecture
 
@@ -69,13 +71,13 @@ flowchart TB
 | `asterisk_recaller` | Retries failed or unacknowledged calls and escalates to backups. | [README](src/asterisk_recaller/README.md) |
 | `caller_register` | Central registry for call attempts, status, and metadata. | [README](src/caller_register/README.md) |
 | `caller_scheduler` | Schedules future calls through Celery tasks. | [README](src/caller_scheduler/README.md) |
-| `celery_worker` | Executes queued and scheduled call tasks. | [src/README.md](src/README.md) |
+| `celery_worker` | Executes queued and scheduled call tasks with priority routing. | [src/README.md](src/README.md) |
 | `caller_sms` | SMS notifications via Twilio or on-premise modem backend. | [README](src/caller_sms/README.md) |
 | `caller_prometheus_webhook` | Alertmanager-compatible webhook for calls and SMS. | [README](src/caller_prometheus_webhook/README.md) |
 | `caller_address_book` | Contact and on-call rotation management. | [README](src/caller_address_book/README.md) |
-| `generate_audio` | Text-to-speech audio generation for call playback. | [README](src/generate_audio/README.md) |
-| `py_phone_caller_ui` | Web UI for operations, scheduling, and users. | [README](src/py_phone_caller_ui/README.md) |
-| `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, and telemetry. | [README](src/py-phone-caller-utils/README.md) |
+| `generate_audio` | Multi-engine text-to-speech audio generation with dynamic language discovery and preloading. | [README](src/generate_audio/README.md) |
+| `py_phone_caller_ui` | Web UI for operations, scheduling, users, audio preview, and incident audits. | [README](src/py_phone_caller_ui/README.md) |
+| `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, telemetry, and circuit breakers. | [README](src/py-phone-caller-utils/README.md) |
 | `openalertd` | Decentralized Nostr (0xChat E2EE, embedded micro-relay) and BitChat BLE mesh gateway bridging air-gapped field alerts. | [README](src/openalert/README.md) |
 
 ## Prerequisites & Requirements (What You Need to Run)
@@ -100,7 +102,7 @@ Depending on your environment and the features you plan to enable (outbound voic
   - Stores call logs, address book contacts, on-call schedules, SMS audit history, and web UI user accounts.
   - Relational schema tables and migrations are automatically initialized and managed via Piccolo ORM by `caller_register`.
 - **Redis (v7+) or Valkey**:
-  - In-memory message broker used by Celery for asynchronous call scheduling and queue workers.
+  - In-memory message broker used by Celery for asynchronous call scheduling, priority queues, and distributed locking.
 
 ### 3. Text-to-Speech (TTS) Engines: Local vs. Cloud
 `generate_audio` converts alert text messages into Asterisk-compliant 8 kHz mono WAV audio files. You can choose between 100% offline local neural TTS or cloud-hosted synthesis:
@@ -108,6 +110,7 @@ Depending on your environment and the features you plan to enable (outbound voic
 | TTS Engine | Mode | What You Need | Key Benefits & Notes |
 | :--- | :--- | :--- | :--- |
 | **Kokoro-82M** *(Default & Recommended)* | **Local / Offline** | • CPU/RAM for inference<br>• Model weights (`kokoro-v1_0.pth` ~320MB) & voice embeddings cached in `pre_trained_models/kokoro_tts`<br>• `ffmpeg` for 8 kHz audio encoding | **Zero cloud accounts needed.** Runs 100% locally on CPU in air-gapped environments. Natural human-like speech. |
+| **Silero TTS** | **Local / Offline** | • PyTorch runtime & weights (`v3_<lang>.pt` ~50MB) cached in `pre_trained_models/silero_tts`<br>• `ffmpeg` for 8 kHz audio resampling | **Zero cloud accounts needed.** Ultra-compact, highly reliable offline neural TTS with multi-language speaker models (English, Spanish, German, French, Russian, Indic). Runs efficiently on low-resource hardware. |
 | **Piper ONNX** | **Local / Offline** | • ONNX voice model files (`.onnx` + `.onnx.json`) in `pre_trained_models/piper_tts`<br>• `ffmpeg` | Ultra-fast, lightweight neural speech synthesizer designed for local devices. |
 | **Facebook MMS** | **Local / Offline** | • Hugging Face MMS model checkpoint (`facebook/mms-tts-<lang>`)<br>• `ffmpeg` | Supports over 1,000+ languages completely offline. |
 | **AWS Polly** | **Cloud / Online** | • **Active AWS Account**<br>• AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `aws_polly_region_name`)<br>• IAM permission: `polly:SynthesizeSpeech`<br>• Outbound Internet connectivity | Cloud-managed TTS service with diverse multilingual voices. |
@@ -148,9 +151,10 @@ The native Rust engine automatically communicates over the AT command interface 
 
 ## Deployment Options
 
-- Ansible all-in-one stack: `assets/ansible/deploy_all/README.md`
-- Ansible roles: `assets/ansible/asterisk_py-phone-caller/README.md` and `assets/ansible/on-vm_py-phone-caller/README.md`
-- Docker Compose stack (Asterisk external): `assets/docker-compose/README.md`
+- **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**: Production-grade setup with Apache APISIX, Keycloak OIDC authentication, 3-tier RBAC (`alert-admin`, `alert-operator`, `alert-viewer`), and Ansible Vault credential hardening. Includes step-by-step manual and automated paths.
+- **Ansible all-in-one stack**: `deploy/ansible/deploy_all/README.md`
+- **Ansible roles**: `deploy/ansible/asterisk_py-phone-caller/README.md` and `deploy/ansible/on-vm_py-phone-caller/README.md`
+- **Docker Compose stack (Asterisk external)**: `deploy/compose/README.md`
 
 ## Quick Start
 
@@ -162,26 +166,25 @@ Pick one path.
    - `src/config/settings.toml`: set `[commons] asterisk_host`, `asterisk_user`, and `asterisk_web_port` if different.
    - `src/config/.secrets.toml`: set `[commons] asterisk_pass` to your ARI password.
    - If Asterisk runs on the Docker host, use `asterisk_host = "host.containers.internal"`.
-   - Asterisk setup details: `assets/ansible/asterisk_py-phone-caller/README.md`
+   - Asterisk setup details: `deploy/ansible/asterisk_py-phone-caller/README.md`
 2. Create the Compose environment files:
    ```bash
    uv run python assets/scripts/config/toml_to_dynaconf_env.py \
      --input src/config/settings.toml \
-     --output assets/docker-compose/env/py-phone-caller.env
+     --output deploy/compose/env/py-phone-caller.env
 
    uv run python assets/scripts/config/toml_to_dynaconf_env.py \
      --ignore-missing \
      --input src/config/.secrets.toml \
-     --output assets/docker-compose/env/py-phone-caller.secrets.env
+     --output deploy/compose/env/py-phone-caller.secrets.env
 
-   cd assets/docker-compose
+   cd deploy/compose
    cat > .env <<'EOF'
    POSTGRES_PASSWORD=change_me
    CADDY_DOMAIN_NAME=py-phone-caller.lan
    UI_USER_RESET_PASSWORD=false
    EOF
    ```
-   Set `UI_USER_RESET_PASSWORD=true` only for intentional first-time admin bootstrap or password reset, then set it back to `false` after retrieving the generated password from the UI logs.
 3. Build and start the stack:
    ```bash
    docker compose build
@@ -194,7 +197,7 @@ Pick one path.
 5. Open the UI and retrieve the admin password:
    - UI: http://localhost:5000 (or the Caddy domain you set).
    - Admin email defaults to `admin@py-phone-caller.link` (change via `ui_admin_user`).
-   - If `UI_USER_RESET_PASSWORD=true`, the generated password is logged by `py_phone_caller_ui`:
+   - If `UI_USER_RESET_PASSWORD=true`, the first-run password is generated and logged by `py_phone_caller_ui`:
      ```bash
      docker compose logs -f py_phone_caller_ui
      ```
@@ -203,14 +206,14 @@ Pick one path.
 
 1. Go to the playbook directory:
    ```bash
-   cd assets/ansible/deploy_all
+   cd deploy/ansible/deploy_all
    ```
 2. Install required collection:
    ```bash
    ansible-galaxy collection install community.general
    ```
 3. Edit the inventory:
-   - `assets/ansible/on-vm_py-phone-caller/inventory`
+   - `deploy/ansible/on-vm_py-phone-caller/inventory`
 4. Edit `deploy_py-phone-caller_stack.yml` and set at least:
    - `ari_password`
    - `sip_username`
@@ -249,7 +252,9 @@ Pick one path.
 
 ## Documentation
 
+- **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** - Step-by-step manual and automated guide for Apache APISIX & Keycloak OIDC.
 - **[Master Documentation Library](doc/README.md)** - Comprehensive documentation map, architectural guides, and operational manuals.
+- **[Release 1.0.1 Notes & Enhancement Report](docs/1.0.1-release.md)** - Detailed release summary for v1.0.1 enhancements.
 - **[Operator Installation Guide (A to Z)](doc/OPERATOR_INSTALLATION_GUIDE.md)** - Step-by-step production installation for Ansible, Docker/Podman Compose, and Native Systemd.
 - **[Architecture & Call Flows Guide](doc/architecture-and-call-flows.md)** - End-to-end call lifecycle, DTMF acknowledgment ('4' key), retry loops, and SMS flows.
 - **[Services & Endpoints Reference](doc/services-and-endpoints.md)** - Complete REST API specification for all 11 microservices and health probes.
@@ -274,7 +279,7 @@ Pick one path.
 - [Generate Audio](src/generate_audio/README.md) - Text-to-speech service for generating call audio files.
 - [py-phone-caller-utils](src/py-phone-caller-utils/README.md) - Shared utility library for config, DB, TTS, SMS, and telemetry helpers.
 - [py_phone_caller_ui](src/py_phone_caller_ui/README.md) - Flask web UI for calls, schedules, users, and WS events.
-- [Ansible: deploy all](assets/ansible/deploy_all/README.md) - One-command Ansible playbook for the full Asterisk + py-phone-caller stack.
-- [Ansible: Asterisk role](assets/ansible/asterisk_py-phone-caller/README.md) - Role to install and configure Asterisk PBX for this system.
-- [Ansible: py-phone-caller role](assets/ansible/on-vm_py-phone-caller/README.md) - Role to deploy the microservices stack on a VM or server.
-- [Docker Compose stack](assets/docker-compose/README.md) - Containerized full-stack deployment (requires an external Asterisk).
+- [Ansible: deploy all](deploy/ansible/deploy_all/README.md) - One-command Ansible playbook for the full Asterisk + py-phone-caller stack.
+- [Ansible: Asterisk role](deploy/ansible/asterisk_py-phone-caller/README.md) - Role to install and configure Asterisk PBX for this system.
+- [Ansible: py-phone-caller role](deploy/ansible/on-vm_py-phone-caller/README.md) - Role to deploy the microservices stack on a VM or server.
+- [Docker Compose stack](deploy/compose/README.md) - Containerized full-stack deployment (requires an external Asterisk).

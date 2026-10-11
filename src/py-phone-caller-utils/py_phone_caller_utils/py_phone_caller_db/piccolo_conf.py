@@ -16,11 +16,21 @@ logging.basicConfig(
     format=settings.logs.log_formatter, level=settings.logs.log_level, force=True
 )
 
+# Subclass PostgresEngine to enforce bounded connection pooling on asyncpg
+class BoundedPostgresEngine(PostgresEngine):
+    async def start_connection_pool(self, **kwargs) -> None:
+        # Enforce strict bounded connection pool limits to prevent exhaustion
+        kwargs.setdefault("min_size", 1)
+        kwargs.setdefault("max_size", int(getattr(settings.database, "db_max_size", 20) or 20))
+        kwargs.setdefault("timeout", 10.0)
+        kwargs.setdefault("max_inactive_connection_lifetime", float(getattr(settings.database, "db_max_inactive_connection_lifetime", 30.0) or 30.0))
+        await super().start_connection_pool(**kwargs)
+
 # The PostgresEngine will try to connect to the database to check the version
 # during initialization. If the database is not ready yet, it will fail.
 # We let it fail so the service can be restarted by the orchestrator (e.g. Docker/Podman)
 # and eventually succeed when the database is ready.
-DB = PostgresEngine(config={"dsn": DB_DSN})
+DB = BoundedPostgresEngine(config={"dsn": DB_DSN})
 
 APP_REGISTRY = AppRegistry(
     apps=[

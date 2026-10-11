@@ -1,0 +1,144 @@
+---
+# The repository layout is reproduced verbatim under py_phone_caller_install_dir:
+#
+#   /opt/py-phone-caller/pyproject.toml   uv workspace root
+#   /opt/py-phone-caller/uv.lock
+#   /opt/py-phone-caller/src/<member>/    workspace members, installed editable
+#   /opt/py-phone-caller/venv/            created by uv, never synced
+#
+# uv records the editable paths of the workspace members inside the venv, so
+# "src" must keep its name and must not be a symlink.
+
+- name: Clone the repository
+  ansible.builtin.git:
+    repo: "{{ py_phone_caller_git_repo }}"
+    dest: "{{ py_phone_caller_install_dir }}"
+    version: "{{ py_phone_caller_git_version }}"
+    force: true
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  when: py_phone_caller_git_repo | length > 0
+  notify: Restart py-phone-caller services
+
+- name: Drop openalertd from the checkout
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_src_dir }}/openalert"
+    state: absent
+  when: py_phone_caller_git_repo | length > 0
+
+- name: Check the local checkout
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_local_src_path }}/pyproject.toml"
+  delegate_to: localhost
+  become: false
+  register: _ppc_local_root
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Assert that the local checkout is a repository root
+  ansible.builtin.assert:
+    that:
+      - _ppc_local_root.stat.exists | default(false)
+    fail_msg: >-
+      py_phone_caller_local_src_path must point at the repository root (the
+      directory holding pyproject.toml and uv.lock), not at its src/
+      subdirectory. Got: {{ py_phone_caller_local_src_path }}
+    quiet: true
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+# Synchronize application sources from local src/ directly to remote app/
+- name: Synchronise application sources into app directory
+  ansible.posix.synchronize:
+    src: "{{ py_phone_caller_local_src_path }}/src/"
+    dest: "{{ py_phone_caller_src_dir }}/"
+    archive: true
+    owner: false
+    group: false
+    delete: true
+    compress: true
+    use_ssh_args: true
+    rsync_opts: "{{ _ppc_app_rsync_filters }}"
+  vars:
+    _ppc_app_rsync_filters: >-
+      {{ ['--chown=' ~ py_phone_caller_user ~ ':' ~ py_phone_caller_group, '--omit-dir-times']
+         + (['/config/', '/generate_audio/pre_trained_models/', '/generate_audio/audio/'] + py_phone_caller_sync_excludes)
+           | map('regex_replace', '^', '--exclude=') | list }}
+  become: "{{ py_phone_caller_sync_become | bool }}"
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+  notify: Restart py-phone-caller services
+
+# Synchronize top-level project metadata (README, LICENSE, etc.)
+- name: Synchronise root project metadata
+  ansible.posix.synchronize:
+    src: "{{ py_phone_caller_local_src_path }}/"
+    dest: "{{ py_phone_caller_install_dir }}/"
+    archive: true
+    owner: false
+    group: false
+    delete: false
+    compress: true
+    use_ssh_args: true
+    rsync_opts: "{{ _ppc_root_rsync_filters }}"
+  vars:
+    _ppc_root_rsync_filters: >-
+      {{ ['--chown=' ~ py_phone_caller_user ~ ':' ~ py_phone_caller_group, '--omit-dir-times']
+         + (['/src/', '/app/', '/pre_trained_models/', 'pyproject.toml', 'uv.lock'] + py_phone_caller_sync_protected + py_phone_caller_sync_excludes)
+           | map('regex_replace', '^', '--exclude=') | list }}
+  become: "{{ py_phone_caller_sync_become | bool }}"
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Deliver target pyproject.toml with app workspace members
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file', py_phone_caller_local_src_path ~ '/pyproject.toml') | replace('"src/', '"app/') }}
+    dest: "{{ py_phone_caller_install_dir }}/pyproject.toml"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
+  notify: Restart py-phone-caller services
+
+- name: Deliver target uv.lock with app workspace paths
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file', py_phone_caller_local_src_path ~ '/uv.lock') | replace('"src/', '"app/') }}
+    dest: "{{ py_phone_caller_install_dir }}/uv.lock"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
+  notify: Restart py-phone-caller services
+
+- name: Ensure the writable runtime directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0755"
+  loop:
+    - "{{ py_phone_caller_src_dir }}/generate_audio/audio"
+    - "{{ py_phone_caller_src_dir }}/generate_audio/pre_trained_models"
+
+- name: Own the installation directory
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0755"
+
+- name: Remove legacy src directory on target
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}/src"
+    state: absent
+
+- name: Remove misplaced pre_trained_models at root
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}/pre_trained_models"
+    state: absent

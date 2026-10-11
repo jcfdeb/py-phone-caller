@@ -1,0 +1,23 @@
+[Unit]
+Description=etcd Key-Value Store for APISIX Gateway
+Documentation=https://etcd.io/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+Restart=always
+RestartSec=10s
+ExecStartPre=-/usr/bin/podman stop etcd
+ExecStartPre=-/usr/bin/podman rm etcd
+ExecStart=/usr/bin/podman run --name etcd --net=host \
+  -v /var/lib/py-phone-caller/etcd:/etcd-data:Z \
+  {{ py_phone_caller_etcd_image }} \
+  /usr/local/bin/etcd --name etcd --data-dir /etcd-data \
+  --listen-client-urls http://0.0.0.0:2379 --advertise-client-urls http://127.0.0.1:2379 \
+  --listen-peer-urls http://0.0.0.0:2380 --initial-advertise-peer-urls http://127.0.0.1:2380 \
+  --initial-cluster etcd=http://127.0.0.1:2380 --initial-cluster-token etcd-cluster-1 --initial-cluster-state new
+ExecStop=/usr/bin/podman stop -t 10 etcd
+
+[Install]
+WantedBy=multi-user.target

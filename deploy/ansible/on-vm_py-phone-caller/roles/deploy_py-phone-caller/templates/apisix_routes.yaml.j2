@@ -1,0 +1,149 @@
+# =============================================================================
+# Apache APISIX Gateway Declarative Configuration for py-phone-caller
+# Managed by Ansible (deploy_py-phone-caller)
+# =============================================================================
+
+routes:
+  - id: route-keycloak-realms
+    uri: /realms/*
+    name: "Keycloak OIDC Realms"
+    priority: 20
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:{{ py_phone_caller_keycloak_http_port }}": 1
+    plugins:
+      proxy-rewrite:
+        use_real_request_uri_unsafe: true
+
+  - id: route-keycloak-resources
+    uri: /resources/*
+    name: "Keycloak Static Resources"
+    priority: 20
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:{{ py_phone_caller_keycloak_http_port }}": 1
+    plugins:
+      proxy-rewrite:
+        use_real_request_uri_unsafe: true
+
+  - id: route-keycloak-admin
+    uri: /admin/*
+    name: "Keycloak Admin Console"
+    priority: 20
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:{{ py_phone_caller_keycloak_http_port }}": 1
+    plugins:
+      proxy-rewrite:
+        use_real_request_uri_unsafe: true
+  - id: route-ui-root
+    uri: /*
+    name: "Web UI Dashboard & Static"
+    priority: 1
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:5000": 1
+    plugins:
+      proxy-rewrite:
+        use_real_request_uri_unsafe: true
+
+  - id: route-telephony
+    uri: /api/v1/telephony/*
+    name: "Telephony Outbound API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/telephony/(.*)", "/$1"]
+      limit-req:
+        rate: 20
+        burst: 30
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:8081": 1
+
+  - id: route-audio
+    uri: /api/v1/audio/*
+    name: "Voice Synthesis & Audio Streaming"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/audio/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:8082": 1
+
+  - id: route-registry
+    uri: /api/v1/registry/*
+    name: "Call Registry & Audit Trail"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/registry/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:8083": 1
+
+  - id: route-alerts
+    uri: /api/v1/alerts/*
+    name: "Prometheus Alertmanager Webhook Ingress"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/alerts/(.*)", "/$1"]
+      limit-req:
+        rate: 30
+        burst: 50
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:8084": 1
+
+  - id: route-sms
+    uri: /api/v1/sms/*
+    name: "SMS Dispatch & Ingress API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/sms/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:8085": 1
+
+  - id: route-scheduler
+    uri: /api/v1/scheduler/*
+    name: "Call Scheduler API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/scheduler/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:8086": 1
+
+  - id: route-addressbook
+    uri: /api/v1/contacts/*
+    name: "Address Book Management API"
+    priority: 10
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/contacts/(.*)", "/$1"]
+    upstream:
+      type: roundrobin
+      nodes:
+        "{{ py_phone_caller_service_host }}:8087": 1
+#END

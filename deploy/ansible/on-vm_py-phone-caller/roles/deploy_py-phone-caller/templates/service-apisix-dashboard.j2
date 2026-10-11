@@ -1,0 +1,19 @@
+[Unit]
+Description=Apache APISIX Dashboard
+Documentation=https://apisix.apache.org/
+After=network-online.target py-phone-caller-apisix.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+Restart=always
+RestartSec=10s
+ExecStartPre=-/usr/bin/podman stop apisix-dashboard
+ExecStartPre=-/usr/bin/podman rm apisix-dashboard
+ExecStart=/usr/bin/podman run --name apisix-dashboard --net=host \
+  -v /etc/py-phone-caller/apisix/dashboard_conf.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro,Z \
+  {{ py_phone_caller_apisix_dashboard_image }}
+ExecStop=/usr/bin/podman stop -t 10 apisix-dashboard
+
+[Install]
+WantedBy=multi-user.target

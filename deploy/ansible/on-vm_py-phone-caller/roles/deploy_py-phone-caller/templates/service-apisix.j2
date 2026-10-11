@@ -1,0 +1,21 @@
+[Unit]
+Description=Apache APISIX API Gateway
+Documentation=https://apisix.apache.org/
+After=network-online.target py-phone-caller-etcd.service
+Wants=network-online.target
+Requires=py-phone-caller-etcd.service
+
+[Service]
+Type=exec
+Restart=always
+RestartSec=10s
+ExecStartPre=-/usr/bin/podman stop apisix
+ExecStartPre=-/usr/bin/podman rm apisix
+ExecStart=/usr/bin/podman run --name apisix --net=host \
+  -v /etc/py-phone-caller/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro,Z \
+  -v /etc/py-phone-caller/certs:/opt/certs:ro,Z \
+  {{ py_phone_caller_apisix_image }}
+ExecStop=/usr/bin/podman stop -t 10 apisix
+
+[Install]
+WantedBy=multi-user.target

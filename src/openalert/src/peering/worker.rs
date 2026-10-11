@@ -73,6 +73,9 @@ impl PeerWorkerHandle {
             circuit_state: cb.state(),
             consecutive_failures: cb.consecutive_failures(),
             spooled_count,
+            rssi_dbm: None,
+            snr_db: None,
+            rf_penalty: None,
         }
     }
 
@@ -97,6 +100,7 @@ pub fn spawn_peer_worker(
     default_base_cooldown_secs: u64,
     default_max_cooldown_secs: u64,
     default_canary_timeout_ms: u64,
+    lora_transmitters: Arc<HashMap<String, mpsc::Sender<Vec<u8>>>>,
 ) -> PeerWorkerHandle {
     let (tx, rx) = mpsc::channel::<OutboundAlertRequest>(128);
     let name = node.name.clone();
@@ -137,6 +141,7 @@ pub fn spawn_peer_worker(
         max_timeout_ms,
         cb: cb.clone(),
         lora_limiter,
+        lora_transmitters,
     };
 
     tokio::spawn(async move {
@@ -158,6 +163,7 @@ struct PeerWorker {
     max_timeout_ms: u64,
     cb: Arc<RwLock<PeeringCircuitBreaker>>,
     lora_limiter: Arc<Mutex<LoraDutyCycleLimiter>>,
+    lora_transmitters: Arc<HashMap<String, mpsc::Sender<Vec<u8>>>>,
 }
 
 impl PeerWorker {
@@ -321,30 +327,28 @@ impl PeerWorker {
             baud_rate
         );
 
-        use tokio_serial::SerialPortBuilderExt;
-        match tokio_serial::new(dev_path, baud_rate).open_native_async() {
-            Ok(mut port) => {
-                use tokio::io::AsyncWriteExt;
-                if let Err(e) = port.write_all(&framed).await {
-                    warn!("⚠️ LoRa serial write failed to {}: {}", dev_path, e);
-                    return false;
+        if let Some(tx) = self.lora_transmitters.get(dev_path) {
+            match tx.send(framed).await {
+                Ok(()) => {
+                    if let Some(id) = alert_id {
+                        info!(
+                            "✅ [LoRa Serial] Dispatched alert [{}] over {} ({:.1}ms air-time)",
+                            id, dev_path, air_time_ms
+                        );
+                    }
+                    true
                 }
-                let _ = port.flush().await;
-                if let Some(id) = alert_id {
-                    info!(
-                        "✅ [LoRa Serial] Dispatched alert [{}] over {} ({:.1}ms air-time)",
-                        id, dev_path, air_time_ms
-                    );
+                Err(e) => {
+                    warn!("⚠️ LoRa serial channel write failed for {}: {}", dev_path, e);
+                    false
                 }
-                true
             }
-            Err(e) => {
-                debug!(
-                    "Physical LoRa serial device '{}' not accessible ({}). Simulating virtual RF dispatch.",
-                    dev_path, e
-                );
-                true
-            }
+        } else {
+            debug!(
+                "Physical LoRa serial device '{}' transmitter channel not registered. Simulating virtual RF dispatch.",
+                dev_path
+            );
+            true
         }
     }
 

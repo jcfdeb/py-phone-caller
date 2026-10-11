@@ -1,6 +1,6 @@
 [package]
 name = "openalertd"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["OpenAlert Contributors"]
 description = "Mission-critical decentralized alert router, Nostr pub/sub bus, and telephony bridge"
@@ -82,6 +82,7 @@ chacha20 = "0.9"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 rustls = { version = "0.23", features = ["ring"] }
 bech32 = "0.11"
+libc = "0.2"
 
 [dev-dependencies]
 rcgen = "0.13"

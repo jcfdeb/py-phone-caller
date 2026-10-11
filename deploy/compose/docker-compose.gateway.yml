@@ -1,0 +1,83 @@
+# =============================================================================
+# Development & Testing Compose Overlay for APISIX & Keycloak Integration
+# =============================================================================
+# Usage:
+#   podman-compose -f docker-compose.yml -f deploy/compose/docker-compose.gateway.yml up -d
+#   OR:
+#   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.gateway.yml up -d
+#
+# Connects to the existing postgres container from the base stack without duplication.
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Apache APISIX Configuration Datastore (etcd)
+  # ---------------------------------------------------------------------------
+  apisix-etcd:
+    image: quay.io/coreos/etcd:v3.5.11
+    container_name: pyphonecaller-etcd
+    command:
+      - /usr/local/bin/etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://apisix-etcd:2379
+    volumes:
+      - pyphonecaller_etcd_data:/etcd-data
+    restart: always
+
+  # ---------------------------------------------------------------------------
+  # Apache APISIX Gateway Engine
+  # ---------------------------------------------------------------------------
+  apisix:
+    image: docker.io/apache/apisix:latest
+    container_name: pyphonecaller-gateway
+    restart: always
+    volumes:
+      - ../gateway/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ../gateway/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    depends_on:
+      - apisix-etcd
+    ports:
+      - "9080:9080"
+      - "9443:9443"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+
+  # ---------------------------------------------------------------------------
+  # Apache APISIX Administration Dashboard
+  # ---------------------------------------------------------------------------
+  apisix-dashboard:
+    image: docker.io/apache/apisix-dashboard:3.0.1-alpine
+    container_name: pyphonecaller-dashboard
+    restart: always
+    depends_on:
+      - apisix-etcd
+    ports:
+      - "9000:9000"
+
+  # ---------------------------------------------------------------------------
+  # Keycloak IAM Service (Wired to the existing PostgreSQL database instance)
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: pyphonecaller-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:-py_phone_caller}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-py_phone_caller}
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin_secure_password
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    depends_on:
+      - postgres
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+
+volumes:
+  pyphonecaller_etcd_data:

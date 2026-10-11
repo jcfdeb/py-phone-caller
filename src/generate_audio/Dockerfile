@@ -56,7 +56,13 @@ RUN DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
     DYNACONF_GENERATE_AUDIO__KOKORO_REPO_ID=hexgrad/Kokoro-82M \
     DYNACONF_GENERATE_AUDIO__KOKORO_MODEL_FILENAME=kokoro-v1_0.pth \
     PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
-    /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model
+    /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model && \
+    DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
+    DYNACONF_LOGS__LOG_LEVEL=INFO \
+    DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
+    DYNACONF_GENERATE_AUDIO__SILERO_MODELS_FOLDER=silero_tts \
+    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
+    /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model --language en
 
 FROM rockylinux:9-minimal
 
@@ -79,11 +85,12 @@ WORKDIR /app
 COPY --from=builder /opt/uv-python /opt/uv-python
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/pre_trained_models /app/pre_trained_models
+COPY --from=builder /app/pre_trained_models /app/src/generate_audio/pre_trained_models
 COPY --from=builder /app/src/generate_audio /app/src/generate_audio
 COPY --from=builder /app/src/py-phone-caller-utils /app/src/py-phone-caller-utils
 
-RUN mkdir -p /app/audio && \
-    chown -R appuser:appuser /app
+RUN mkdir -p /app/audio /home/appuser/.cache && \
+    chown -R appuser:appuser /app /home/appuser
 
 USER appuser
 

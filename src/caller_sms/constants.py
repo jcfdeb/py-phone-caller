@@ -11,3 +11,4 @@ TWILIO_ACCOUNT_SID = settings.caller_sms.twilio_account_sid
 TWILIO_AUTH_TOKEN = settings.caller_sms.twilio_auth_token
 CALLER_SMS_CARRIER = settings.caller_sms.caller_sms_carrier
 LOG_LEVEL = settings.logs.log_level
+SMS_SAAS_FALLBACK = bool(getattr(settings.caller_sms, "sms_saas_fallback", False))

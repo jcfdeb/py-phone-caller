@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}py-phone-caller Managed Calls{% endblock %}
+{% block title %}py-phone-caller {{ _('Managed Calls') }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -14,10 +14,18 @@
 {% block content %}
 <div class="container-fluid main-container px-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
-        <h2 class="page-header mb-0 text-start">Managed Calls</h2>
-        <div class="d-flex gap-2 mt-2 mt-md-0">
+        <h2 class="page-header mb-0 text-start">{{ _('Managed Calls') }}</h2>
+        <div class="d-flex gap-2 mt-2 mt-md-0 align-items-center">
+            <div id="bulkActionsBar" class="d-none me-2">
+                <button type="button" class="btn btn-warning shadow-sm fw-bold" onclick="executeBulkAck()">
+                    <i class="bi bi-check2-all me-1"></i> {{ _('Bulk Acknowledge') }} (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+            <a href="{{ url_for('calls_blueprint.audit_report') }}" target="_blank" class="btn btn-outline-primary">
+                <i class="bi bi-file-earmark-pdf me-1"></i> {{ _('Incident Audit Report') }}
+            </a>
             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#exportModal">
-                <i class="bi bi-file-earmark-excel me-1"></i> Export CSV
+                <i class="bi bi-file-earmark-excel me-1"></i> {{ _('Export CSV') }}
             </button>
         </div>
     </div>
@@ -32,22 +40,22 @@
                         <input type="hidden" name="sort_by" value="{{ sort_by }}">
                         <input type="hidden" name="sort_order" value="{{ sort_order }}">
                         <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
-                            <input class="form-control border-start-0 ps-0" type="search" placeholder="Search managed calls..."
-                                   aria-label="Search" name="search" value="{{ search_query }}">
+                            <span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input class="form-control border-start-0 ps-0" type="search" placeholder="{{ _('Search managed calls...') }}"
+                                   aria-label="{{ _('Search') }}" name="search" value="{{ search_query }}">
                             {% if search_query %}
                             <a href="{{ url_for('calls_blueprint.calls', per_page=per_page, sort_by=sort_by, sort_order=sort_order) }}"
                                class="btn btn-outline-secondary d-flex align-items-center"><i class="bi bi-x-lg"></i></a>
                             {% endif %}
-                            <button class="btn btn-primary px-4" type="submit">Search</button>
+                            <button class="btn btn-primary px-4" type="submit">{{ _('Search') }}</button>
                         </div>
                     </form>
                 </div>
                 <div class="col-md-6">
                     <div class="d-flex align-items-center justify-content-md-end flex-wrap gap-2">
-                        <label for="autoRefreshSelect" class="mb-0 small fw-bold text-secondary"><i class="bi bi-clock-history me-1"></i>Auto refresh:</label>
+                        <label for="autoRefreshSelect" class="mb-0 small fw-bold text-secondary"><i class="bi bi-clock-history me-1"></i>{{ _('Auto refresh:') }}</label>
                         <select id="autoRefreshSelect" class="form-select form-select-sm border-secondary-subtle" style="max-width: 120px;">
-                            <option value="0">Disable</option>
+                            <option value="0">{{ _('Disable') }}</option>
                             <option value="5">5s</option>
                             <option value="10">10s</option>
                             <option value="15">15s</option>
@@ -65,22 +73,25 @@
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
             <tr>
+                <th style="width: 40px;" class="text-center">
+                    <input class="form-check-input" type="checkbox" id="selectAllCalls" title="{{ _('Select All Active Calls') }}">
+                </th>
                 <th>
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='element', sort_order='asc' if sort_by != 'element' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Element
+                        {{ _('Element') }}
                         {% if sort_by == 'element' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
                     </a>
                 </th>
-                <th>Id</th>
-                <th>Callee</th>
-                <th class="text-center">Flags</th>
-                <th style="min-width: 200px;">Message</th>
-                <th>Channel</th>
+                <th>{{ _('Id') }}</th>
+                <th>{{ _('Callee') }}</th>
+                <th class="text-center">{{ _('Flags') }}</th>
+                <th style="min-width: 200px;">{{ _('Message') }}</th>
+                <th>{{ _('Channel') }}</th>
                 <th class="text-center">
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='times_to_dial', sort_order='asc' if sort_by != 'times_to_dial' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
-                        To Dial
+                        {{ _('To Dial') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Maximum number of call retry attempts') }}"></i>
                         {% if sort_by == 'times_to_dial' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -88,7 +99,7 @@
                 </th>
                 <th class="text-center">
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='dialed_times', sort_order='asc' if sort_by != 'dialed_times' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center justify-content-center gap-1">
-                        Dialed
+                        {{ _('Dialed') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Number of dial attempts executed so far') }}"></i>
                         {% if sort_by == 'dialed_times' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -96,7 +107,7 @@
                 </th>
                 <th>
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='first_dial_time', sort_order='asc' if sort_by != 'first_dial_time' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        First Dial
+                        {{ _('First Dial') }}
                         {% if sort_by == 'first_dial_time' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -104,7 +115,7 @@
                 </th>
                 <th>
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='last_dial_time', sort_order='asc' if sort_by != 'last_dial_time' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Last Dial
+                        {{ _('Last Dial') }}
                         {% if sort_by == 'last_dial_time' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
@@ -112,31 +123,49 @@
                 </th>
                 <th>
                     <a href="{{ url_for('calls_blueprint.calls', sort_by='acknowledge_at', sort_order='asc' if sort_by != 'acknowledge_at' or sort_order == 'desc' else 'desc', page=page, per_page=per_page, search=search_query) }}" class="text-dark text-decoration-none d-flex align-items-center gap-1">
-                        Acknowledgement
+                        {{ _('Acknowledgement') }} <i class="bi bi-info-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Timestamp when receiver pressed DTMF 4 to acknowledge the alert') }}"></i>
                         {% if sort_by == 'acknowledge_at' %}
                             <i class="bi bi-arrow-{{ 'up' if sort_order == 'asc' else 'down' }}-short text-primary"></i>
                         {% endif %}
                     </a>
                 </th>
-                <th class="text-center">Status</th>
+                <th class="text-center">{{ _('Status') }}</th>
             </tr>
             </thead>
             <tbody>
             {% for element in paginated_data %}
             {% set call = table_data[element] %}
             <tr>
+                <td class="text-center">
+                    <input class="form-check-input call-row-check" type="checkbox" 
+                           data-chan="{{ call.get('asterisk_chan') }}" 
+                           {% if call.get("cycle_done") == True %}disabled{% endif %}>
+                </td>
                 <td><span class="badge bg-light text-dark border">{{ element }}</span></td>
                 <td><code class="small">{{ call.get("id") }}</code></td>
                 <td><span class="fw-bold text-primary">{{ call.get("phone") }}</span></td>
                 <td class="text-center">
                     {% if call.get("oncall") %}
-                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle" title="Primary On-call request">On Call</span>
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle" title="{{ _('Primary On-call request') }}">{{ _('On Call') }}</span>
                     {% endif %}
                     {% if call.get("backup_callee") %}
-                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle" title="Backup call">Backup</span>
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle" title="{{ _('Backup call') }}">{{ _('Backup') }}</span>
                     {% endif %}
                 </td>
-                <td class="text-wrap small">{{ call.get("message") }}</td>
+                <td class="text-wrap small">
+                    <div class="d-flex align-items-center justify-content-between gap-2">
+                        <span>{{ call.get("message") }}</span>
+                        {% if call.get("msg_chk_sum") %}
+                        {% set audio_file = (call.get("msg_chk_sum") ~ "_" ~ call.get("lang") ~ ".wav") if call.get("lang") else (call.get("msg_chk_sum") ~ ".wav") %}
+                        <button type="button" class="btn btn-outline-info btn-sm p-1 rounded-circle flex-shrink-0" 
+                                style="width: 28px; height: 28px; line-height: 1;" 
+                                onclick="playTtsAudio('{{ audio_file }}', this)"
+                                title="{{ _('Play Synthesized Neural Alert Audio') }}">
+                            <i class="bi bi-play-fill"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
                 <td class="small text-muted">{{ call.get("asterisk_chan") }}</td>
                 <td class="text-center"><span class="badge bg-secondary rounded-pill">{{ call.get("times_to_dial") }}</span></td>
                 <td class="text-center"><span class="badge bg-{{ 'success' if call.get('dialed_times') >= call.get('times_to_dial') else 'info' }} rounded-pill">{{ call.get("dialed_times") }}</span></td>
@@ -145,7 +174,7 @@
                 <td class="small text-nowrap">{{ call.get("acknowledge_at").strftime("%d/%m/%Y %H:%M:%S") if call.get("acknowledge_at") else "-" }}</td>
                 <td class="text-center">
                     {% if call.get("cycle_done") == True %}
-                        <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>{{ _('Completed') }}</span>
                     {% else %}
                         {% set first_dial = call.get("first_dial") %}
                         {% set seconds_to_forget = call.get("seconds_to_forget") %}
@@ -155,13 +184,13 @@
                             {% if current_time <= firing_end_time %}
                                 <button class="btn btn-warning btn-sm ack-button shadow-sm fw-bold px-3" 
                                         data-asterisk-chan="{{ call.get('asterisk_chan') }}">
-                                    <i class="bi bi-check-circle me-1"></i>Ack
+                                    <i class="bi bi-check-circle me-1"></i>{{ _('Ack') }}
                                 </button>
                             {% else %}
-                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-x-circle me-1"></i>Expired</span>
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-x-circle me-1"></i>{{ _('Expired') }}</span>
                             {% endif %}
                         {% else %}
-                            <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
+                            <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-hourglass-split me-1"></i>{{ _('Pending') }}</span>
                         {% endif %}
                     {% endif %}
                 </td>
@@ -169,9 +198,9 @@
             {% endfor %}
             {% if paginated_data|length == 0 %}
             <tr>
-                <td colspan="12" class="text-center py-5 text-muted">
+                <td colspan="13" class="text-center py-5 text-muted">
                     <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                    No managed calls found{% if search_query %} for "{{ search_query }}"{% endif %}
+                    {{ _('No managed calls found') }}{% if search_query %} {{ _('for') }} "{{ search_query }}"{% endif %}
                 </td>
             </tr>
             {% endif %}
@@ -186,7 +215,7 @@
                 <input type="hidden" name="sort_by" value="{{ sort_by }}">
                 <input type="hidden" name="sort_order" value="{{ sort_order }}">
                 <div class="input-group input-group-sm">
-                    <label class="input-group-text bg-light border-end-0" for="items-per-page">Items per page:</label>
+                    <label class="input-group-text bg-light border-end-0" for="items-per-page">{{ _('Items per page:') }}</label>
                     <select class="form-select border-start-0" id="items-per-page" name="per_page" onchange="this.form.submit()">
                         {% for option in [5, 10, 25, 50, 100] %}
                         <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
@@ -225,19 +254,22 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold" id="exportModalLabel"><i class="bi bi-file-earmark-excel me-2 text-success"></i>Export to CSV</h5>
+                <h5 class="modal-title fw-bold" id="exportModalLabel"><i class="bi bi-file-earmark-excel me-2 text-success"></i>{{ _('Export to CSV') }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <form action="{{ url_for('calls_blueprint.export_csv') }}" method="get">
                     <div class="mb-4">
-                        <label for="export-month" class="form-label fw-bold small text-secondary">Select Month and Year</label>
+                        <label for="export-month" class="form-label fw-bold small text-secondary">{{ _('Select Month and Year') }}</label>
                         <input type="month" class="form-control form-control-lg" id="export-month" name="export_month" required>
-                        <div class="form-text mt-2">Data is exported one month at a time for optimal performance.</div>
+                        <div class="form-text mt-2">{{ _('Data is exported one month at a time for optimal performance.') }}</div>
                     </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="bi bi-download me-2"></i>Download CSV
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="bi bi-download me-2"></i>{{ _('Download CSV') }}
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="window.open('{{ url_for('calls_blueprint.audit_report') }}?export_month=' + encodeURIComponent(document.getElementById('export-month').value), '_blank')">
+                            <i class="bi bi-file-earmark-pdf me-2"></i>{{ _('View / Print Monthly Audit Report') }}
                         </button>
                     </div>
                 </form>
@@ -250,30 +282,62 @@
 {% block extra_js %}
 <script>
     function acknowledgeCall(asteriskChan, element) {
+        if (!asteriskChan || !element) {
+            console.error('Invalid acknowledgeCall parameters');
+            return false;
+        }
+        if (element.disabled) {
+            return false;
+        }
         element.disabled = true;
         const originalContent = element.innerHTML;
         element.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
 
-        fetch(`{{ call_register_endpoint }}?asterisk_chan=${encodeURIComponent(asteriskChan)}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 200) {
-                    showToast('Success', 'Call acknowledged successfully', 'success');
-                    element.parentNode.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+        const endpoint = '{{ call_register_endpoint }}' || '/calls/proxy_acknowledge';
+        fetch(`${endpoint}?asterisk_chan=${encodeURIComponent(asteriskChan)}`)
+            .then(async response => {
+                const data = await response.json().catch(() => ({}));
+                return { ok: response.ok, status: response.status, data: data };
+            })
+            .then(({ ok, status, data }) => {
+                const parent = element ? element.parentNode : null;
+                if (ok && (status === 200 || data.status === 200)) {
+                    showToast('Success', data.message || 'Call acknowledged successfully', 'success');
+                    if (parent) {
+                        parent.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+                    }
                 } else {
                     showToast('Note', data.message || 'Call acknowledged but outside firing period', 'warning');
-                    element.parentNode.innerHTML = '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-all me-1"></i>Completed</span>';
+                    if (element && element.parentNode) {
+                        element.disabled = false;
+                        element.innerHTML = originalContent;
+                    }
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                showToast('Error', 'Communication error with backend', 'danger');
-                element.disabled = false;
-                element.innerHTML = originalContent;
+                showToast('Error', 'Communication error with backend: ' + error.message, 'danger');
+                if (element && element.parentNode) {
+                    element.disabled = false;
+                    element.innerHTML = originalContent;
+                }
             });
 
         return false; 
     }
+
+    // Delegated click listener for all Ack buttons (including dynamically rendered rows)
+    document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('click', function(e) {
+            const button = e.target.closest('.ack-button');
+            if (!button) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (button.disabled) return;
+            const asteriskChan = button.getAttribute('data-asterisk-chan');
+            acknowledgeCall(asteriskChan, button);
+        });
+    });
 
     (function(){
         const STORAGE_KEY = 'calls_auto_refresh_seconds';
@@ -321,14 +385,6 @@
             const sel = document.getElementById(selectId);
             if (!sel) return;
 
-            // Add event listeners for ack buttons
-            document.querySelectorAll('.ack-button').forEach(button => {
-                button.addEventListener('click', function() {
-                    const asteriskChan = this.getAttribute('data-asterisk-chan');
-                    acknowledgeCall(asteriskChan, this);
-                });
-            });
-
             let stored = parseInt(localStorage.getItem(STORAGE_KEY) || '', 10);
             if (isNaN(stored) || ![0,5,10,15,30,60].includes(stored)) {
                 stored = 15;
@@ -339,5 +395,106 @@
             });
         });
     })();
+
+    // Audio Player helper
+    let currentAudio = null;
+    let currentPlayBtn = null;
+    function playTtsAudio(filename, btn) {
+        if (currentAudio && !currentAudio.paused) {
+            currentAudio.pause();
+            if (currentPlayBtn) currentPlayBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+            if (currentPlayBtn === btn) {
+                currentAudio = null;
+                currentPlayBtn = null;
+                return;
+            }
+        }
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        const url = `/api/audio_proxy/${encodeURIComponent(filename)}`;
+        currentAudio = new Audio(url);
+        currentPlayBtn = btn;
+        currentAudio.onplay = () => {
+            btn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+            btn.classList.add('btn-info');
+            btn.classList.remove('btn-outline-info');
+        };
+        currentAudio.onended = () => {
+            btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+            btn.classList.remove('btn-info');
+            btn.classList.add('btn-outline-info');
+            currentAudio = null;
+            currentPlayBtn = null;
+        };
+        currentAudio.onerror = () => {
+            showToast('Audio Preview', 'Audio not generated or still being synthesized', 'warning');
+            btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+            btn.classList.remove('btn-info');
+            btn.classList.add('btn-outline-info');
+            currentAudio = null;
+            currentPlayBtn = null;
+        };
+        currentAudio.play().catch(err => {
+            showToast('Audio Preview', 'Unable to play: ' + err.message, 'danger');
+            btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+        });
+    }
+
+    // Bulk selection and acknowledge
+    function updateBulkSelection() {
+        const checkboxes = document.querySelectorAll('.call-row-check:checked');
+        const count = checkboxes.length;
+        const bar = document.getElementById('bulkActionsBar');
+        const countEl = document.getElementById('selectedCount');
+        if (countEl) countEl.innerText = count;
+        if (bar) {
+            if (count > 0) bar.classList.remove('d-none');
+            else bar.classList.add('d-none');
+        }
+    }
+
+    document.getElementById('selectAllCalls')?.addEventListener('change', function() {
+        const checked = this.checked;
+        document.querySelectorAll('.call-row-check:not(:disabled)').forEach(cb => {
+            cb.checked = checked;
+        });
+        updateBulkSelection();
+    });
+
+    document.addEventListener('change', function(e) {
+        if (e.target && e.target.classList.contains('call-row-check')) {
+            updateBulkSelection();
+        }
+    });
+
+    async function executeBulkAck() {
+        const checkboxes = document.querySelectorAll('.call-row-check:checked');
+        const channels = Array.from(checkboxes).map(cb => cb.getAttribute('data-chan')).filter(Boolean);
+        if (channels.length === 0) return;
+
+        if (!confirm(`Are you sure you want to acknowledge ${channels.length} selected call(s)?`)) return;
+
+        const btn = document.querySelector('#bulkActionsBar button');
+        if (btn) btn.disabled = true;
+
+        try {
+            const resp = await fetch('/calls/api/bulk_acknowledge', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({channels})
+            });
+            const res = await resp.json();
+            if (res.status === 200) {
+                showToast('Bulk ACK Complete', `Acknowledged ${res.acknowledged} of ${res.total} calls`, 'success');
+                setTimeout(() => window.location.reload(), 800);
+            } else {
+                showToast('Bulk ACK Error', res.message || 'Failed to acknowledge', 'danger');
+            }
+        } catch (err) {
+            showToast('Error', 'Communication error with server: ' + err.message, 'danger');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
 </script>
 {% endblock %}

@@ -3,6 +3,7 @@
 > [!TIP]
 > **Looking for the modern 1.0.0 deployment guide?**
 > - For full A-to-Z production deployment (Ansible, Docker/Podman Compose, systemd): see **[Operator Installation Guide (A to Z)](OPERATOR_INSTALLATION_GUIDE.md)**.
+> - For enterprise API Gateway & Keycloak SSO (Manual & Automated): see **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**.
 > - For dedicated FreePBX & Asterisk ARI dialplan setup: see **[FreePBX & Asterisk Setup Guide](freepbx-asterisk-setup-guide.md)**.
 > - For the complete API reference: see **[Services and Endpoints Reference](services-and-endpoints.md)**.
 >

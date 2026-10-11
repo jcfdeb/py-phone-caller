@@ -1,13 +1,31 @@
+import asyncio
+import json
+from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
-from unittest.mock import patch, AsyncMock
-from aiohttp import web
+from aiohttp import web, client_exceptions
+
+from src.asterisk_ws_monitor import (
+    AsteriskPlaybackClient,
+    AsteriskWsMonitorError,
+    AudioGenerationResult,
+    AudioReadyStatus,
+    AudioServiceClient,
+    CallRegisterClient,
+    EventBroadcaster,
+    StasisEvent,
+    VoiceMessageInfo,
+    WsMonitorService,
+)
 from src.asterisk_ws_monitor.asterisk_ws_monitor import (
-    get_asterisk_chan,
+    audio_operations,
     audio_play_status_log,
-    take_control_of_dialplan,
-    querying_call_register,
+    broadcast_stasis_event,
     generate_the_audio_file,
+    get_asterisk_chan,
     play_audio_to_channel,
+    querying_call_register,
+    receive_signal,
+    take_control_of_dialplan,
 )
 
 
@@ -146,3 +164,87 @@ async def test_play_audio_to_channel_destination_integration(aiohttp_client):
             await play_audio_to_channel("1786970067.10", {"msg_chk_sum": "aabbccdd"})
             mock_cont.assert_called_once()
             mock_ari_session.post.assert_called_once()
+
+
+def test_stasis_event_schema_and_actionable():
+    event = StasisEvent.from_dict({
+        "type": "StasisStart",
+        "channel": {"id": "chan-42", "state": "Up"},
+        "timestamp": "2026-10-06T10:00:00Z",
+    })
+    assert event.event_type == "StasisStart"
+    assert event.channel_id == "chan-42"
+    assert event.channel_state == "Up"
+    assert event.is_actionable("StasisStart", "Up") is True
+    assert event.is_actionable("StasisEnd", "Up") is False
+
+    playback_event = StasisEvent.from_dict({
+        "type": "PlaybackFinished",
+        "playback": {"target_uri": "channel:chan-99"},
+    })
+    assert playback_event.channel_id == "chan-99"
+    assert playback_event.is_actionable() is False
+
+
+def test_voice_message_info_schema():
+    info = VoiceMessageInfo.from_dict({
+        "message": "Critical Alert",
+        "msg_chk_sum": "hash123",
+        "lang": "es",
+        "speed": "1.2",
+    })
+    assert info.message == "Critical Alert"
+    assert info.msg_chk_sum == "hash123"
+    assert info.lang == "es"
+    assert info.speed == 1.2
+
+
+def test_receive_signal():
+    with pytest.raises(SystemExit) as exc2:
+        receive_signal(2, None)
+    assert exc2.value.code == 0
+
+    with pytest.raises(SystemExit) as exc15:
+        receive_signal(15, None)
+    assert exc15.value.code == 0
+
+
+@pytest.mark.asyncio
+async def test_call_register_client_connection_error():
+    client = CallRegisterClient(base_url="http://127.0.0.1:59998", timeout_total=0.5)
+    with pytest.raises(web.HTTPBadRequest):
+        await client.query_voice_message("chan-1")
+
+
+@pytest.mark.asyncio
+async def test_audio_service_client_connection_error():
+    client = AudioServiceClient(base_url="http://127.0.0.1:59998", timeout_total=0.5)
+    with pytest.raises(web.HTTPBadRequest):
+        await client.generate_and_wait({"message": "test", "msg_chk_sum": "abc"})
+
+
+@pytest.mark.asyncio
+async def test_ws_monitor_service_take_control_non_matching_event():
+    mock_reg = AsyncMock()
+    mock_audio = AsyncMock()
+    mock_play = AsyncMock()
+    mock_broadcast = AsyncMock()
+    mock_insert = AsyncMock()
+
+    service = WsMonitorService(
+        call_register_client=mock_reg,
+        audio_service_client=mock_audio,
+        playback_client=mock_play,
+        broadcaster=mock_broadcast,
+        insert_ws_event_fn=mock_insert,
+    )
+
+    # Event not StasisStart -> should return immediately without calling clients
+    await service.take_control_of_dialplan(
+        event_type="ChannelDestroyed",
+        response_json={"channel": {"state": "Up"}},
+        asterisk_chan="chan-1",
+    )
+    mock_reg.query_voice_message.assert_not_called()
+    mock_audio.generate_and_wait.assert_not_called()
+    mock_play.play_audio_to_channel.assert_not_called()

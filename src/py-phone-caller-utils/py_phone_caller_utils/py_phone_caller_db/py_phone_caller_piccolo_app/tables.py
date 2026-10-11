@@ -30,6 +30,7 @@ class ScheduledCalls(Table):
     call_chk_sum = Varchar(length=64, default="")
     inserted_at = Timestamp(default=TimestampNow())
     scheduled_at = Timestamp(default=TimestampNow())
+    lang = Varchar(length=32, default="")
 
 
 class Users(Table):
@@ -74,6 +75,7 @@ class Calls(Table):
     oncall = Boolean(default=False)
     backup_callee = Boolean(default=False)
     call_backup_callee_number_calls = SmallInt(default=0)
+    lang = Varchar(length=32, default="")
 
 
 class AddressBook(Table):
@@ -111,3 +113,19 @@ class Sms(Table, tablename="sms"):
     status = Varchar(length=64, default="")
     created_at = Timestamp(default=TimestampNow())
     error = Varchar(length=1024, default="")
+
+
+class DeadLetterQueue(Table, tablename="dead_letter_queue"):
+    """
+    Represents permanent task failures or poison-pill telephony dispatches
+    isolated in the dead-letter queue (telephony.dlq) for operator forensics and Piccolo audit.
+    """
+
+    id = UUID(primary_key=True, default=UUID4())
+    task_id = Varchar(length=128, default="")
+    task_name = Varchar(length=128, default="")
+    queue = Varchar(length=64, default="telephony.dlq")
+    payload = JSONB(default="{}")
+    exception = Varchar(length=2048, default="")
+    traceback = Varchar(length=4096, default="")
+    created_at = Timestamp(default=TimestampNow())
