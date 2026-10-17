@@ -385,11 +385,29 @@ impl RestServer {
             config: self.config.clone(),
         };
 
-        let app = Router::new()
+        let sos_path = self.engine.config().sos.normalized_path();
+        if self.engine.config().sos.enabled {
+            info!(
+                "🆘 Simplified Emergency SOS Web Portal active at '{}' (CAPTCHA: {}, Auth: {})",
+                sos_path,
+                if self.engine.config().sos.captcha_enabled { "enabled" } else { "disabled" },
+                if self.engine.config().sos.auth.is_active() { "enabled" } else { "open" }
+            );
+        }
+
+        let mut app = Router::new()
             .route("/", get(crate::ingress::dashboard::dashboard_handler))
             .route(
                 "/dashboard",
                 get(crate::ingress::dashboard::dashboard_handler),
+            )
+            .route(
+                "/api/v1/sos/challenge",
+                get(crate::ingress::sos::sos_challenge_handler),
+            )
+            .route(
+                "/api/v1/sos/trigger",
+                post(crate::ingress::sos::sos_trigger_handler),
             )
             .route("/health", get(health_check))
             .route("/api/v1/logo", get(crate::ingress::dashboard::logo_handler))
@@ -424,7 +442,13 @@ impl RestServer {
             .route("/api/v1/tools/generate-keypair", post(tools_generate_keypair_handler))
             .route("/api/v1/tools/convert-sms", post(tools_convert_sms_handler))
             .route("/api/v1/tools/hash-password", post(tools_hash_password_handler))
-            .route("/api/v1/tools/generate-key", post(tools_generate_key_handler))
+            .route("/api/v1/tools/generate-key", post(tools_generate_key_handler));
+
+        if sos_path != "/" && sos_path != "/dashboard" {
+            app = app.route(&sos_path, get(crate::ingress::sos::sos_page_handler));
+        }
+
+        let app = app
             .layer(TraceLayer::new_for_http())
             .layer(
                 CorsLayer::new()

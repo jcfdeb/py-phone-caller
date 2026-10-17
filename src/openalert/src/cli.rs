@@ -124,6 +124,18 @@ pub fn validate_config(path: &str) -> Result<String, String> {
         checks.push("Dashboard Auth:   disabled (open access)".to_string());
     }
 
+    // SOS Portal check
+    if config.sos.enabled {
+        checks.push(format!(
+            "SOS Portal:       enabled at '{}' (CAPTCHA: {}, Auth: {})",
+            config.sos.normalized_path(),
+            if config.sos.captcha_enabled { "enabled" } else { "disabled" },
+            if config.sos.auth.is_active() { "enabled" } else { "open" }
+        ));
+    } else {
+        checks.push("SOS Portal:       disabled".to_string());
+    }
+
     Ok(checks.join("\n"))
 }
 

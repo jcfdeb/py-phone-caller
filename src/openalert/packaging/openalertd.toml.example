@@ -42,6 +42,26 @@ enabled = false
 username = "admin"
 password_hash = ""
 
+[sos]
+# Simplified Emergency SOS Web Portal (designed for offline Wi-Fi AP / Captive Portal field nodes)
+# Allows bystanders or field operators to dispatch emergency alerts without exposing the admin NOC UI.
+enabled = true
+path = "/sos"
+title = "OpenAlert Emergency SOS"
+default_severity = "critical"
+# Offline 4-digit SVG visual CAPTCHA with one-time HMAC-SHA256 verification to block automated abuse
+captcha_enabled = true
+# Cooldown in seconds between SOS alert dispatches to prevent radio flooding
+cooldown_seconds = 10
+
+[sos.auth]
+# Optional HTTP Basic Authentication or shared PIN for the SOS portal.
+# Default: disabled (open emergency access protected by the offline SVG CAPTCHA).
+# Generate password_hash using: openalertd hash-password "<pin-or-password>"
+enabled = false
+username = "sos"
+password_hash = ""
+
 [templates]
 template_dir = "templates"
 default_template = "prometheus_alertmanager.json.tera"

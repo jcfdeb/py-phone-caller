@@ -26,6 +26,7 @@ mkdir -p "${STAGE_DIR}/bin"
 mkdir -p "${STAGE_DIR}/templates"
 mkdir -p "${STAGE_DIR}/systemd"
 mkdir -p "${STAGE_DIR}/profiles"
+mkdir -p "${STAGE_DIR}/wifi-ap"
 
 # Copy binary
 cp "${CRATE_DIR}/target/release/openalertd" "${STAGE_DIR}/bin/openalertd"
@@ -41,6 +42,12 @@ cp "${CRATE_DIR}/config/profiles/"*.toml "${STAGE_DIR}/profiles/"
 
 # Copy systemd unit
 cp "${SCRIPT_DIR}/systemd/openalertd.service" "${STAGE_DIR}/systemd/openalertd.service"
+
+# Copy optional Wi-Fi AP & Port 80 SOS Captive Portal configuration
+if [[ -d "${SCRIPT_DIR}/wifi-ap" ]]; then
+    cp -r "${SCRIPT_DIR}/wifi-ap/"* "${STAGE_DIR}/wifi-ap/"
+    chmod 0755 "${STAGE_DIR}/wifi-ap/setup_wifi_ap.sh" 2>/dev/null || true
+fi
 
 # Copy installer and verification scripts
 cp "${SCRIPT_DIR}/install.sh" "${STAGE_DIR}/install.sh"

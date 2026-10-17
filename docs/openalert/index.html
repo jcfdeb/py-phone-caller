@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
     <title>OpenAlert — Decentralized Nostr & Multi-Protocol Alerting Bridge</title>
-    <meta name="description" content="OpenAlert (openalertd) is an autonomous, decentralized alerting bridge built in Rust. Supporting Nostr NIP-17/44/04, BitChat BLE Mesh, LoRa Sub-GHz RF, Cellular SMS, and Prometheus Alertmanager.">
+    <meta name="description" content="OpenAlert (openalertd) is an autonomous, decentralized alerting bridge built in Rust. Supporting Nostr NIP-17/44/04, BitChat BLE Mesh, Emergency SOS Wi-Fi Captive Portal, LoRa Sub-GHz RF, Cellular SMS, and Prometheus Alertmanager.">
     <link rel="icon" type="image/png" href="openalert-logo.png">
     <style>
         :root {
@@ -543,7 +543,7 @@
         <nav class="top-nav">
             <div class="nav-badges">
                 <span class="badge badge-frozen" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border-color: rgba(16, 185, 129, 0.3);">🛡️ Production Hardened v0.2.0</span>
-                <span class="badge badge-tests">✅ 99/99 Tests Passed</span>
+                <span class="badge badge-tests">✅ 100+ Tests Passed</span>
                 <span class="badge badge-rust">🦀 Pure Rust 2024</span>
             </div>
             <div>
@@ -564,7 +564,7 @@
             <p class="desc">
                 An autonomous, zero-dependency emergency alerting gateway compiled in pure Rust.
                 Bridges IT monitoring infrastructure to censorship-resistant decentralized networks,
-                offline Bluetooth LE meshes, and long-range LoRa radios.
+                offline Bluetooth LE meshes, Emergency SOS Wi-Fi Captive Portals, and long-range LoRa radios.
             </p>
             <div class="hero-actions">
                 <a href="https://github.com/jcfdeb/py-phone-caller" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
@@ -601,6 +601,10 @@
                     <div class="flow-box">
                         <h4>📥 Ingress Sources</h4>
                         <p>REST Watchdogs & Webhooks</p>
+                    </div>
+                    <div class="flow-box">
+                        <h4>🚨 SOS Captive Portal</h4>
+                        <p>Off-Grid Wi-Fi AP & SVG CAPTCHA</p>
                     </div>
                     <div class="flow-box">
                         <h4>⚡ Nostr Events</h4>
@@ -667,6 +671,25 @@
         </p>
 
         <div class="feature-grid">
+            <!-- Emergency SOS Web Portal & Wi-Fi Captive Portal -->
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <div class="card-icon">🚨</div>
+                        <div class="card-title">Emergency SOS Portal & Wi-Fi AP</div>
+                    </div>
+                    <div class="card-body">
+                        Simplified emergency web endpoint (<code>/sos</code>) for civilians without BitChat or 0xChat installed. Features an offline 4-digit distorted SVG visual CAPTCHA signed with one-time HMAC-SHA256 nonces. Includes optional Linux <code>hostapd</code> + <code>dnsmasq</code> + <code>nginx</code> Port 80 Captive Portal packaging (<code>OpenAlert-SOS</code>) that pops up automatically on any phone joining the field node's Wi-Fi.
+                    </div>
+                </div>
+                <div class="tag-list">
+                    <span class="tag">/sos Portal</span>
+                    <span class="tag">Offline SVG CAPTCHA</span>
+                    <span class="tag">Wi-Fi Captive Portal</span>
+                    <span class="tag">Port 80 Isolation</span>
+                </div>
+            </div>
+
             <!-- 0xChat & Embedded Nostr Relay -->
             <div class="card">
                 <div>
@@ -695,7 +718,7 @@
                         <div class="card-title">BitChat BLE Offline Mesh</div>
                     </div>
                     <div class="card-body">
-                        Direct peer-to-peer communication via Linux BlueZ D-Bus peripheral GATT services, bypassing ISPs, cell towers, and internet backbones. Direct messages are secured with the <code>Noise_XX_25519_ChaChaPoly_SHA256</code> handshake, automatically escalating private emergencies to the public mesh and telephony.
+                        Direct peer-to-peer communication via Linux BlueZ D-Bus peripheral GATT services, bypassing ISPs, cell towers, and internet backbones. Direct messages are secured with the <code>Noise_XX_25519_ChaChaPoly_SHA256</code> handshake, automatically escalating private emergencies with their exact message payload to the public mesh, LoRa RF, and telephony.
                     </div>
                 </div>
                 <div class="tag-list">
@@ -768,15 +791,15 @@
                 <div>
                     <div class="card-header">
                         <div class="card-icon">🛰️</div>
-                        <div class="card-title">Certified Physical LoRa Multi-Hop Chain</div>
+                        <div class="card-title">Certified ARM & LoRa Multi-Hop Chain</div>
                     </div>
                     <div class="card-body">
-                        Field-certified end-to-end multi-hop emergency traversal using dual Waveshare Semtech SX1262 transceivers (868.0 MHz). Propagates sensor alarms from off-grid Field FOG nodes &rarr; Edge Gateway &rarr; WireGuard VPN &rarr; Cloud VM Hub &rarr; Asterisk PBX voice calls with interactive keypad DTMF acknowledgment.
+                        Field-certified on physical ARM64 SBCs (Orange Pi Zero 3) with Waveshare Semtech SX1262 transceivers (868.0 MHz). Propagates off-grid BitChat BLE &amp; Wi-Fi <code>/sos</code> Captive Portal emergencies &rarr; 868 MHz LoRa RF &rarr; Edge Gateway &rarr; WireGuard VPN &rarr; Cloud Hub &rarr; Asterisk PBX voice calls &amp; SMS in sub-second to 3.8s latency.
                     </div>
                 </div>
                 <div class="tag-list">
+                    <span class="tag">Orange Pi ARM64</span>
                     <span class="tag">SX1262 868MHz</span>
-                    <span class="tag">Dual-Dongle</span>
                     <span class="tag">Multi-Hop Mesh</span>
                     <span class="tag">DTMF Ack</span>
                 </div>
@@ -889,14 +912,14 @@
 <span class="code-cmd">git clone</span> https://github.com/jcfdeb/py-phone-caller.git
 <span class="code-cmd">cd</span> py-phone-caller/src/openalert
 
-<span class="code-comment"># 2. Run the comprehensive test suite (47 unit + 45 integration tests)</span>
+<span class="code-comment"># 2. Run the comprehensive test suite</span>
 <span class="code-cmd">cargo test</span>
 
 <span class="code-comment"># 3. Build optimized release binary</span>
 <span class="code-cmd">cargo build</span> --release
 
-<span class="code-comment"># 4. Launch with turnkey profile</span>
-<span class="code-cmd">./target/release/openalertd</span> config/profiles/central-gateway.toml</pre>
+<span class="code-comment"># 4. Install as systemd service (with optional Wi-Fi SOS Captive Portal on ARM field nodes)</span>
+<span class="code-cmd">sudo ./packaging/install.sh</span> --with-wifi-ap</pre>
         </div>
 
         <!-- CLI Operational Tooling Showcase -->
@@ -914,7 +937,7 @@
 <span class="code-comment"># Transcode cellular SMS UCS-2 hex and international text</span>
 <span class="code-cmd">openalertd</span> convert-sms "Critical alert ⚠️"
 
-<span class="code-comment"># Generate secure SHA-256 password hash for Web UI authentication</span>
+<span class="code-comment"># Generate secure SHA-256 password hash for Web UI or /sos authentication</span>
 <span class="code-cmd">openalertd</span> hash-password "yourTacticalPassword"
 
 <span class="code-comment"># Inspect live daemon status, peering links, and persistent spool</span>
@@ -942,9 +965,9 @@
                 <tbody>
                     <tr>
                         <td><strong><code>edge-sensor.toml</code></strong></td>
-                        <td>Off-grid remote sensor node (solar/battery)</td>
-                        <td>LoRa Serial + BitChat BLE; REST on <code>127.0.0.1:8091</code></td>
-                        <td>Pre-shared XChaCha20 key</td>
+                        <td>Off-grid remote sensor / SOS node (solar/battery)</td>
+                        <td>LoRa Serial + BitChat BLE + Wi-Fi <code>/sos</code> Captive Portal</td>
+                        <td>Pre-shared XChaCha20 key + Offline SVG CAPTCHA</td>
                     </tr>
                     <tr>
                         <td><strong><code>mesh-repeater.toml</code></strong></td>
@@ -965,14 +988,14 @@
         <!-- Quality & Verification -->
         <h2 class="section-title">Hardened Release & Quality Assurance</h2>
         <p class="section-intro">
-            At milestone v0.2.0, <code>openalertd</code> is officially <strong>hardened and field-certified</strong>. All core protocols, hardware auto-recovery supervisors, RF telemetry algorithms, and enterprise edge gateway integrations are fully tested and locked:
+            At milestone v0.2.0, <code>openalertd</code> is officially <strong>hardened and field-certified</strong>. All core protocols, hardware auto-recovery supervisors, RF telemetry algorithms, off-grid Wi-Fi SOS Captive Portals, and enterprise edge gateway integrations are fully tested and locked:
         </p>
 
         <div class="feature-grid">
             <div class="card" style="border-left: 4px solid var(--success);">
-                <div class="card-title" style="color: var(--success);">✅ 99/99 Automated Tests</div>
+                <div class="card-title" style="color: var(--success);">✅ 100+ Automated Tests</div>
                 <div class="card-body">
-                    Zero test failures (53 unit tests + 46 integration tests). Comprehensive test matrix covers kernel USB supervisor recovery, mock sysfs resolution, RF telemetry trailer codecs, quadratic link cost calculation, multi-hop mesh forwarding, split-horizon suppression, NIP-04/44/59 onion wrapping, and live SSE streaming.
+                    Zero test failures across unit and integration suites. Comprehensive test matrix covers kernel USB supervisor recovery, mock sysfs resolution, RF telemetry trailer codecs, quadratic link cost calculation, multi-hop mesh forwarding, split-horizon suppression, NIP-04/44/59 onion wrapping, offline SVG CAPTCHA verification, and live SSE streaming.
                 </div>
             </div>
             <div class="card" style="border-left: 4px solid var(--cyan);">
@@ -984,7 +1007,7 @@
             <div class="card" style="border-left: 4px solid var(--primary);">
                 <div class="card-title" style="color: var(--primary);">📦 Self-Contained Binary</div>
                 <div class="card-body">
-                    Entire Web UI, Day/Night logo assets, Web Audio synthesizers, and SQLite schemas compiled directly into the executable. Runs seamlessly on bare-metal x86_64 and ARM Linux field kits.
+                    Entire Web UI, Emergency <code>/sos</code> Portal, Day/Night logo assets, Web Audio synthesizers, and SQLite schemas compiled directly into the executable. Runs seamlessly on bare-metal x86_64 and ARM64 Linux field kits.
                 </div>
             </div>
         </div>

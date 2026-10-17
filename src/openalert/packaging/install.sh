@@ -4,6 +4,10 @@
 # ==============================================================================
 # Installs openalertd as a hardened, unprivileged systemd service with ambient
 # Linux network capabilities (CAP_NET_BIND_SERVICE, CAP_NET_ADMIN, CAP_NET_RAW).
+#
+# Optional Flags:
+#   --with-wifi-ap    Also provision the standalone Linux Wi-Fi Access Point
+#                     (hostapd + dnsmasq + nginx Port 80 SOS Captive Portal).
 # ==============================================================================
 
 set -euo pipefail
@@ -18,6 +22,23 @@ log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_ok()   { echo -e "${GREEN}[OK]${NC} $*"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_err()  { echo -e "${RED}[ERROR]${NC} $*"; }
+
+WITH_WIFI_AP=false
+for arg in "$@"; do
+    case "${arg}" in
+        --with-wifi-ap)
+            WITH_WIFI_AP=true
+            ;;
+        -h|--help)
+            echo "Usage: sudo $0 [--with-wifi-ap]"
+            echo ""
+            echo "Options:"
+            echo "  --with-wifi-ap   Provision optional Wi-Fi Access Point (OpenAlert-SOS)"
+            echo "                   and Port 80 Nginx reverse proxy to /sos"
+            exit 0
+            ;;
+    esac
+done
 
 # 1. Root check
 if [[ "${EUID}" -ne 0 ]]; then
@@ -155,11 +176,31 @@ else
     log_warn "Configuration dry-run reported issues. Please review /etc/openalertd/openalertd.toml"
 fi
 
+# 10. Optional Wi-Fi Access Point & Port 80 SOS Captive Portal setup
+if [[ "${WITH_WIFI_AP}" == "true" ]]; then
+    WIFI_SETUP_SCRIPT=""
+    if [[ -f "${SCRIPT_DIR}/wifi-ap/setup_wifi_ap.sh" ]]; then
+        WIFI_SETUP_SCRIPT="${SCRIPT_DIR}/wifi-ap/setup_wifi_ap.sh"
+    elif [[ -f "${REPO_ROOT}/src/openalert/packaging/wifi-ap/setup_wifi_ap.sh" ]]; then
+        WIFI_SETUP_SCRIPT="${REPO_ROOT}/src/openalert/packaging/wifi-ap/setup_wifi_ap.sh"
+    fi
+
+    if [[ -n "${WIFI_SETUP_SCRIPT}" ]]; then
+        log_info "Provisioning optional Emergency SOS Wi-Fi Access Point & Port 80 Proxy..."
+        bash "${WIFI_SETUP_SCRIPT}"
+    else
+        log_warn "setup_wifi_ap.sh not found; skipping Wi-Fi AP provisioning."
+    fi
+fi
+
 echo ""
 log_ok "OpenAlert Daemon installation complete!"
 echo ""
 echo "To start and enable the service on system boot, run:"
 echo "    sudo systemctl enable --now openalertd"
+echo ""
+echo "To provision the optional Emergency SOS Wi-Fi AP & Port 80 Captive Portal later:"
+echo "    sudo ${SCRIPT_DIR}/wifi-ap/setup_wifi_ap.sh"
 echo ""
 echo "To inspect live service logs:"
 echo "    journalctl -u openalertd -f"

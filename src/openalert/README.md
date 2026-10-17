@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![HRF Grant](https://img.shields.io/badge/supported%20by-HRF%20Bitcoin%20Dev%20Fund-f7931a.svg)](https://x.com/gladstein/status/2092304843037884677)
-[![Tests](https://img.shields.io/badge/tests-82%20passed-success.svg)]()
+[![Tests](https://img.shields.io/badge/tests-100%2B%20passed-success.svg)]()
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg)]()
 
 > **OpenAlert** is a decentralized, resilient alerting daemon designed to bridge emergency notifications across isolated networks and physical air gaps. Developed with the support of a grant from the **[Human Rights Foundation (HRF) Bitcoin Development Fund](https://x.com/gladstein/status/2092304843037884677)**, `openalertd` ensures that life-safety alarms, disaster advisories, and critical infrastructure telemetries reach first responders even under total internet blackouts, grid collapses, or adversarial censorship.
@@ -34,13 +34,19 @@
 Traditional alerting stacks rely heavily on centralized SaaS endpoints, public cloud infrastructure, and uninterrupted TCP/IP backhauls. In crisis scenarios (severe weather, network partitioning, power outages, conflict zones), these brittle uplinks fail first.
 
 `openalertd` resolves this single point of failure by operating as an **autonomous multi-protocol store-and-forward mesh router**:
-* **Universal Translation:** Translates between IT monitoring watchdogs (Prometheus Alertmanager, Grafana, custom webhooks), decentralized relays (**Nostr**), peer-to-peer radio meshes (**LoRa**), and ad-hoc Bluetooth meshes (**BitChat**).
+* **Universal Translation:** Translates between IT monitoring watchdogs (Prometheus Alertmanager, Grafana, custom webhooks), decentralized relays (**Nostr**), peer-to-peer radio meshes (**LoRa**), ad-hoc Bluetooth meshes (**BitChat**), and off-grid **Emergency SOS Wi-Fi Captive Portals** (`/sos`).
 * **Zero External Dependencies:** Built in pure, memory-safe Rust with an embedded SQLite engine and an embedded HTML5/CSS3 real-time dashboard. No external web server, Node.js, database server, or broker required.
 * **Telephony Integration:** Natively cascades alerts to `py-phone-caller`, dispatching automated voice calls and SMS alerts over SIP/Asterisk trunking.
 
 ---
 
 ## 2. Core Capabilities
+
+### 🚨 Simplified Emergency SOS Web Portal (`/sos`) & Off-Grid Wi-Fi Captive Portal
+* **Configurable SOS Endpoint (`[sos]`):** Exposes a simplified, mobile-first Emergency SOS Web UI (default `/sos`, configurable via `sos.path`) so civilians or field operators without BitChat or 0xChat installed can trigger life-safety alerts without exposing the administrative NOC UI (`/`).
+* **Offline 4-Digit SVG Visual CAPTCHA:** Generates dynamic, distorted 4-digit SVG challenges signed with an ephemeral **HMAC-SHA256** key and one-time nonce verification (`GET /api/v1/sos/challenge` $\rightarrow$ `POST /api/v1/sos/trigger`), blocking automated bot flooding completely offline.
+* **Optional SOS Authentication (`[sos.auth]`):** Supports open emergency access (guarded by the offline SVG CAPTCHA and `cooldown_seconds` rate-limiting) or HTTP Basic Authentication (`username` + SHA-256 `password_hash`).
+* **Optional Linux Wi-Fi Access Point & Port 80 Isolation (`packaging/wifi-ap/`):** Turnkey provisioning script (`setup_wifi_ap.sh` / `install.sh --with-wifi-ap`) configuring `hostapd` (`SSID: OpenAlert-SOS`), `dnsmasq` (`10.42.0.1/24` DHCP + wildcard DNS), and `nginx-light` on Port `80` so any smartphone joining the Wi-Fi hotspot automatically pops up the `/sos` emergency form via native OS captive portal detection.
 
 ### 📱 0xChat Mobile Integration & Embedded Nostr Micro-Relay
 * **Tactical In-Process Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server embedded directly in `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, SQLite persistence).
@@ -52,7 +58,7 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 ### 📡 Decentralized & Hybrid Transport Transceivers
 * **Nostr Pub/Sub Mesh:** Publishes cryptographically signed BIP-340 Schnorr events (Kind 30000 / Kind 1) across multi-relay pools with NIP-20 delivery confirmation and dynamic relay health scoring.
 * **BitChat Bluetooth LE Mesh:** Native Linux BlueZ D-Bus integration for off-grid BLE communications with mobile devices. Employs `Noise_XX_25519_ChaChaPoly_SHA256` for mutual authentication, forward secrecy, and 1-on-1 private emergency escalation.
-* **Heterogeneous Peering Links:** Point-to-point and multi-point node peering over LAN (Ethernet/WiFi), encrypted WireGuard VPNs, and physical sub-GHz LoRa serial transceivers (`/dev/ttyUSB*` / `/dev/ttyS*`).
+* **Heterogeneous Peering Links:** Point-to-point and multi-point node peering over LAN (Ethernet/WiFi), encrypted WireGuard VPNs, and physical sub-GHz LoRa serial transceivers (`/dev/ttyACM*` / `/dev/ttyUSB*` / `/dev/ttyS*`).
 * **Hardware Regulation:** Physical LoRa drivers implement SLIP byte framing, micro-datagram compaction, and strict ETSI EN 300 220 duty-cycle tracking (1.0% air-time pacing).
 
 ### 🧭 Dynamic Multi-Hop Routing & Loop Suppression
@@ -85,48 +91,48 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 ## 3. System Architecture Diagram
 
 ```text
-       ┌─────────────────────────────────────────────────────────────┐
-       │                       Ingress Sources                       │
-       │   Prometheus / Grafana / Webhooks / Nostr / BitChat BLE     │
-       └──────────────────────────────┬──────────────────────────────┘
+       ┌──────────────────────────────────────────────────────────────┐
+       │                       Ingress Sources                        │
+       │  Prometheus / Webhooks / Nostr / BitChat BLE / /sos Portal   │
+       └──────────────────────────────┬───────────────────────────────┘
                                       │
                                       ▼
-                      ┌──────────────────────────────┐
-                      │   Bearer / HMAC Ingress Auth │
-                      └───────────────┬──────────────┘
+                      ┌───────────────────────────────┐
+                      │   Bearer / HMAC Ingress Auth  │
+                      └───────────────┬───────────────┘
                                       │
                                       ▼
-                      ┌──────────────────────────────┐
-                      │   Deduplication Engine       │
-                      │   (Memory Cache + SQLite)    │
-                      └───────────────┬──────────────┘
+                      ┌───────────────────────────────┐
+                      │   Deduplication Engine        │
+                      │   (Memory Cache + SQLite)     │
+                      └───────────────┬───────────────┘
                                       │
                                       ▼
-                      ┌──────────────────────────────┐
-                      │   Multi-Hop Alert Engine     │
-                      │   - Distance-Vector Shortest │
-                      │   - Split-Horizon Filter     │
-                      │   - Template Rendering       │
-                      └───────┬──────────────┬───────┘
-                              │              │
-              ┌───────────────┘              └───────────────┐
-              ▼                                              ▼
-┌──────────────────────────────┐               ┌──────────────────────────────┐
-│       SQLite Flash Spool     │               │   Egress & Dispatch Drivers  │
-│   (Store-and-Forward Buffer) │               │   - Nostr Relay Quorum (NIP20│
-└─────────────┬────────────────┘               │   - BitChat BLE Broadcast    │
-              │ (drain on reconnect)           │   - py-phone-caller Webhooks │
-              ▼                                │   - Heterogeneous Peering    │
-┌──────────────────────────────┐               └──────────────────────────────┘
-│    Peer Circuit Breakers     │
-│   (Closed/Open/Half-Open)    │
-└─────────────┬────────────────┘
+                      ┌───────────────────────────────┐
+                      │   Multi-Hop Alert Engine      │
+                      │   - Distance-Vector Shortest  │
+                      │   - Split-Horizon Filter      │
+                      │   - Template Rendering        │
+                      └───────┬───────────────┬───────┘
+                              │               │
+              ┌───────────────┘               └───────────────┐
+              ▼                                               ▼
+┌───────────────────────────────┐               ┌───────────────────────────────┐
+│       SQLite Flash Spool      │               │   Egress & Dispatch Drivers   │
+│   (Store-and-Forward Buffer)  │               │   - Nostr Relay Quorum (NIP20 │
+└─────────────┬─────────────────┘               │   - BitChat BLE Broadcast     │
+              │ (drain on reconnect)            │   - py-phone-caller Webhooks  │
+              ▼                                 │   - Heterogeneous Peering     │
+┌───────────────────────────────┐               └───────────────────────────────┘
+│    Peer Circuit Breakers      │
+│   (Closed/Open/Half-Open)     │
+└─────────────┬─────────────────┘
               │
               ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       Heterogeneous Physical Peering                        │
-│   Local Ethernet (LAN)  │  WireGuard Tunnels (VPN)  │  LoRa RF (/dev/ttyUSB)│
-└─────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                       Heterogeneous Physical Peering                         │
+│   Local Ethernet (LAN)  │  WireGuard Tunnels (VPN)  │  LoRa RF (/dev/ttyACM) │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -153,7 +159,7 @@ cargo build --release
 ```
 
 ### Running the Test Suite
-`openalertd` maintains a comprehensive automated test suite of 80 unit and integration tests covering all encryption routines, routing algorithms, codecs, and API endpoints:
+`openalertd` maintains a comprehensive automated test suite covering all encryption routines, routing algorithms, codecs, and API endpoints:
 
 ```bash
 # Run all unit and integration tests
@@ -173,8 +179,9 @@ cargo run -- check-config config/openalertd.toml
 cargo run -- config/openalertd.toml
 ```
 
-Once running, access the **Embedded Mission Control Web UI** at:
-👉 **`http://localhost:8090/`**
+Once running, access:
+* 👉 **Embedded Mission Control Web UI:** **`http://localhost:8090/`**
+* 🚨 **Simplified Emergency SOS Portal:** **`http://localhost:8090/sos`**
 
 ---
 
@@ -187,7 +194,7 @@ Configuration is managed via a single TOML file (`config/openalertd.toml`).
 
 | Profile | File Path | Hardware Requirements | Primary Role |
 | :--- | :--- | :--- | :--- |
-| **Edge Sensor** | `config/profiles/edge-sensor.toml` | LoRa Serial (`/dev/ttyUSB0`) + Bluetooth LE | Solar stations, remote sensors, battery IoT |
+| **Edge Sensor** | `config/profiles/edge-sensor.toml` | LoRa Serial (`/dev/ttyACM0` / `/dev/ttyUSB0`) + BLE + Wi-Fi AP | Solar stations, remote sensors, off-grid `/sos` field nodes |
 | **Mesh Repeater**| `config/profiles/mesh-repeater.toml` | LoRa Serial + Ethernet LAN | Mountain towers, hilltops, bridge between RF and IP |
 | **Central Gateway**| `config/profiles/central-gateway.toml`| Internet / VPN + Server Host | NOC control room, Asterisk telephony, Nostr quorum |
 
@@ -235,8 +242,8 @@ If running on a system without Bluetooth or LoRa hardware, simply toggle their f
    ```
    *Result: Prevents probing `/dev/ttyUSB*` serial devices while keeping local REST and Nostr active.*
 
-### Dashboard Authentication
-By default, dashboard access is open with zero setup friction. To require authentication:
+### Dashboard & Emergency SOS Authentication (`[dashboard.auth]` & `[sos.auth]`)
+By default, dashboard and `/sos` portal access are open with zero setup friction (`/sos` is protected by an offline 4-digit SVG visual CAPTCHA). To require authentication:
 
 1. Generate a SHA-256 password hash using the CLI:
    ```bash
@@ -248,6 +255,11 @@ By default, dashboard access is open with zero setup friction. To require authen
    enabled = true
    username = "admin"
    password_hash = "7d3b0e14a29a0e6918804c8f5539d91f27e504c558c42ce0ffdb06b4b4594241"
+
+   [sos.auth]
+   enabled = false
+   username = "sos"
+   password_hash = ""
    ```
 3. When accessing `http://localhost:8090/`, your browser will prompt for credentials via standard HTTP Basic Auth. Passwords and tokens are verified in constant time (`subtle::ConstantTimeEq`).
 
@@ -272,7 +284,7 @@ By default, dashboard access is open with zero setup friction. To require authen
   * **Nostr Keypair Generator:** BIP-340 Secp256k1 key generation (`npub`, `nsec`, 64-char hex) with 1-click clipboard copy.
   * **Nostr Key Converter & Deriver:** Auto-detects Bech32 or Hex, validates BIP-340 checksums, and derives public keys from `nsec`.
   * **SMS UCS-2 Hex Codec:** Bi-directional translator between UTF-8 (accents/emojis) and GSM modem UCS-2 Big-Endian hex.
-  * **Cryptographic PSK & Password Hasher:** Random 256-bit PSK generator and instant SHA-256 password hasher for `[dashboard.auth]`.
+  * **Cryptographic PSK & Password Hasher:** Random 256-bit PSK generator and instant SHA-256 password hasher for `[dashboard.auth]` and `[sos.auth]`.
 * **⚙️ Configuration & Access Control Tab:**
   * **Nostr 0xChat Operators (ACL):** Visual management of C2 authorized operators and alert DM recipients. Automatically accepts `npub1...` or hex, converts format, and persists to the running config.
   * **Cellular SMS Senders & Recipients:** Interactive form to update authorized inbound numbers and outbound emergency contacts with instant SQLite persistence.
@@ -296,7 +308,7 @@ openalertd [COMMAND] [OPTIONS]
 | `convert-key <key>` | `convert` | Converts Nostr Bech32 (`npub`/`nsec`) to hex or 32-byte hex to `npub`, auto-deriving pubkeys |
 | `convert-sms <data>` | `sms-codec` | Bi-directional codec: encodes UTF-8 text to UCS-2 hex & decodes raw UCS-2 modem hex to UTF-8 |
 | `generate-key` | `gen-key` | Generates a 256-bit random hex key for peering or Nostr group privacy |
-| `hash-password <secret>` | `hash` | Computes a SHA-256 hash formatted for `[dashboard.auth]` |
+| `hash-password <secret>` | `hash` | Computes a SHA-256 hash formatted for `[dashboard.auth]` or `[sos.auth]` |
 | `status [--url <api>]` | — | Queries live uptime, health status, and configured routes from running daemon |
 | `peers [--url <api>]` | — | Queries live peering link states and circuit breaker counters |
 | `spool [--url <api>]` | — | Queries persistent peering spool backlog count |
@@ -311,9 +323,17 @@ All HTTP endpoints bind to unprivileged ports ($\ge 1024$), default `8090`.
 
 ### Health & Metrics
 * **`GET /health`**  
-  Returns `{ "status": "ok", "version": "0.1.0", "uptime_seconds": 124 }`. Unauthenticated.
+  Returns `{ "status": "ok", "version": "0.2.0", "uptime_seconds": 124 }`. Unauthenticated.
 * **`GET /metrics`**  
   Prometheus exposition format (`openalert_alerts_received_total`, `openalert_alerts_routed_total`, `openalert_peering_spool_backlog`, etc.).
+
+### Emergency SOS Portal Endpoints
+* **`GET /sos`** (or custom `sos.path`)  
+  Serves the simplified mobile-first Emergency SOS Web UI.
+* **`GET /api/v1/sos/challenge`**  
+  Generates a fresh 4-digit distorted SVG visual CAPTCHA challenge and HMAC-SHA256 signed one-time token (`{ "captcha_enabled": true, "svg": "<svg...>", "token": "..." }`).
+* **`POST /api/v1/sos/trigger`**  
+  Verifies the one-time HMAC-SHA256 CAPTCHA token and cooldown window, then dispatches the emergency alert across all configured node destinations (`202 Accepted`).
 
 ### Operational Tools & Configuration Endpoints
 * **`GET /api/v1/config`**  
@@ -409,12 +429,15 @@ To generate a production-ready, stripped binary distribution tarball with SHA-25
 ```bash
 bash packaging/build_release_bundle.sh
 ```
-Outputs `openalertd-v0.1.0-linux-<arch>.tar.gz` containing the binary, templates, turnkey profiles, systemd service, installer, and verification scripts.
+Outputs `openalertd-v0.2.0-linux-<arch>.tar.gz` containing the binary, templates, turnkey profiles, systemd service, optional Wi-Fi AP Captive Portal bundle (`wifi-ap/`), installer, and verification scripts.
 
-### 3. Automated POSIX Installer
+### 3. Automated POSIX Installer & Optional Wi-Fi SOS Captive Portal
 ```bash
 # Install binary, systemd unit, and configure permissions
 sudo bash packaging/install.sh
+
+# Or install openalertd AND provision the optional Emergency SOS Wi-Fi AP + Port 80 proxy
+sudo bash packaging/install.sh --with-wifi-ap
 
 # Run the 7-point post-installation verification audit
 sudo bash packaging/verify_install.sh
@@ -431,13 +454,15 @@ src/openalert/
 ├── config/
 │   ├── openalertd.toml           # Default full-featured configuration
 │   └── profiles/                 # Turnkey profiles
-│       ├── edge-sensor.toml      # LoRa / BitChat sensor profile
+│       ├── edge-sensor.toml      # LoRa / BitChat / SOS sensor profile
 │       ├── mesh-repeater.toml    # Hilltop router / LoRa-to-LAN relay
 │       └── central-gateway.toml  # Datacenter NOC gateway
 ├── templates/                    # Tera alert rendering templates
-├── packaging/                    # Systemd units, installer, and bundle builder
+├── packaging/                    # Systemd units, installer, Wi-Fi AP bundle & builder
+│   ├── systemd/                  # Hardened systemd service unit
+│   └── wifi-ap/                  # Optional hostapd + dnsmasq + nginx Port 80 SOS Captive Portal
 ├── tests/
-│   └── integration_test.rs       # 28 end-to-end integration test scenarios
+│   └── integration_test.rs       # End-to-end integration test scenarios
 └── src/
     ├── main.rs                   # Entry point, CLI subcommands & signal handling
     ├── lib.rs                    # Public crate exports
@@ -453,6 +478,7 @@ src/openalert/
     ├── bitchat.rs                # BitChat BLE GATT peripheral & Noise XX engine
     ├── ingress/
     │   ├── rest.rs               # Axum REST API, Bearer & HMAC auth, operator endpoints
+    │   ├── sos.rs                # Simplified Emergency SOS Web Portal & offline SVG CAPTCHA
     │   ├── nostr.rs              # Nostr subscriber websocket client
     │   └── dashboard.rs          # Embedded Web UI HTML/JS & SSE stream
     ├── egress/
@@ -470,7 +496,7 @@ src/openalert/
 
 ### Critical Maintenance Invariants
 * **BitChat Codec Invariance:** Do NOT alter the packet structures, Noise XX handshake state machine, Ed25519 signatures, or 256-byte payload bucket sizes in `src/bitchat.rs`. These guarantee binary wire compatibility with native BitChat mobile clients.
-* **Timing-Safe Cryptography:** Any credential or secret comparison (Bearer tokens, HMAC signatures, dashboard passwords) MUST use constant-time comparison (`subtle::ConstantTimeEq`).
+* **Timing-Safe Cryptography:** Any credential or secret comparison (Bearer tokens, HMAC signatures, dashboard/SOS passwords) MUST use constant-time comparison (`subtle::ConstantTimeEq`).
 * **Unprivileged Ports:** The daemon default port MUST remain $\ge 1024$ (default `8090`).
 
 ---

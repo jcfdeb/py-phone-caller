@@ -1,0 +1,26 @@
+# ==============================================================================
+# OpenAlert Field Node - hostapd Wi-Fi Access Point Configuration
+# Target Path: /etc/hostapd/hostapd.conf
+# ==============================================================================
+
+interface=wlan0
+driver=nl80211
+
+# SSID visible to field users & bystanders
+ssid=OpenAlert-SOS
+
+# 2.4 GHz (802.11g/n) provides maximum range and obstacle penetration in the field
+hw_mode=g
+channel=6
+ieee80211n=1
+wmm_enabled=1
+
+# Open network by default for instant zero-friction SOS Captive Portal access.
+# (Protection against automated abuse is enforced by the offline SVG CAPTCHA on /sos).
+# To require a WPA2 passphrase instead, uncomment the lines below:
+auth_algs=1
+ignore_broadcast_ssid=0
+# wpa=2
+# wpa_passphrase=openalert-emergency
+# wpa_key_mgmt=WPA-PSK
+# rsn_pairwise=CCMP

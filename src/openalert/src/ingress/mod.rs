@@ -6,6 +6,7 @@
 
 pub mod nostr;
 pub mod rest;
+pub mod sos;
 
 pub use nostr::NostrSubscriber;
 pub use rest::RestServer;

@@ -1,0 +1,27 @@
+# ==============================================================================
+# OpenAlert Field Node - dnsmasq DHCP & Captive Portal DNS Configuration
+# Target Path: /etc/dnsmasq.d/openalert-ap.conf
+# ==============================================================================
+
+# Bind strictly to the Wi-Fi AP interface so systemd-resolved on 127.0.0.53 is unaffected
+interface=wlan0
+listen-address=10.42.0.1
+bind-dynamic
+except-interface=lo
+
+# Do not read /etc/resolv.conf or forward upstream (100% off-grid captive portal)
+no-resolv
+no-poll
+domain-needed
+bogus-priv
+
+# DHCP pool for up to 40 connected smartphones/laptops (1-hour lease)
+dhcp-range=10.42.0.10,10.42.0.50,255.255.255.0,1h
+dhcp-option=option:router,10.42.0.1
+dhcp-option=option:dns-server,10.42.0.1
+
+# RFC 8910 Captive Portal Identification (DHCP Option 114) for modern iOS / Android
+dhcp-option=114,http://10.42.0.1/sos
+
+# Wildcard DNS resolution: resolve all domain names (including connectivity checks) to 10.42.0.1
+address=/#/10.42.0.1

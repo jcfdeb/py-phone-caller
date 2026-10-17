@@ -1,0 +1,13 @@
+# ==============================================================================
+# OpenAlert Field Node - systemd-networkd Static IP for Wi-Fi Access Point
+# Target Path: /etc/systemd/network/20-openalert-wlan0-ap.network
+# ==============================================================================
+
+[Match]
+Name=wlan0
+
+[Network]
+Address=10.42.0.1/24
+ConfigureWithoutCarrier=yes
+IPMasquerade=no
+DHCPServer=no

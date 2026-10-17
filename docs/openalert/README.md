@@ -17,13 +17,20 @@ OpenAlert operates as a multi-protocol gateway, abstracting the transport layer 
 
 ## 2. Supported Protocols & Data Flow
 
-OpenAlert is fundamentally bidirectional, acting as both a listener and a broadcaster across three primary transport layers:
+OpenAlert is fundamentally bidirectional, acting as both a listener and a broadcaster across primary decentralized and physical transport layers:
 
 ### REST, Nostr, and Alertmanager Interfaces
 * **Inbound (Receive):** The gateway listens for incoming JSON payloads via standard REST webhooks (compatible with existing IT watchdogs). Simultaneously, it monitors the Nostr network via persistent WebSocket connections to a configured relay pool.
   - **Ingress Authentication (`[rest.auth]`):** Inbound alert endpoints (`/api/v1/alert`, `/webhook/prometheus`, status, and management APIs) support HTTP Basic (`username` + SHA-256 hashed password) or Bearer token (`token_hash`) authentication. Credentials are verified using timing-safe constant-time comparisons (`subtle::ConstantTimeEq`) and are stored exclusively as hashes generated via `openalertd hash-password`.
-* **Outbound (Send):** Upon processing an incoming decentralized event (from Nostr or BitChat), the system standardizes the payload into a Prometheus Alertmanager webhook and POSTs it to configured local or remote `py-phone-caller` endpoints.
+* **Outbound (Send):** Upon processing an incoming decentralized event (from Nostr, BitChat, or the `/sos` Emergency Portal), the system standardizes the payload into a Prometheus Alertmanager webhook and POSTs it to configured local or remote `py-phone-caller` endpoints.
   - **Per-Endpoint Webhook Authentication (`[py_phone_caller.webhooks.auth]`):** Each webhook instance supports dedicated HTTP Basic (`username` + `password`) or Bearer token (`token`) authentication. Passwords and tokens support `${ENV_VAR}` expansion syntax to prevent storing cleartext credentials in configuration files.
+
+### Emergency SOS Web Portal (`/sos`) & Off-Grid Wi-Fi Captive Portal
+For civilians, bystanders, or field personnel who do not have **BitChat** or **0xChat** installed on their mobile devices, OpenAlert provides a dedicated, simplified **Emergency SOS Web Portal**:
+* **Configurable SOS Endpoint (`[sos]`):** Served by default at `/sos` (configurable via `sos.path`). Provides a mobile-first, high-contrast emergency dispatch form (Category: `SOS`, `MEDICAL`, `FIRE`, `SECURITY`, `INFRASTRUCTURE`, Sender/Location, and Emergency Message) completely isolated from the administrative NOC dashboard (`/`).
+* **Offline 4-Digit SVG Visual CAPTCHA:** Generates dynamic, distorted 4-digit SVG challenges in-memory signed with an ephemeral **HMAC-SHA256** key and one-time nonce verification (`GET /api/v1/sos/challenge` $\rightarrow$ `POST /api/v1/sos/trigger`), preventing automated bot abuse or radio flooding completely offline without external internet dependencies.
+* **Configurable Authentication & Rate-Limiting (`[sos.auth]`):** Open access by default (protected by the offline SVG CAPTCHA and `cooldown_seconds` rate-limiting), with optional HTTP Basic Auth (`username` + SHA-256 `password_hash`) configurable in `openalertd.toml`.
+* **Turnkey Linux Wi-Fi Access Point & Port 80 Isolation (`packaging/wifi-ap/`):** Includes an optional, standard Linux OS configuration bundle (`hostapd` + `dnsmasq` + `nginx-light`) for embedded ARM SBCs (such as Orange Pi Zero 3 and Raspberry Pi). Broadcasts the `OpenAlert-SOS` Wi-Fi network (`10.42.0.1/24`), intercepts iOS/Android/Windows captive portal probes on Port 80, and automatically pops up the `/sos` emergency form on any smartphone that joins the Wi-Fi hotspot—even when the node has zero Ethernet or internet connectivity.
 
 ### 0xChat & Embedded Nostr Tactical Micro-Relay
 To provide secure, human-in-the-loop mobile alerting and Command & Control (C2) without cloud dependencies:
@@ -38,9 +45,15 @@ To guarantee event delivery when standard internet routing (TCP/IP) fails, OpenA
 * **Offline-First Ad-Hoc Mesh:** Utilizes Bluetooth Low Energy (BLE) peripheral GATT services via Linux BlueZ D-Bus, bypassing ISPs, cellular networks, and centralized servers.
 * **Noise XX End-to-End Encryption:** Direct private messages to `openalertd` are secured via the `Noise_XX_25519_ChaChaPoly_SHA256` pattern, providing mutual authentication, identity hiding, and forward secrecy.
 * **1-on-1 Alert Ingress & Public Escalation:**
-  - Emergency alerts sent via 1-on-1 encrypted private chat to `openalertd` are decrypted and acknowledged privately.
+  - Emergency alerts sent via 1-on-1 encrypted private chat to `openalertd` are decrypted and acknowledged privately, preserving the exact user message payload end-to-end across LoRa, SMS, and voice synthesis.
   - The daemon immediately escalates the alert to the **public BitChat mesh** (addressed to `[0xFF; 8]`), publishes it across **Nostr relays**, and dispatches it to **py-phone-caller**'s Prometheus webhook for automated telephony dispatch.
   - Public mesh broadcasts are filtered to prevent recursive alerting loops.
+
+### Heterogeneous Peering & Multi-Hop Distance-Vector Mesh
+When backhauls fail or are unavailable, OpenAlert operates an autonomous peering grid:
+* **Heterogeneous Physical Transports:** Supports LoRa serial transceivers (`/dev/ttyACM*`, `/dev/ttyUSB*` with SLIP framing and ETSI EN 300 220 duty-cycle pacing), local Ethernet/LAN, and encrypted WireGuard VPN tunnels.
+* **Dynamic Distance-Vector Routing:** Computes shortest path metrics with split-horizon loop suppression and hop decrements across multi-node topologies.
+* **Self-Healing Circuit Breakers & Flash Spooling:** Automatic link state tracking with exponential cooldown backoff and persistent SQLite flash-spool storage to ensure zero packet loss during network partitions.
 
 ---
 
@@ -52,19 +65,17 @@ The production daemon is located in [`src/openalert`](file:///home/jcf/Workspace
 cd src/openalert
 
 # Build in release or dev mode
-cargo build
+cargo build --release
 
 # Run automated tests (unit + integration tests)
 cargo test
 
 # Launch openalertd with the default configuration
 cargo run -- config/openalertd.toml
+
+# Install as a hardened systemd service (optionally with the Wi-Fi SOS Captive Portal)
+sudo ./packaging/install.sh --with-wifi-ap
 ```
-### Heterogeneous Peering & Multi-Hop Distance-Vector Mesh
-When backhauls fail or are unavailable, OpenAlert operates an autonomous peering grid:
-* **Heterogeneous Physical Transports:** Supports LoRa serial transceivers (`/dev/ttyUSB*` with SLIP framing and ETSI EN 300 220 duty-cycle pacing), local Ethernet/LAN, and encrypted WireGuard VPN tunnels.
-* **Dynamic Distance-Vector Routing:** Computes shortest path metrics with split-horizon loop suppression and hop decrements across multi-node topologies.
-* **Self-Healing Circuit Breakers & Flash Spooling:** Automatic link state tracking with exponential cooldown backoff and persistent SQLite flash-spool storage to ensure zero packet loss during network partitions.
 
 ---
 
@@ -103,7 +114,7 @@ cargo run -- convert-key npub1uvtjer4wn7y2qpe4clvqd7qz7x483pthpngewqddc03xes39uq
 # Bi-directionally convert between UTF-8 text and cellular SMS UCS-2 hex
 cargo run -- convert-sms "Critical alert ⚠️"
 
-# Generate a secure SHA-256 password hash for dashboard configuration
+# Generate a secure SHA-256 password hash for dashboard or /sos authentication
 cargo run -- hash-password "yourSecretPassword"
 
 # Query live daemon status, peering links, and persistent spool
@@ -114,7 +125,7 @@ cargo run -- spool
 
 ### Turnkey Deployment Profiles
 Pre-configured, production-ready configuration profiles are located in `config/profiles/`:
-* `config/profiles/edge-sensor.toml`: Minimal footprint off-grid sensor (LoRa serial + BitChat BLE only; REST on `127.0.0.1:8091`).
+* `config/profiles/edge-sensor.toml`: Minimal footprint off-grid sensor (LoRa serial + BitChat BLE + `/sos` portal; REST on `127.0.0.1:8091`).
 * `config/profiles/mesh-repeater.toml`: Hilltop tower relay bridging RF LoRa clusters to LAN backhaul routers.
 * `config/profiles/central-gateway.toml`: NOC / Datacenter gateway with protected Web UI, Asterisk telephony egress, Nostr quorum, and WireGuard VPN peering.
 
@@ -127,7 +138,7 @@ OpenAlert provides a flexible multi-layered configuration engine powered by the 
 Operators have 4 distinct ways to configure the daemon:
 1. **TOML Configuration File:** Standard static configuration in `config/openalertd.toml`.
 2. **Turnkey Deployment Profiles:** Modular hardware profiles in `config/profiles/` (`edge-sensor.toml`, `mesh-repeater.toml`, `central-gateway.toml`).
-3. **12-Factor Environment Variables:** Cloud-native overrides via `OPENALERT_<SECTION>__<KEY>` (e.g. `OPENALERT_REST__LISTEN_PORT=8080`, `OPENALERT_DAEMON__LOG_LEVEL=debug`, `OPENALERT_STORAGE__PATH=":memory:"`) allowing **pure container execution with zero disk files mounted**.
+3. **12-Factor Environment Variables:** Cloud-native overrides via `OPENALERT_<SECTION>__<KEY>` (e.g. `OPENALERT_REST__LISTEN_PORT=8080`, `OPENALERT_SOS__PATH="/sos"`, `OPENALERT_STORAGE__PATH=":memory:"`) allowing **pure container execution with zero disk files mounted**.
 4. **Dynamic Web UI & REST API:** Live in-process configuration inspection, syntax validation, automated `.bak` backups, and hot-reloading from the browser.
 
 > [!TIP]

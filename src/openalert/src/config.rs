@@ -40,6 +40,9 @@ pub struct AppConfig {
     /// Optional embedded web dashboard and authentication settings.
     #[serde(default)]
     pub dashboard: DashboardConfig,
+    /// Simplified public/field emergency SOS web portal and endpoint settings.
+    #[serde(default)]
+    pub sos: SosConfig,
     /// Optional cellular GSM/LTE SMS gateway subsystem (ingress & egress).
     #[serde(default)]
     pub sms: SmsConfig,
@@ -266,6 +269,84 @@ impl DashboardAuthConfig {
     /// Returns true if authentication is active (enabled and password_hash non-empty).
     pub fn is_active(&self) -> bool {
         self.enabled && !self.password_hash.trim().is_empty()
+    }
+}
+
+/// Simplified emergency SOS web portal and trigger endpoint configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SosConfig {
+    /// Whether the simplified emergency SOS portal is enabled (default: true).
+    #[serde(default = "default_sos_enabled")]
+    pub enabled: bool,
+    /// Configurable URL path for the SOS web UI (default: "/sos").
+    #[serde(default = "default_sos_path")]
+    pub path: String,
+    /// Custom title displayed on the emergency SOS interface.
+    #[serde(default = "default_sos_title")]
+    pub title: String,
+    /// Default severity assigned to alerts triggered from the SOS portal (default: "critical").
+    #[serde(default = "default_sos_severity")]
+    pub default_severity: String,
+    /// Whether the offline visual SVG CAPTCHA challenge is required (default: true).
+    #[serde(default = "default_sos_captcha_enabled")]
+    pub captcha_enabled: bool,
+    /// Minimum cooldown in seconds between SOS submissions to prevent radio flooding (default: 10s).
+    #[serde(default = "default_sos_cooldown_seconds")]
+    pub cooldown_seconds: u64,
+    /// Optional authentication settings specifically for the SOS portal and endpoint.
+    #[serde(default)]
+    pub auth: DashboardAuthConfig,
+}
+
+fn default_sos_enabled() -> bool {
+    true
+}
+
+fn default_sos_path() -> String {
+    "/sos".to_string()
+}
+
+fn default_sos_title() -> String {
+    "OpenAlert Emergency SOS".to_string()
+}
+
+fn default_sos_severity() -> String {
+    "critical".to_string()
+}
+
+fn default_sos_captcha_enabled() -> bool {
+    true
+}
+
+fn default_sos_cooldown_seconds() -> u64 {
+    10
+}
+
+impl Default for SosConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_sos_enabled(),
+            path: default_sos_path(),
+            title: default_sos_title(),
+            default_severity: default_sos_severity(),
+            captcha_enabled: default_sos_captcha_enabled(),
+            cooldown_seconds: default_sos_cooldown_seconds(),
+            auth: DashboardAuthConfig::default(),
+        }
+    }
+}
+
+impl SosConfig {
+    /// Returns the normalized URL route path (always starting with `/` and trimmed of trailing `/`).
+    pub fn normalized_path(&self) -> String {
+        let trimmed = self.path.trim().trim_end_matches('/');
+        if trimmed.is_empty() {
+            "/sos".to_string()
+        } else if trimmed.starts_with('/') {
+            trimmed.to_string()
+        } else {
+            format!("/{}", trimmed)
+        }
     }
 }
 

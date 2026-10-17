@@ -3,12 +3,23 @@
 This directory contains production packaging manifests for `openalertd`:
 * **Systemd**: Unprivileged hardened unit file (`packaging/systemd/openalertd.service`).
 * **Container**: Vendor-neutral multi-stage `Containerfile` (`packaging/container/Containerfile`) compatible with Podman, Docker, Buildah, and Kubernetes.
+* **Optional Emergency SOS Wi-Fi AP & Port 80 Captive Portal**: Turnkey Linux network configuration (`packaging/wifi-ap/`) for ARM field nodes (e.g., Orange Pi Zero 3, Raspberry Pi) using `hostapd`, `dnsmasq`, and `nginx-light`.
 
 ---
 
 ## 1. Systemd Service Deployment (Bare Metal / VM)
 
-### Step 1: Install Binary & Assets
+### Automated Installer (`install.sh`)
+
+```bash
+# Standard installation of openalertd
+sudo ./packaging/install.sh
+
+# Or install openalertd AND provision the optional Emergency SOS Wi-Fi AP + Port 80 proxy
+sudo ./packaging/install.sh --with-wifi-ap
+```
+
+### Manual Step 1: Install Binary & Assets
 
 ```bash
 # 1. Build release binary
@@ -31,7 +42,7 @@ sudo chown -R openalert:openalert /etc/openalertd /var/lib/openalertd /var/log/o
 sudo chmod 750 /var/lib/openalertd /etc/openalertd
 ```
 
-### Step 2: Install and Start Systemd Unit
+### Manual Step 2: Install and Start Systemd Unit
 
 ```bash
 sudo cp packaging/systemd/openalertd.service /etc/systemd/system/openalertd.service
@@ -39,7 +50,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now openalertd
 ```
 
-### Step 3: Verify Status & Live Observability
+### Manual Step 3: Verify Status & Live Observability
 
 ```bash
 # Check unit status and resource limits
@@ -62,7 +73,36 @@ The systemd unit runs under strict Linux sandboxing:
 
 ---
 
-## 2. Containerized Deployment (Podman / Docker)
+## 2. Optional: Emergency SOS Wi-Fi Access Point & Port 80 Proxy (`packaging/wifi-ap/`)
+
+For off-grid field nodes (such as Orange Pi Zero 3 or Raspberry Pi units equipped with 868 MHz LoRa RF and BLE), `packaging/wifi-ap/` provides a standalone Linux OS configuration that turns `wlan0` into an **OpenAlert-SOS** Wi-Fi hotspot (`10.42.0.1/24`) and runs `nginx-light` on Port `80` to reverse-proxy exclusively to the simplified `/sos` endpoint (isolating the administrative NOC UI).
+
+### Included Files in `packaging/wifi-ap/`
+* `setup_wifi_ap.sh`: Idempotent provisioning script for Debian/Ubuntu/Armbian systems.
+* `20-openalert-wlan0-ap.network.example`: `systemd-networkd` static IP (`10.42.0.1/24`) for `wlan0`.
+* `hostapd.conf.example`: 2.4 GHz 802.11n Access Point configuration (`SSID: OpenAlert-SOS`).
+* `dnsmasq-openalert-ap.conf.example`: DHCP server (`10.42.0.50–10.42.0.150`) and wildcard DNS resolver (`address=/#/10.42.0.1`) bound strictly to `wlan0` (coexists cleanly with `systemd-resolved`).
+* `nginx-openalert-sos.conf.example`: Lightweight Port 80 HTTP reverse proxy and Captive Portal redirect that exposes only `/sos` (`GET`/`POST`) and `/api/v1/health` while redirecting all other paths (`/` and iOS/Android/Windows captive portal probes) to `/sos`.
+
+### Usage
+
+```bash
+# Default provisioning (wlan0, SSID "OpenAlert-SOS", open network, openalertd on 127.0.0.1:8092)
+sudo ./packaging/wifi-ap/setup_wifi_ap.sh
+
+# Custom parameters via environment variables:
+sudo WIFI_IFACE=wlan0 \
+     AP_SSID="OpenAlert-SOS" \
+     AP_CHANNEL=6 \
+     AP_IP="10.42.0.1" \
+     OPENALERT_PORT=8092 \
+     SOS_ENDPOINT="/sos" \
+     ./packaging/wifi-ap/setup_wifi_ap.sh
+```
+
+---
+
+## 3. Containerized Deployment (Podman / Docker)
 
 ### Build the Image
 

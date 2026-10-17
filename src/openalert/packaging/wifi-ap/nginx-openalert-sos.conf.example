@@ -1,0 +1,24 @@
+# ==============================================================================
+# OpenAlert Field Node - Nginx Port 80 Reverse Proxy & Captive Portal Redirect
+# Target Path: /etc/nginx/sites-available/default
+# ==============================================================================
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    # 1. Proxy the simplified SOS Portal, SOS CAPTCHA/Trigger API, and Logo assets to openalertd
+    location ~ ^/(sos|api/v1/sos|api/v1/logo|logo\.png|health) {
+        proxy_pass http://127.0.0.1:8092;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # 2. Catch-all (root "/" and iOS/Android/Windows Captive Portal probes) -> Redirect to /sos
+    location / {
+        return 302 $scheme://$http_host/sos;
+    }
+}

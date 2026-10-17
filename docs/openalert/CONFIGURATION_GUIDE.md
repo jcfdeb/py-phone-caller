@@ -13,18 +13,18 @@ Designed for strict parity with `py-phone-caller`'s Python [Dynaconf](https://ww
 When `openalertd` launches, it resolves configuration by layering multiple tiers in order of increasing precedence. Values defined in higher layers cleanly override those in lower layers:
 
 ```
-┌────────────────────────────────────────────────────────┐
-│  Tier 4: Live Web UI & REST API Hot-Reloads (Runtime)  │  (Highest Priority)
-├────────────────────────────────────────────────────────┤
-│  Tier 3: Environment Variables (OPENALERT_<SEC>__<KEY>)│  (12-Factor App Overrides)
-├────────────────────────────────────────────────────────┤
-│  Tier 2: On-Disk TOML File (or Turnkey Profile)        │  (Static File Configuration)
-├────────────────────────────────────────────────────────┤
-│  Tier 1: Built-in Compiled Defaults                    │  (Lowest / Fallback Base)
-└────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  Tier 4: Live Web UI & REST API Hot-Reloads (Runtime)   │  (Highest Priority)
+├─────────────────────────────────────────────────────────┤
+│  Tier 3: Environment Variables (OPENALERT_<SEC>__<KEY>) │  (12-Factor App Overrides)
+├─────────────────────────────────────────────────────────┤
+│  Tier 2: On-Disk TOML File (or Turnkey Profile)         │  (Static File Configuration)
+├─────────────────────────────────────────────────────────┤
+│  Tier 1: Built-in Compiled Defaults                     │  (Lowest / Fallback Base)
+└─────────────────────────────────────────────────────────┘
 ```
 
-1. **Compiled Defaults:** Sensible production defaults are built into every subsystem struct (e.g., node name `openalertd-hub`, REST port `8090`, TTLs, retries).
+1. **Compiled Defaults:** Sensible production defaults are built into every subsystem struct (e.g., node name `openalertd-hub`, REST port `8090`, `/sos` portal enabled, TTLs, retries).
 2. **TOML Configuration File:** If a file is supplied (default `config/openalertd.toml` or via CLI argument), values in this file overwrite compiled defaults.
 3. **Environment Variables:** Any environment variable prefixed with `OPENALERT_` (or alias `OPENALERTD_`) using double underscore `__` for nested sections overrides the corresponding setting from the TOML file.
 4. **Runtime In-Process API:** Operators can validate and hot-reload parameters through the authenticated Web UI Mission Control or the REST API (`/api/v1/config`).
@@ -48,7 +48,7 @@ Pre-tuned profiles are available in `config/profiles/` for specific field deploy
 
 | Profile | Target Hardware / Topology | Key Characteristics |
 | :--- | :--- | :--- |
-| [`edge-sensor.toml`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert/config/profiles/edge-sensor.toml) | Solar/Battery Edge Nodes | Minimal footprint, RF LoRa + BLE only, REST on localhost `127.0.0.1:8091`. |
+| [`edge-sensor.toml`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert/config/profiles/edge-sensor.toml) | Solar/Battery Edge Nodes | Minimal footprint, RF LoRa + BLE + `/sos` portal, REST on `127.0.0.1:8091`. |
 | [`mesh-repeater.toml`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert/config/profiles/mesh-repeater.toml) | Hilltop Towers / Relay Pods | Bridges RF LoRa clusters to LAN Ethernet / VPN backhaul routers. |
 | [`central-gateway.toml`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert/config/profiles/central-gateway.toml) | NOC / Datacenter Servers | Web UI Mission Control, Asterisk telephony egress, Nostr quorum, WireGuard VPN. |
 
@@ -76,6 +76,9 @@ TOML Section & Field              Environment Variable Override
 [daemon] log_level = "info"   ──> OPENALERT_DAEMON__LOG_LEVEL=debug
 [rest] listen_port = 8090     ──> OPENALERT_REST__LISTEN_PORT=9099
 [rest] enable_cors = true     ──> OPENALERT_REST__ENABLE_CORS=false
+[sos] enabled = true          ──> OPENALERT_SOS__ENABLED=true
+[sos] path = "/sos"           ──> OPENALERT_SOS__PATH="/emergency"
+[sos] captcha_enabled = true  ──> OPENALERT_SOS__CAPTCHA_ENABLED=true
 [storage] path = "..."        ──> OPENALERT_STORAGE__PATH="/mnt/data/alerts.db"
 [nostr] kind = 30000          ──> OPENALERT_NOSTR__KIND=30001
 [bitchat] enabled = false     ──> OPENALERT_BITCHAT__ENABLED=true
@@ -109,7 +112,7 @@ docker run -d \
   -e OPENALERT_DAEMON__LOG_LEVEL=info \
   -e OPENALERT_STORAGE__PATH="/data/openalert.db" \
   -v openalert-data:/data \
-  ghcr.io/openalert/openalertd:v0.1.0
+  ghcr.io/openalert/openalertd:v0.2.0
 ```
 
 ### Docker Compose
@@ -118,7 +121,7 @@ version: "3.8"
 
 services:
   openalertd:
-    image: ghcr.io/openalert/openalertd:v0.1.0
+    image: ghcr.io/openalert/openalertd:v0.2.0
     restart: unless-stopped
     ports:
       - "8090:8090"
@@ -157,7 +160,7 @@ spec:
     spec:
       containers:
         - name: openalertd
-          image: ghcr.io/openalert/openalertd:v0.1.0
+          image: ghcr.io/openalert/openalertd:v0.2.0
           ports:
             - containerPort: 8090
               name: rest-api
@@ -206,6 +209,24 @@ export OPENALERT_REST__AUTH__USERNAME="operator"
 export OPENALERT_REST__AUTH__PASSWORD_HASH="sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 ```
 
+### Emergency SOS Portal & Offline CAPTCHA (`[sos]` & `[sos.auth]`)
+Field nodes can expose a simplified Emergency SOS Web Portal (default `/sos`) while keeping the administrative NOC UI isolated behind a localhost port or reverse proxy:
+
+```toml
+[sos]
+enabled = true
+path = "/sos"
+title = "OpenAlert Emergency SOS"
+default_severity = "critical"
+captcha_enabled = true
+cooldown_seconds = 10
+
+[sos.auth]
+enabled = false
+username = "sos"
+password_hash = ""
+```
+
 ### Outbound Webhook Egress (`[py_phone_caller.webhooks.auth]`)
 Outbound HTTP POST requests dispatched to `py-phone-caller` support dynamic `${ENV_VAR}` secret expansion:
 
@@ -246,6 +267,13 @@ For bare-metal and VM installations, operators can inspect and modify configurat
 | `rest.listen_port` | `OPENALERT_REST__LISTEN_PORT` | u16 | `8090` | Ingress HTTP port |
 | `rest.enable_cors` | `OPENALERT_REST__ENABLE_CORS` | Bool | `true` | Cross-Origin Resource Sharing |
 | `rest.webhook_secret` | `OPENALERT_REST__WEBHOOK_SECRET` | String | `None` | HMAC-SHA256 inbound signature secret |
+| `sos.enabled` | `OPENALERT_SOS__ENABLED` | Bool | `true` | Simplified Emergency SOS web portal |
+| `sos.path` | `OPENALERT_SOS__PATH` | String | `"/sos"` | Configurable URL path for the SOS portal |
+| `sos.title` | `OPENALERT_SOS__TITLE` | String | `"OpenAlert Emergency SOS"` | Custom header title on SOS interface |
+| `sos.default_severity` | `OPENALERT_SOS__DEFAULT_SEVERITY` | String | `"critical"` | Default severity for SOS alerts |
+| `sos.captcha_enabled` | `OPENALERT_SOS__CAPTCHA_ENABLED` | Bool | `true` | Offline 4-digit SVG visual CAPTCHA |
+| `sos.cooldown_seconds` | `OPENALERT_SOS__COOLDOWN_SECONDS` | u64 | `10` | Minimum cooldown between SOS submissions |
+| `sos.auth.enabled` | `OPENALERT_SOS__AUTH__ENABLED` | Bool | `false` | Optional HTTP Basic Auth for `/sos` |
 | `storage.path` | `OPENALERT_STORAGE__PATH` | String | `"data/openalert.db"` | Path to SQLite database (`:memory:` for ephemeral RAM) |
 | `storage.retention_days` | `OPENALERT_STORAGE__RETENTION_DAYS` | u32 | `30` | Sliding window alert retention |
 | `routing.default_destinations` | `OPENALERT_ROUTING__DEFAULT_DESTINATIONS` | Array | `["nostr"]` | Default destinations (`nostr`, `py_phone_caller`, `bitchat`, `peering`, `sms`) |
