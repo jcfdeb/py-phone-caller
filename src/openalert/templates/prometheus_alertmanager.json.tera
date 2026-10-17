@@ -5,16 +5,16 @@
     {
       "status": "{{ status | default(value="firing") }}",
       "labels": {
-        "alertname": "{{ alert_id }}",
+        "alertname": {{ alert_id | json_encode }},
         "instance": "{{ instance | default(value="openalertd:8443") }}",
         "job": "openalertd",
         "severity": "{{ severity | default(value="critical") }}",
         "source": "{{ source | default(value="openalert_bus") }}",
-        "sender": "{{ sender | default(value="openalert-node") }}"
+        "sender": {{ sender | default(value="openalert-node") | json_encode }}
       },
       "annotations": {
-        "summary": "{{ summary }}",
-        "description": "{{ description | default(value=summary) }}"
+        "summary": {{ summary | default(value=description) | json_encode }},
+        "description": {{ summary | default(value=description) | json_encode }}
       },
       "startsAt": "{{ starts_at }}",
       "endsAt": "0001-01-01T00:00:00Z",
@@ -22,16 +22,16 @@
     }
   ],
   "groupLabels": {
-    "alertname": "{{ alert_id }}"
+    "alertname": {{ alert_id | json_encode }}
   },
   "commonLabels": {
-    "alertname": "{{ alert_id }}",
+    "alertname": {{ alert_id | json_encode }},
     "severity": "{{ severity | default(value="critical") }}",
     "source": "{{ source | default(value="openalert_bus") }}"
   },
   "commonAnnotations": {
-    "summary": "{{ summary }}",
-    "description": "{{ description | default(value=summary) }}"
+    "summary": {{ summary | default(value=description) | json_encode }},
+    "description": {{ summary | default(value=description) | json_encode }}
   },
   "externalURL": "http://openalert.local",
   "version": "4",

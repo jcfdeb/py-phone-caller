@@ -771,6 +771,7 @@ impl BitChatService {
         };
 
         let adv_name = node_name.clone();
+        let _ = adapter.set_alias(adv_name.clone()).await;
         let adv_uuid = service_uuid;
         let adv_adapter = adapter.clone();
         let running_adv = self.running.clone();
@@ -778,6 +779,7 @@ impl BitChatService {
         tokio::spawn(async move {
             
             let le_advertisement = Advertisement {
+                advertisement_type: bluer::adv::Type::Peripheral,
                 service_uuids: vec![adv_uuid].into_iter().collect::<BTreeSet<_>>(),
                 local_name: Some(adv_name.clone()),
                 discoverable: Some(true),
@@ -1052,68 +1054,81 @@ impl BitChatService {
                                                 match dec_res {
                                                     Ok(dec_len) => {
                                                         plain_bytes.truncate(dec_len);
-                                                        let plain_text = Self::extract_bitchat_private_message(&plain_bytes);
-                                                        info!(
-                                                            "💬 [BitChat Private Direct Message Decrypted]: \"{}\" (from {})",
-                                                            plain_text,
-                                                            hex::encode(from_peer)
-                                                        );
+                                                        if !plain_bytes.is_empty() {
+                                                            if plain_bytes[0] == PACKET_TYPE_REQUEST_SYNC || plain_bytes[0] == PACKET_TYPE_SYNC_RESPONSE {
+                                                                debug!(
+                                                                    "🔄 [BitChat Encrypted Sync] Received internal sync packet (Type 0x{:02x}, {} bytes) from peer {}",
+                                                                    plain_bytes[0], plain_bytes.len(), hex::encode(from_peer)
+                                                                );
+                                                            } else {
+                                                                let plain_text = Self::extract_bitchat_private_message(&plain_bytes);
+                                                                if !plain_text.is_empty() && plain_text.chars().any(|c| c.is_alphanumeric()) {
+                                                                    info!(
+                                                                        "💬 [BitChat Private Direct Message Decrypted]: \"{}\" (from {})",
+                                                                        plain_text,
+                                                                        hex::encode(from_peer)
+                                                                    );
 
-                                                        let reply_txt = format!(
-                                                            "🚀 [OpenAlert Daemon ACK] Received private alert: \"{}\"",
-                                                            plain_text
-                                                        );
-                                                        let send_nonce = transport.sending_nonce() as u32;
-                                                        let mut enc_ack_buf = vec![0u8; reply_txt.len() + 32];
-                                                        if let Ok(ack_len) = transport.write_message(reply_txt.as_bytes(), &mut enc_ack_buf) {
-                                                            let mut combined_payload = send_nonce.to_be_bytes().to_vec();
-                                                            combined_payload.extend_from_slice(&enc_ack_buf[..ack_len]);
-                                                            let enc_reply = Self::build_encrypted_chat_packet(
-                                                                &my_sender_id,
-                                                                &from_peer,
-                                                                &combined_payload,
-                                                                &sk_w,
-                                                            );
-                                                            info!(
-                                                                "💬 [BitChat E2EE] Transmitting encrypted ACK direct reply to peer {}: \"{}\"",
-                                                                hex::encode(from_peer),
-                                                                reply_txt
-                                                            );
-                                                            let _ = tx_w.send(enc_reply);
-                                                        }
-                                                        {
-                                                            let mut p_guard = peer_map.write().await;
-                                                            if let Some(entry) = p_guard.get_mut(&from_peer) {
-                                                                entry.messages_received += 1;
-                                                                entry.messages_sent += 1;
-                                                                entry.last_seen = Instant::now();
-                                                            }
-                                                        }
+                                                                    let reply_txt = format!(
+                                                                        "🚀 [OpenAlert Daemon ACK] Received private alert: \"{}\"",
+                                                                        plain_text
+                                                                    );
+                                                                    let send_nonce = transport.sending_nonce() as u32;
+                                                                    let mut enc_ack_buf = vec![0u8; reply_txt.len() + 32];
+                                                                    if let Ok(ack_len) = transport.write_message(reply_txt.as_bytes(), &mut enc_ack_buf) {
+                                                                        let mut combined_payload = send_nonce.to_be_bytes().to_vec();
+                                                                        combined_payload.extend_from_slice(&enc_ack_buf[..ack_len]);
+                                                                        let enc_reply = Self::build_encrypted_chat_packet(
+                                                                            &my_sender_id,
+                                                                            &from_peer,
+                                                                            &combined_payload,
+                                                                            &sk_w,
+                                                                        );
+                                                                        info!(
+                                                                            "💬 [BitChat E2EE] Transmitting encrypted ACK direct reply to peer {}: \"{}\"",
+                                                                            hex::encode(from_peer),
+                                                                            reply_txt
+                                                                        );
+                                                                        let _ = tx_w.send(enc_reply);
+                                                                    }
+                                                                    {
+                                                                        let mut p_guard = peer_map.write().await;
+                                                                        if let Some(entry) = p_guard.get_mut(&from_peer) {
+                                                                            entry.messages_received += 1;
+                                                                            entry.messages_sent += 1;
+                                                                            entry.last_seen = Instant::now();
+                                                                        }
+                                                                    }
 
-                                                        if let Some(ref eng) = eng_opt {
-                                                            let alert = Alert {
-                                                                alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
-                                                                severity: AlertSeverity::Critical,
-                                                                summary: plain_text.clone(),
-                                                                description: Some(format!(
-                                                                    "Private 1-on-1 encrypted BLE mesh alert from BitChat peer {}",
-                                                                    hex::encode(from_peer)
-                                                                )),
-                                                                source: AlertSource::BitChat,
-                                                                sender: Some(hex::encode(from_peer)),
-                                                                node: Some(name_w.to_string()),
-                                                                starts_at: Utc::now(),
-                                                                destinations: vec!["webhook".to_string(), "nostr".to_string(), "bitchat".to_string()],
-                                                                origin_peer: None,
-                                                                hop: 3,
-                                                            };
-                                                            let eng_clone = eng.clone();
-                                                            tokio::spawn(async move {
-                                                                sleep(Duration::from_millis(250)).await;
-                                                                if let Err(err) = eng_clone.route_alert(alert).await {
-                                                                    warn!("Failed to route BitChat private ingress alert: {}", err);
+                                                                    if let Some(ref eng) = eng_opt {
+                                                                        let alert = Alert {
+                                                                            alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
+                                                                            severity: AlertSeverity::Critical,
+                                                                            summary: plain_text.clone(),
+                                                                            description: Some(plain_text.clone()),
+                                                                            source: AlertSource::BitChat,
+                                                                            sender: Some(hex::encode(from_peer)),
+                                                                            node: Some(name_w.to_string()),
+                                                                            starts_at: Utc::now(),
+                                                                            destinations: Vec::new(),
+                                                                            origin_peer: None,
+                                                                            hop: 3,
+                                                                        };
+                                                                        let eng_clone = eng.clone();
+                                                                        tokio::spawn(async move {
+                                                                            sleep(Duration::from_millis(250)).await;
+                                                                            if let Err(err) = eng_clone.route_alert(alert).await {
+                                                                                warn!("Failed to route BitChat private ingress alert: {}", err);
+                                                                            }
+                                                                        });
+                                                                    }
+                                                                } else {
+                                                                    debug!(
+                                                                        "⚠️ [BitChat E2EE] Ignoring non-text encrypted payload ({} bytes) from peer {}",
+                                                                        plain_bytes.len(), hex::encode(from_peer)
+                                                                    );
                                                                 }
-                                                            });
+                                                            }
                                                         }
                                                     }
                                                     Err(e) => {
@@ -1129,6 +1144,12 @@ impl BitChatService {
                                                     "⚠️ [BitChat E2EE] Received encrypted message without an active session from peer {}",
                                                     hex::encode(from_peer)
                                                 );
+                                                let ann_reply = Self::build_announce_packet(
+                                                    &name_w,
+                                                    &sk_w,
+                                                    &np_w,
+                                                );
+                                                let _ = tx_w.send(ann_reply);
                                             }
                                         }
                                     }
@@ -1170,15 +1191,12 @@ impl BitChatService {
                                                     alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
                                                     severity: AlertSeverity::Critical,
                                                     summary: txt.clone(),
-                                                    description: Some(format!(
-                                                        "Private 1-on-1 direct message alert from BitChat peer {}",
-                                                        hex::encode(from_peer)
-                                                    )),
+                                                    description: Some(txt.clone()),
                                                     source: AlertSource::BitChat,
                                                     sender: Some(hex::encode(from_peer)),
                                                     node: Some(name_w.to_string()),
                                                     starts_at: Utc::now(),
-                                                    destinations: vec!["webhook".to_string(), "nostr".to_string(), "bitchat".to_string()],
+                                                    destinations: Vec::new(),
                                                     origin_peer: None,
                                                     hop: 3,
                                                 };
@@ -1190,26 +1208,26 @@ impl BitChatService {
                                                     }
                                                 });
                                             }
-                                        } else if is_broadcast {
+                                        } else {
+                                            let label = if is_broadcast { "Mesh Broadcast" } else { "Mesh Message" };
                                             info!(
-                                                "💬 [BitChat Public Mesh Broadcast]: \"{}\" (from {})",
+                                                "💬 [BitChat {} Received]: \"{}\" (from {}, to: {:?})",
+                                                label,
                                                 txt,
-                                                hex::encode(from_peer)
+                                                hex::encode(from_peer),
+                                                parsed_pkt.recipient_id.map(hex::encode)
                                             );
                                             if let Some(ref eng) = eng_opt {
                                                 let alert = Alert {
-                                                    alert_id: format!("bitchat-bcast-{}-{}", &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
-                                                    severity: AlertSeverity::Info,
-                                                    summary: format!("[Mesh Broadcast] {}", txt),
-                                                    description: Some(format!(
-                                                        "Public BLE mesh chat broadcast from BitChat peer {}",
-                                                        hex::encode(from_peer)
-                                                    )),
+                                                    alert_id: format!("bitchat-{}-{}-{}", if is_broadcast { "bcast" } else { "msg" }, &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
+                                                    severity: AlertSeverity::Critical,
+                                                    summary: txt.clone(),
+                                                    description: Some(txt.clone()),
                                                     source: AlertSource::BitChat,
                                                     sender: Some(hex::encode(from_peer)),
                                                     node: Some(name_w.to_string()),
                                                     starts_at: Utc::now(),
-                                                    destinations: vec!["nostr".to_string()],
+                                                    destinations: Vec::new(),
                                                     origin_peer: None,
                                                     hop: 3,
                                                 };
@@ -1217,7 +1235,7 @@ impl BitChatService {
                                                 tokio::spawn(async move {
                                                     sleep(Duration::from_millis(250)).await;
                                                     if let Err(err) = eng_clone.route_alert(alert).await {
-                                                        warn!("Failed to route BitChat broadcast to Nostr: {}", err);
+                                                        warn!("Failed to route BitChat ingress alert: {}", err);
                                                     }
                                                 });
                                             }

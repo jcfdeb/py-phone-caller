@@ -63,3 +63,19 @@ impl TemplateEngine {
             .map_err(OpenAlertError::Template)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tera_json_encode_filter() {
+        let mut tera = Tera::default();
+        tera.add_raw_template("test", r#"{"summary": {{ summary | json_encode }}}"#).unwrap();
+        let mut ctx = Context::new();
+        ctx.insert("summary", "Line 1\nLine 2 \"quoted\" \x01");
+        let rendered = tera.render("test", &ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(val["summary"].as_str().unwrap(), "Line 1\nLine 2 \"quoted\" \x01");
+    }
+}
