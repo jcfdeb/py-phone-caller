@@ -293,6 +293,9 @@ pub struct SosConfig {
     /// Minimum cooldown in seconds between SOS submissions to prevent radio flooding (default: 10s).
     #[serde(default = "default_sos_cooldown_seconds")]
     pub cooldown_seconds: u64,
+    /// Whether the optional one-tap GPS coordinate helper button is shown on the SOS portal (default: true).
+    #[serde(default = "default_sos_gps_enabled")]
+    pub gps_enabled: bool,
     /// Whether Nostr / 0xChat encrypted DM delivery and Bot npub display are enabled on the SOS portal (default: true).
     #[serde(default = "default_sos_nostr_dm_enabled")]
     pub nostr_dm_enabled: bool,
@@ -331,6 +334,10 @@ fn default_sos_cooldown_seconds() -> u64 {
     10
 }
 
+fn default_sos_gps_enabled() -> bool {
+    true
+}
+
 fn default_sos_nostr_dm_enabled() -> bool {
     true
 }
@@ -344,6 +351,7 @@ impl Default for SosConfig {
             default_severity: default_sos_severity(),
             captcha_enabled: default_sos_captcha_enabled(),
             cooldown_seconds: default_sos_cooldown_seconds(),
+            gps_enabled: default_sos_gps_enabled(),
             nostr_dm_enabled: default_sos_nostr_dm_enabled(),
             public_relay_url: None,
             nostr_pin: None,
@@ -469,6 +477,50 @@ impl OxChatConfig {
     }
 }
 
+/// Nostr NIP-01 Kind 0 Profile Metadata settings for the daemon's bot identity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrProfileConfig {
+    /// Whether to automatically publish a NIP-01 Kind 0 profile metadata event on startup (default: true).
+    #[serde(default = "default_nostr_profile_enabled")]
+    pub enabled: bool,
+    /// Bot handle / username (`name` field in Kind 0 JSON; defaults to `[daemon] name` if empty).
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Human-friendly display name (`display_name` field in Kind 0 JSON).
+    #[serde(default = "default_nostr_profile_display_name")]
+    pub display_name: String,
+    /// Profile bio / description (`about` field in Kind 0 JSON).
+    #[serde(default = "default_nostr_profile_about")]
+    pub about: String,
+    /// Avatar image URL (`picture` field in Kind 0 JSON).
+    #[serde(default)]
+    pub picture: Option<String>,
+}
+
+fn default_nostr_profile_enabled() -> bool {
+    true
+}
+
+fn default_nostr_profile_display_name() -> String {
+    "🚨 OpenAlert Emergency Bot".to_string()
+}
+
+fn default_nostr_profile_about() -> String {
+    "Off-Grid LoRa, BitChat BLE & Nostr Tactical Alerting Node".to_string()
+}
+
+impl Default for NostrProfileConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_nostr_profile_enabled(),
+            name: None,
+            display_name: default_nostr_profile_display_name(),
+            about: default_nostr_profile_about(),
+            picture: None,
+        }
+    }
+}
+
 /// Nostr relay mesh and subscription parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrConfig {
@@ -505,6 +557,9 @@ pub struct NostrConfig {
     /// 0xChat mobile integration and C2 configuration.
     #[serde(default)]
     pub oxchat: OxChatConfig,
+    /// NIP-01 Kind 0 Bot Profile Metadata published to relays on startup.
+    #[serde(default)]
+    pub profile: NostrProfileConfig,
     /// Optional embedded in-process Nostr micro-relay server.
     #[serde(default)]
     pub relay_server: NostrRelayServerConfig,
@@ -636,6 +691,7 @@ impl Default for NostrConfig {
             nip20_timeout_secs: default_nip20_timeout_secs(),
             privacy: NostrPrivacyConfig::default(),
             oxchat: OxChatConfig::default(),
+            profile: NostrProfileConfig::default(),
             relay_server: NostrRelayServerConfig::default(),
         }
     }

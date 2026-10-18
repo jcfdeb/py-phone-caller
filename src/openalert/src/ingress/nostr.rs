@@ -270,6 +270,14 @@ impl NostrSubscriber {
                 return;
             }
 
+            if self
+                .engine
+                .is_duplicate_and_record(&format!("c2-ev:{}", event.id))
+                .await
+            {
+                return;
+            }
+
             if !self.config.oxchat.is_operator_authorized(&event.pubkey) {
                 warn!(
                     "🔒 Received 0xChat Kind 4 direct message from unauthorized operator [{}]; rejecting C2 command",
@@ -393,6 +401,14 @@ impl NostrSubscriber {
                 return;
             }
 
+            if self
+                .engine
+                .is_duplicate_and_record(&format!("c2-ev:{}", event.id))
+                .await
+            {
+                return;
+            }
+
             if !self.config.oxchat.is_operator_authorized(&unwrapped.sender_pubkey) {
                 warn!(
                     "🔒 Received 0xChat Kind 1059 direct message from unauthorized operator [{}]; rejecting C2 command",
@@ -451,6 +467,14 @@ impl NostrSubscriber {
                 || event.content.trim().to_lowercase().starts_with("ack ");
 
             if (is_bot_mentioned || has_openalert_tag || self.config.oxchat.mode == crate::config::OxChatMode::Public) && starts_with_c2 {
+                if self
+                    .engine
+                    .is_duplicate_and_record(&format!("c2-ev:{}", event.id))
+                    .await
+                {
+                    return;
+                }
+
                 if !self.config.oxchat.is_operator_authorized(&event.pubkey) {
                     warn!(
                         "🔒 Received public timeline C2 command from unauthorized operator [{}]; ignoring",
@@ -631,7 +655,7 @@ impl NostrSubscriber {
                     .unwrap_or_else(chrono::Utc::now),
                 destinations: vec!["webhook".to_string()],
                 origin_peer: None,
-                hop: 3,
+                hop: 5,
             }
         };
 
@@ -745,7 +769,7 @@ impl NostrSubscriber {
                         starts_at: chrono::Utc::now(),
                         destinations: vec!["bitchat".to_string()],
                         origin_peer: None,
-                        hop: 3,
+                        hop: 5,
                     };
                     if let Err(e) = self.engine.route_alert(alert).await {
                         Ok(format!("❌ Failed to route mesh message: {}", e))

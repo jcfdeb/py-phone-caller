@@ -54,6 +54,7 @@ captcha_enabled = true
 # Cooldown in seconds between SOS alert dispatches to prevent radio flooding
 cooldown_seconds = 10
 # Enable 0xChat / Nostr encrypted DM recipient field and Bot npub display on the SOS portal
+gps_enabled = true
 nostr_dm_enabled = true
 # Optional public Nostr relay URL shown to users on the SOS portal
 # public_relay_url = "wss://py-phone-caller.link/nostr"

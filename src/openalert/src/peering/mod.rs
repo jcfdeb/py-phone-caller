@@ -943,7 +943,7 @@ impl PeeringService {
                 info!(
                     "📥 [Peering Ingress] Ingested alert [{}] from '{}' via {} (Severity: {:?}, Summary: \"{}\")",
                     alert.alert_id,
-                    alert.sender.as_deref().unwrap_or("unknown"),
+                    alert.node.as_deref().or(alert.sender.as_deref()).unwrap_or("unknown"),
                     src_desc,
                     alert.severity,
                     alert.summary

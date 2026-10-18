@@ -332,6 +332,75 @@ impl NostrPublisher {
         &self.oxchat
     }
 
+    /// Signs and publishes a NIP-01 Kind 0 Profile Metadata event to all configured relays
+    /// so Nostr / 0xChat clients display the Bot's configured name, description, and avatar.
+    pub async fn publish_profile_metadata(
+        &self,
+        profile: &crate::config::NostrProfileConfig,
+        daemon_name: &str,
+    ) -> Result<usize> {
+        if !profile.enabled || self.relays.is_empty() {
+            return Ok(0);
+        }
+
+        let secp = Secp256k1::new();
+        let created_at = crate::time_sync::now_utc_secs().max(0) as u64;
+        let handle_name = profile
+            .name
+            .as_deref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(daemon_name);
+
+        let mut meta = serde_json::Map::new();
+        meta.insert("name".to_string(), json!(handle_name));
+        meta.insert("display_name".to_string(), json!(profile.display_name.trim()));
+        meta.insert("about".to_string(), json!(profile.about.trim()));
+        if let Some( pic) = profile.picture.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            meta.insert("picture".to_string(), json!(pic));
+        }
+
+        let content = serde_json::to_string(&meta)?;
+        let tags: Vec<Vec<String>> = Vec::new();
+
+        let serialized = serde_json::to_string(&json!([
+            0,
+            self.pubkey_hex,
+            created_at,
+            0u64,
+            tags,
+            content
+        ]))?;
+
+        let mut hasher = Sha256::new();
+        hasher.update(serialized.as_bytes());
+        let id_bytes = hasher.finalize();
+        let id_hex = hex::encode(id_bytes);
+
+        let sig = secp.sign_schnorr(id_bytes.as_slice(), &self.keypair);
+        let sig_hex = hex::encode(sig.as_ref());
+
+        let event = NostrEvent {
+            id: id_hex,
+            pubkey: self.pubkey_hex.clone(),
+            created_at,
+            kind: 0,
+            tags,
+            content,
+            sig: sig_hex,
+        };
+
+        let confirmed = self.publish_to_relays(&event).await;
+        info!(
+            "🪪 [Nostr Profile] Published Kind 0 Bot Metadata ('{}' / '{}') to {}/{} relay(s)",
+            profile.display_name,
+            handle_name,
+            confirmed,
+            self.relays.len()
+        );
+        Ok(confirmed)
+    }
+
     /// Signs an arbitrary Nostr event with the publisher keypair.
     pub fn sign_custom_event(
         &self,

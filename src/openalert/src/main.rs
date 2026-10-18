@@ -343,6 +343,13 @@ async fn main() -> Result<()> {
         }
     }
 
+    if config.nostr.profile.enabled && !config.nostr.relays.is_empty() {
+        let _ = engine
+            .nostr_publisher()
+            .publish_profile_metadata(&config.nostr.profile, &config.daemon.name)
+            .await;
+    }
+
     let nostr_sub = Arc::new(NostrSubscriber::new(config.nostr.clone(), engine.clone()));
     let _ = nostr_sub.start().await;
 

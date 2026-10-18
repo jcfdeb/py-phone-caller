@@ -596,7 +596,7 @@ pub async fn sos_trigger_handler(
         starts_at: now_dt,
         destinations: Vec::new(),
         origin_peer: None,
-        hop: 3,
+        hop: 5,
     };
 
     info!(
@@ -725,6 +725,7 @@ pub async fn sos_page_handler(
         &app_cfg.sos.title,
         &app_cfg.daemon.name,
         app_cfg.sos.captcha_enabled,
+        app_cfg.sos.gps_enabled,
         app_cfg.sos.nostr_dm_enabled,
         pin_required,
         &initial_bot_npub,
@@ -745,6 +746,7 @@ fn render_sos_html(
     title: &str,
     node_name: &str,
     captcha_enabled: bool,
+    gps_enabled: bool,
     nostr_dm_enabled: bool,
     pin_required: bool,
     initial_bot_npub: &str,
@@ -752,6 +754,7 @@ fn render_sos_html(
     initial_relay_url: &str,
 ) -> String {
     let captcha_display = if captcha_enabled { "block" } else { "none" };
+    let gps_btn_display = if gps_enabled { "inline-flex" } else { "none" };
     let nostr_section_display = if nostr_dm_enabled { "block" } else { "none" };
     let pin_lock_display = if pin_required { "block" } else { "none" };
     let nostr_unlocked_display = if pin_required { "none" } else { "block" };
@@ -1081,8 +1084,11 @@ fn render_sos_html(
         <button type="button" class="preset-btn" onclick="selectPreset(this, 'RESCUE')">🚁 Evacuation</button>
       </div>
 
-      <label for="sender">2. Your Name / Phone / Location</label>
-      <input type="text" id="sender" placeholder="e.g. Jorge - Sector Norte" maxlength="80">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1rem;margin-bottom:0.45rem;">
+        <label for="sender" style="margin:0;">2. Your Name / Phone / Location (Optional)</label>
+        <button type="button" id="gpsBtn" class="mini-btn" style="display:{gps_btn_display};align-items:center;gap:0.25rem;background:rgba(56,189,248,0.15);border-color:rgba(56,189,248,0.4);color:#bae6fd;padding:0.28rem 0.55rem;font-size:0.72rem;" onclick="attachGps(this)" title="Optionally attach your phone's GPS coordinates">📍 GPS</button>
+      </div>
+      <input type="text" id="sender" placeholder="e.g. Jorge - Sector Norte" maxlength="120">
 
       <label for="message">3. Emergency Message *</label>
       <textarea id="message" placeholder="Describe the emergency clearly..." required maxlength="500"></textarea>
@@ -1167,6 +1173,36 @@ fn render_sos_html(
         btn.classList.add('active');
         currentCategory = cat;
       }}
+    }}
+
+    function attachGps(btn) {{
+      if (!navigator.geolocation) {{
+        btn.innerText = "⚠️ No GPS";
+        return;
+      }}
+      const orig = btn.innerText;
+      btn.innerText = "⏳ Locating...";
+      btn.disabled = true;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {{
+          const lat = pos.coords.latitude.toFixed(5);
+          const lon = pos.coords.longitude.toFixed(5);
+          const acc = pos.coords.accuracy ? `±${{Math.round(pos.coords.accuracy)}}m` : "";
+          const coordStr = `GPS:${{lat}},${{lon}}${{acc ? " (" + acc + ")" : ""}}`;
+          const senderEl = document.getElementById('sender');
+          const current = senderEl.value.replace(/\s*\|?\s*GPS:[-0-9.,]+(?:\s*\([^)]*\))?/g, "").trim();
+          senderEl.value = current ? `${{current}} | ${{coordStr}}` : coordStr;
+          btn.innerText = "✅ GPS Added";
+          btn.disabled = false;
+          setTimeout(() => {{ btn.innerText = orig; }}, 2500);
+        }},
+        (_err) => {{
+          btn.innerText = "⚠️ GPS Denied";
+          btn.disabled = false;
+          setTimeout(() => {{ btn.innerText = orig; }}, 2500);
+        }},
+        {{ enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }}
+      );
     }}
 
     function copyText(elementId, btn) {{

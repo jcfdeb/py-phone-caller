@@ -512,7 +512,11 @@ impl AlertEngine {
     }
 
     /// Routes an alert to its designated egress targets based on configuration and alert rules.
-    pub async fn route_alert(&self, alert: Alert) -> Result<()> {
+    pub async fn route_alert(&self, mut alert: Alert) -> Result<()> {
+        // Preserve original originating node name across hops; only stamp local daemon name at the first hop.
+        if alert.node.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+            alert.node = Some(self.config.daemon.name.clone());
+        }
         let source_name = match alert.source {
             AlertSource::Rest => "rest",
             AlertSource::Nostr => "nostr",
@@ -614,6 +618,7 @@ impl AlertEngine {
                     }
                 }
                 "peering" => {
+                    if alert.source != AlertSource::Peering {
                     let peering_opt = self.peering_service.read().await.clone();
                     if let Some(peering) = peering_opt {
                         let outbound_alert = alert.clone();
@@ -638,6 +643,7 @@ impl AlertEngine {
                                 }
                             }
                         });
+                    }
                     }
                 }
                 "webhook" | "py_phone_caller" | "py-phone-caller" | "telephony" | "call" => {

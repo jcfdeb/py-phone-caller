@@ -1111,7 +1111,7 @@ impl BitChatService {
                                                                             starts_at: crate::time_sync::now_utc(),
                                                                             destinations: Vec::new(),
                                                                             origin_peer: None,
-                                                                            hop: 3,
+                                                                            hop: 5,
                                                                         };
                                                                         let eng_clone = eng.clone();
                                                                         tokio::spawn(async move {
@@ -1197,7 +1197,7 @@ impl BitChatService {
                                                     starts_at: crate::time_sync::now_utc(),
                                                     destinations: Vec::new(),
                                                     origin_peer: None,
-                                                    hop: 3,
+                                                    hop: 5,
                                                 };
                                                 let eng_clone = eng.clone();
                                                 tokio::spawn(async move {
@@ -1228,7 +1228,7 @@ impl BitChatService {
                                                     starts_at: crate::time_sync::now_utc(),
                                                     destinations: Vec::new(),
                                                     origin_peer: None,
-                                                    hop: 3,
+                                                    hop: 5,
                                                 };
                                                 let eng_clone = eng.clone();
                                                 tokio::spawn(async move {
