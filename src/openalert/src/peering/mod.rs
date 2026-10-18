@@ -9,6 +9,7 @@
 //! - Stateless `XChaCha20-Poly1305` AEAD with 24-byte random nonces and per-peer PSKs.
 //! - Radio link compliance (zero ACKs, proactive jittered bursts).
 //! - Split-horizon egress loop suppression and clock-skew tolerance.
+//! - 3-Tier Off-Grid Authenticated LoRa Time Synchronization (`TimeSyncReq`, `TimeSyncResp`, `TimeBeacon`, and zero-air-time piggybacking).
 
 pub mod circuit_breaker;
 pub mod crypto;
@@ -19,17 +20,21 @@ pub mod worker;
 
 pub use routing::{RouteEntry, RoutingTable};
 
-use crate::config::PeeringConfig;
+use crate::config::{PeeringConfig, PeeringLinkType};
 use crate::engine::AlertEngine;
 use crate::error::{OpenAlertError, Result};
 use crate::models::{Alert, PeeringStatusReport};
 use crate::peering::crypto::{KeyRegistry, encrypt_datagram};
-use crate::peering::wire::{AckPacket, FLAG_ACK_REQ, FLAG_CANARY, PeeringPacket};
+use crate::peering::lora::{LoraModulation, slip_encode};
+use crate::peering::wire::{
+    AckPacket, FLAG_ACK_REQ, FLAG_CANARY, PeeringPacket, TimeBeaconPacket, TimeSyncReqPacket,
+    TimeSyncRespPacket,
+};
 use crate::peering::worker::{
     AckWaiters, OutboundAlertRequest, PeerWorkerHandle, spawn_peer_worker,
 };
 use crate::storage::Storage;
-use chrono::Utc;
+use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -38,6 +43,8 @@ use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 
 type LoraPendingReceivers = Arc<Mutex<HashMap<String, (u32, mpsc::Receiver<Vec<u8>>)>>>;
+
+const SQLITE_TIME_SYNC_KEY: &str = "time_sync_last_verified_ms";
 
 /// Central peering manager orchestrating UDP sockets, crypto, actor workers, and inbound routing.
 pub struct PeeringService {
@@ -50,9 +57,10 @@ pub struct PeeringService {
     routing_table: Arc<RwLock<RoutingTable>>,
     engine: Arc<RwLock<Option<Arc<AlertEngine>>>>,
     storage: Option<Arc<Storage>>,
-    #[allow(dead_code)]
     lora_transmitters: Arc<HashMap<String, mpsc::Sender<Vec<u8>>>>,
     lora_pending_receivers: LoraPendingReceivers,
+    pending_time_sync_nonce: Arc<Mutex<Option<(u64, Instant)>>>,
+    last_opportunistic_beacon: Arc<Mutex<Option<Instant>>>,
 }
 
 impl PeeringService {
@@ -65,6 +73,15 @@ impl PeeringService {
             ))
         })?;
         let socket = Arc::new(socket);
+
+        // Seed monotonic timestamp floor from SQLite on cold boot if available
+        if config.time_sync.enabled
+            && let Some(ref st) = storage
+            && let Ok(Some(saved_ms_str)) = st.get_sms_setting(SQLITE_TIME_SYNC_KEY).await
+            && let Ok(saved_ms) = saved_ms_str.trim().parse::<i64>()
+        {
+            crate::time_sync::seed_persisted_timestamp_floor(saved_ms);
+        }
 
         let peer_overrides: Vec<(String, Option<String>)> = config
             .nodes
@@ -80,7 +97,7 @@ impl PeeringService {
         let mut lora_rx_map = HashMap::new();
 
         for node in &config.nodes {
-            if node.link_type == crate::config::PeeringLinkType::LoraSerial {
+            if node.link_type == PeeringLinkType::LoraSerial {
                 let dev = node
                     .serial_device
                     .clone()
@@ -121,9 +138,11 @@ impl PeeringService {
         }
 
         info!(
-            "🛰️ Initialized Peering Subsystem on UDP {} [{} peer node(s) configured]",
+            "🛰️ Initialized Peering Subsystem on UDP {} [{} peer node(s) configured, time_sync: {} ({})]",
             config.listen_addr,
-            workers.len()
+            workers.len(),
+            if config.time_sync.enabled { "enabled" } else { "disabled" },
+            config.time_sync.role
         );
 
         Ok(Self {
@@ -138,7 +157,159 @@ impl PeeringService {
             storage,
             lora_transmitters,
             lora_pending_receivers: Arc::new(Mutex::new(lora_rx_map)),
+            pending_time_sync_nonce: Arc::new(Mutex::new(None)),
+            last_opportunistic_beacon: Arc::new(Mutex::new(None)),
         })
+    }
+
+    /// Resolves the effective time synchronization role ("server", "client", or "disabled").
+    pub fn effective_time_sync_role(&self) -> &'static str {
+        if !self.config.time_sync.enabled {
+            return "disabled";
+        }
+        match self.config.time_sync.role.trim().to_lowercase().as_str() {
+            "server" => "server",
+            "client" => "client",
+            _ => {
+                let has_explicit_time_source = self
+                    .config
+                    .nodes
+                    .iter()
+                    .any(|n| n.time_source == Some(true));
+                if has_explicit_time_source || !crate::time_sync::is_os_clock_ntp_synced() {
+                    "client"
+                } else {
+                    "server"
+                }
+            }
+        }
+    }
+
+    /// Returns the active clock skew tolerance in seconds, tightening to `synced_clock_skew_tolerance_secs` once synchronized.
+    pub fn effective_skew_tolerance_secs(&self) -> u64 {
+        if self.config.time_sync.enabled && crate::time_sync::is_synchronized() {
+            self.config.time_sync.synced_clock_skew_tolerance_secs
+        } else {
+            self.config.clock_skew_tolerance_secs
+        }
+    }
+
+    /// Checks whether a given peer is authorized to act as an upstream time reference for this node.
+    fn is_peer_authorized_time_source(&self, peer_name: Option<&str>) -> bool {
+        if !self.config.time_sync.enabled || self.effective_time_sync_role() == "server" {
+            return false;
+        }
+        if let Some(name) = peer_name {
+            for node in &self.config.nodes {
+                if node.name == name {
+                    return node.time_source.unwrap_or(true);
+                }
+            }
+        }
+        true
+    }
+
+    /// Estimates the one-way physical transmission air-time (in milliseconds) for a peer frame of size `datagram_len`.
+    fn estimate_peer_air_time_ms(&self, peer_name: Option<&str>, datagram_len: usize) -> f64 {
+        let peer_node = peer_name
+            .and_then(|name| self.config.nodes.iter().find(|n| n.name == name))
+            .or_else(|| {
+                self.config
+                    .nodes
+                    .iter()
+                    .find(|n| n.link_type == PeeringLinkType::LoraSerial)
+            });
+
+        if let Some(node) = peer_node {
+            match node.link_type {
+                PeeringLinkType::LoraSerial | PeeringLinkType::Lora => {
+                    let mod_params = LoraModulation {
+                        spreading_factor: node.spreading_factor.unwrap_or(7),
+                        bandwidth_khz: node.bandwidth_khz.unwrap_or(125),
+                        ..Default::default()
+                    };
+                    mod_params.calculate_air_time_ms(datagram_len)
+                }
+                PeeringLinkType::Lan | PeeringLinkType::Vpn => 2.0,
+            }
+        } else {
+            50.0
+        }
+    }
+
+    /// Applies a verified gateway timestamp and persists the latest synchronized floor into SQLite.
+    async fn apply_and_persist_time_sync(
+        &self,
+        gateway_utc_ms: i64,
+        datagram_len: usize,
+        peer_name: Option<&str>,
+        is_challenge_response: bool,
+    ) {
+        let src_peer = peer_name.unwrap_or("lora-gateway");
+        let air_time_ms = self.estimate_peer_air_time_ms(peer_name, datagram_len);
+
+        if crate::time_sync::apply_verified_gateway_time(
+            gateway_utc_ms,
+            air_time_ms,
+            src_peer,
+            self.config.time_sync.step_system_clock,
+            is_challenge_response,
+        )
+        .is_some()
+            && let Some(ref st) = self.storage
+        {
+            let now_ms_str = crate::time_sync::now_utc_ms().to_string();
+            let _ = st.set_sms_setting(SQLITE_TIME_SYNC_KEY, &now_ms_str).await;
+        }
+    }
+
+    /// Transmits an encrypted control packet (`TimeSyncReq`, `TimeSyncResp`, or `TimeBeacon`) to a peer.
+    async fn send_control_packet(
+        &self,
+        pkt: &PeeringPacket,
+        peer_name: Option<&str>,
+        udp_addr: Option<std::net::SocketAddr>,
+    ) {
+        let Ok(serialized) = pkt.serialize() else {
+            return;
+        };
+
+        let key = peer_name
+            .and_then(|n| self.key_registry.get_key_for_peer(n))
+            .or_else(|| self.key_registry.get_key_for_peer(""))
+            .unwrap_or(&[0u8; 32]);
+
+        let Ok(datagram) = encrypt_datagram(key, &serialized) else {
+            return;
+        };
+
+        let peer_node = peer_name
+            .and_then(|name| self.config.nodes.iter().find(|n| n.name == name))
+            .or_else(|| {
+                if udp_addr.is_none() {
+                    self.config
+                        .nodes
+                        .iter()
+                        .find(|n| n.link_type == PeeringLinkType::LoraSerial)
+                } else {
+                    None
+                }
+            });
+
+        if let Some(node) = peer_node
+            && node.link_type == PeeringLinkType::LoraSerial
+        {
+            let dev_path = node.serial_device.as_deref().unwrap_or("/dev/ttyUSB0");
+            if let Some(tx) = self.lora_transmitters.get(dev_path) {
+                let framed = slip_encode(&datagram);
+                let _ = tx.send(framed).await;
+            }
+            return;
+        }
+
+        if let Some(dest) = udp_addr.or_else(|| peer_node.and_then(|n| n.addr.parse().ok())) {
+            let _ = self.socket.send_to(&datagram, dest).await;
+        }
     }
 
     /// Links the central routing engine to receive verified inbound peering alerts.
@@ -153,7 +324,7 @@ impl PeeringService {
         rt.get_routes(Duration::from_secs(300))
     }
 
-    /// Returns live diagnostics across all configured peering workers and circuit breakers.
+    /// Returns live diagnostics across all configured peering workers, circuit breakers, and LoRa time sync.
     pub async fn get_diagnostics(&self) -> PeeringStatusReport {
         let rt = self.routing_table.read().await;
         let mut peers = Vec::new();
@@ -167,10 +338,16 @@ impl PeeringService {
             peers.push(diag);
         }
         peers.sort_by(|a, b| a.name.cmp(&b.name));
+        let time_sync = Some(crate::time_sync::get_status_report(
+            self.config.time_sync.enabled,
+            self.effective_time_sync_role(),
+            self.effective_skew_tolerance_secs(),
+        ));
         PeeringStatusReport {
             enabled: self.config.enabled,
             listen_addr: self.config.listen_addr.clone(),
             peers,
+            time_sync,
         }
     }
 
@@ -184,7 +361,7 @@ impl PeeringService {
         }
     }
 
-    /// Starts the background UDP receiver and any LoRa Serial physical duplex tasks.
+    /// Starts the background UDP receiver, LoRa Serial physical duplex tasks, and 3-tier TimeSync tasks.
     pub fn start(self: Arc<Self>) {
         let self_udp = self.clone();
         tokio::spawn(async move {
@@ -205,6 +382,97 @@ impl PeeringService {
                 });
             }
         });
+
+        // Tier 2a: Cold-Boot TimeSyncReq challenge-response loop for off-grid client nodes
+        if self.config.time_sync.enabled
+            && self.config.time_sync.request_on_boot
+            && self.effective_time_sync_role() == "client"
+        {
+            let self_req = self.clone();
+            tokio::spawn(async move {
+                // Allow serial/UDP interfaces 2s to initialize on startup
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let retry_delays_secs = [15u64, 30u64, 60u64];
+
+                for (attempt, delay_secs) in retry_delays_secs.iter().enumerate() {
+                    if attempt > 0 && crate::time_sync::is_synchronized() {
+                        break;
+                    }
+
+                    let nonce: u64 = rand::rng().random();
+                    {
+                        let mut guard = self_req.pending_time_sync_nonce.lock().await;
+                        *guard = Some((nonce, Instant::now()));
+                    }
+
+                    let pkt = PeeringPacket::TimeSyncReq(TimeSyncReqPacket {
+                        client_nonce: nonce,
+                        client_ts_ms: crate::time_sync::now_utc_ms(),
+                        src: "fog-client".to_string(),
+                    });
+
+                    for node in &self_req.config.nodes {
+                        if node.time_source.unwrap_or(true) {
+                            info!(
+                                "⏳ [LoRa TimeSync] Emitting cold-boot TimeSyncReq (attempt {}/{}, nonce: 0x{:016x}) to peer '{}'",
+                                attempt + 1,
+                                retry_delays_secs.len(),
+                                nonce,
+                                node.name
+                            );
+                            self_req
+                                .send_control_packet(&pkt, Some(&node.name), None)
+                                .await;
+                        }
+                    }
+
+                    tokio::time::sleep(Duration::from_secs(*delay_secs)).await;
+                    if crate::time_sync::is_synchronized() {
+                        break;
+                    }
+                }
+            });
+        }
+
+        // Tier 2b: Ultra-sparse periodic TimeBeacon loop for NTP-backed server nodes (every N hours)
+        if self.config.time_sync.enabled
+            && self.config.time_sync.beacon_interval_hours > 0
+            && self.effective_time_sync_role() == "server"
+        {
+            let self_beacon = self.clone();
+            let interval_hours = self.config.time_sync.beacon_interval_hours;
+            tokio::spawn(async move {
+                // Emit an initial startup TimeBeacon after 4s so listening FOG nodes lock immediately
+                tokio::time::sleep(Duration::from_secs(4)).await;
+                loop {
+                    if crate::time_sync::is_synchronized() {
+                        let pkt = PeeringPacket::TimeBeacon(TimeBeaconPacket {
+                            server_utc_ms: crate::time_sync::now_utc_ms(),
+                            src: "gateway".to_string(),
+                        });
+                        for node in &self_beacon.config.nodes {
+                            if matches!(
+                                node.link_type,
+                                PeeringLinkType::LoraSerial | PeeringLinkType::Lora
+                            ) {
+                                info!(
+                                    "🕰️ [LoRa TimeSync] Broadcasting authoritative TimeBeacon to LoRa peer '{}' (utc_ms: {})",
+                                    node.name,
+                                    crate::time_sync::now_utc_ms()
+                                );
+                                self_beacon
+                                    .send_control_packet(&pkt, Some(&node.name), None)
+                                    .await;
+                            }
+                        }
+                    }
+
+                    let jitter_secs: u64 = rand::rng().random_range(0..=30);
+                    let sleep_secs = (interval_hours * 3600).saturating_add(jitter_secs);
+                    tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
+                }
+            });
+        }
     }
 
     /// Dispatches an alert to all configured peers with split-horizon origin filtering.
@@ -416,7 +684,7 @@ impl PeeringService {
                 }
             } else {
                 for peer_node in &self.config.nodes {
-                    if peer_node.link_type == crate::config::PeeringLinkType::LoraSerial {
+                    if peer_node.link_type == PeeringLinkType::LoraSerial {
                         matched_peer = Some(peer_node.name.clone());
                         break;
                     }
@@ -427,12 +695,25 @@ impl PeeringService {
         if let Some(ref peer_name) = matched_peer
             && let Some(telem) = rf_telemetry
         {
-            let penalty = self.routing_table.write().await.update_peer_rf_telemetry(peer_name, telem.rssi_dbm, telem.snr_db);
+            let penalty = self.routing_table.write().await.update_peer_rf_telemetry(
+                peer_name,
+                telem.rssi_dbm,
+                telem.snr_db,
+            );
             let eng_guard = self.engine.read().await;
             if let Some(ref eng) = *eng_guard {
-                eng.metrics().peering_rf_rssi_dbm.with_label_values(&[peer_name]).set(telem.rssi_dbm as f64);
-                eng.metrics().peering_rf_snr_db.with_label_values(&[peer_name]).set(telem.snr_db as f64);
-                eng.metrics().peering_rf_penalty_points.with_label_values(&[peer_name]).set(penalty as f64);
+                eng.metrics()
+                    .peering_rf_rssi_dbm
+                    .with_label_values(&[peer_name])
+                    .set(telem.rssi_dbm as f64);
+                eng.metrics()
+                    .peering_rf_snr_db
+                    .with_label_values(&[peer_name])
+                    .set(telem.snr_db as f64);
+                eng.metrics()
+                    .peering_rf_penalty_points
+                    .with_label_values(&[peer_name])
+                    .set(penalty as f64);
             }
         }
 
@@ -450,7 +731,84 @@ impl PeeringService {
 
         // 3. Process packet variants
         match packet {
+            PeeringPacket::TimeSyncReq(req) => {
+                if self.config.time_sync.enabled
+                    && (self.effective_time_sync_role() == "server"
+                        || crate::time_sync::is_os_clock_ntp_synced())
+                {
+                    let resp = PeeringPacket::TimeSyncResp(TimeSyncRespPacket {
+                        client_nonce: req.client_nonce,
+                        server_utc_ms: crate::time_sync::now_utc_ms(),
+                        src: "gateway".to_string(),
+                    });
+                    info!(
+                        "⏱️ [LoRa TimeSync] Responding to TimeSyncReq (nonce: 0x{:016x}) from '{}' ({}) with UTC {}ms",
+                        req.client_nonce,
+                        matched_peer.as_deref().unwrap_or(&req.src),
+                        src_desc,
+                        crate::time_sync::now_utc_ms()
+                    );
+                    self.send_control_packet(&resp, matched_peer.as_deref(), udp_addr)
+                        .await;
+                }
+            }
+            PeeringPacket::TimeSyncResp(resp) => {
+                if self.config.time_sync.enabled && self.effective_time_sync_role() != "server" {
+                    let nonce_valid = {
+                        let mut guard = self.pending_time_sync_nonce.lock().await;
+                        if let Some((expected_nonce, sent_at)) = *guard {
+                            if expected_nonce == resp.client_nonce
+                                && sent_at.elapsed() < Duration::from_secs(30)
+                            {
+                                *guard = None;
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    };
+
+                    if nonce_valid {
+                        let src_peer = matched_peer.as_deref().or(Some(resp.src.as_str()));
+                        self.apply_and_persist_time_sync(
+                            resp.server_utc_ms,
+                            datagram.len(),
+                            src_peer,
+                            true,
+                        )
+                        .await;
+                    } else {
+                        warn!(
+                            "🛑 [LoRa TimeSync] Ignored TimeSyncResp with unmatched or expired nonce 0x{:016x} from {}",
+                            resp.client_nonce, src_desc
+                        );
+                    }
+                }
+            }
+            PeeringPacket::TimeBeacon(beacon) => {
+                if self.is_peer_authorized_time_source(matched_peer.as_deref()) {
+                    let src_peer = matched_peer.as_deref().or(Some(beacon.src.as_str()));
+                    self.apply_and_persist_time_sync(
+                        beacon.server_utc_ms,
+                        datagram.len(),
+                        src_peer,
+                        false,
+                    )
+                    .await;
+                }
+            }
             PeeringPacket::RouteAdv(adv) => {
+                if adv.ts > 0 && self.is_peer_authorized_time_source(matched_peer.as_deref()) {
+                    self.apply_and_persist_time_sync(
+                        (adv.ts as i64) * 1000,
+                        datagram.len(),
+                        matched_peer.as_deref().or(Some(adv.src.as_str())),
+                        false,
+                    )
+                    .await;
+                }
                 let mut rt = self.routing_table.write().await;
                 let via_peer = matched_peer.as_deref().unwrap_or(&adv.src);
                 rt.update_route(&adv.dst, via_peer, adv.metric, adv.hops);
@@ -460,12 +818,34 @@ impl PeeringService {
                 );
             }
             PeeringPacket::Ack(ack) => {
+                // Tier 1: Zero-air-time piggybacked clock synchronization from authenticated Ack
+                if ack.ts > 0 && self.is_peer_authorized_time_source(matched_peer.as_deref()) {
+                    self.apply_and_persist_time_sync(
+                        (ack.ts as i64) * 1000,
+                        datagram.len(),
+                        matched_peer.as_deref(),
+                        false,
+                    )
+                    .await;
+                }
                 let mut waiters = self.ack_waiters.lock().await;
                 if let Some(tx) = waiters.remove(&ack.fp) {
                     let _ = tx.send(());
                 }
             }
             PeeringPacket::Alert(alert_pkt) => {
+                // Tier 1: Zero-air-time piggybacked clock synchronization from authenticated Gateway Alert
+                if alert_pkt.ts > 0 && self.is_peer_authorized_time_source(matched_peer.as_deref())
+                {
+                    self.apply_and_persist_time_sync(
+                        (alert_pkt.ts as i64) * 1000,
+                        datagram.len(),
+                        matched_peer.as_deref().or(Some(alert_pkt.src.as_str())),
+                        false,
+                    )
+                    .await;
+                }
+
                 // Check if canary probe
                 if alert_pkt.flags & FLAG_CANARY != 0 {
                     if alert_pkt.flags & FLAG_ACK_REQ != 0
@@ -477,15 +857,43 @@ impl PeeringService {
                     return;
                 }
 
-                // Clock skew validation (relaxed for off-grid edge nodes)
+                // Clock skew validation (with opportunistic server TimeBeacon correction for skewed clients)
                 if alert_pkt.ts > 0 {
-                    let now_ts = Utc::now().timestamp() as u32;
-                    let skew_tolerance = self.config.clock_skew_tolerance_secs as u32;
-                    let is_skewed = if now_ts > alert_pkt.ts {
-                        (now_ts - alert_pkt.ts) > skew_tolerance
-                    } else {
-                        (alert_pkt.ts - now_ts) > skew_tolerance
-                    };
+                    let now_ts = crate::time_sync::now_utc_secs() as u32;
+                    let skew_tolerance = self.effective_skew_tolerance_secs() as u32;
+                    let skew_diff = now_ts.abs_diff(alert_pkt.ts);
+                    let is_skewed = skew_diff > skew_tolerance;
+
+                    // If we are an authoritative time server and the client's alert timestamp is skewed by >10s,
+                    // opportunistically emit a TimeBeacon (rate-limited to 1 per 60s) so the client heals its clock!
+                    if self.config.time_sync.enabled
+                        && self.effective_time_sync_role() == "server"
+                        && skew_diff > 10
+                    {
+                        let should_emit = {
+                            let mut guard = self.last_opportunistic_beacon.lock().await;
+                            match *guard {
+                                Some(last) if last.elapsed() < Duration::from_secs(60) => false,
+                                _ => {
+                                    *guard = Some(Instant::now());
+                                    true
+                                }
+                            }
+                        };
+                        if should_emit {
+                            let beacon = PeeringPacket::TimeBeacon(TimeBeaconPacket {
+                                server_utc_ms: crate::time_sync::now_utc_ms(),
+                                src: "gateway".to_string(),
+                            });
+                            info!(
+                                "🕰️ [LoRa TimeSync] Peer '{}' alert clock skewed by {}s; emitting opportunistic TimeBeacon",
+                                matched_peer.as_deref().unwrap_or(&alert_pkt.src),
+                                skew_diff
+                            );
+                            self.send_control_packet(&beacon, matched_peer.as_deref(), udp_addr)
+                                .await;
+                        }
+                    }
 
                     if is_skewed {
                         warn!(
@@ -588,7 +996,7 @@ impl PeeringService {
     async fn send_ack(&self, fp: u64, dest: std::net::SocketAddr, peer_name: Option<&str>) {
         let ack_pkt = PeeringPacket::Ack(AckPacket {
             fp,
-            ts: Utc::now().timestamp() as u32,
+            ts: crate::time_sync::now_utc_secs() as u32,
         });
 
         if let Ok(serialized) = ack_pkt.serialize() {

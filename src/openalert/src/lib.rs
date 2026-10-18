@@ -49,6 +49,7 @@
 //! - [`storage`]: Embedded SQLite storage with sliding-window retention, RAM fallback, and crash recovery.
 //! - [`templates`]: Jinja2/Tera template engine for dynamic HTTP webhook payload generation.
 //! - [`peering`]: Decentralized UDP peering and out-of-band failover backhaul.
+//! - [`time_sync`]: Authenticated off-grid LoRa time synchronization (3-tier challenge/piggyback/beacon).
 //! - [`cli`]: Operational diagnostics and status inspection CLI.
 //! - [`sms`]: Cellular GSM/LTE SMS gateway (serial AT modem ingress, egress, and persistence).
 //! - [`watchdog`]: Autonomous hardware supervisors and kernel-level USB bus reset management.
@@ -68,6 +69,7 @@ pub mod peering;
 pub mod sms;
 pub mod storage;
 pub mod templates;
+pub mod time_sync;
 pub mod watchdog;
 
 pub use bitchat::BitChatService;

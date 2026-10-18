@@ -227,7 +227,7 @@ pub struct PrometheusAlertItem {
     #[serde(default)]
     pub annotations: HashMap<String, String>,
     /// Timestamp when the alert started firing.
-    #[serde(rename = "startsAt", default = "Utc::now")]
+    #[serde(rename = "startsAt", default = "crate::time_sync::now_utc")]
     pub starts_at: DateTime<Utc>,
     /// Timestamp when the alert was resolved (if applicable).
     #[serde(rename = "endsAt", default)]
@@ -367,6 +367,9 @@ pub struct PeeringStatusReport {
     pub enabled: bool,
     pub listen_addr: String,
     pub peers: Vec<PeerDiagnostics>,
+    /// Off-grid authenticated LoRa time synchronization status.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub time_sync: Option<crate::time_sync::TimeSyncStatusReport>,
 }
 
 /// Diagnostics for an individual peer node.

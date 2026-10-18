@@ -16,7 +16,6 @@ use bluer::{
     },
     Session, Uuid,
 };
-use chrono::Utc;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use futures_util::FutureExt;
 use sha2::{Digest, Sha256};
@@ -311,7 +310,7 @@ impl BitChatService {
         signing_key: &SigningKey,
         noise_pubkey: &[u8; 32],
     ) -> Vec<u8> {
-        let timestamp_ms = Utc::now().timestamp_millis() as u64;
+        let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
         let ed_pubkey = signing_key.verifying_key().to_bytes();
         let sender_id = Self::derive_sender_id(noise_pubkey);
         let payload = Self::build_announce_payload(node_name, noise_pubkey, &ed_pubkey);
@@ -343,7 +342,7 @@ impl BitChatService {
         message_text: &str,
         signing_key: &SigningKey,
     ) -> Vec<u8> {
-        let timestamp_ms = Utc::now().timestamp_millis() as u64;
+        let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
         let msg_bytes = message_text.as_bytes();
         let payload_len = msg_bytes.len() as u16;
         let has_recipient = recipient_id.is_some();
@@ -382,7 +381,7 @@ impl BitChatService {
         noise_msg2_payload: &[u8],
         signing_key: &SigningKey,
     ) -> Vec<u8> {
-        let timestamp_ms = Utc::now().timestamp_millis() as u64;
+        let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
         let payload_len = noise_msg2_payload.len() as u16;
         let flags = FLAG_HAS_RECIPIENT | FLAG_HAS_SIGNATURE;
 
@@ -413,7 +412,7 @@ impl BitChatService {
         ciphertext: &[u8],
         signing_key: &SigningKey,
     ) -> Vec<u8> {
-        let timestamp_ms = Utc::now().timestamp_millis() as u64;
+        let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
         let payload_len = ciphertext.len() as u16;
         let flags = FLAG_HAS_RECIPIENT | FLAG_HAS_SIGNATURE;
 
@@ -439,7 +438,7 @@ impl BitChatService {
 
     /// Constructs a Route-Sync-Response frame (Type 0x21) in response to peer discovery.
     pub fn build_sync_response(sender_id: &[u8; 8], _incoming_pkt: &[u8]) -> Vec<u8> {
-        let timestamp_ms = Utc::now().timestamp_millis() as u64;
+        let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
         let sync_payload = [
             0x01, 0x00, 0x01, 0x07, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x01,
         ];
@@ -1102,14 +1101,14 @@ impl BitChatService {
 
                                                                     if let Some(ref eng) = eng_opt {
                                                                         let alert = Alert {
-                                                                            alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
+                                                                            alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
                                                                             severity: AlertSeverity::Critical,
                                                                             summary: plain_text.clone(),
                                                                             description: Some(plain_text.clone()),
                                                                             source: AlertSource::BitChat,
                                                                             sender: Some(hex::encode(from_peer)),
                                                                             node: Some(name_w.to_string()),
-                                                                            starts_at: Utc::now(),
+                                                                            starts_at: crate::time_sync::now_utc(),
                                                                             destinations: Vec::new(),
                                                                             origin_peer: None,
                                                                             hop: 3,
@@ -1188,14 +1187,14 @@ impl BitChatService {
 
                                             if let Some(ref eng) = eng_opt {
                                                 let alert = Alert {
-                                                    alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
+                                                    alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
                                                     severity: AlertSeverity::Critical,
                                                     summary: txt.clone(),
                                                     description: Some(txt.clone()),
                                                     source: AlertSource::BitChat,
                                                     sender: Some(hex::encode(from_peer)),
                                                     node: Some(name_w.to_string()),
-                                                    starts_at: Utc::now(),
+                                                    starts_at: crate::time_sync::now_utc(),
                                                     destinations: Vec::new(),
                                                     origin_peer: None,
                                                     hop: 3,
@@ -1219,14 +1218,14 @@ impl BitChatService {
                                             );
                                             if let Some(ref eng) = eng_opt {
                                                 let alert = Alert {
-                                                    alert_id: format!("bitchat-{}-{}-{}", if is_broadcast { "bcast" } else { "msg" }, &hex::encode(from_peer)[..8], Utc::now().timestamp_millis()),
+                                                    alert_id: format!("bitchat-{}-{}-{}", if is_broadcast { "bcast" } else { "msg" }, &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
                                                     severity: AlertSeverity::Critical,
                                                     summary: txt.clone(),
                                                     description: Some(txt.clone()),
                                                     source: AlertSource::BitChat,
                                                     sender: Some(hex::encode(from_peer)),
                                                     node: Some(name_w.to_string()),
-                                                    starts_at: Utc::now(),
+                                                    starts_at: crate::time_sync::now_utc(),
                                                     destinations: Vec::new(),
                                                     origin_peer: None,
                                                     hop: 3,

@@ -15,7 +15,6 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
@@ -43,7 +42,12 @@ fn get_security_state() -> &'static SosSecurityState {
         let mut hasher = Sha256::new();
         hasher.update(uuid::Uuid::new_v4().as_bytes());
         hasher.update(uuid::Uuid::new_v4().as_bytes());
-        hasher.update(Utc::now().timestamp_nanos_opt().unwrap_or(0).to_le_bytes());
+        hasher.update(
+            crate::time_sync::now_utc()
+                .timestamp_nanos_opt()
+                .unwrap_or(0)
+                .to_le_bytes(),
+        );
         let secret: [u8; 32] = hasher.finalize().into();
         SosSecurityState {
             secret,
@@ -162,7 +166,7 @@ pub fn generate_challenge_pair() -> (String, String, String) {
     let num = 1000 + (u16::from_le_bytes([bytes[0], bytes[1]]) % 9000);
     let code = format!("{:04}", num);
     let nonce = hex::encode(&bytes[2..10]);
-    let ts = Utc::now().timestamp();
+    let ts = crate::time_sync::now_utc_secs();
 
     let payload = format!("{}:{}:{}", ts, nonce, code);
     let sig = compute_hmac_sha256(&sec.secret, payload.as_bytes());
@@ -215,7 +219,7 @@ pub fn verify_captcha_challenge(token: &str, answer: &str) -> std::result::Resul
     let nonce = parts[1];
     let given_sig = parts[2];
 
-    let now = Utc::now().timestamp();
+    let now = crate::time_sync::now_utc_secs();
     if (now - ts).abs() > CAPTCHA_TTL_SECS {
         return Err("Security code has expired. Please tap Refresh to get a new code.");
     }
@@ -269,6 +273,34 @@ pub async fn sos_challenge_handler(
         }),
     )
         .into_response()
+}
+
+/// Formats the canonical SOS emergency text, appending the originating `openalertd` node name
+/// at the end so downstream operators and voice/SMS recipients immediately know the physical source location.
+pub fn format_sos_alert_text(
+    category: Option<&str>,
+    sender: Option<&str>,
+    message: &str,
+    node_name: &str,
+) -> String {
+    let mut formatted_text = String::new();
+    if let Some(cat) = category.map(|c| c.trim().to_uppercase()).filter(|c| !c.is_empty() && c != "GENERAL") {
+        formatted_text.push_str(&format!("[{}] ", cat));
+    }
+    if let Some(snd) = sender.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        formatted_text.push_str(&format!("({}): ", snd));
+    }
+    formatted_text.push_str(message.trim());
+
+    let clean_node = node_name.trim();
+    if !clean_node.is_empty() {
+        let suffix = format!("[{}]", clean_node);
+        if !formatted_text.ends_with(&suffix) {
+            formatted_text.push_str(&format!(" {}", suffix));
+        }
+    }
+
+    formatted_text
 }
 
 /// HTTP POST handler that validates the CAPTCHA and dispatches the SOS emergency alert.
@@ -351,7 +383,7 @@ pub async fn sos_trigger_handler(
         *last_guard = Some(Instant::now());
     }
 
-    // 3. Build canonical Alert
+    // 3. Build canonical Alert with originating node name appended at the end of the message
     let severity = match app_cfg.sos.default_severity.trim().to_lowercase().as_str() {
         "info" => AlertSeverity::Info,
         "warning" | "warn" => AlertSeverity::Warning,
@@ -364,23 +396,16 @@ pub async fn sos_trigger_handler(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty());
 
-    let category_clean = req
-        .category
-        .as_ref()
-        .map(|c| c.trim().to_uppercase())
-        .filter(|c| !c.is_empty() && c != "GENERAL");
+    let formatted_text = format_sos_alert_text(
+        req.category.as_deref(),
+        sender_clean,
+        clean_msg,
+        &app_cfg.daemon.name,
+    );
 
-    let mut formatted_text = String::new();
-    if let Some(cat) = category_clean {
-        formatted_text.push_str(&format!("[{}] ", cat));
-    }
-    if let Some(snd) = sender_clean {
-        formatted_text.push_str(&format!("({}): ", snd));
-    }
-    formatted_text.push_str(clean_msg);
-
+    let now_dt = crate::time_sync::now_utc();
     let short_id = &uuid::Uuid::new_v4().to_string()[..8];
-    let alert_id = format!("sos-{}-{}", short_id, Utc::now().timestamp_millis());
+    let alert_id = format!("sos-{}-{}", short_id, now_dt.timestamp_millis());
 
     let alert = Alert {
         alert_id: alert_id.clone(),
@@ -390,7 +415,7 @@ pub async fn sos_trigger_handler(
         source: AlertSource::Rest,
         sender: Some(sender_clean.unwrap_or("SOS-Portal").to_string()),
         node: Some(app_cfg.daemon.name.clone()),
-        starts_at: Utc::now(),
+        starts_at: now_dt,
         destinations: Vec::new(),
         origin_peer: None,
         hop: 3,
@@ -409,7 +434,7 @@ pub async fn sos_trigger_handler(
                 "alert_id": alert_id,
                 "summary": formatted_text,
                 "node": app_cfg.daemon.name,
-                "timestamp": Utc::now()
+                "timestamp": now_dt
             })),
         )
             .into_response(),
@@ -832,5 +857,27 @@ mod tests {
         let replay_res = verify_captcha_challenge(&token, &code);
         assert!(replay_res.is_err());
         assert!(replay_res.unwrap_err().contains("already used"));
+    }
+
+    #[test]
+    fn test_format_sos_alert_text_appends_node_name() {
+        let formatted = format_sos_alert_text(
+            Some("MEDICAL"),
+            Some("Jorge"),
+            "Need assistance on floor 2",
+            "openalertd-fog-arm",
+        );
+        assert_eq!(
+            formatted,
+            "[MEDICAL] (Jorge): Need assistance on floor 2 [openalertd-fog-arm]"
+        );
+
+        let no_cat_no_sender = format_sos_alert_text(
+            Some("GENERAL"),
+            None,
+            "Power outage",
+            "openalertd-fog-arm",
+        );
+        assert_eq!(no_cat_no_sender, "Power outage [openalertd-fog-arm]");
     }
 }

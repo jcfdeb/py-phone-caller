@@ -179,6 +179,18 @@ max_ip_retries = 4
 base_timeout_ms = 250
 max_timeout_ms = 8000
 
+[peering.time_sync]
+# Off-Grid Authenticated LoRa Time Synchronization (3-Tier Hybrid Architecture)
+enabled = true
+# Role: "auto" (serves time if OS clock is NTP-synced, otherwise acts as client), "server", or "client"
+role = "auto"
+# Periodic TimeBeacon broadcast interval in hours (when role = "server" or "auto" with NTP sync)
+beacon_interval_hours = 12
+# Dispatch a one-shot challenge-response TimeSyncReq on cold boot if unsynchronized
+request_on_boot = true
+# Attempt to step the OS system clock via clock_settime(CLOCK_REALTIME) in addition to atomic offset
+step_system_clock = true
+
 # Example Node: LoRa Edge Stub
 # [[peering.nodes]]
 # name = "lora-node-01"

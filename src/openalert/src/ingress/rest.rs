@@ -534,6 +534,7 @@ pub async fn peers_handler(headers: HeaderMap, State(state): State<AppState>) ->
                 enabled: false,
                 listen_addr: String::new(),
                 peers: Vec::new(),
+                time_sync: None,
             }),
         )
             .into_response()
@@ -673,7 +674,7 @@ pub async fn ingest_alert(
         source: AlertSource::Rest,
         sender: payload.sender,
         node: payload.node,
-        starts_at: Utc::now(),
+        starts_at: crate::time_sync::now_utc(),
         destinations: payload.destinations,
         origin_peer: None,
         hop: 3,
@@ -695,7 +696,7 @@ pub async fn ingest_alert(
             status: "accepted".to_string(),
             alert_id,
             fingerprint,
-            timestamp: Utc::now(),
+            timestamp: crate::time_sync::now_utc(),
         }),
     )
         .into_response()
@@ -749,7 +750,7 @@ pub async fn ingest_prometheus_webhook(
             status: "accepted".to_string(),
             ingested_count: count,
             alert_ids: ingested_ids,
-            timestamp: Utc::now(),
+            timestamp: crate::time_sync::now_utc(),
         }),
     )
         .into_response()
@@ -963,7 +964,7 @@ pub async fn bitchat_broadcast_handler(
         source: AlertSource::Rest,
         sender: Some(state.engine.config().daemon.name.clone()),
         node: Some(state.engine.config().bitchat.node_name.clone()),
-        starts_at: chrono::Utc::now(),
+        starts_at: crate::time_sync::now_utc(),
         destinations: vec!["bitchat".to_string()],
         origin_peer: None,
         hop: 1,

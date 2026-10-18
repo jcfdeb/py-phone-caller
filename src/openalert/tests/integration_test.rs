@@ -1397,6 +1397,7 @@ async fn test_peering_lora_serial_dispatch() {
         failure_threshold: Some(3),
         base_cooldown_secs: Some(60),
         shared_key: None,
+        time_source: None,
     }];
 
     let peering = PeeringService::new(config.peering.clone(), None)

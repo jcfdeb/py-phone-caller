@@ -1177,6 +1177,66 @@ fn default_peering_addr() -> String {
     "127.0.0.1:0".to_string()
 }
 
+/// Off-Grid Authenticated LoRa Time Synchronization (`[peering.time_sync]`) settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeeringTimeSyncConfig {
+    /// Enable the off-grid LoRa time synchronization subsystem (default: true).
+    #[serde(default = "default_time_sync_enabled")]
+    pub enabled: bool,
+    /// Role: "server" (NTP-backed gateway) | "client" (RTC-less fog node) | "auto" (default).
+    #[serde(default = "default_time_sync_role")]
+    pub role: String,
+    /// Client setting: emit a 1-shot TimeSyncReq on cold boot if OS clock is unsynchronized (< 2025).
+    #[serde(default = "default_time_sync_request_on_boot")]
+    pub request_on_boot: bool,
+    /// Server setting: broadcast an unprompted TimeBeacon every N hours (0 = disabled, default: 12).
+    #[serde(default = "default_time_sync_beacon_interval_hours")]
+    pub beacon_interval_hours: u64,
+    /// Client setting: whether to step the OS kernel clock via clock_settime when CAP_SYS_TIME is available.
+    #[serde(default = "default_time_sync_step_system_clock")]
+    pub step_system_clock: bool,
+    /// Tighten peering anti-replay skew tolerance to N seconds once synchronized (default: 300s).
+    #[serde(default = "default_synced_clock_skew_tolerance_secs")]
+    pub synced_clock_skew_tolerance_secs: u64,
+}
+
+fn default_time_sync_enabled() -> bool {
+    true
+}
+
+fn default_time_sync_role() -> String {
+    "auto".to_string()
+}
+
+fn default_time_sync_request_on_boot() -> bool {
+    true
+}
+
+fn default_time_sync_beacon_interval_hours() -> u64 {
+    12
+}
+
+fn default_time_sync_step_system_clock() -> bool {
+    true
+}
+
+fn default_synced_clock_skew_tolerance_secs() -> u64 {
+    300
+}
+
+impl Default for PeeringTimeSyncConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_time_sync_enabled(),
+            role: default_time_sync_role(),
+            request_on_boot: default_time_sync_request_on_boot(),
+            beacon_interval_hours: default_time_sync_beacon_interval_hours(),
+            step_system_clock: default_time_sync_step_system_clock(),
+            synced_clock_skew_tolerance_secs: default_synced_clock_skew_tolerance_secs(),
+        }
+    }
+}
+
 /// Definition and connection parameters for an individual federated peer node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeeringNodeConfig {
@@ -1227,6 +1287,9 @@ pub struct PeeringNodeConfig {
     /// Per-peer 256-bit pre-shared key (64 hex characters) overriding the global key.
     #[serde(default)]
     pub shared_key: Option<String>,
+    /// Whether this peer is an authoritative upstream time source (default: true for client mode).
+    #[serde(default)]
+    pub time_source: Option<bool>,
 }
 
 /// Configuration for the decentralized UDP peering, edge-backhaul, and emergency failover subsystem.
@@ -1253,6 +1316,9 @@ pub struct PeeringConfig {
     /// Global circuit breaker defaults.
     #[serde(default)]
     pub circuit_breaker: PeeringCircuitBreakerConfig,
+    /// Off-grid authenticated LoRa time synchronization configuration.
+    #[serde(default)]
+    pub time_sync: PeeringTimeSyncConfig,
     /// Configured remote peer nodes.
     #[serde(default)]
     pub nodes: Vec<PeeringNodeConfig>,
@@ -1284,6 +1350,7 @@ impl Default for PeeringConfig {
             clock_skew_tolerance_secs: default_clock_skew_tolerance(),
             retry: PeeringRetryConfig::default(),
             circuit_breaker: PeeringCircuitBreakerConfig::default(),
+            time_sync: PeeringTimeSyncConfig::default(),
             nodes: Vec::new(),
         }
     }
@@ -1308,6 +1375,7 @@ impl Default for PeeringNodeConfig {
             failure_threshold: None,
             base_cooldown_secs: None,
             shared_key: None,
+            time_source: None,
         }
     }
 }
