@@ -4,7 +4,7 @@
 //! the administrative NOC dashboard (`/dashboard`). Designed for field and Wi-Fi Access Point
 //! deployments where bystanders or operators without BitChat/0xChat can trigger emergency alerts
 //! from any mobile browser, protected by an offline SVG visual CAPTCHA, rate-limiting cooldown,
-//! and optional independent authentication.
+//! optional PIN-protected Nostr/0xChat encrypted DM delivery, and optional independent authentication.
 
 use crate::config::AppConfig;
 use crate::ingress::rest::{AppState, compute_hmac_sha256, verify_constant_time};
@@ -55,6 +55,60 @@ fn get_security_state() -> &'static SosSecurityState {
             last_trigger: Mutex::new(None),
         }
     })
+}
+
+/// Generates an inline SVG QR code for a Nostr `npub1...` string so mobile users can scan it with 0xChat.
+pub fn generate_qr_svg(data: &str) -> String {
+    let clean = data.trim();
+    if clean.is_empty() {
+        return String::new();
+    }
+    if let Ok(code) = qrcode::QrCode::new(clean.as_bytes()) {
+        code.render::<qrcode::render::svg::Color<'_>>()
+            .min_dimensions(168, 168)
+            .dark_color(qrcode::render::svg::Color("#090d16"))
+            .light_color(qrcode::render::svg::Color("#ffffff"))
+            .build()
+    } else {
+        String::new()
+    }
+}
+
+/// Checks whether a Nostr PIN is configured on `[sos]`.
+pub fn is_nostr_pin_active(config: &AppConfig) -> bool {
+    config
+        .sos
+        .nostr_pin
+        .as_deref()
+        .map(|p| !p.trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// Verifies a user-supplied PIN against `[sos] nostr_pin` (supports plaintext or `sha256:<hex>`).
+pub fn verify_nostr_pin(config: &AppConfig, given_pin: Option<&str>) -> bool {
+    let Some(expected_raw) = config.sos.nostr_pin.as_deref() else {
+        return true;
+    };
+    let expected = expected_raw.trim();
+    if expected.is_empty() {
+        return true;
+    }
+
+    let given = given_pin.unwrap_or("").trim();
+    if given.is_empty() {
+        return false;
+    }
+
+    if let Some(expected_hash) = expected.strip_prefix("sha256:") {
+        let given_hash = hex::encode(Sha256::digest(given.as_bytes()));
+        verify_constant_time(&given_hash, &expected_hash.trim().to_lowercase())
+    } else if expected.len() == 64 && expected.chars().all(|c| c.is_ascii_hexdigit()) {
+        let given_hash = hex::encode(Sha256::digest(given.as_bytes()));
+        verify_constant_time(&given_hash, &expected.to_lowercase())
+            || verify_constant_time(given, expected)
+    } else {
+        verify_constant_time(given, expected)
+    }
 }
 
 /// Validates SOS portal credentials if `[sos.auth] enabled = true`.
@@ -137,6 +191,13 @@ pub struct SosChallengeResponse {
     pub svg: String,
 }
 
+/// Request payload to unlock PIN-protected Nostr identity & relay info on the SOS portal.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SosNostrInfoRequest {
+    #[serde(default)]
+    pub pin: Option<String>,
+}
+
 /// Request payload submitted by the simplified SOS form.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SosTriggerRequest {
@@ -154,6 +215,12 @@ pub struct SosTriggerRequest {
     /// User's 4-digit answer to the visual CAPTCHA.
     #[serde(default)]
     pub captcha_answer: Option<String>,
+    /// Optional recipient Nostr public key (`npub1...` or 64-char hex) for direct E2EE 0xChat delivery.
+    #[serde(default)]
+    pub recipient_npub: Option<String>,
+    /// Optional Nostr PIN when `[sos] nostr_pin` is configured.
+    #[serde(default)]
+    pub nostr_pin: Option<String>,
 }
 
 /// Generates a 4-digit visual SVG challenge and a stateless HMAC-SHA256 verification token.
@@ -275,6 +342,63 @@ pub async fn sos_challenge_handler(
         .into_response()
 }
 
+/// HTTP POST handler verifying the Nostr PIN and returning the daemon's `npub`, QR code SVG, and relay URL.
+pub async fn sos_nostr_info_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(req): Json<SosNostrInfoRequest>,
+) -> Response {
+    let app_cfg = state.engine.config();
+    if !app_cfg.sos.enabled || !app_cfg.sos.nostr_dm_enabled {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "SOS Nostr integration is disabled"
+            })),
+        )
+            .into_response();
+    }
+
+    if let Err(resp) = check_sos_auth(&headers, app_cfg) {
+        return *resp;
+    }
+
+    if !verify_nostr_pin(app_cfg, req.pin.as_deref()) {
+        warn!("🔒 [SOS Portal] Invalid PIN attempt when unlocking Nostr identity");
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Invalid Nostr PIN code."
+            })),
+        )
+            .into_response();
+    }
+
+    let bot_npub = state.engine.nostr_publisher().public_key_npub();
+    let bot_npub_qr_svg = generate_qr_svg(&bot_npub);
+    let bot_hex = state.engine.nostr_publisher().public_key().to_string();
+    let relay_url = app_cfg
+        .sos
+        .public_relay_url
+        .clone()
+        .or_else(|| app_cfg.nostr.relays.first().cloned())
+        .unwrap_or_default();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "ok",
+            "bot_npub": bot_npub,
+            "bot_npub_qr_svg": bot_npub_qr_svg,
+            "bot_pubkey_hex": bot_hex,
+            "relay_url": relay_url,
+        })),
+    )
+        .into_response()
+}
+
 /// Formats the canonical SOS emergency text, appending the originating `openalertd` node name
 /// at the end so downstream operators and voice/SMS recipients immediately know the physical source location.
 pub fn format_sos_alert_text(
@@ -301,6 +425,15 @@ pub fn format_sos_alert_text(
     }
 
     formatted_text
+}
+
+/// Resolves a user-supplied Nostr public key (`npub1...` or 64-character hex) into a 32-byte lowercase hex string.
+pub fn parse_recipient_pubkey_hex(input: &str) -> std::result::Result<String, String> {
+    let res = crate::cli::convert_key(input)?;
+    if res.input_format.starts_with("nsec") {
+        return Err("Please provide a public key (npub1... or hex), never a private key (nsec1...).".to_string());
+    }
+    Ok(res.hex_value.to_lowercase())
 }
 
 /// HTTP POST handler that validates the CAPTCHA and dispatches the SOS emergency alert.
@@ -344,6 +477,51 @@ pub async fn sos_trigger_handler(
         )
             .into_response();
     }
+
+    // 0. Validate optional custom Nostr recipient npub & PIN if provided
+    let resolved_dm_recipient = if let Some(raw_npub) = req
+        .recipient_npub
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        if !app_cfg.sos.nostr_dm_enabled {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "status": "error",
+                    "message": "Custom Nostr DM delivery is disabled on this node."
+                })),
+            )
+                .into_response();
+        }
+        if !verify_nostr_pin(app_cfg, req.nostr_pin.as_deref()) {
+            warn!("🔒 [SOS Portal] Rejected custom Nostr DM due to invalid or missing Nostr PIN");
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "status": "error",
+                    "message": "Valid Nostr PIN is required to dispatch custom Nostr DMs."
+                })),
+            )
+                .into_response();
+        }
+        match parse_recipient_pubkey_hex(raw_npub) {
+            Ok(hex_pk) => Some(hex_pk),
+            Err(err_msg) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "status": "error",
+                        "message": format!("Invalid Nostr recipient key: {}", err_msg)
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        None
+    };
 
     // 1. Validate CAPTCHA if enabled
     if app_cfg.sos.captcha_enabled {
@@ -426,6 +604,54 @@ pub async fn sos_trigger_handler(
         alert_id, formatted_text
     );
 
+    // 4. Register custom Nostr recipient pubkey if provided, and dispatch if engine won't already fan out to oxchat
+    let engine_handles_oxchat = app_cfg.nostr.oxchat.enabled
+        && app_cfg
+            .routing
+            .default_destinations
+            .iter()
+            .any(|d| matches!(d.as_str(), "nostr" | "oxchat" | "0xchat"));
+
+    if let Some(ref recipient_hex) = resolved_dm_recipient {
+        let _ = state
+            .engine
+            .nostr_publisher()
+            .register_oxchat_subscriber(recipient_hex)
+            .await;
+
+        if !engine_handles_oxchat {
+            let engine_clone = state.engine.clone();
+            let alert_for_dm = alert.clone();
+            let rec_hex = recipient_hex.clone();
+            tokio::spawn(async move {
+                match engine_clone
+                    .nostr_publisher()
+                    .dispatch_direct_oxchat_alert(&rec_hex, &alert_for_dm)
+                    .await
+                {
+                    Ok(cnt) => info!(
+                        "🔐 [SOS Portal] Dispatched encrypted 0xChat DM for alert [{}] to {} ({} relay confirmations)",
+                        alert_for_dm.alert_id,
+                        &rec_hex[..12.min(rec_hex.len())],
+                        cnt
+                    ),
+                    Err(e) => warn!(
+                        "⚠️ [SOS Portal] Failed to dispatch encrypted 0xChat DM for alert [{}]: {}",
+                        alert_for_dm.alert_id, e
+                    ),
+                }
+            });
+        }
+    }
+
+    let subs_count = state
+        .engine
+        .nostr_publisher()
+        .get_oxchat_subscribers()
+        .await
+        .len();
+    let dm_dispatched = resolved_dm_recipient.is_some() || (engine_handles_oxchat && subs_count > 0);
+
     match state.engine.route_alert(alert).await {
         Ok(()) => (
             StatusCode::ACCEPTED,
@@ -434,6 +660,8 @@ pub async fn sos_trigger_handler(
                 "alert_id": alert_id,
                 "summary": formatted_text,
                 "node": app_cfg.daemon.name,
+                "nostr_dm_dispatched": dm_dispatched,
+                "nostr_subscribers_count": subs_count,
                 "timestamp": now_dt
             })),
         )
@@ -468,10 +696,40 @@ pub async fn sos_page_handler(
         return *resp;
     }
 
+    let pin_required = is_nostr_pin_active(app_cfg);
+    // Only embed the Bot npub, QR SVG, and relay URL directly in initial HTML when NOT protected by a PIN
+    let initial_bot_npub = if app_cfg.sos.nostr_dm_enabled && !pin_required {
+        state.engine.nostr_publisher().public_key_npub()
+    } else {
+        String::new()
+    };
+
+    let initial_bot_qr_svg = if !initial_bot_npub.is_empty() {
+        generate_qr_svg(&initial_bot_npub)
+    } else {
+        String::new()
+    };
+
+    let initial_relay_url = if app_cfg.sos.nostr_dm_enabled && !pin_required {
+        app_cfg
+            .sos
+            .public_relay_url
+            .clone()
+            .or_else(|| app_cfg.nostr.relays.first().cloned())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
     let html = render_sos_html(
         &app_cfg.sos.title,
         &app_cfg.daemon.name,
         app_cfg.sos.captcha_enabled,
+        app_cfg.sos.nostr_dm_enabled,
+        pin_required,
+        &initial_bot_npub,
+        &initial_bot_qr_svg,
+        &initial_relay_url,
     );
 
     (
@@ -482,8 +740,23 @@ pub async fn sos_page_handler(
         .into_response()
 }
 
-fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> String {
+#[allow(clippy::too_many_arguments)]
+fn render_sos_html(
+    title: &str,
+    node_name: &str,
+    captcha_enabled: bool,
+    nostr_dm_enabled: bool,
+    pin_required: bool,
+    initial_bot_npub: &str,
+    initial_bot_qr_svg: &str,
+    initial_relay_url: &str,
+) -> String {
     let captcha_display = if captcha_enabled { "block" } else { "none" };
+    let nostr_section_display = if nostr_dm_enabled { "block" } else { "none" };
+    let pin_lock_display = if pin_required { "block" } else { "none" };
+    let nostr_unlocked_display = if pin_required { "none" } else { "block" };
+    let relay_row_display = if initial_relay_url.is_empty() { "none" } else { "block" };
+
     format!(
         r##"<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -503,6 +776,7 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       --danger-hover: #be123c;
       --danger-glow: rgba(225, 29, 72, 0.4);
       --accent: #38bdf8;
+      --purple: #a855f7;
       --success: #10b981;
       --input-bg: #0b0f19;
     }}
@@ -520,7 +794,7 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
     }}
     .container {{
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 16px;
@@ -604,7 +878,7 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       border-radius: 10px;
       color: var(--text);
       padding: 0.75rem;
-      font-size: 0.98rem;
+      font-size: 0.96rem;
       font-family: inherit;
       outline: none;
     }}
@@ -612,8 +886,95 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       border-color: var(--accent);
     }}
     textarea {{
-      min-height: 95px;
+      min-height: 90px;
       resize: vertical;
+    }}
+    .nostr-details {{
+      display: {nostr_section_display};
+      margin-top: 1rem;
+      background: rgba(168, 85, 247, 0.06);
+      border: 1px solid rgba(168, 85, 247, 0.28);
+      border-radius: 12px;
+      padding: 0.75rem 0.9rem;
+    }}
+    .nostr-summary {{
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #d8b4fe;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      list-style: none;
+    }}
+    .nostr-summary::-webkit-details-marker {{ display: none; }}
+    .nostr-body {{
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(168, 85, 247, 0.2);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }}
+    .mono-row {{
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.3rem;
+      margin-bottom: 0.65rem;
+    }}
+    .mono-box {{
+      flex: 1;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.45rem 0.6rem;
+      font-family: monospace;
+      font-size: 0.74rem;
+      color: #e2e8f0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .mini-btn {{
+      background: rgba(168, 85, 247, 0.2);
+      color: #f3e8ff;
+      border: 1px solid rgba(168, 85, 247, 0.4);
+      border-radius: 8px;
+      padding: 0.45rem 0.65rem;
+      font-size: 0.74rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }}
+    .mini-btn:hover {{
+      background: rgba(168, 85, 247, 0.35);
+    }}
+    .qr-card {{
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(11, 15, 25, 0.85);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      border-radius: 12px;
+      padding: 0.85rem;
+      margin-bottom: 0.75rem;
+      text-align: center;
+    }}
+    .qr-svg-wrap {{
+      background: #ffffff;
+      padding: 8px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    }}
+    .qr-svg-wrap svg {{
+      width: 168px;
+      height: 168px;
+      display: block;
     }}
     .captcha-box {{
       display: {captcha_display};
@@ -679,6 +1040,7 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       border-radius: 10px;
       font-size: 0.88rem;
       line-height: 1.4;
+      word-break: break-word;
     }}
     .status-ok {{
       display: block;
@@ -725,6 +1087,53 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       <label for="message">3. Emergency Message *</label>
       <textarea id="message" placeholder="Describe the emergency clearly..." required maxlength="500"></textarea>
 
+      <details class="nostr-details" id="nostrDetails">
+        <summary class="nostr-summary">
+          <span>🔐 0xChat / Nostr Encrypted DM (Optional)</span>
+          <span style="font-size:0.72rem;opacity:0.8;">Tap to configure ▾</span>
+        </summary>
+        <div class="nostr-body">
+          <div id="nostrPinLock" style="display:{pin_lock_display};">
+            <div style="margin-bottom:0.45rem;">🔒 Enter the Nostr Access PIN to view this node's Bot <code>npub</code> / QR Code and enable direct encrypted DM delivery:</div>
+            <div class="mono-row">
+              <input type="password" id="nostrPinInput" placeholder="Enter PIN..." style="padding:0.5rem 0.65rem;font-size:0.85rem;">
+              <button type="button" class="mini-btn" onclick="unlockNostrInfo()">Unlock</button>
+            </div>
+            <div id="nostrPinErr" style="color:#fda4af;font-size:0.75rem;display:none;"></div>
+          </div>
+
+          <div id="nostrUnlocked" style="display:{nostr_unlocked_display};">
+            <div id="relayUrlContainer" style="display:{relay_row_display};">
+              <div>1. Connect your 0xChat / Nostr client to Relay:</div>
+              <div class="mono-row">
+                <div class="mono-box" id="relayUrlBox">{initial_relay_url}</div>
+                <button type="button" class="mini-btn" onclick="copyText('relayUrlBox', this)">Copy</button>
+              </div>
+            </div>
+
+            <div>2. OpenAlert Node Bot <code>npub</code> (Add Contact in 0xChat):</div>
+            <div class="mono-row">
+              <div class="mono-box" id="botNpubBox">{initial_bot_npub}</div>
+              <button type="button" class="mini-btn" onclick="copyText('botNpubBox', this)">Copy</button>
+              <button type="button" class="mini-btn" onclick="toggleBotQr()">📱 QR</button>
+            </div>
+
+            <div class="qr-card" id="botQrCard">
+              <div style="font-size:0.75rem;color:#e2e8f0;margin-bottom:0.5rem;font-weight:600;">
+                Scan with 0xChat (Contacts → + → Scan QR Code)
+              </div>
+              <div class="qr-svg-wrap" id="botQrSvgWrap">{initial_bot_qr_svg}</div>
+              <div style="font-size:0.68rem;color:var(--muted);margin-top:0.45rem;">
+                Once connected to the relay above, all alerts arrive automatically in 0xChat!
+              </div>
+            </div>
+
+            <div style="margin-top:0.4rem;margin-bottom:0.3rem;">3. Optional: Your 0xChat Public Key (<code>npub1...</code> or hex):</div>
+            <input type="text" id="recipientNpub" placeholder="npub1... (optional if already connected to relay)" maxlength="120" style="font-family:monospace;font-size:0.8rem;padding:0.6rem;">
+          </div>
+        </div>
+      </details>
+
       <div class="captcha-box" id="captchaBox">
         <label style="margin-top:0;">4. Anti-Bot Security Code *</label>
         <div class="captcha-row">
@@ -740,13 +1149,14 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
     <div id="statusBanner" class="status-banner"></div>
 
     <div class="footer">
-      OpenAlert Off-Grid LoRa / Mesh Emergency Terminal
+      OpenAlert Off-Grid LoRa / Mesh &amp; Nostr Emergency Terminal
     </div>
   </div>
 
   <script>
     let currentCategory = "GENERAL";
     let captchaToken = "";
+    let unlockedPin = "";
     const captchaEnabled = {captcha_enabled};
 
     function selectPreset(btn, cat) {{
@@ -756,6 +1166,57 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       }} else {{
         btn.classList.add('active');
         currentCategory = cat;
+      }}
+    }}
+
+    function copyText(elementId, btn) {{
+      const txt = document.getElementById(elementId).innerText.trim();
+      if (!txt) return;
+      navigator.clipboard.writeText(txt).then(() => {{
+        const orig = btn.innerText;
+        btn.innerText = "Copied!";
+        setTimeout(() => {{ btn.innerText = orig; }}, 1500);
+      }});
+    }}
+
+    function toggleBotQr() {{
+      const card = document.getElementById('botQrCard');
+      if (!card) return;
+      card.style.display = (card.style.display === 'flex') ? 'none' : 'flex';
+    }}
+
+    async function unlockNostrInfo() {{
+      const pin = document.getElementById('nostrPinInput').value.trim();
+      const errEl = document.getElementById('nostrPinErr');
+      errEl.style.display = 'none';
+      if (!pin) return;
+
+      try {{
+        const res = await fetch('/api/v1/sos/nostr-info', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{ pin }})
+        }});
+        const data = await res.json();
+        if (res.ok) {{
+          unlockedPin = pin;
+          document.getElementById('botNpubBox').innerText = data.bot_npub || '';
+          if (data.bot_npub_qr_svg) {{
+            document.getElementById('botQrSvgWrap').innerHTML = data.bot_npub_qr_svg;
+          }}
+          if (data.relay_url) {{
+            document.getElementById('relayUrlBox').innerText = data.relay_url;
+            document.getElementById('relayUrlContainer').style.display = 'block';
+          }}
+          document.getElementById('nostrPinLock').style.display = 'none';
+          document.getElementById('nostrUnlocked').style.display = 'block';
+        }} else {{
+          errEl.innerText = data.message || 'Invalid PIN';
+          errEl.style.display = 'block';
+        }}
+      }} catch (e) {{
+        errEl.innerText = 'Error verifying PIN';
+        errEl.style.display = 'block';
       }}
     }}
 
@@ -781,6 +1242,8 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       const message = document.getElementById('message').value.trim();
       const sender = document.getElementById('sender').value.trim();
       const captchaAnswer = document.getElementById('captchaAnswer').value.trim();
+      const recipientNpubEl = document.getElementById('recipientNpub');
+      const recipientNpub = recipientNpubEl ? recipientNpubEl.value.trim() : '';
 
       if (!message) return;
       if (captchaEnabled && captchaAnswer.length !== 4) {{
@@ -790,7 +1253,7 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
       }}
 
       btn.disabled = true;
-      btn.innerText = '📡 TRANSMITTING OVER MESH...';
+      btn.innerText = '📡 TRANSMITTING ALERT...';
       banner.className = 'status-banner';
       banner.style.display = 'none';
 
@@ -803,14 +1266,19 @@ fn render_sos_html(title: &str, node_name: &str, captcha_enabled: bool) -> Strin
             sender: sender || null,
             category: currentCategory,
             captcha_token: captchaToken,
-            captcha_answer: captchaAnswer
+            captcha_answer: captchaAnswer,
+            recipient_npub: recipientNpub || null,
+            nostr_pin: unlockedPin || null
           }})
         }});
         const data = await res.json();
         if (res.ok) {{
           banner.className = 'status-banner status-ok';
           banner.style.display = 'block';
-          banner.innerHTML = `✅ <strong>SOS Alert Dispatched!</strong><br>ID: <code>${{data.alert_id}}</code><br>Payload: "${{data.summary}}"`;
+          const dmNote = data.nostr_dm_dispatched
+            ? `<br>🔐 <em>Encrypted 0xChat DM dispatched (${{data.nostr_subscribers_count || 1}} active subscriber(s))!</em>`
+            : '';
+          banner.innerHTML = `✅ <strong>SOS Alert Dispatched!</strong><br>ID: <code>${{data.alert_id}}</code><br>Payload: "${{data.summary}}"${{dmNote}}`;
           document.getElementById('message').value = '';
           await loadChallenge();
         }} else {{
@@ -879,5 +1347,33 @@ mod tests {
             "openalertd-fog-arm",
         );
         assert_eq!(no_cat_no_sender, "Power outage [openalertd-fog-arm]");
+    }
+
+    #[test]
+    fn test_nostr_pin_verification_and_npub_parsing() {
+        let mut cfg = AppConfig::default();
+        assert!(!is_nostr_pin_active(&cfg));
+        assert!(verify_nostr_pin(&cfg, None));
+
+        cfg.sos.nostr_pin = Some("2026".to_string());
+        assert!(is_nostr_pin_active(&cfg));
+        assert!(!verify_nostr_pin(&cfg, None));
+        assert!(!verify_nostr_pin(&cfg, Some("9999")));
+        assert!(verify_nostr_pin(&cfg, Some("2026")));
+
+        // Also test sha256 hashed PIN
+        let hash = crate::cli::hash_password("secret-pin");
+        cfg.sos.nostr_pin = Some(format!("sha256:{}", hash));
+        assert!(verify_nostr_pin(&cfg, Some("secret-pin")));
+        assert!(!verify_nostr_pin(&cfg, Some("wrong-pin")));
+
+        // Test npub parsing and QR SVG generation
+        let id = crate::cli::generate_keypair();
+        let parsed_hex = parse_recipient_pubkey_hex(&id.npub).expect("valid npub");
+        assert_eq!(parsed_hex, id.pub_hex);
+        assert!(parse_recipient_pubkey_hex(&id.nsec).is_err());
+
+        let qr_svg = generate_qr_svg(&id.npub);
+        assert!(qr_svg.contains("<svg"));
     }
 }

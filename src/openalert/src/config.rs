@@ -293,6 +293,15 @@ pub struct SosConfig {
     /// Minimum cooldown in seconds between SOS submissions to prevent radio flooding (default: 10s).
     #[serde(default = "default_sos_cooldown_seconds")]
     pub cooldown_seconds: u64,
+    /// Whether Nostr / 0xChat encrypted DM delivery and Bot npub display are enabled on the SOS portal (default: true).
+    #[serde(default = "default_sos_nostr_dm_enabled")]
+    pub nostr_dm_enabled: bool,
+    /// Optional public Nostr relay URL displayed to users on the SOS portal (e.g., "wss://py-phone-caller.link/nostr").
+    #[serde(default)]
+    pub public_relay_url: Option<String>,
+    /// Optional PIN (plaintext or "sha256:<hex>") required to view the daemon Nostr npub and dispatch custom npub DMs.
+    #[serde(default)]
+    pub nostr_pin: Option<String>,
     /// Optional authentication settings specifically for the SOS portal and endpoint.
     #[serde(default)]
     pub auth: DashboardAuthConfig,
@@ -322,6 +331,10 @@ fn default_sos_cooldown_seconds() -> u64 {
     10
 }
 
+fn default_sos_nostr_dm_enabled() -> bool {
+    true
+}
+
 impl Default for SosConfig {
     fn default() -> Self {
         Self {
@@ -331,6 +344,9 @@ impl Default for SosConfig {
             default_severity: default_sos_severity(),
             captcha_enabled: default_sos_captcha_enabled(),
             cooldown_seconds: default_sos_cooldown_seconds(),
+            nostr_dm_enabled: default_sos_nostr_dm_enabled(),
+            public_relay_url: None,
+            nostr_pin: None,
             auth: DashboardAuthConfig::default(),
         }
     }

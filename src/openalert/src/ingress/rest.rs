@@ -406,6 +406,10 @@ impl RestServer {
                 get(crate::ingress::sos::sos_challenge_handler),
             )
             .route(
+                "/api/v1/sos/nostr-info",
+                post(crate::ingress::sos::sos_nostr_info_handler),
+            )
+            .route(
                 "/api/v1/sos/trigger",
                 post(crate::ingress::sos::sos_trigger_handler),
             )

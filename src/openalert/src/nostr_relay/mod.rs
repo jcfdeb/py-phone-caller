@@ -6,6 +6,7 @@
 //! - **NIP-04 / NIP-44 / NIP-59**: End-to-end encrypted direct messages and Gift Wraps passthrough.
 
 use crate::config::NostrRelayServerConfig;
+use crate::egress::NostrPublisher;
 use crate::models::NostrEvent;
 use crate::storage::Storage;
 use axum::{
@@ -109,17 +110,23 @@ impl NostrFilter {
 pub struct RelayState {
     pub config: NostrRelayServerConfig,
     pub storage: Option<Arc<Storage>>,
+    pub publisher: Option<Arc<NostrPublisher>>,
     pub broadcast_tx: broadcast::Sender<Arc<NostrEvent>>,
     /// In-memory cache of recent events for quick historical replay.
     pub mem_events: RwLock<Vec<Arc<NostrEvent>>>,
 }
 
 impl RelayState {
-    pub fn new(config: NostrRelayServerConfig, storage: Option<Arc<Storage>>) -> Self {
+    pub fn new(
+        config: NostrRelayServerConfig,
+        storage: Option<Arc<Storage>>,
+        publisher: Option<Arc<NostrPublisher>>,
+    ) -> Self {
         let (broadcast_tx, _) = broadcast::channel(1024);
         Self {
             config,
             storage,
+            publisher,
             broadcast_tx,
             mem_events: RwLock::new(Vec::with_capacity(1000)),
         }
@@ -127,6 +134,20 @@ impl RelayState {
 
     /// Stores an event in memory and optional persistent storage.
     pub async fn save_event(&self, event: NostrEvent) -> Result<bool, String> {
+        // Auto-discover 0xChat subscriber public keys from incoming client events
+        if let Some(ref pub_ref) = self.publisher {
+            if event.kind == 4 || event.kind == 1059 {
+                for tag in &event.tags {
+                    if tag.len() >= 2 && tag[0] == "p" {
+                        let _ = pub_ref.register_oxchat_subscriber(&tag[1]).await;
+                    }
+                }
+            }
+            if event.kind == 30000 || event.kind == 4 {
+                let _ = pub_ref.register_oxchat_subscriber(&event.pubkey).await;
+            }
+        }
+
         let arc_ev = Arc::new(event);
 
         // Check if already in memory
@@ -202,7 +223,16 @@ pub struct EmbeddedNostrRelay {
 
 impl EmbeddedNostrRelay {
     pub fn new(config: NostrRelayServerConfig, storage: Option<Arc<Storage>>) -> Self {
-        let state = Arc::new(RelayState::new(config.clone(), storage));
+        let state = Arc::new(RelayState::new(config.clone(), storage, None));
+        Self { config, state }
+    }
+
+    pub fn with_publisher(
+        config: NostrRelayServerConfig,
+        storage: Option<Arc<Storage>>,
+        publisher: Arc<NostrPublisher>,
+    ) -> Self {
+        let state = Arc::new(RelayState::new(config.clone(), storage, Some(publisher)));
         Self { config, state }
     }
 
@@ -403,6 +433,13 @@ async fn handle_websocket(socket: WebSocket, state: Arc<RelayState>) {
                                 let mut filters = Vec::new();
                                 for filter_val in &arr[2..] {
                                     if let Ok(filter) = serde_json::from_value::<NostrFilter>(filter_val.clone()) {
+                                        if let Some(ref pub_ref) = state.publisher
+                                            && let Some(ref tag_p_list) = filter.tag_p
+                                        {
+                                            for p in tag_p_list {
+                                                let _ = pub_ref.register_oxchat_subscriber(p).await;
+                                            }
+                                        }
                                         filters.push(filter);
                                     }
                                 }

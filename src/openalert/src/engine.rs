@@ -108,6 +108,41 @@ impl AlertEngine {
         &self.nostr_publisher
     }
 
+    /// Returns an `Arc` handle to the active Nostr event publisher.
+    pub fn nostr_publisher_arc(&self) -> Arc<NostrPublisher> {
+        self.nostr_publisher.clone()
+    }
+
+    /// Seeds known 0xChat subscriber public keys from historical `nostr_events` in SQLite storage.
+    pub async fn seed_oxchat_subscribers_from_storage(&self) {
+        let Some(ref storage) = self.storage else {
+            return;
+        };
+        if let Ok(events) = storage
+            .query_nostr_events(Some(&[4, 1059, 30000]), None, None, None, None, None, 200)
+            .await
+        {
+            for ev in events {
+                if ev.kind == 4 || ev.kind == 1059 {
+                    for tag in &ev.tags {
+                        if tag.len() >= 2 && tag[0] == "p" {
+                            let _ = self
+                                .nostr_publisher
+                                .register_oxchat_subscriber(&tag[1])
+                                .await;
+                        }
+                    }
+                }
+                if ev.kind == 30000 || ev.kind == 4 {
+                    let _ = self
+                        .nostr_publisher
+                        .register_oxchat_subscriber(&ev.pubkey)
+                        .await;
+                }
+            }
+        }
+    }
+
     /// Returns a reference to the active Prometheus webhook dispatcher.
     pub fn webhook_dispatcher(&self) -> &PrometheusWebhookDispatcher {
         &self.webhook_dispatcher
@@ -276,7 +311,7 @@ impl AlertEngine {
             pubkey: self.nostr_publisher.public_key().to_string(),
             oxchat_enabled: self.config.nostr.oxchat.enabled,
             oxchat_mode: format!("{:?}", self.config.nostr.oxchat.mode).to_lowercase(),
-            oxchat_recipients_count: self.config.nostr.oxchat.recipients.len(),
+            oxchat_recipients_count: self.nostr_publisher.get_oxchat_subscribers().await.len(),
         };
 
         let bitchat_report = if let Some(bitchat) = self.bitchat_service().await {
@@ -563,28 +598,16 @@ impl AlertEngine {
                                 }
                             }
 
-                            // 2. 0xChat Mobile Presentation Events (E2EE Kind 4 or Public Kind 1)
+                            // 2. 0xChat Mobile Presentation Events (E2EE NIP-17 Gift Wrap Kind 1059 + NIP-04 Kind 4 to all subscribers + optional Public Kind 1)
                             if publisher.oxchat().enabled {
-                                match publisher.sign_oxchat_alert(&outbound_alert) {
-                                    Ok(oxchat_events) => {
-                                        for ev in oxchat_events {
-                                            publisher.publish_to_relays(&ev).await;
-                                            metrics
-                                                .alerts_dispatched_total
-                                                .with_label_values(&["oxchat", "success"])
-                                                .inc();
-                                        }
-                                    }
-                                    Err(err) => {
-                                        warn!(
-                                            "Failed to sign 0xChat event for alert [{}]: {}",
-                                            outbound_alert.alert_id, err
-                                        );
-                                        metrics
-                                            .alerts_dispatched_total
-                                            .with_label_values(&["oxchat", "failure"])
-                                            .inc();
-                                    }
+                                let count = publisher
+                                    .dispatch_oxchat_to_all_subscribers(&outbound_alert)
+                                    .await;
+                                if count > 0 {
+                                    metrics
+                                        .alerts_dispatched_total
+                                        .with_label_values(&["oxchat", "success"])
+                                        .inc();
                                 }
                             }
                         });

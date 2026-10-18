@@ -316,6 +316,11 @@ async fn main() -> Result<()> {
     let engine = Arc::new(AlertEngine::new(config.clone())?);
     engine.set_config_path(config_path.clone()).await;
 
+    // Seed any known 0xChat subscriber public keys from historical Nostr events in SQLite
+    if config.storage.enabled {
+        engine.seed_oxchat_subscribers_from_storage().await;
+    }
+
     // If storage recovery is enabled, re-route pending alerts from previous session
     if config.storage.enabled && config.storage.recover_pending_on_startup {
         let _ = engine.recover_pending_alerts().await;
@@ -328,9 +333,10 @@ async fn main() -> Result<()> {
 
     // Start embedded Nostr micro-relay if enabled in configuration
     if config.nostr.relay_server.enabled {
-        let relay = openalertd::EmbeddedNostrRelay::new(
+        let relay = openalertd::EmbeddedNostrRelay::with_publisher(
             config.nostr.relay_server.clone(),
             engine.storage().cloned(),
+            engine.nostr_publisher_arc(),
         );
         if let Err(e) = relay.start().await {
             error!("Failed to bind embedded Nostr micro-relay on {}: {}", config.nostr.relay_server.bind_address, e);

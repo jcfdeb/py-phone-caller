@@ -14,7 +14,7 @@ use secp256k1::{Keypair, Secp256k1};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -117,6 +117,7 @@ pub struct NostrPublisher {
     privacy: crate::config::NostrPrivacyConfig,
     oxchat: crate::config::OxChatConfig,
     health: Arc<RwLock<HashMap<String, RelayHealth>>>,
+    dynamic_subscribers: Arc<RwLock<HashSet<String>>>,
 }
 
 impl NostrPublisher {
@@ -156,6 +157,14 @@ impl NostrPublisher {
             health_map.insert(r.clone(), RelayHealth::new(r.clone()));
         }
 
+        let mut initial_subs = HashSet::new();
+        for r in &oxchat.recipients {
+            let clean = r.trim().to_lowercase();
+            if clean.len() == 64 && hex::decode(&clean).is_ok() && clean != pubkey_hex {
+                initial_subs.insert(clean);
+            }
+        }
+
         Self {
             keypair,
             pubkey_hex,
@@ -167,12 +176,150 @@ impl NostrPublisher {
             privacy,
             oxchat,
             health: Arc::new(RwLock::new(health_map)),
+            dynamic_subscribers: Arc::new(RwLock::new(initial_subs)),
         }
     }
 
     /// Returns the hex-encoded Schnorr public key of the publisher.
     pub fn public_key(&self) -> &str {
         &self.pubkey_hex
+    }
+
+    /// Returns the Bech32 `npub1...` representation of the publisher public key.
+    pub fn public_key_npub(&self) -> String {
+        if let Ok(bytes) = hex::decode(&self.pubkey_hex)
+            && let Ok(hrp) = bech32::Hrp::parse("npub")
+            && let Ok(npub) = bech32::encode::<bech32::Bech32>(hrp, &bytes)
+        {
+            npub
+        } else {
+            self.pubkey_hex.clone()
+        }
+    }
+
+    /// Dynamically registers an active 0xChat subscriber public key (32-byte hex).
+    /// Returns `true` if the subscriber was newly added.
+    pub async fn register_oxchat_subscriber(&self, pubkey_hex: &str) -> bool {
+        let clean = pubkey_hex.trim().to_lowercase();
+        if clean.len() != 64 || clean == self.pubkey_hex {
+            return false;
+        }
+        let Ok(bytes) = hex::decode(&clean) else {
+            return false;
+        };
+        if bytes.len() != 32 || secp256k1::XOnlyPublicKey::from_slice(&bytes).is_err() {
+            return false;
+        }
+        let mut guard = self.dynamic_subscribers.write().await;
+        let inserted = guard.insert(clean.clone());
+        if inserted {
+            info!(
+                "📲 [0xChat] Auto-registered active subscriber pubkey: {} (total subscribers: {})",
+                &clean[..12],
+                guard.len()
+            );
+        }
+        inserted
+    }
+
+    /// Returns all currently registered 0xChat subscriber public keys (static + dynamic).
+    pub async fn get_oxchat_subscribers(&self) -> Vec<String> {
+        let guard = self.dynamic_subscribers.read().await;
+        guard.iter().cloned().collect()
+    }
+
+    /// Dispatches encrypted 0xChat alert DMs (both NIP-17 Gift Wrap Kind 1059 and NIP-04 Kind 4)
+    /// to all registered 0xChat subscribers, plus an optional public timeline note if `mode == Public`.
+    pub async fn dispatch_oxchat_to_all_subscribers(&self, alert: &Alert) -> usize {
+        let mut total_confirmations = 0;
+
+        let subscribers = self.get_oxchat_subscribers().await;
+        for sub in &subscribers {
+            match self.dispatch_direct_oxchat_alert(sub, alert).await {
+                Ok(c) => {
+                    total_confirmations += c;
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to dispatch 0xChat encrypted DM to subscriber {}: {}",
+                        &sub[..12.min(sub.len())],
+                        e
+                    );
+                }
+            }
+        }
+
+        if self.oxchat.mode == crate::config::OxChatMode::Public
+            && let Ok(events) = self.sign_oxchat_alert(alert)
+        {
+            for ev in events {
+                total_confirmations += self.publish_to_relays(&ev).await;
+            }
+        }
+
+        total_confirmations
+    }
+
+    /// Dispatches an ad-hoc end-to-end encrypted 0xChat alert DM (both NIP-17 Gift Wrap and NIP-04 Kind 4)
+    /// to a specific recipient public key (32-byte hex).
+    pub async fn dispatch_direct_oxchat_alert(&self, recipient_hex: &str, alert: &Alert) -> Result<usize> {
+        let secp = Secp256k1::new();
+        let clean = recipient_hex.trim();
+        let recipient_bytes = hex::decode(clean).map_err(|e| {
+            crate::error::OpenAlertError::Crypto(format!("Invalid hex recipient: {:?}", e))
+        })?;
+        if recipient_bytes.len() != 32 {
+            return Err(crate::error::OpenAlertError::Crypto(format!(
+                "Recipient public key must be 32 bytes (got {})",
+                recipient_bytes.len()
+            )));
+        }
+        let xonly = secp256k1::XOnlyPublicKey::from_slice(&recipient_bytes).map_err(|e| {
+            crate::error::OpenAlertError::Crypto(format!("Invalid XOnly pubkey: {:?}", e))
+        })?;
+        let pk = crate::crypto::nip04::xonly_to_full_pubkey(&xonly)?;
+
+        let severity_emoji = match alert.severity {
+            crate::models::AlertSeverity::Emergency => "🚨🚨",
+            crate::models::AlertSeverity::Critical => "🚨",
+            crate::models::AlertSeverity::Warning => "⚠️",
+            crate::models::AlertSeverity::Info => "ℹ️",
+        };
+        let node_name = alert.node.as_deref().unwrap_or("openalert-node");
+        let desc = alert
+            .description
+            .as_deref()
+            .unwrap_or("No additional details.");
+
+        let formatted_text = format!(
+            "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\n\n{}\n\nID: {}",
+            severity_emoji,
+            alert.severity,
+            alert.summary,
+            node_name,
+            crate::time_sync::now_utc().format("%Y-%m-%d %H:%M:%S"),
+            desc,
+            alert.alert_id
+        );
+
+        let mut total_confirmations = 0;
+
+        // 1. Modern NIP-17 / NIP-59 Gift Wrap (Kind 1059)
+        if let Ok(gift_wrap) = crate::crypto::nip44::wrap_nip59_gift_wrap(&self.keypair, clean, &formatted_text) {
+            total_confirmations += self.publish_to_relays(&gift_wrap).await;
+        }
+
+        // 2. Legacy NIP-04 Direct Message (Kind 4)
+        let shared = crate::crypto::nip04::derive_shared_secret(&secp, &self.keypair.secret_key(), &pk)?;
+        let ciphertext = crate::crypto::nip04::nip04_encrypt(&shared, &formatted_text)?;
+        let tags = vec![
+            vec!["p".to_string(), clean.to_string()],
+            vec!["d".to_string(), alert.alert_id.clone()],
+        ];
+        let event = self.sign_custom_event(4, ciphertext, tags)?;
+        total_confirmations += self.publish_to_relays(&event).await;
+
+        Ok(total_confirmations)
     }
 
     /// Returns the secret key of the publisher.
@@ -250,14 +397,7 @@ impl NostrPublisher {
             .unwrap_or("No additional details.");
 
         let formatted_text = format!(
-            "{} [{:?} ALERT] {}
-
-Node: {}
-Time: {} UTC
-
-{}
-
-ID: {}",
+            "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\n\n{}\n\nID: {}",
             severity_emoji,
             alert.severity,
             alert.summary,

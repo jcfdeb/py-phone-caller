@@ -259,8 +259,14 @@ impl NostrSubscriber {
                 return;
             }
 
+            let _ = self
+                .engine
+                .nostr_publisher()
+                .register_oxchat_subscriber(&event.pubkey)
+                .await;
+
             if !self.config.oxchat.c2_enabled {
-                info!("Received Kind 4 DM, but 0xChat C2 is disabled; ignoring");
+                info!("Received Kind 4 DM from subscriber [{}]; 0xChat C2 is disabled", &event.pubkey[..12.min(event.pubkey.len())]);
                 return;
             }
 
@@ -361,11 +367,6 @@ impl NostrSubscriber {
                 return;
             }
 
-            if !self.config.oxchat.c2_enabled {
-                info!("Received Kind 1059 Gift Wrap, but 0xChat C2 is disabled; ignoring");
-                return;
-            }
-
             let unwrapped = match crate::crypto::nip44::unwrap_nip59_gift_wrap(
                 &self.engine.nostr_publisher().secret_key(),
                 &event.pubkey,
@@ -377,6 +378,20 @@ impl NostrSubscriber {
                     return;
                 }
             };
+
+            let _ = self
+                .engine
+                .nostr_publisher()
+                .register_oxchat_subscriber(&unwrapped.sender_pubkey)
+                .await;
+
+            if !self.config.oxchat.c2_enabled {
+                info!(
+                    "📲 Registered 0xChat subscriber [{}] from Kind 1059 Gift Wrap (C2 is disabled)",
+                    &unwrapped.sender_pubkey[..12.min(unwrapped.sender_pubkey.len())]
+                );
+                return;
+            }
 
             if !self.config.oxchat.is_operator_authorized(&unwrapped.sender_pubkey) {
                 warn!(
@@ -474,11 +489,39 @@ impl NostrSubscriber {
             }
         }
 
+        // 5b. Ignore NIP-51 Categorized People List events from 0xChat (e.g. Kind 30000 d="Chat-Friends")
+        // while registering the author as an active 0xChat subscriber.
         let is_encrypted = event.tags.iter().any(|t| {
             t.len() >= 2
                 && t[0] == "enc"
                 && (t[1] == "xchacha20poly1305" || t[1] == "chacha20poly1305")
         });
+        let has_openalert_marker = is_encrypted
+            || event.tags.iter().any(|t| {
+                t.len() >= 2
+                    && ((t[0] == "t" && (t[1].eq_ignore_ascii_case("alert") || t[1].eq_ignore_ascii_case("openalert")))
+                        || t[0] == "severity")
+            });
+        let is_nip51_people_list = event.kind == 30000
+            && event.tags.iter().any(|t| {
+                t.len() >= 2
+                    && t[0] == "d"
+                    && (t[1].starts_with("Chat-") || t[1].eq_ignore_ascii_case("friends") || t[1].eq_ignore_ascii_case("contacts"))
+            });
+
+        if is_nip51_people_list || (event.kind == 30000 && !has_openalert_marker && self.config.oxchat.enabled) {
+            let _ = self
+                .engine
+                .nostr_publisher()
+                .register_oxchat_subscriber(&event.pubkey)
+                .await;
+            info!(
+                "📲 Ignored non-alert NIP-51 list event [{}] and registered 0xChat subscriber [{}]",
+                &event.id[..8.min(event.id.len())],
+                &event.pubkey[..12.min(event.pubkey.len())]
+            );
+            return;
+        }
 
         let alert = if is_encrypted {
             // Check whitelist if configured
@@ -611,22 +654,14 @@ impl NostrSubscriber {
             "ping" => {
                 let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
                 Ok(format!(
-                    "🏓 PONG [OpenAlert Daemon]
-Time: {}
-Status: Operational",
+                    "🏓 PONG [OpenAlert Daemon]\nTime: {}\nStatus: Operational",
                     now
                 ))
             }
             "status" => {
                 let status = self.engine.get_status().await;
                 Ok(format!(
-                    "🛡️ [OpenAlert Status Report]
-Node: {}
-Version: {}
-Uptime: {}s
-Peering: {} active peer(s)
-Nostr Relays: {}
-Storage Spool: {} pending",
+                    "🛡️ [OpenAlert Status Report]\nNode: {}\nVersion: {}\nUptime: {}s\nPeering: {} active peer(s)\nNostr Relays: {}\nStorage Spool: {} pending",
                     status.node_name,
                     status.version,
                     status.uptime_seconds,
@@ -742,13 +777,7 @@ Storage Spool: {} pending",
                     Ok("⚠️ Cellular SMS gateway service is not active on this daemon.".to_string())
                 }
             }
-            "help" => Ok("📋 [OpenAlert 0xChat C2 Commands]
-                    - ping : Test latency and daemon heartbeat
-                    - status : Show daemon health and subsystem metrics
-                    - ack <alert_id> : Acknowledge and resolve an active alert
-                    - mesh <message> (or bitchat) : Broadcast message over BitChat BLE mesh
-                    - sms <number> <msg> : Send SMS via cellular gateway
-                    - help : Display this command manual"
+            "help" => Ok("📋 [OpenAlert 0xChat C2 Commands]\n                    - ping : Test latency and daemon heartbeat\n                    - status : Show daemon health and subsystem metrics\n                    - ack <alert_id> : Acknowledge and resolve an active alert\n                    - mesh <message> (or bitchat) : Broadcast message over BitChat BLE mesh\n                    - sms <number> <msg> : Send SMS via cellular gateway\n                    - help : Display this command manual"
                 .to_string()),
             unknown => Ok(format!(
                 "❓ Unknown command '{}'. Type 'help' for available commands.",

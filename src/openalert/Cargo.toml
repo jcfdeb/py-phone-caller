@@ -82,6 +82,7 @@ chacha20 = "0.9"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 rustls = { version = "0.23", features = ["ring"] }
 bech32 = "0.11"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 libc = "0.2"
 
 [dev-dependencies]
