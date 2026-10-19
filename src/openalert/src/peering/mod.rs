@@ -27,8 +27,8 @@ use crate::models::{Alert, PeeringStatusReport};
 use crate::peering::crypto::{KeyRegistry, encrypt_datagram};
 use crate::peering::lora::{LoraModulation, slip_encode};
 use crate::peering::wire::{
-    AckPacket, FLAG_ACK_REQ, FLAG_CANARY, PeeringPacket, TimeBeaconPacket, TimeSyncReqPacket,
-    TimeSyncRespPacket,
+    AckPacket, FLAG_ACK_REQ, FLAG_CANARY, PeeringPacket, RouteAdvPacket, TimeBeaconPacket,
+    TimeSyncReqPacket, TimeSyncRespPacket,
 };
 use crate::peering::worker::{
     AckWaiters, OutboundAlertRequest, PeerWorkerHandle, spawn_peer_worker,
@@ -330,6 +330,7 @@ impl PeeringService {
         let mut peers = Vec::new();
         for worker in self.workers.values() {
             let mut diag = worker.get_diagnostics(self.storage.as_deref()).await;
+            diag.last_seen_seconds_ago = rt.get_peer_last_seen_secs(&diag.name);
             if let Some(rf) = rt.get_peer_rf_telemetry(&diag.name) {
                 diag.rssi_dbm = Some(rf.avg_rssi_dbm);
                 diag.snr_db = Some(rf.avg_snr_db);
@@ -361,7 +362,7 @@ impl PeeringService {
         }
     }
 
-    /// Starts the background UDP receiver, LoRa Serial physical duplex tasks, and 3-tier TimeSync tasks.
+    /// Starts the background UDP receiver, LoRa Serial physical duplex tasks, and 3-tier TimeSync + Heartbeat tasks.
     pub fn start(self: Arc<Self>) {
         let self_udp = self.clone();
         tokio::spawn(async move {
@@ -383,67 +384,102 @@ impl PeeringService {
             }
         });
 
-        // Tier 2a: Cold-Boot TimeSyncReq challenge-response loop for off-grid client nodes
-        if self.config.time_sync.enabled
-            && self.config.time_sync.request_on_boot
-            && self.effective_time_sync_role() == "client"
-        {
+        // Tier 2a & Periodic Client Heartbeat: Cold-Boot TimeSyncReq + periodic LoRa link heartbeat
+        if self.config.time_sync.enabled && self.effective_time_sync_role() == "client" {
             let self_req = self.clone();
+            let request_on_boot = self.config.time_sync.request_on_boot;
+            let heartbeat_mins = self.config.time_sync.heartbeat_interval_minutes;
+
             tokio::spawn(async move {
                 // Allow serial/UDP interfaces 2s to initialize on startup
                 tokio::time::sleep(Duration::from_secs(2)).await;
-                let retry_delays_secs = [15u64, 30u64, 60u64];
 
-                for (attempt, delay_secs) in retry_delays_secs.iter().enumerate() {
-                    if attempt > 0 && crate::time_sync::is_synchronized() {
-                        break;
-                    }
+                if request_on_boot {
+                    let retry_delays_secs = [15u64, 30u64, 60u64];
+                    for (attempt, delay_secs) in retry_delays_secs.iter().enumerate() {
+                        if attempt > 0 && crate::time_sync::is_synchronized() {
+                            break;
+                        }
 
-                    let nonce: u64 = rand::rng().random();
-                    {
-                        let mut guard = self_req.pending_time_sync_nonce.lock().await;
-                        *guard = Some((nonce, Instant::now()));
-                    }
+                        let nonce: u64 = rand::rng().random();
+                        {
+                            let mut guard = self_req.pending_time_sync_nonce.lock().await;
+                            *guard = Some((nonce, Instant::now()));
+                        }
 
-                    let pkt = PeeringPacket::TimeSyncReq(TimeSyncReqPacket {
-                        client_nonce: nonce,
-                        client_ts_ms: crate::time_sync::now_utc_ms(),
-                        src: "fog-client".to_string(),
-                    });
+                        let pkt = PeeringPacket::TimeSyncReq(TimeSyncReqPacket {
+                            client_nonce: nonce,
+                            client_ts_ms: crate::time_sync::now_utc_ms(),
+                            src: "fog-client".to_string(),
+                        });
 
-                    for node in &self_req.config.nodes {
-                        if node.time_source.unwrap_or(true) {
-                            info!(
-                                "⏳ [LoRa TimeSync] Emitting cold-boot TimeSyncReq (attempt {}/{}, nonce: 0x{:016x}) to peer '{}'",
-                                attempt + 1,
-                                retry_delays_secs.len(),
-                                nonce,
-                                node.name
-                            );
-                            self_req
-                                .send_control_packet(&pkt, Some(&node.name), None)
-                                .await;
+                        for node in &self_req.config.nodes {
+                            if node.time_source.unwrap_or(true) {
+                                info!(
+                                    "⏳ [LoRa TimeSync] Emitting cold-boot TimeSyncReq (attempt {}/{}, nonce: 0x{:016x}) to peer '{}'",
+                                    attempt + 1,
+                                    retry_delays_secs.len(),
+                                    nonce,
+                                    node.name
+                                );
+                                self_req
+                                    .send_control_packet(&pkt, Some(&node.name), None)
+                                    .await;
+                            }
+                        }
+
+                        tokio::time::sleep(Duration::from_secs(*delay_secs)).await;
+                        if crate::time_sync::is_synchronized() {
+                            break;
                         }
                     }
+                }
 
-                    tokio::time::sleep(Duration::from_secs(*delay_secs)).await;
-                    if crate::time_sync::is_synchronized() {
-                        break;
+                // Periodic bidirectional LoRa heartbeat + clock drift compensation loop
+                if heartbeat_mins > 0 {
+                    let base_secs = heartbeat_mins.saturating_mul(60);
+                    loop {
+                        let jitter_secs: u64 = rand::rng().random_range(0..=15);
+                        tokio::time::sleep(Duration::from_secs(base_secs + jitter_secs)).await;
+
+                        let nonce: u64 = rand::rng().random();
+                        {
+                            let mut guard = self_req.pending_time_sync_nonce.lock().await;
+                            *guard = Some((nonce, Instant::now()));
+                        }
+
+                        let pkt = PeeringPacket::TimeSyncReq(TimeSyncReqPacket {
+                            client_nonce: nonce,
+                            client_ts_ms: crate::time_sync::now_utc_ms(),
+                            src: "fog-client".to_string(),
+                        });
+
+                        for node in &self_req.config.nodes {
+                            if node.time_source.unwrap_or(true) {
+                                info!(
+                                    "💓 [LoRa Heartbeat] Emitting periodic TimeSyncReq heartbeat (nonce: 0x{:016x}) to peer '{}'",
+                                    nonce, node.name
+                                );
+                                self_req
+                                    .send_control_packet(&pkt, Some(&node.name), None)
+                                    .await;
+                            }
+                        }
                     }
                 }
             });
         }
 
-        // Tier 2b: Ultra-sparse periodic TimeBeacon loop for NTP-backed server nodes (every N hours)
+        // Tier 2b: Periodic TimeBeacon loop for NTP-backed server nodes (configurable in minutes or hours)
+        let beacon_interval_secs = self.config.time_sync.effective_beacon_interval_secs();
         if self.config.time_sync.enabled
-            && self.config.time_sync.beacon_interval_hours > 0
+            && beacon_interval_secs > 0
             && self.effective_time_sync_role() == "server"
         {
             let self_beacon = self.clone();
-            let interval_hours = self.config.time_sync.beacon_interval_hours;
             tokio::spawn(async move {
-                // Emit an initial startup TimeBeacon after 4s so listening FOG nodes lock immediately
-                tokio::time::sleep(Duration::from_secs(4)).await;
+                // Emit an initial startup TimeBeacon after 6s so listening FOG nodes lock immediately
+                tokio::time::sleep(Duration::from_secs(6)).await;
                 loop {
                     if crate::time_sync::is_synchronized() {
                         let pkt = PeeringPacket::TimeBeacon(TimeBeaconPacket {
@@ -456,9 +492,10 @@ impl PeeringService {
                                 PeeringLinkType::LoraSerial | PeeringLinkType::Lora
                             ) {
                                 info!(
-                                    "🕰️ [LoRa TimeSync] Broadcasting authoritative TimeBeacon to LoRa peer '{}' (utc_ms: {})",
+                                    "🕰️ [LoRa TimeSync] Broadcasting authoritative TimeBeacon to LoRa peer '{}' (utc_ms: {}, interval: {}s)",
                                     node.name,
-                                    crate::time_sync::now_utc_ms()
+                                    crate::time_sync::now_utc_ms(),
+                                    beacon_interval_secs
                                 );
                                 self_beacon
                                     .send_control_packet(&pkt, Some(&node.name), None)
@@ -467,8 +504,8 @@ impl PeeringService {
                         }
                     }
 
-                    let jitter_secs: u64 = rand::rng().random_range(0..=30);
-                    let sleep_secs = (interval_hours * 3600).saturating_add(jitter_secs);
+                    let jitter_secs: u64 = rand::rng().random_range(0..=15);
+                    let sleep_secs = beacon_interval_secs.saturating_add(jitter_secs);
                     tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
                 }
             });
@@ -692,28 +729,29 @@ impl PeeringService {
             }
         }
 
-        if let Some(ref peer_name) = matched_peer
-            && let Some(telem) = rf_telemetry
-        {
-            let penalty = self.routing_table.write().await.update_peer_rf_telemetry(
-                peer_name,
-                telem.rssi_dbm,
-                telem.snr_db,
-            );
-            let eng_guard = self.engine.read().await;
-            if let Some(ref eng) = *eng_guard {
-                eng.metrics()
-                    .peering_rf_rssi_dbm
-                    .with_label_values(&[peer_name])
-                    .set(telem.rssi_dbm as f64);
-                eng.metrics()
-                    .peering_rf_snr_db
-                    .with_label_values(&[peer_name])
-                    .set(telem.snr_db as f64);
-                eng.metrics()
-                    .peering_rf_penalty_points
-                    .with_label_values(&[peer_name])
-                    .set(penalty as f64);
+        if let Some(ref peer_name) = matched_peer {
+            self.routing_table.write().await.record_peer_seen(peer_name);
+            if let Some(telem) = rf_telemetry {
+                let penalty = self.routing_table.write().await.update_peer_rf_telemetry(
+                    peer_name,
+                    telem.rssi_dbm,
+                    telem.snr_db,
+                );
+                let eng_guard = self.engine.read().await;
+                if let Some(ref eng) = *eng_guard {
+                    eng.metrics()
+                        .peering_rf_rssi_dbm
+                        .with_label_values(&[peer_name])
+                        .set(telem.rssi_dbm as f64);
+                    eng.metrics()
+                        .peering_rf_snr_db
+                        .with_label_values(&[peer_name])
+                        .set(telem.snr_db as f64);
+                    eng.metrics()
+                        .peering_rf_penalty_points
+                        .with_label_values(&[peer_name])
+                        .set(penalty as f64);
+                }
             }
         }
 
@@ -797,6 +835,33 @@ impl PeeringService {
                         false,
                     )
                     .await;
+
+                    // Reply with a lightweight RouteAdv heartbeat after a short half-duplex turnaround delay
+                    // so the upstream gateway also updates its last_seen & RF telemetry for this client node.
+                    let local_node_name = {
+                        let eng = self.engine.read().await;
+                        eng.as_ref()
+                            .map(|e| e.config().daemon.name.clone())
+                            .unwrap_or_else(|| "fog-client".to_string())
+                    };
+                    let peer_clone = matched_peer.clone();
+                    let adv = PeeringPacket::RouteAdv(RouteAdvPacket {
+                        src: local_node_name.clone(),
+                        ts: crate::time_sync::now_utc_secs() as u32,
+                        dst: local_node_name,
+                        metric: 100,
+                        hops: 1,
+                    });
+                    let turnaround_ms: u64 = rand::rng().random_range(1500..=2500);
+                    info!(
+                        "🕰️ [LoRa TimeSync] Received authoritative TimeBeacon from '{}' (utc_ms: {}); replying with RouteAdv heartbeat in {}ms",
+                        src_peer.unwrap_or("gateway"),
+                        beacon.server_utc_ms,
+                        turnaround_ms
+                    );
+                    tokio::time::sleep(Duration::from_millis(turnaround_ms)).await;
+                    self.send_control_packet(&adv, peer_clone.as_deref(), udp_addr)
+                        .await;
                 }
             }
             PeeringPacket::RouteAdv(adv) => {
@@ -812,9 +877,9 @@ impl PeeringService {
                 let mut rt = self.routing_table.write().await;
                 let via_peer = matched_peer.as_deref().unwrap_or(&adv.src);
                 rt.update_route(&adv.dst, via_peer, adv.metric, adv.hops);
-                debug!(
-                    "🗺️ Learned mesh route to '{}' via '{}' (metric: {}, hops: {})",
-                    adv.dst, via_peer, adv.metric, adv.hops
+                info!(
+                    "💓 [LoRa Heartbeat] Received RouteAdv heartbeat from '{}' (route: '{}', metric: {}, hops: {})",
+                    via_peer, adv.dst, adv.metric, adv.hops
                 );
             }
             PeeringPacket::Ack(ack) => {

@@ -117,6 +117,7 @@ pub fn calculate_link_cost_with_rf(
 pub struct RoutingTable {
     routes: HashMap<String, RouteEntry>,
     peer_telemetry: HashMap<String, PeerRfMetrics>,
+    peer_last_seen: HashMap<String, Instant>,
 }
 
 impl RoutingTable {
@@ -125,12 +126,26 @@ impl RoutingTable {
         Self {
             routes: HashMap::new(),
             peer_telemetry: HashMap::new(),
+            peer_last_seen: HashMap::new(),
         }
+    }
+
+    /// Records that an authenticated peering packet or heartbeat was received from `peer`.
+    pub fn record_peer_seen(&mut self, peer: &str) {
+        self.peer_last_seen.insert(peer.to_string(), Instant::now());
+    }
+
+    /// Returns the number of seconds elapsed since the last authenticated packet from `peer`.
+    pub fn get_peer_last_seen_secs(&self, peer: &str) -> Option<u64> {
+        self.peer_last_seen
+            .get(peer)
+            .map(|seen_at| seen_at.elapsed().as_secs())
     }
 
     /// Records physical RF telemetry (RSSI, SNR) for a neighbor peer,
     /// computes moving averages, and dynamically updates route metrics.
     pub fn update_peer_rf_telemetry(&mut self, peer: &str, rssi: i16, snr: f32) -> u32 {
+        self.record_peer_seen(peer);
         let entry = self.peer_telemetry.entry(peer.to_string()).or_default();
         entry.samples.push((rssi, snr));
         if entry.samples.len() > 5 {
@@ -174,6 +189,7 @@ impl RoutingTable {
         metric: u32,
         hops: u8,
     ) -> bool {
+        self.record_peer_seen(next_hop);
         let rf_meta = self.peer_telemetry.get(next_hop);
         let rssi_dbm = rf_meta.map(|m| m.avg_rssi_dbm);
         let snr_db = rf_meta.map(|m| m.avg_snr_db);
@@ -319,6 +335,7 @@ mod tests {
         // Link telemetry is nominal
         let penalty = table.update_peer_rf_telemetry("relay-node", -70, 5.0);
         assert_eq!(penalty, 0);
+        assert!(table.get_peer_last_seen_secs("relay-node").is_some());
 
         let route = table.get_routes(Duration::from_secs(60))[0].clone();
         assert_eq!(route.rssi_dbm, Some(-70));

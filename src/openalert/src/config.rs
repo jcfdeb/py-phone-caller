@@ -1249,10 +1249,10 @@ fn default_peering_addr() -> String {
     "127.0.0.1:0".to_string()
 }
 
-/// Off-Grid Authenticated LoRa Time Synchronization (`[peering.time_sync]`) settings.
+/// Off-Grid Authenticated LoRa Time Synchronization & Link Heartbeat (`[peering.time_sync]`) settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeeringTimeSyncConfig {
-    /// Enable the off-grid LoRa time synchronization subsystem (default: true).
+    /// Enable the off-grid LoRa time synchronization and link heartbeat subsystem (default: true).
     #[serde(default = "default_time_sync_enabled")]
     pub enabled: bool,
     /// Role: "server" (NTP-backed gateway) | "client" (RTC-less fog node) | "auto" (default).
@@ -1261,15 +1261,32 @@ pub struct PeeringTimeSyncConfig {
     /// Client setting: emit a 1-shot TimeSyncReq on cold boot if OS clock is unsynchronized (< 2025).
     #[serde(default = "default_time_sync_request_on_boot")]
     pub request_on_boot: bool,
-    /// Server setting: broadcast an unprompted TimeBeacon every N hours (0 = disabled, default: 12).
+    /// Server setting: broadcast an unprompted TimeBeacon every N minutes (if > 0, overrides beacon_interval_hours; default: 15).
+    #[serde(default = "default_time_sync_beacon_interval_minutes")]
+    pub beacon_interval_minutes: u64,
+    /// Server setting: broadcast an unprompted TimeBeacon every N hours when beacon_interval_minutes is 0 (default: 12).
     #[serde(default = "default_time_sync_beacon_interval_hours")]
     pub beacon_interval_hours: u64,
+    /// Client setting: emit a periodic LoRa heartbeat (`TimeSyncReq`) every N minutes to keep the RF link & clock locked (0 = disabled, default: 10).
+    #[serde(default = "default_time_sync_heartbeat_interval_minutes")]
+    pub heartbeat_interval_minutes: u64,
     /// Client setting: whether to step the OS kernel clock via clock_settime when CAP_SYS_TIME is available.
     #[serde(default = "default_time_sync_step_system_clock")]
     pub step_system_clock: bool,
     /// Tighten peering anti-replay skew tolerance to N seconds once synchronized (default: 300s).
     #[serde(default = "default_synced_clock_skew_tolerance_secs")]
     pub synced_clock_skew_tolerance_secs: u64,
+}
+
+impl PeeringTimeSyncConfig {
+    /// Returns the effective server TimeBeacon interval in seconds.
+    pub fn effective_beacon_interval_secs(&self) -> u64 {
+        if self.beacon_interval_minutes > 0 {
+            self.beacon_interval_minutes.saturating_mul(60)
+        } else {
+            self.beacon_interval_hours.saturating_mul(3600)
+        }
+    }
 }
 
 fn default_time_sync_enabled() -> bool {
@@ -1284,8 +1301,16 @@ fn default_time_sync_request_on_boot() -> bool {
     true
 }
 
+fn default_time_sync_beacon_interval_minutes() -> u64 {
+    15
+}
+
 fn default_time_sync_beacon_interval_hours() -> u64 {
     12
+}
+
+fn default_time_sync_heartbeat_interval_minutes() -> u64 {
+    10
 }
 
 fn default_time_sync_step_system_clock() -> bool {
@@ -1302,7 +1327,9 @@ impl Default for PeeringTimeSyncConfig {
             enabled: default_time_sync_enabled(),
             role: default_time_sync_role(),
             request_on_boot: default_time_sync_request_on_boot(),
+            beacon_interval_minutes: default_time_sync_beacon_interval_minutes(),
             beacon_interval_hours: default_time_sync_beacon_interval_hours(),
+            heartbeat_interval_minutes: default_time_sync_heartbeat_interval_minutes(),
             step_system_clock: default_time_sync_step_system_clock(),
             synced_clock_skew_tolerance_secs: default_synced_clock_skew_tolerance_secs(),
         }

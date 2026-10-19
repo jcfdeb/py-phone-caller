@@ -381,6 +381,9 @@ pub struct PeerDiagnostics {
     pub circuit_state: crate::peering::circuit_breaker::CircuitState,
     pub consecutive_failures: u32,
     pub spooled_count: usize,
+    /// Seconds elapsed since the last authenticated packet/heartbeat from this peer.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub last_seen_seconds_ago: Option<u64>,
     /// Real-time Received Signal Strength Indicator in dBm (if RF link).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rssi_dbm: Option<i16>,
