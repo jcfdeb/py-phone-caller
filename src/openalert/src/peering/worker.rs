@@ -245,6 +245,7 @@ impl PeerWorker {
                 self.send_lora_burst(&req.alert, flags, target_addr).await;
             }
             PeeringLinkType::LoraSerial => {
+                flags |= FLAG_ACK_REQ;
                 self.send_lora_serial(&req.alert, flags).await;
             }
             PeeringLinkType::Lan | PeeringLinkType::Vpn => {
@@ -255,6 +256,7 @@ impl PeerWorker {
     }
 
     async fn send_lora_serial(&mut self, alert: &Alert, flags: u8) {
+        let fp = alert.fingerprint_u64();
         let packet = PeeringPacket::Alert(AlertPacket::from_alert(alert, flags));
         let serialized = match packet.serialize() {
             Ok(s) => s,
@@ -273,10 +275,81 @@ impl PeerWorker {
         };
 
         let is_critical = alert.severity == crate::models::AlertSeverity::Critical;
-        if self
-            .send_lora_serial_raw_with_meta(&datagram, is_critical, Some(&alert.alert_id))
-            .await
-        {
+        let burst_count = self.node.burst_retries.unwrap_or(3).max(1);
+        let base_wait_ms = self.node.burst_interval_ms.unwrap_or(1400).max(900);
+        let max_jitter_ms = self.node.burst_jitter_ms.unwrap_or(350);
+
+        let dev_path = self
+            .node
+            .serial_device
+            .as_deref()
+            .unwrap_or("/dev/ttyUSB0")
+            .to_string();
+        let has_real_tx = self.lora_transmitters.contains_key(&dev_path);
+
+        let mut any_serial_dispatched = false;
+
+        for attempt in 0..burst_count {
+            let (ack_tx, ack_rx) = oneshot::channel();
+            {
+                let mut waiters = self.ack_waiters.lock().await;
+                waiters.insert(fp, ack_tx);
+            }
+
+            if !self
+                .send_lora_serial_raw_with_meta(&datagram, is_critical, Some(&alert.alert_id))
+                .await
+            {
+                let mut waiters = self.ack_waiters.lock().await;
+                waiters.remove(&fp);
+                break;
+            }
+
+            any_serial_dispatched = true;
+
+            if !has_real_tx {
+                let mut waiters = self.ack_waiters.lock().await;
+                waiters.remove(&fp);
+                break;
+            }
+
+            let jitter_ms: u64 = if max_jitter_ms > 0 {
+                rand::rng().random_range(0..=max_jitter_ms)
+            } else {
+                0
+            };
+            let wait_ms = base_wait_ms + jitter_ms;
+
+            match tokio::time::timeout(Duration::from_millis(wait_ms), ack_rx).await {
+                Ok(Ok(())) => {
+                    info!(
+                        "✅ [LoRa Serial ARQ Verified] Received over-the-air ACK from '{}' for alert [{}] (fp: 0x{:016x}) on attempt {}/{}",
+                        self.node.name,
+                        alert.alert_id,
+                        fp,
+                        attempt + 1,
+                        burst_count
+                    );
+                    break;
+                }
+                _ => {
+                    let mut waiters = self.ack_waiters.lock().await;
+                    waiters.remove(&fp);
+                    if attempt + 1 < burst_count {
+                        info!(
+                            "📻 [LoRa Serial ARQ Retry] No RF ACK within {}ms from '{}' for alert [{}]; transmitting redundant burst {}/{}",
+                            wait_ms,
+                            self.node.name,
+                            alert.alert_id,
+                            attempt + 2,
+                            burst_count
+                        );
+                    }
+                }
+            }
+        }
+
+        if any_serial_dispatched {
             self.cb.write().await.record_success();
         } else {
             self.cb.write().await.record_failure();

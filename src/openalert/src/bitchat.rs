@@ -1090,24 +1090,34 @@ impl BitChatService {
                                                                         );
                                                                         let _ = tx_w.send(enc_reply);
                                                                     }
-                                                                    {
+                                                                    let sender_nickname = {
                                                                         let mut p_guard = peer_map.write().await;
                                                                         if let Some(entry) = p_guard.get_mut(&from_peer) {
                                                                             entry.messages_received += 1;
                                                                             entry.messages_sent += 1;
                                                                             entry.last_seen = Instant::now();
+                                                                            entry.nickname.clone()
+                                                                        } else {
+                                                                            format!("Peer-{}", &hex::encode(from_peer)[..4])
                                                                         }
-                                                                    }
+                                                                    };
 
                                                                     if let Some(ref eng) = eng_opt {
+                                                                        let daemon_node = eng.config().daemon.name.clone();
+                                                                        let formatted_summary = crate::ingress::sos::format_sos_alert_text(
+                                                                            Some("SOS"),
+                                                                            Some(&sender_nickname),
+                                                                            &plain_text,
+                                                                            &daemon_node,
+                                                                        );
                                                                         let alert = Alert {
                                                                             alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
                                                                             severity: AlertSeverity::Critical,
-                                                                            summary: plain_text.clone(),
-                                                                            description: Some(plain_text.clone()),
+                                                                            summary: formatted_summary.clone(),
+                                                                            description: Some(formatted_summary),
                                                                             source: AlertSource::BitChat,
-                                                                            sender: Some(hex::encode(from_peer)),
-                                                                            node: Some(name_w.to_string()),
+                                                                            sender: Some(sender_nickname),
+                                                                            node: Some(daemon_node),
                                                                             starts_at: crate::time_sync::now_utc(),
                                                                             destinations: Vec::new(),
                                                                             origin_peer: None,
@@ -1185,15 +1195,30 @@ impl BitChatService {
                                             );
                                             let _ = tx_w.send(chat_reply);
 
+                                            let sender_nickname = {
+                                                let p_guard = peer_map.read().await;
+                                                p_guard
+                                                    .get(&from_peer)
+                                                    .map(|e| e.nickname.clone())
+                                                    .unwrap_or_else(|| format!("Peer-{}", &hex::encode(from_peer)[..4]))
+                                            };
+
                                             if let Some(ref eng) = eng_opt {
+                                                let daemon_node = eng.config().daemon.name.clone();
+                                                let formatted_summary = crate::ingress::sos::format_sos_alert_text(
+                                                    Some("SOS"),
+                                                    Some(&sender_nickname),
+                                                    &txt,
+                                                    &daemon_node,
+                                                );
                                                 let alert = Alert {
                                                     alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
                                                     severity: AlertSeverity::Critical,
-                                                    summary: txt.clone(),
-                                                    description: Some(txt.clone()),
+                                                    summary: formatted_summary.clone(),
+                                                    description: Some(formatted_summary),
                                                     source: AlertSource::BitChat,
-                                                    sender: Some(hex::encode(from_peer)),
-                                                    node: Some(name_w.to_string()),
+                                                    sender: Some(sender_nickname),
+                                                    node: Some(daemon_node),
                                                     starts_at: crate::time_sync::now_utc(),
                                                     destinations: Vec::new(),
                                                     origin_peer: None,
@@ -1216,15 +1241,29 @@ impl BitChatService {
                                                 hex::encode(from_peer),
                                                 parsed_pkt.recipient_id.map(hex::encode)
                                             );
+                                            let sender_nickname = {
+                                                let p_guard = peer_map.read().await;
+                                                p_guard
+                                                    .get(&from_peer)
+                                                    .map(|e| e.nickname.clone())
+                                                    .unwrap_or_else(|| format!("Peer-{}", &hex::encode(from_peer)[..4]))
+                                            };
                                             if let Some(ref eng) = eng_opt {
+                                                let daemon_node = eng.config().daemon.name.clone();
+                                                let formatted_summary = crate::ingress::sos::format_sos_alert_text(
+                                                    Some("SOS"),
+                                                    Some(&sender_nickname),
+                                                    &txt,
+                                                    &daemon_node,
+                                                );
                                                 let alert = Alert {
                                                     alert_id: format!("bitchat-{}-{}-{}", if is_broadcast { "bcast" } else { "msg" }, &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
                                                     severity: AlertSeverity::Critical,
-                                                    summary: txt.clone(),
-                                                    description: Some(txt.clone()),
+                                                    summary: formatted_summary.clone(),
+                                                    description: Some(formatted_summary),
                                                     source: AlertSource::BitChat,
-                                                    sender: Some(hex::encode(from_peer)),
-                                                    node: Some(name_w.to_string()),
+                                                    sender: Some(sender_nickname),
+                                                    node: Some(daemon_node),
                                                     starts_at: crate::time_sync::now_utc(),
                                                     destinations: Vec::new(),
                                                     origin_peer: None,

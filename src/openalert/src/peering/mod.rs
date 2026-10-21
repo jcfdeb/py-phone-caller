@@ -913,10 +913,8 @@ impl PeeringService {
 
                 // Check if canary probe
                 if alert_pkt.flags & FLAG_CANARY != 0 {
-                    if alert_pkt.flags & FLAG_ACK_REQ != 0
-                        && let Some(src_addr) = udp_addr
-                    {
-                        self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                    if alert_pkt.flags & FLAG_ACK_REQ != 0 {
+                        self.send_ack(alert_pkt.fp, udp_addr, matched_peer.as_deref())
                             .await;
                     }
                     return;
@@ -980,10 +978,8 @@ impl PeeringService {
                             "🛑 Dropped duplicate peering alert 0x{:016x} from {}",
                             alert_pkt.fp, src_desc
                         );
-                        if alert_pkt.flags & FLAG_ACK_REQ != 0
-                            && let Some(src_addr) = udp_addr
-                        {
-                            self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                        if alert_pkt.flags & FLAG_ACK_REQ != 0 {
+                            self.send_ack(alert_pkt.fp, udp_addr, matched_peer.as_deref())
                                 .await;
                         }
                         return;
@@ -991,11 +987,9 @@ impl PeeringService {
                     cache.insert(alert_pkt.fp, now);
                 }
 
-                // Respond with ACK if requested (Profile B on IP links)
-                if alert_pkt.flags & FLAG_ACK_REQ != 0
-                    && let Some(src_addr) = udp_addr
-                {
-                    self.send_ack(alert_pkt.fp, src_addr, matched_peer.as_deref())
+                // Respond with ACK if requested (IP links and half-duplex LoRa Serial ARQ)
+                if alert_pkt.flags & FLAG_ACK_REQ != 0 {
+                    self.send_ack(alert_pkt.fp, udp_addr, matched_peer.as_deref())
                         .await;
                 }
 
@@ -1058,21 +1052,23 @@ impl PeeringService {
         }
     }
 
-    async fn send_ack(&self, fp: u64, dest: std::net::SocketAddr, peer_name: Option<&str>) {
+    async fn send_ack(
+        &self,
+        fp: u64,
+        udp_addr: Option<std::net::SocketAddr>,
+        peer_name: Option<&str>,
+    ) {
         let ack_pkt = PeeringPacket::Ack(AckPacket {
             fp,
             ts: crate::time_sync::now_utc_secs() as u32,
         });
 
-        if let Ok(serialized) = ack_pkt.serialize() {
-            let key = peer_name
-                .and_then(|n| self.key_registry.get_key_for_peer(n))
-                .or_else(|| self.key_registry.get_key_for_peer(""))
-                .unwrap_or(&[0u8; 32]);
-
-            if let Ok(datagram) = encrypt_datagram(key, &serialized) {
-                let _ = self.socket.send_to(&datagram, dest).await;
-            }
+        if udp_addr.is_none() {
+            // Half-duplex LoRa Serial turnaround delay so sender SX1262 transitions from TX to RX
+            tokio::time::sleep(Duration::from_millis(180)).await;
         }
+
+        self.send_control_packet(&ack_pkt, peer_name, udp_addr)
+            .await;
     }
 }
