@@ -720,6 +720,10 @@ pub struct BitChatConfig {
     /// Custom BitChat GATT primary service UUID.
     #[serde(default = "default_service_uuid")]
     pub service_uuid: String,
+    /// Whether to broadcast an ACK reply onto the public BitChat BLE mesh when a public mesh alert is ingested.
+    /// Defaults to `false` to prevent mesh noise (1-on-1 private DM alerts always receive an ACK).
+    #[serde(default, alias = "mesh_ack_enabled", alias = "ack_public_mesh")]
+    pub public_mesh_ack: bool,
     /// Legacy TCP host for mock emulator bridge (deprecated).
     #[serde(default)]
     pub listen_host: Option<String>,
@@ -750,6 +754,7 @@ impl Default for BitChatConfig {
             device: default_ble_device(),
             node_name: default_ble_node_name(),
             service_uuid: default_service_uuid(),
+            public_mesh_ack: false,
             listen_host: None,
             listen_port: None,
             advertiser_script: None,

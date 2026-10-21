@@ -838,6 +838,7 @@ impl BitChatService {
         let sess_map = self.sessions.clone();
         let peer_map = self.peers.clone();
         let eng_opt = self.engine.clone();
+        let public_mesh_ack = self.config.public_mesh_ack;
         let my_sender_id = sender_id;
         let tx_w = bcast_tx.clone();
         let sk_w = sk_sub.clone();
@@ -1241,41 +1242,76 @@ impl BitChatService {
                                                 hex::encode(from_peer),
                                                 parsed_pkt.recipient_id.map(hex::encode)
                                             );
-                                            let sender_nickname = {
-                                                let p_guard = peer_map.read().await;
-                                                p_guard
-                                                    .get(&from_peer)
-                                                    .map(|e| e.nickname.clone())
-                                                    .unwrap_or_else(|| format!("Peer-{}", &hex::encode(from_peer)[..4]))
-                                            };
-                                            if let Some(ref eng) = eng_opt {
-                                                let daemon_node = eng.config().daemon.name.clone();
-                                                let formatted_summary = crate::ingress::sos::format_sos_alert_text(
-                                                    Some("SOS"),
-                                                    Some(&sender_nickname),
-                                                    &txt,
-                                                    &daemon_node,
+                                            // When BitChat is configured as an Egress destination on this node,
+                                            // only 1-to-1 private messages (DMs) to the OpenAlert peer are accepted as Ingress
+                                            // (which are then broadcast out to the public mesh via BitChatEgress), preventing public mesh echo loops.
+                                            let bitchat_egress_active = eng_opt.as_ref().is_some_and(|eng| {
+                                                let r = &eng.config().routing;
+                                                r.default_destinations.iter().any(|d| d == "bitchat")
+                                                    || r.failover_destinations.iter().any(|d| d == "bitchat")
+                                            });
+                                            let is_daemon_echo = txt.starts_with("🚀 [OpenAlert Daemon ACK]")
+                                                || txt.starts_with("🚨 [");
+
+                                            if bitchat_egress_active {
+                                                info!(
+                                                    "🛡️ [BitChat Split-Horizon] Ignoring public {} as ingress because BitChat Egress is enabled on this node (use 1-to-1 private chat to trigger alerts)",
+                                                    label
                                                 );
-                                                let alert = Alert {
-                                                    alert_id: format!("bitchat-{}-{}-{}", if is_broadcast { "bcast" } else { "msg" }, &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
-                                                    severity: AlertSeverity::Critical,
-                                                    summary: formatted_summary.clone(),
-                                                    description: Some(formatted_summary),
-                                                    source: AlertSource::BitChat,
-                                                    sender: Some(sender_nickname),
-                                                    node: Some(daemon_node),
-                                                    starts_at: crate::time_sync::now_utc(),
-                                                    destinations: Vec::new(),
-                                                    origin_peer: None,
-                                                    hop: 5,
+                                            } else if !is_daemon_echo {
+                                                if public_mesh_ack {
+                                                    let reply_txt = format!(
+                                                        "🚀 [OpenAlert Daemon ACK] Received mesh alert: \"{}\"",
+                                                        txt
+                                                    );
+                                                    let chat_reply = Self::build_chat_message_packet(
+                                                        &my_sender_id,
+                                                        None,
+                                                        &reply_txt,
+                                                        &sk_w,
+                                                    );
+                                                    info!(
+                                                        "💬 [BitChat GATT] Broadcasting public mesh ACK reply: \"{}\"",
+                                                        reply_txt
+                                                    );
+                                                    let _ = tx_w.send(chat_reply);
+                                                }
+                                                let sender_nickname = {
+                                                    let p_guard = peer_map.read().await;
+                                                    p_guard
+                                                        .get(&from_peer)
+                                                        .map(|e| e.nickname.clone())
+                                                        .unwrap_or_else(|| format!("Peer-{}", &hex::encode(from_peer)[..4]))
                                                 };
-                                                let eng_clone = eng.clone();
-                                                tokio::spawn(async move {
-                                                    sleep(Duration::from_millis(250)).await;
-                                                    if let Err(err) = eng_clone.route_alert(alert).await {
-                                                        warn!("Failed to route BitChat ingress alert: {}", err);
-                                                    }
-                                                });
+                                                if let Some(ref eng) = eng_opt {
+                                                    let daemon_node = eng.config().daemon.name.clone();
+                                                    let formatted_summary = crate::ingress::sos::format_sos_alert_text(
+                                                        Some("SOS"),
+                                                        Some(&sender_nickname),
+                                                        &txt,
+                                                        &daemon_node,
+                                                    );
+                                                    let alert = Alert {
+                                                        alert_id: format!("bitchat-{}-{}-{}", if is_broadcast { "bcast" } else { "msg" }, &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
+                                                        severity: AlertSeverity::Critical,
+                                                        summary: formatted_summary.clone(),
+                                                        description: Some(formatted_summary),
+                                                        source: AlertSource::BitChat,
+                                                        sender: Some(sender_nickname),
+                                                        node: Some(daemon_node),
+                                                        starts_at: crate::time_sync::now_utc(),
+                                                        destinations: Vec::new(),
+                                                        origin_peer: None,
+                                                        hop: 5,
+                                                    };
+                                                    let eng_clone = eng.clone();
+                                                    tokio::spawn(async move {
+                                                        sleep(Duration::from_millis(250)).await;
+                                                        if let Err(err) = eng_clone.route_alert(alert).await {
+                                                            warn!("Failed to route BitChat ingress alert: {}", err);
+                                                        }
+                                                    });
+                                                }
                                             }
                                         }
                                     }

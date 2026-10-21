@@ -126,6 +126,8 @@ enabled = true
 device = "hci0"
 node_name = "OpenAlert-Mesh"
 service_uuid = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c"
+# Broadcast an ACK message in the public mesh channel when a public mesh alert is received (default: false)
+public_mesh_ack = false
 
 [routing]
 # Routing destinations: "nostr", "webhook", "bitchat", "peering"
