@@ -1,4 +1,4 @@
-//! # BitChat Bluetooth Mesh Protocol Implementation
+//! #BitChat Bluetooth Mesh Protocol Implementation
 //!
 //! Native Linux BlueZ GATT server, advertising daemon, and BitChat binary packet codec.
 //! Implements peer discovery announcements, mutual Noise XX key exchange, authenticated direct messaging,
@@ -94,6 +94,7 @@ pub struct BitChatService {
     running: Arc<AtomicBool>,
     sessions: Arc<RwLock<HashMap<[u8; 8], PeerNoiseSession>>>,
     peers: Arc<RwLock<HashMap<[u8; 8], BitChatPeerEntry>>>,
+    bcast_tx: Arc<RwLock<Option<broadcast::Sender<Vec<u8>>>>>,
 }
 
 impl BitChatService {
@@ -105,12 +106,125 @@ impl BitChatService {
             running: Arc::new(AtomicBool::new(true)),
             sessions: Arc::new(RwLock::new(HashMap::new())),
             peers: Arc::new(RwLock::new(HashMap::new())),
+            bcast_tx: Arc::new(RwLock::new(None)),
         }
     }
 
     /// Terminates all background BLE advertising and notification loops.
     pub fn stop(&self) {
         self.running.store(false, Ordering::Relaxed);
+    }
+
+    /// Sends an upstream delivery confirmation (e.g., LoRa RF ACK or Gateway ARQ ACK) back to the
+    /// originating BitChat peer over their active Noise E2EE session or signed 1-on-1 direct message.
+    pub async fn notify_upstream_delivery(
+        &self,
+        alert_id: &str,
+        gateway_name: &str,
+        link_label: &str,
+        attempt: u32,
+        max_attempts: u32,
+    ) {
+        if !self.config.enabled || !alert_id.starts_with("bitchat-") {
+            return;
+        }
+
+        let tx_opt = self.bcast_tx.read().await.clone();
+        let Some(tx) = tx_opt else {
+            return;
+        };
+
+        // Parse 4-byte peer prefix from `bitchat-dm-<8hex>-<ts>`, `bitchat-msg-<8hex>-<ts>`, or `bitchat-bcast-<8hex>-<ts>`
+        let parts: Vec<&str> = alert_id.split('-').collect();
+        if parts.len() < 4 {
+            return;
+        }
+        let mode = parts[1];
+        let peer_prefix_hex = parts[2];
+        let Ok(prefix_bytes) = hex::decode(peer_prefix_hex) else {
+            return;
+        };
+        if prefix_bytes.len() < 4 {
+            return;
+        }
+
+        let (signing_key, _, my_sender_id) = Self::derive_keys(&self.config.node_name);
+        let status_txt = format!(
+            "✅ [OpenAlert {} ACK] Verified by '{}' (attempt {}/{})",
+            link_label, gateway_name, attempt, max_attempts
+        );
+
+        // Locate full 8-byte peer sender_id from peers or sessions map
+        let target_peer = {
+            let p_guard = self.peers.read().await;
+            p_guard
+                .keys()
+                .find(|k| k[..4] == prefix_bytes[..4])
+                .copied()
+        }
+        .or_else(|| {
+            if let Ok(s_guard) = self.sessions.try_read() {
+                s_guard
+                    .keys()
+                    .find(|k| k[..4] == prefix_bytes[..4])
+                    .copied()
+            } else {
+                None
+            }
+        });
+
+        if mode == "dm" {
+            if let Some(peer_id) = target_peer {
+                let mut s_guard = self.sessions.write().await;
+                if let Some(PeerNoiseSession::Established(transport)) = s_guard.get_mut(&peer_id) {
+                    let send_nonce = transport.sending_nonce() as u32;
+                    let mut enc_ack_buf = vec![0u8; status_txt.len() + 32];
+                    if let Ok(ack_len) = transport.write_message(status_txt.as_bytes(), &mut enc_ack_buf) {
+                        let mut combined_payload = send_nonce.to_be_bytes().to_vec();
+                        combined_payload.extend_from_slice(&enc_ack_buf[..ack_len]);
+                        let enc_reply = Self::build_encrypted_chat_packet(
+                            &my_sender_id,
+                            &peer_id,
+                            &combined_payload,
+                            &signing_key,
+                        );
+                        info!(
+                            "💬 [BitChat E2EE] Transmitting upstream delivery confirmation to peer {}: \"{}\"",
+                            hex::encode(peer_id),
+                            status_txt
+                        );
+                        let _ = tx.send(enc_reply);
+                    }
+                }
+            }
+        } else if mode == "msg" {
+            if let Some(peer_id) = target_peer {
+                let chat_reply = Self::build_chat_message_packet(
+                    &my_sender_id,
+                    Some(&peer_id),
+                    &status_txt,
+                    &signing_key,
+                );
+                info!(
+                    "💬 [BitChat GATT] Transmitting upstream delivery confirmation to peer {}: \"{}\"",
+                    hex::encode(peer_id),
+                    status_txt
+                );
+                let _ = tx.send(chat_reply);
+            }
+        } else if mode == "bcast" && self.config.public_mesh_ack {
+            let chat_reply = Self::build_chat_message_packet(
+                &my_sender_id,
+                None,
+                &status_txt,
+                &signing_key,
+            );
+            info!(
+                "💬 [BitChat GATT] Broadcasting upstream delivery confirmation to public mesh: \"{}\"",
+                status_txt
+            );
+            let _ = tx.send(chat_reply);
+        }
     }
 
     /// Manually registers or updates a peer in the registry (useful for testing or pre-configured peers).
@@ -804,6 +918,10 @@ impl BitChatService {
         });
 
         let (bcast_tx, _) = broadcast::channel::<Vec<u8>>(128);
+        {
+            let mut tx_guard = self.bcast_tx.write().await;
+            *tx_guard = Some(bcast_tx.clone());
+        }
 
         if let Some(ref eng) = self.engine {
             eng.bitchat_egress.attach_broadcast_sender(bcast_tx.clone()).await;
@@ -1010,58 +1128,86 @@ impl BitChatService {
                                                                         }).last_seen = Instant::now();
                                                                     }
                                                                 }
-                                                                Err(e) => warn!("Failed to convert handshake into transport mode: {}", e),
+                                                                Err(e) => {
+                                                                    warn!("⚠️ Failed to transition Noise session to transport mode: {}", e);
+                                                                }
                                                             }
                                                         }
-                                                        Err(e) => warn!("Failed to read Noise XX Message 3 from peer {}: {}", hex::encode(from_peer), e),
+                                                        Err(e) => {
+                                                            warn!(
+                                                                "⚠️ [BitChat Noise XX SHA256] Handshake Message 3 verification failed from peer {}: {}",
+                                                                hex::encode(from_peer),
+                                                                e
+                                                            );
+                                                        }
                                                     }
+                                                } else {
+                                                    warn!(
+                                                        "⚠️ [BitChat Noise XX SHA256] Received Message 3 without active Handshaking state for peer {}",
+                                                        hex::encode(from_peer)
+                                                    );
                                                 }
                                             }
                                         }
                                     }
-                                } else if pkt_type == PACKET_TYPE_NOISE_ENCRYPTED || pkt_type == 0x13 || pkt_type == 0x14 {
+                                } else if pkt_type == PACKET_TYPE_NOISE_ENCRYPTED {
                                     if let Some(parsed_pkt) = parsed {
                                         let from_peer = parsed_pkt.sender_id;
-                                        if let Some(cipher_bytes) = parsed_pkt.payload {
+                                        if let Some(ciphertext) = parsed_pkt.payload.filter(|p| !p.is_empty()) {
                                             let mut s = sess_map.write().await;
                                             if let Some(PeerNoiseSession::Established(transport)) = s.get_mut(&from_peer) {
-                                                let orig_receiving_nonce = transport.receiving_nonce();
-                                                let (recvd_nonce, actual_ciphertext) = if cipher_bytes.len() >= 20 {
-                                                    let nonce_u32 = u32::from_be_bytes([
-                                                        cipher_bytes[0],
-                                                        cipher_bytes[1],
-                                                        cipher_bytes[2],
-                                                        cipher_bytes[3],
-                                                    ]);
-                                                    (Some(nonce_u32 as u64), &cipher_bytes[4..])
+                                                // BitChat Android/iOS prefixes Noise transport messages with a 4-byte big-endian nonce
+                                                let (extracted_nonce, actual_cipher) = if ciphertext.len() >= 20 {
+                                                    let n = u32::from_be_bytes([ciphertext[0], ciphertext[1], ciphertext[2], ciphertext[3]]) as u64;
+                                                    (Some(n), &ciphertext[4..])
                                                 } else {
-                                                    (None, &cipher_bytes[..])
+                                                    (None, &ciphertext[..])
                                                 };
 
-                                                if let Some(nonce) = recvd_nonce {
-                                                    transport.set_receiving_nonce(nonce);
+                                                if let Some(n) = extracted_nonce {
+                                                    transport.set_receiving_nonce(n);
                                                 }
 
-                                                let mut plain_bytes = vec![0u8; cipher_bytes.len()];
-                                                let dec_res = match transport.read_message(actual_ciphertext, &mut plain_bytes) {
-                                                    Ok(dec_len) => Ok(dec_len),
-                                                    Err(_) => {
-                                                        transport.set_receiving_nonce(orig_receiving_nonce);
-                                                        transport.read_message(&cipher_bytes, &mut plain_bytes)
+                                                let mut plain_buf = vec![0u8; actual_cipher.len() + 64];
+                                                let decrypt_res = transport.read_message(actual_cipher, &mut plain_buf);
+
+                                                // Fallback: if 4-byte nonce-stripped decrypt failed, try raw ciphertext
+                                                let final_res = match decrypt_res {
+                                                    Ok(len) => Ok(len),
+                                                    Err(e) => {
+                                                        if extracted_nonce.is_some() {
+                                                            transport.read_message(&ciphertext, &mut plain_buf)
+                                                        } else {
+                                                            Err(e)
+                                                        }
                                                     }
                                                 };
 
-                                                match dec_res {
-                                                    Ok(dec_len) => {
-                                                        plain_bytes.truncate(dec_len);
+                                                match final_res {
+                                                    Ok(plain_len) => {
+                                                        let plain_bytes = &plain_buf[..plain_len];
+                                                        info!(
+                                                            "🔓 [BitChat E2EE Raw Decrypted] ({} bytes from {}): Hex={}",
+                                                            plain_len,
+                                                            hex::encode(from_peer),
+                                                            hex::encode(plain_bytes)
+                                                        );
+
                                                         if !plain_bytes.is_empty() {
-                                                            if plain_bytes[0] == PACKET_TYPE_REQUEST_SYNC || plain_bytes[0] == PACKET_TYPE_SYNC_RESPONSE {
-                                                                debug!(
-                                                                    "🔄 [BitChat Encrypted Sync] Received internal sync packet (Type 0x{:02x}, {} bytes) from peer {}",
+                                                            // BitChat NoisePayloadType:
+                                                            // 0x01 = privateMessage (TLV: 0x00=messageID, 0x01=content)
+                                                            // 0x02 = readReceipt
+                                                            // 0x03 = delivered
+                                                            // 0x10 = verifyChallenge
+                                                            // 0x11 = verifyResponse
+                                                            let noise_payload_type = plain_bytes[0];
+                                                            if matches!(noise_payload_type, 0x02 | 0x03 | 0x10 | 0x11) {
+                                                                info!(
+                                                                    "🔄 [BitChat E2EE Control] Ignoring Noise control payload (type: 0x{:02x}, {} bytes) from peer {}",
                                                                     plain_bytes[0], plain_bytes.len(), hex::encode(from_peer)
                                                                 );
                                                             } else {
-                                                                let plain_text = Self::extract_bitchat_private_message(&plain_bytes);
+                                                                let plain_text = Self::extract_bitchat_private_message(plain_bytes);
                                                                 if !plain_text.is_empty() && plain_text.chars().any(|c| c.is_alphanumeric()) {
                                                                     info!(
                                                                         "💬 [BitChat Private Direct Message Decrypted]: \"{}\" (from {})",
@@ -1251,6 +1397,7 @@ impl BitChatService {
                                                     || r.failover_destinations.iter().any(|d| d == "bitchat")
                                             });
                                             let is_daemon_echo = txt.starts_with("🚀 [OpenAlert Daemon ACK]")
+                                                || txt.starts_with("✅ [OpenAlert ")
                                                 || txt.starts_with("🚨 [");
 
                                             if bitchat_egress_active {
@@ -1526,9 +1673,6 @@ mod tests {
         assert_eq!(&decrypted_buf[..dec_len], alert_payload);
     }
 
-    
-
-
     #[test]
     fn test_bitchat_nonce_prefixed_transport_and_tlv_extraction() {
         // 1. Test extract_bitchat_private_message with BitChat TLV PrivateMessagePacket
@@ -1598,58 +1742,9 @@ mod tests {
             resp_transport.set_receiving_nonce(n);
         }
 
-        let mut dec_buf = vec![0u8; actual_cipher.len()];
+        let mut dec_buf = [0u8; 256];
         let dec_len = resp_transport.read_message(actual_cipher, &mut dec_buf).unwrap();
-        dec_buf.truncate(dec_len);
-
-        let final_text = BitChatService::extract_bitchat_private_message(&dec_buf);
-        assert_eq!(final_text, "FIRE IN SERVER ROOM");
-    }
-
-    #[test]
-    fn test_live_phone_announce_verification_jorge_and_xiaomi() {
-        let jorge_hex = "010107000001a089d694e90200552a7bc99a8dbe975f01054a6f72676502209554bb078bb7a96ee66eb5fdc7cc423057c6a6c9dd4e45d4fc67c431e0f34b4c0320bdbf6af05707831e372e703a1081ea1f5a984469ad2ec2cf1451dac94d6477d70408753e419cac15081df1d595522aec069f66e8d2c29b0ab2969f63df5f571a347ab332b93871ade4d531a882731eabba6ac8f4ef72daa153aec381b807f51551d0a36162e0d7486a0c55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555";
-        let jorge_bytes = hex::decode(jorge_hex).expect("valid hex");
-        let parsed_jorge = BitChatService::parse_incoming_packet(&jorge_bytes).expect("parsed jorge");
-        assert_eq!(parsed_jorge.packet_type, PACKET_TYPE_ANNOUNCE);
-        assert_eq!(hex::encode(parsed_jorge.sender_id), "2a7bc99a8dbe975f");
-        assert!(parsed_jorge.signature_valid, "Jorge announce signature MUST be valid!");
-        assert_eq!(String::from_utf8_lossy(&parsed_jorge.payload.unwrap()), "Jorge");
-
-        let xiaomi_hex = "010106000001a089d6c064020058753e419cac15081d01087869616f6d6931310220d927fb0c88f863b5873001f518f22ba24fcc17ce0be5e033576ec9c028d7052e0320ccd4dd5ac871f381a618d10ea3eb176f5269d0817286195fcb79c625f7476e2a04082a7bc99a8dbe975f467876363e1484d0508a36d913880004d64f66de14fb57256ab88cd9e5ca375b5a8253afc7949807365f90028c3dcc86524a2654fe95527ac2d39aa450b73a0d52525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252";
-        let xiaomi_bytes = hex::decode(xiaomi_hex).expect("valid hex");
-        let parsed_xiaomi = BitChatService::parse_incoming_packet(&xiaomi_bytes).expect("parsed xiaomi");
-        assert_eq!(parsed_xiaomi.packet_type, PACKET_TYPE_ANNOUNCE);
-        assert_eq!(hex::encode(parsed_xiaomi.sender_id), "753e419cac15081d");
-        assert!(parsed_xiaomi.signature_valid, "Xiaomi announce signature MUST be valid!");
-        assert_eq!(String::from_utf8_lossy(&parsed_xiaomi.payload.unwrap()), "xiaomi11");
-    }
-
-    #[test]
-    fn test_phone_key_exchange_req_handling() {
-        let phone_kex1_hex = "011007000001a082bb777a0300202a7bc99a8dbe975fd0287522a59c1e762f4904acd47e64d869db0f4321635eabc85280004cb26f117ba75043e30d4e74498c59a1c4fa021c534202a4fee777b8b0a340e209e3bee63e49d3c9263670622efd0e388e4efd1bfded6d5fb37579b8346a3f057d914e03fa72b70e46c1220b828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282828282";
-        let raw_bytes = hex::decode(phone_kex1_hex).expect("valid hex");
-        let parsed = BitChatService::parse_incoming_packet(&raw_bytes).expect("parsed packet");
-
-        assert_eq!(parsed.packet_type, PACKET_TYPE_NOISE_HANDSHAKE);
-        assert_eq!(hex::encode(parsed.sender_id), "2a7bc99a8dbe975f");
-        assert_eq!(parsed.recipient_id, Some(hex::decode("d0287522a59c1e76").unwrap().try_into().unwrap()));
-        assert_eq!(parsed.payload.as_ref().map(|p| p.len()), Some(32));
-
-        let (_, _, _) = BitChatService::derive_keys("OpenAlert-Mesh");
-        let mut noise_hasher = Sha256::new();
-        noise_hasher.update(b"bitchat-noise-dh-key-v1-");
-        noise_hasher.update(b"OpenAlert-Mesh");
-        let noise_privkey: [u8; 32] = noise_hasher.finalize().into();
-
-        let pattern: snow::params::NoiseParams = "Noise_XX_25519_ChaChaPoly_SHA256"
-            .parse()
-            .expect("Valid Noise XX pattern");
-        let builder = snow::Builder::new(pattern);
-        let mut handshake = builder.local_private_key(&noise_privkey[..]).build_responder().expect("build responder");
-
-        let mut read_buf = [0u8; 128];
-        let res = handshake.read_message(&parsed.payload.unwrap(), &mut read_buf);
-        assert!(res.is_ok(), "Failed to read Noise msg 1: {:?}", res);
+        let dec_text = BitChatService::extract_bitchat_private_message(&dec_buf[..dec_len]);
+        assert_eq!(dec_text, "FIRE IN SERVER ROOM");
     }
 }

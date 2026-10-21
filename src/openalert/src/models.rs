@@ -114,7 +114,16 @@ impl Alert {
     }
 
     /// Computes a 64-bit integer fingerprint for high-density peering datagrams.
+    /// If this alert was already received via peering (`peer-<src>-<16_hex_fp>`),
+    /// preserves the original 64-bit fingerprint deterministically across all hops.
     pub fn fingerprint_u64(&self) -> u64 {
+        if self.alert_id.starts_with("peer-")
+            && let Some(hex_suffix) = self.alert_id.rsplit('-').next()
+            && hex_suffix.len() == 16
+            && let Ok(parsed_fp) = u64::from_str_radix(hex_suffix, 16)
+        {
+            return parsed_fp;
+        }
         let mut hasher = Sha256::new();
         hasher.update(self.alert_id.as_bytes());
         hasher.update(self.summary.as_bytes());

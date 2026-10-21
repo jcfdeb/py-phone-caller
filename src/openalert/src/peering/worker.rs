@@ -6,6 +6,7 @@
 //! - **Asymmetric Circuit Breaker & SQLite Spool Draining:** Automatic fault isolation and FIFO recovery.
 
 use crate::config::{PeeringLinkType, PeeringNodeConfig};
+use crate::engine::AlertEngine;
 use crate::error::Result;
 use crate::models::{Alert, PeerDiagnostics};
 use crate::peering::circuit_breaker::{CircuitState, PeeringCircuitBreaker};
@@ -102,6 +103,7 @@ pub fn spawn_peer_worker(
     default_max_cooldown_secs: u64,
     default_canary_timeout_ms: u64,
     lora_transmitters: Arc<HashMap<String, mpsc::Sender<Vec<u8>>>>,
+    engine: Arc<RwLock<Option<Arc<AlertEngine>>>>,
 ) -> PeerWorkerHandle {
     let (tx, rx) = mpsc::channel::<OutboundAlertRequest>(128);
     let name = node.name.clone();
@@ -143,6 +145,7 @@ pub fn spawn_peer_worker(
         cb: cb.clone(),
         lora_limiter,
         lora_transmitters,
+        engine,
     };
 
     tokio::spawn(async move {
@@ -165,9 +168,30 @@ struct PeerWorker {
     cb: Arc<RwLock<PeeringCircuitBreaker>>,
     lora_limiter: Arc<Mutex<LoraDutyCycleLimiter>>,
     lora_transmitters: Arc<HashMap<String, mpsc::Sender<Vec<u8>>>>,
+    engine: Arc<RwLock<Option<Arc<AlertEngine>>>>,
 }
 
 impl PeerWorker {
+    async fn notify_bitchat_delivery(
+        &self,
+        alert_id: &str,
+        link_label: &str,
+        attempt: u32,
+        max_attempts: u32,
+    ) {
+        if !alert_id.starts_with("bitchat-") {
+            return;
+        }
+        let eng_opt = self.engine.read().await.clone();
+        if let Some(eng) = eng_opt
+            && let Some(bitchat) = eng.bitchat_service().await
+        {
+            bitchat
+                .notify_upstream_delivery(alert_id, &self.node.name, link_label, attempt, max_attempts)
+                .await;
+        }
+    }
+
     async fn resolve_target_addr(&self) -> Option<SocketAddr> {
         if let Ok(addr) = self.node.addr.parse::<SocketAddr>() {
             return Some(addr);
@@ -330,6 +354,13 @@ impl PeerWorker {
                         attempt + 1,
                         burst_count
                     );
+                    self.notify_bitchat_delivery(
+                        &alert.alert_id,
+                        "LoRa",
+                        attempt + 1,
+                        burst_count,
+                    )
+                    .await;
                     break;
                 }
                 _ => {
@@ -549,6 +580,13 @@ impl PeerWorker {
                     );
                     delivered = true;
                     self.cb.write().await.record_success();
+                    self.notify_bitchat_delivery(
+                        &alert.alert_id,
+                        "Gateway",
+                        attempt + 1,
+                        max_attempts + 1,
+                    )
+                    .await;
                     break;
                 }
                 _ => {

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Service managing persistent WebSocket subscriptions to configured Nostr relays.
 pub struct NostrSubscriber {
@@ -270,6 +270,18 @@ impl NostrSubscriber {
                 return;
             }
 
+            let max_c2_age = self.config.subscription_lookback_seconds.max(300) as i64;
+            if event.created_at > 0 && now.saturating_sub(event.created_at as i64) > max_c2_age {
+                debug!(
+                    "⏳ Ignoring historical 0xChat Kind 4 C2 command [{}] from [{}] (created {}s ago > {}s lookback)",
+                    &event.id[..8.min(event.id.len())],
+                    &event.pubkey[..12.min(event.pubkey.len())],
+                    now.saturating_sub(event.created_at as i64),
+                    max_c2_age
+                );
+                return;
+            }
+
             if self
                 .engine
                 .is_duplicate_and_record(&format!("c2-ev:{}", event.id))
@@ -397,6 +409,21 @@ impl NostrSubscriber {
                 info!(
                     "📲 Registered 0xChat subscriber [{}] from Kind 1059 Gift Wrap (C2 is disabled)",
                     &unwrapped.sender_pubkey[..12.min(unwrapped.sender_pubkey.len())]
+                );
+                return;
+            }
+
+            // Guard against replaying historical NIP-17 C2 commands on daemon restart or reconnect:
+            // while outer Kind 1059 created_at is intentionally randomized up to 2 days into the past,
+            // the decrypted inner Kind 14 rumor preserves the true authoring timestamp (`unwrapped.created_at`).
+            let max_c2_age = self.config.subscription_lookback_seconds.max(300) as i64;
+            if unwrapped.created_at > 0 && now.saturating_sub(unwrapped.created_at as i64) > max_c2_age {
+                debug!(
+                    "⏳ Ignoring historical 0xChat NIP-17 C2 command [{}] from [{}] (inner rumor created {}s ago > {}s lookback)",
+                    &event.id[..8.min(event.id.len())],
+                    &unwrapped.sender_pubkey[..12.min(unwrapped.sender_pubkey.len())],
+                    now.saturating_sub(unwrapped.created_at as i64),
+                    max_c2_age
                 );
                 return;
             }

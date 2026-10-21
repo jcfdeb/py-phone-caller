@@ -91,6 +91,7 @@ impl PeeringService {
 
         let key_registry = Arc::new(KeyRegistry::new(&config.shared_key, &peer_overrides)?);
         let ack_waiters: AckWaiters = Arc::new(Mutex::new(HashMap::new()));
+        let engine: Arc<RwLock<Option<Arc<AlertEngine>>>> = Arc::new(RwLock::new(None));
         let mut workers = HashMap::new();
 
         let mut lora_tx_map = HashMap::new();
@@ -133,6 +134,7 @@ impl PeeringService {
                 config.circuit_breaker.max_cooldown_secs,
                 config.circuit_breaker.canary_timeout_ms,
                 lora_transmitters.clone(),
+                engine.clone(),
             );
             workers.insert(node.name.clone(), handle);
         }
@@ -153,7 +155,7 @@ impl PeeringService {
             ack_waiters,
             dedup_cache: Arc::new(Mutex::new(HashMap::new())),
             routing_table: Arc::new(RwLock::new(RoutingTable::new())),
-            engine: Arc::new(RwLock::new(None)),
+            engine,
             storage,
             lora_transmitters,
             lora_pending_receivers: Arc::new(Mutex::new(lora_rx_map)),

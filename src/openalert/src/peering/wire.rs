@@ -258,6 +258,46 @@ mod tests {
     }
 
     #[test]
+    fn test_multi_hop_peering_fingerprint_and_alert_id_preservation() {
+        let origin_alert = Alert {
+            alert_id: "bitchat-dm-e6b4aa34-1792607960680".to_string(),
+            severity: AlertSeverity::Critical,
+            summary: "[SOS] (JCF): Fire in sector 4 [openalert-node02]".to_string(),
+            description: Some("[SOS] (JCF): Fire in sector 4 [openalert-node02]".to_string()),
+            source: AlertSource::BitChat,
+            sender: Some("JCF".to_string()),
+            node: Some("openalert-node02".to_string()),
+            starts_at: Utc::now(),
+            destinations: vec!["peering".to_string()],
+            origin_peer: None,
+            hop: 5,
+        };
+
+        let expected_fp = origin_alert.fingerprint_u64();
+
+        // Hop 1: node02 -> node01
+        let pkt_hop1 = AlertPacket::from_alert(&origin_alert, FLAG_ACK_REQ);
+        assert_eq!(pkt_hop1.fp, expected_fp);
+        assert_eq!(pkt_hop1.src, "openalert-node02");
+
+        let alert_at_node01 = pkt_hop1.into_alert(Some("node02-lora-fog".to_string()));
+        assert_eq!(
+            alert_at_node01.alert_id,
+            format!("peer-openalert-node02-{:016x}", expected_fp)
+        );
+        assert_eq!(alert_at_node01.fingerprint_u64(), expected_fp);
+
+        // Hop 2: node01 -> Hetzner (openalertd)
+        let pkt_hop2 = AlertPacket::from_alert(&alert_at_node01, FLAG_ACK_REQ);
+        assert_eq!(pkt_hop2.fp, expected_fp);
+        assert_eq!(pkt_hop2.src, "openalert-node02");
+
+        let alert_at_hetzner = pkt_hop2.into_alert(Some("openalert-node01".to_string()));
+        assert_eq!(alert_at_hetzner.alert_id, alert_at_node01.alert_id);
+        assert_eq!(alert_at_hetzner.fingerprint_u64(), expected_fp);
+    }
+
+    #[test]
     fn test_alert_packet_fallback_to_summary_when_desc_missing() {
         let packet = AlertPacket {
             fp: 0x12345678,

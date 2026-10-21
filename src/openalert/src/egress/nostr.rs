@@ -286,30 +286,42 @@ impl NostrPublisher {
             crate::models::AlertSeverity::Info => "ℹ️",
         };
         let node_name = alert.node.as_deref().unwrap_or("openalert-node");
-        let desc = alert
+        let extra_desc = alert
             .description
             .as_deref()
-            .unwrap_or("No additional details.");
+            .map(|d| d.trim())
+            .filter(|d| !d.is_empty() && *d != alert.summary.trim());
 
-        let formatted_text = format!(
-            "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\n\n{}\n\nID: {}",
-            severity_emoji,
-            alert.severity,
-            alert.summary,
-            node_name,
-            crate::time_sync::now_utc().format("%Y-%m-%d %H:%M:%S"),
-            desc,
-            alert.alert_id
-        );
+        let formatted_text = if let Some(desc) = extra_desc {
+            format!(
+                "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\n\n{}\n\nID: {}",
+                severity_emoji,
+                alert.severity,
+                alert.summary,
+                node_name,
+                crate::time_sync::now_utc().format("%Y-%m-%d %H:%M:%S"),
+                desc,
+                alert.alert_id
+            )
+        } else {
+            format!(
+                "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\nID: {}",
+                severity_emoji,
+                alert.severity,
+                alert.summary,
+                node_name,
+                crate::time_sync::now_utc().format("%Y-%m-%d %H:%M:%S"),
+                alert.alert_id
+            )
+        };
 
-        let mut total_confirmations = 0;
-
-        // 1. Modern NIP-17 / NIP-59 Gift Wrap (Kind 1059)
+        // Primary: Modern NIP-17 / NIP-59 Gift Wrap (Kind 1059) for 0xChat without duplicate legacy Kind 4 warnings
         if let Ok(gift_wrap) = crate::crypto::nip44::wrap_nip59_gift_wrap(&self.keypair, clean, &formatted_text) {
-            total_confirmations += self.publish_to_relays(&gift_wrap).await;
+            let confirmed = self.publish_to_relays(&gift_wrap).await;
+            return Ok(confirmed);
         }
 
-        // 2. Legacy NIP-04 Direct Message (Kind 4)
+        // Fallback: Legacy NIP-04 Direct Message (Kind 4) only if NIP-59 Gift Wrap fails
         let shared = crate::crypto::nip04::derive_shared_secret(&secp, &self.keypair.secret_key(), &pk)?;
         let ciphertext = crate::crypto::nip04::nip04_encrypt(&shared, &formatted_text)?;
         let tags = vec![
@@ -317,9 +329,9 @@ impl NostrPublisher {
             vec!["d".to_string(), alert.alert_id.clone()],
         ];
         let event = self.sign_custom_event(4, ciphertext, tags)?;
-        total_confirmations += self.publish_to_relays(&event).await;
+        let confirmed = self.publish_to_relays(&event).await;
 
-        Ok(total_confirmations)
+        Ok(confirmed)
     }
 
     /// Returns the secret key of the publisher.
@@ -460,21 +472,34 @@ impl NostrPublisher {
         };
 
         let node_name = alert.node.as_deref().unwrap_or("openalert-node");
-        let desc = alert
+        let extra_desc = alert
             .description
             .as_deref()
-            .unwrap_or("No additional details.");
+            .map(|d| d.trim())
+            .filter(|d| !d.is_empty() && *d != alert.summary.trim());
 
-        let formatted_text = format!(
-            "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\n\n{}\n\nID: {}",
-            severity_emoji,
-            alert.severity,
-            alert.summary,
-            node_name,
-            Utc::now().format("%Y-%m-%d %H:%M:%S"),
-            desc,
-            alert.alert_id
-        );
+        let formatted_text = if let Some(desc) = extra_desc {
+            format!(
+                "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\n\n{}\n\nID: {}",
+                severity_emoji,
+                alert.severity,
+                alert.summary,
+                node_name,
+                Utc::now().format("%Y-%m-%d %H:%M:%S"),
+                desc,
+                alert.alert_id
+            )
+        } else {
+            format!(
+                "{} [{:?} ALERT] {}\n\nNode: {}\nTime: {} UTC\nID: {}",
+                severity_emoji,
+                alert.severity,
+                alert.summary,
+                node_name,
+                Utc::now().format("%Y-%m-%d %H:%M:%S"),
+                alert.alert_id
+            )
+        };
 
         match self.oxchat.mode {
             crate::config::OxChatMode::Dm => {
@@ -555,12 +580,13 @@ impl NostrPublisher {
             vec!["t".to_string(), "c2_response".to_string()],
         ];
 
-        // 1. Send Modern NIP-17 / NIP-59 Gift Wrap (for 0xChat modern clients)
+        // Primary: Send Modern NIP-17 / NIP-59 Gift Wrap (Kind 1059) for 0xChat without duplicate legacy Kind 4 warnings
         if let Ok(gift_wrap) = crate::crypto::nip44::wrap_nip59_gift_wrap(&self.keypair, clean, response_text) {
             self.publish_to_relays(&gift_wrap).await;
+            return Ok(());
         }
 
-        // 2. Send Legacy NIP-04 Direct Message (fallback)
+        // Fallback: Send Legacy NIP-04 Direct Message only if NIP-59 Gift Wrap fails
         let event = self.sign_custom_event(4, ciphertext, tags)?;
         self.publish_to_relays(&event).await;
         Ok(())
