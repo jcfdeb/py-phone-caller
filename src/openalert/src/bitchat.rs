@@ -178,8 +178,9 @@ impl BitChatService {
                 let mut s_guard = self.sessions.write().await;
                 if let Some(PeerNoiseSession::Established(transport)) = s_guard.get_mut(&peer_id) {
                     let send_nonce = transport.sending_nonce() as u32;
-                    let mut enc_ack_buf = vec![0u8; status_txt.len() + 32];
-                    if let Ok(ack_len) = transport.write_message(status_txt.as_bytes(), &mut enc_ack_buf) {
+                    let tlv_payload = Self::encode_bitchat_private_message(&status_txt);
+                    let mut enc_ack_buf = vec![0u8; tlv_payload.len() + 32];
+                    if let Ok(ack_len) = transport.write_message(&tlv_payload, &mut enc_ack_buf) {
                         let mut combined_payload = send_nonce.to_be_bytes().to_vec();
                         combined_payload.extend_from_slice(&enc_ack_buf[..ack_len]);
                         let enc_reply = Self::build_encrypted_chat_packet(
@@ -353,12 +354,38 @@ impl BitChatService {
         Self::pad_to_bucket(preimage, bucket_size)
     }
 
-    /// Encodes TLV metadata blocks (Nickname, Noise X25519 Pubkey, Ed25519 Signing Pubkey) for Node Announcements.
+    /// Encodes a plain text message into a canonical BitChat `PrivateMessage` TLV payload:
+    /// `0x01 (PrivateMessage) || 0x00 <len:36> <UPPERCASE-UUID-v4> || 0x01 <len> <UTF-8 bytes>`
+    /// so that mobile BitChat clients render the encrypted reply as an incoming DM bubble.
+    pub fn encode_bitchat_private_message(text: &str) -> Vec<u8> {
+        let msg_id = uuid::Uuid::new_v4().to_string().to_uppercase();
+        let id_bytes = msg_id.as_bytes();
+        let content_bytes = text.as_bytes();
+        let clamped_len = content_bytes.len().min(180);
+
+        let mut buf = Vec::with_capacity(1 + 2 + id_bytes.len() + 2 + clamped_len);
+        buf.push(0x01); // NoisePayloadType::PrivateMessage
+        buf.push(0x00); // TLV tag 0x00: messageID
+        buf.push(id_bytes.len() as u8);
+        buf.extend_from_slice(id_bytes);
+        buf.push(0x01); // TLV tag 0x01: content
+        buf.push(clamped_len as u8);
+        buf.extend_from_slice(&content_bytes[..clamped_len]);
+        buf
+    }
+
     /// Extracts plain text from BitChat decrypted Noise transport payload.
     /// Supports BitChat PrivateMessagePacket (0x01 || tag 0x00 msgID || tag 0x01 content)
-    /// as well as raw UTF-8 payloads.
+    /// as well as strict valid UTF-8 payloads, while rejecting post-handshake binary/control frames.
     pub fn extract_bitchat_private_message(plaintext: &[u8]) -> String {
         if plaintext.is_empty() {
+            return String::new();
+        }
+
+        // Ignore known non-chat Noise control/sync payload types:
+        // 0x02 = readReceipt, 0x03 = delivered, 0x10 = verifyChallenge,
+        // 0x11 = verifyResponse, 0x20 = requestSync, 0x21 = identity/sync response
+        if matches!(plaintext[0], 0x02 | 0x03 | 0x10 | 0x11 | 0x20 | 0x21) {
             return String::new();
         }
 
@@ -373,7 +400,13 @@ impl BitChatService {
                 if offset + len <= plaintext.len() {
                     let val = &plaintext[offset..offset + len];
                     if tag == 0x01 {
-                        extracted_content = std::str::from_utf8(val).ok().map(|s| s.trim().to_string());
+                        extracted_content = std::str::from_utf8(val)
+                            .ok()
+                            .filter(|s| {
+                                !s.chars()
+                                    .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+                            })
+                            .map(|s| s.trim().to_string());
                     }
                     offset += len;
                 } else {
@@ -385,13 +418,15 @@ impl BitChatService {
             }
         }
 
-        // Fallback: strip leading control byte (<= 0x20) if present
-        let clean = if plaintext[0] <= 0x20 {
-            &plaintext[1..]
-        } else {
-            plaintext
-        };
-        String::from_utf8_lossy(clean).trim().to_string()
+        // Fallback: only accept strict valid UTF-8 with no binary control characters
+        std::str::from_utf8(plaintext)
+            .ok()
+            .filter(|s| {
+                !s.chars()
+                    .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+            })
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
     }
 
     pub fn build_announce_payload(
@@ -1200,10 +1235,11 @@ impl BitChatService {
                                                             // 0x03 = delivered
                                                             // 0x10 = verifyChallenge
                                                             // 0x11 = verifyResponse
+                                                            // 0x20 / 0x21 = post-handshake identity / sync frame
                                                             let noise_payload_type = plain_bytes[0];
-                                                            if matches!(noise_payload_type, 0x02 | 0x03 | 0x10 | 0x11) {
+                                                            if matches!(noise_payload_type, 0x02 | 0x03 | 0x10 | 0x11 | 0x20 | 0x21) {
                                                                 info!(
-                                                                    "🔄 [BitChat E2EE Control] Ignoring Noise control payload (type: 0x{:02x}, {} bytes) from peer {}",
+                                                                    "🔄 [BitChat E2EE Control] Ignoring Noise control/sync payload (type: 0x{:02x}, {} bytes) from peer {}",
                                                                     plain_bytes[0], plain_bytes.len(), hex::encode(from_peer)
                                                                 );
                                                             } else {
@@ -1220,8 +1256,9 @@ impl BitChatService {
                                                                         plain_text
                                                                     );
                                                                     let send_nonce = transport.sending_nonce() as u32;
-                                                                    let mut enc_ack_buf = vec![0u8; reply_txt.len() + 32];
-                                                                    if let Ok(ack_len) = transport.write_message(reply_txt.as_bytes(), &mut enc_ack_buf) {
+                                                                    let tlv_reply = Self::encode_bitchat_private_message(&reply_txt);
+                                                                    let mut enc_ack_buf = vec![0u8; tlv_reply.len() + 32];
+                                                                    if let Ok(ack_len) = transport.write_message(&tlv_reply, &mut enc_ack_buf) {
                                                                         let mut combined_payload = send_nonce.to_be_bytes().to_vec();
                                                                         combined_payload.extend_from_slice(&enc_ack_buf[..ack_len]);
                                                                         let enc_reply = Self::build_encrypted_chat_packet(
@@ -1316,9 +1353,18 @@ impl BitChatService {
                                     let is_direct_to_me = parsed_pkt.recipient_id == Some(my_sender_id);
 
                                     if let Some(payload) = parsed_pkt.payload {
-                                        let txt = String::from_utf8_lossy(&payload).trim().to_string();
+                                        let txt = std::str::from_utf8(&payload)
+                                            .ok()
+                                            .filter(|s| {
+                                                !s.chars().any(|c| {
+                                                    c.is_control() && !matches!(c, '\n' | '\r' | '\t')
+                                                })
+                                            })
+                                            .map(|s| s.trim().to_string())
+                                            .unwrap_or_default();
 
-                                        if is_direct_to_me {
+                                        if !txt.is_empty() && txt.chars().any(|c| c.is_alphanumeric()) {
+                                            if is_direct_to_me {
                                             info!(
                                                 "💬 [BitChat 1-on-1 Direct Message Received]: \"{}\" (from {})",
                                                 txt,
@@ -1461,6 +1507,7 @@ impl BitChatService {
                                                 }
                                             }
                                         }
+                                        }
                                     }
                                 }
                                 Ok(())
@@ -1538,7 +1585,10 @@ impl BitChatService {
 
         match adapter.serve_gatt_application(app).await {
             Ok(handle) => {
-                info!("✅ BitChat BlueZ GATT application registered and serving requests");
+                info!(
+                    "✅ BitChat GATT Server listening on characteristic {}",
+                    char_uuid
+                );
                 while self.running.load(Ordering::Relaxed) {
                     sleep(Duration::from_secs(1)).await;
                 }
@@ -1675,21 +1725,24 @@ mod tests {
 
     #[test]
     fn test_bitchat_nonce_prefixed_transport_and_tlv_extraction() {
-        // 1. Test extract_bitchat_private_message with BitChat TLV PrivateMessagePacket
-        // 0x01 (type) || 0x00, len_id, "msg-1234" || 0x01, len_content, "FIRE IN SERVER ROOM"
-        let mut tlv_bytes = vec![0x01];
-        let msg_id = b"msg-1234";
-        tlv_bytes.push(0x00);
-        tlv_bytes.push(msg_id.len() as u8);
-        tlv_bytes.extend_from_slice(msg_id);
-
-        let content = b"FIRE IN SERVER ROOM";
-        tlv_bytes.push(0x01);
-        tlv_bytes.push(content.len() as u8);
-        tlv_bytes.extend_from_slice(content);
+        // 1. Test encode_bitchat_private_message & extract_bitchat_private_message round-trip
+        let tlv_bytes = BitChatService::encode_bitchat_private_message("FIRE IN SERVER ROOM");
+        assert_eq!(tlv_bytes[0], 0x01);
+        assert_eq!(tlv_bytes[1], 0x00);
+        assert_eq!(tlv_bytes[2], 36); // UUID v4 string length
 
         let extracted = BitChatService::extract_bitchat_private_message(&tlv_bytes);
         assert_eq!(extracted, "FIRE IN SERVER ROOM");
+
+        // 1b. Verify post-handshake 0x21 identity sync frame (exact 40-byte payload from 06:50:40) is rejected
+        let identity_sync_frame = hex::decode(
+            "2101010200010220bdbf6af05707831e372e703a1081ea1f5a984469ad2ec2cf1451dac94d6477d7",
+        )
+        .unwrap();
+        assert_eq!(
+            BitChatService::extract_bitchat_private_message(&identity_sync_frame),
+            ""
+        );
 
         // 2. Test full handshake and 4-byte nonce prefixed transport
         let pattern: snow::params::NoiseParams = "Noise_XX_25519_ChaChaPoly_SHA256"

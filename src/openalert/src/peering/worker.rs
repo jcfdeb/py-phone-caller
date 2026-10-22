@@ -290,14 +290,6 @@ impl PeerWorker {
             }
         };
 
-        let datagram = match encrypt_datagram(&self.key, &serialized) {
-            Ok(d) => d,
-            Err(e) => {
-                error!("Failed to encrypt LoRa serial datagram: {}", e);
-                return;
-            }
-        };
-
         let is_critical = alert.severity == crate::models::AlertSeverity::Critical;
         let burst_count = self.node.burst_retries.unwrap_or(3).max(1);
         let base_wait_ms = self.node.burst_interval_ms.unwrap_or(1400).max(900);
@@ -312,8 +304,19 @@ impl PeerWorker {
         let has_real_tx = self.lora_transmitters.contains_key(&dev_path);
 
         let mut any_serial_dispatched = false;
+        let mut ack_verified = false;
 
         for attempt in 0..burst_count {
+            // Re-encrypt with a fresh 24-byte random nonce on every attempt so retries
+            // produce distinct ciphertext bytes and SLIP escape sequences.
+            let datagram = match encrypt_datagram(&self.key, &serialized) {
+                Ok(d) => d,
+                Err(e) => {
+                    error!("Failed to encrypt LoRa serial datagram: {}", e);
+                    return;
+                }
+            };
+
             let (ack_tx, ack_rx) = oneshot::channel();
             {
                 let mut waiters = self.ack_waiters.lock().await;
@@ -334,6 +337,7 @@ impl PeerWorker {
             if !has_real_tx {
                 let mut waiters = self.ack_waiters.lock().await;
                 waiters.remove(&fp);
+                ack_verified = true;
                 break;
             }
 
@@ -342,10 +346,11 @@ impl PeerWorker {
             } else {
                 0
             };
-            let wait_ms = base_wait_ms + jitter_ms;
+            let wait_ms = base_wait_ms + (attempt as u64 * 400) + jitter_ms;
 
             match tokio::time::timeout(Duration::from_millis(wait_ms), ack_rx).await {
                 Ok(Ok(())) => {
+                    ack_verified = true;
                     info!(
                         "✅ [LoRa Serial ARQ Verified] Received over-the-air ACK from '{}' for alert [{}] (fp: 0x{:016x}) on attempt {}/{}",
                         self.node.name,
@@ -380,17 +385,18 @@ impl PeerWorker {
             }
         }
 
-        if any_serial_dispatched {
+        if ack_verified {
             self.cb.write().await.record_success();
         } else {
-            self.cb.write().await.record_failure();
+            warn!(
+                "🚨 [LoRa Serial ARQ Exhausted] No RF ACK after {} attempts to '{}'. Spooling alert [{}] to SQLite for background retry",
+                burst_count, self.node.name, alert.alert_id
+            );
+            if !any_serial_dispatched {
+                self.cb.write().await.record_failure();
+            }
             self.spool_alert(alert).await;
         }
-    }
-
-    async fn send_lora_serial_raw(&mut self, datagram: &[u8]) -> bool {
-        self.send_lora_serial_raw_with_meta(datagram, false, None)
-            .await
     }
 
     async fn send_lora_serial_raw_with_meta(
@@ -618,7 +624,8 @@ impl PeerWorker {
     async fn spool_alert(&self, alert: &Alert) {
         if let Some(ref storage) = self.storage {
             let fp = alert.fingerprint_u64();
-            let packet = PeeringPacket::Alert(AlertPacket::from_alert(alert, FLAG_SPOOLED));
+            let packet =
+                PeeringPacket::Alert(AlertPacket::from_alert(alert, FLAG_SPOOLED | FLAG_ACK_REQ));
             if let Ok(serialized) = packet.serialize()
                 && let Ok(id) = storage
                     .spool_peering_packet(&self.node.name, fp, &serialized)
@@ -756,10 +763,52 @@ impl PeerWorker {
                 self.node.name
             );
 
-            for (id, _fp, payload) in spooled {
+            let dev_path = self
+                .node
+                .serial_device
+                .as_deref()
+                .unwrap_or("/dev/ttyUSB0")
+                .to_string();
+            let has_real_lora_tx = self.lora_transmitters.contains_key(&dev_path);
+
+            for (id, fp, payload) in spooled {
                 if let Ok(datagram) = encrypt_datagram(&self.key, &payload) {
                     let send_ok = if self.node.link_type == PeeringLinkType::LoraSerial {
-                        self.send_lora_serial_raw(&datagram).await
+                        if has_real_lora_tx {
+                            let (ack_tx, ack_rx) = oneshot::channel();
+                            {
+                                let mut waiters = self.ack_waiters.lock().await;
+                                waiters.insert(fp, ack_tx);
+                            }
+                            let spool_label = format!("spooled-{}", id);
+                            if self
+                                .send_lora_serial_raw_with_meta(&datagram, true, Some(&spool_label))
+                                .await
+                            {
+                                match tokio::time::timeout(Duration::from_millis(2000), ack_rx).await
+                                {
+                                    Ok(Ok(())) => {
+                                        info!(
+                                            "✅ [LoRa Serial Spool Drained] Verified over-the-air ACK from '{}' for spooled packet id {} (fp: 0x{:016x})",
+                                            self.node.name, id, fp
+                                        );
+                                        true
+                                    }
+                                    _ => {
+                                        let mut waiters = self.ack_waiters.lock().await;
+                                        waiters.remove(&fp);
+                                        false
+                                    }
+                                }
+                            } else {
+                                let mut waiters = self.ack_waiters.lock().await;
+                                waiters.remove(&fp);
+                                false
+                            }
+                        } else {
+                            self.send_lora_serial_raw_with_meta(&datagram, false, None)
+                                .await
+                        }
                     } else {
                         self.socket.send_to(&datagram, target_addr).await.is_ok()
                     };

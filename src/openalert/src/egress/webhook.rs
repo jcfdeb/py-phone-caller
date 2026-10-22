@@ -241,7 +241,7 @@ impl PrometheusWebhookDispatcher {
             attempts += 1;
             if let Some(ref m) = self.metrics {
                 m.webhook_requests_total
-                    .with_label_values(&[&endpoint.url, "attempt"])
+                    .with_label_values(&[endpoint.url.as_str(), "attempt"])
                     .inc();
             }
 
@@ -272,7 +272,7 @@ impl PrometheusWebhookDispatcher {
                     self.record_endpoint_success(&endpoint.url);
                     if let Some(ref m) = self.metrics {
                         m.webhook_requests_total
-                            .with_label_values(&[&endpoint.url, "success"])
+                            .with_label_values(&[endpoint.url.as_str(), "success"])
                             .inc();
                     }
                     return Ok(());
@@ -313,7 +313,7 @@ impl PrometheusWebhookDispatcher {
         self.record_endpoint_failure(&endpoint.url);
         if let Some(ref m) = self.metrics {
             m.webhook_requests_total
-                .with_label_values(&[&endpoint.url, "failure"])
+                .with_label_values(&[endpoint.url.as_str(), "failure"])
                 .inc();
         }
 

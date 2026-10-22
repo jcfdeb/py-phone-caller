@@ -146,6 +146,14 @@ impl AlertPacket {
             .unwrap_or("node")
             .to_string();
 
+        // Omit redundant `desc` on the wire when it matches `summary` (`code`),
+        // because `into_alert` automatically restores `description = Some(self.code.clone())`
+        // when `desc` is `None`. This saves 40-80+ bytes on constrained LoRa RF links!
+        let desc = match alert.description.as_deref() {
+            Some(d) if d == alert.summary.as_str() => None,
+            _ => alert.description.clone(),
+        };
+
         Self {
             fp: alert.fingerprint_u64(),
             ts: alert.starts_at.timestamp() as u32,
@@ -154,7 +162,7 @@ impl AlertPacket {
             hop: alert.hop,
             src,
             code: alert.summary.clone(),
-            desc: alert.description.clone(),
+            desc,
         }
     }
 
@@ -279,6 +287,7 @@ mod tests {
         let pkt_hop1 = AlertPacket::from_alert(&origin_alert, FLAG_ACK_REQ);
         assert_eq!(pkt_hop1.fp, expected_fp);
         assert_eq!(pkt_hop1.src, "openalert-node02");
+        assert!(pkt_hop1.desc.is_none(), "Identical desc must be omitted on wire");
 
         let alert_at_node01 = pkt_hop1.into_alert(Some("node02-lora-fog".to_string()));
         assert_eq!(
@@ -286,6 +295,7 @@ mod tests {
             format!("peer-openalert-node02-{:016x}", expected_fp)
         );
         assert_eq!(alert_at_node01.fingerprint_u64(), expected_fp);
+        assert_eq!(alert_at_node01.description, origin_alert.description);
 
         // Hop 2: node01 -> Hetzner (openalertd)
         let pkt_hop2 = AlertPacket::from_alert(&alert_at_node01, FLAG_ACK_REQ);

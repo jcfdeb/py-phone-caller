@@ -1088,7 +1088,7 @@ fn render_sos_html(
         <label for="sender" style="margin:0;">2. Your Name / Phone / Location (Optional)</label>
         <button type="button" id="gpsBtn" class="mini-btn" style="display:{gps_btn_display};align-items:center;gap:0.25rem;background:rgba(56,189,248,0.15);border-color:rgba(56,189,248,0.4);color:#bae6fd;padding:0.28rem 0.55rem;font-size:0.72rem;" onclick="attachGps(this)" title="Optionally attach your phone's GPS coordinates">📍 GPS</button>
       </div>
-      <input type="text" id="sender" placeholder="e.g. Jorge - Sector Norte" maxlength="120">
+      <input type="text" id="sender" placeholder="e.g. YourName - Your Location" maxlength="120">
 
       <label for="message">3. Emergency Message *</label>
       <textarea id="message" placeholder="Describe the emergency clearly..." required maxlength="500"></textarea>
