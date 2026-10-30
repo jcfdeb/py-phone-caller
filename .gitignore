@@ -138,3 +138,4 @@ credentials/
 /data/openalert_station_beta.db
 /data/openalert_station_beta.db-shm
 /data/openalert_station_beta.db-wal
+/skills/system/run-workflow/SKILL.md
