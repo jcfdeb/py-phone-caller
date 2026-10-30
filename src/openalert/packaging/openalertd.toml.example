@@ -128,6 +128,14 @@ node_name = "OpenAlert-Mesh"
 service_uuid = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c"
 # Broadcast an ACK message in the public mesh channel when a public mesh alert is received (default: false)
 public_mesh_ack = false
+# Enable automatic BLE Self-Healing Watchdog (detects kernel HCI resets like 0x24 and restores advertising)
+self_healing_enabled = true
+# Interval in seconds for the BLE self-healing health check (default: 30)
+watchdog_interval_secs = 30
+# Proactive idle advertisement re-registration interval in seconds (0 = disabled, default: 300)
+adv_refresh_interval_secs = 300
+# List of HCI controller names to monitor and self-heal (if empty, defaults to `[device]`)
+monitored_devices = ["hci0"]
 
 [routing]
 # Routing destinations: "nostr", "webhook", "bitchat", "peering"

@@ -21,7 +21,7 @@ use futures_util::FutureExt;
 use sha2::{Digest, Sha256};
 use snow::TransportState;
 use std::collections::{BTreeSet, HashMap};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, RwLock};
@@ -92,6 +92,7 @@ pub struct BitChatService {
     config: BitChatConfig,
     engine: Option<Arc<AlertEngine>>,
     running: Arc<AtomicBool>,
+    active_subscribers: Arc<AtomicUsize>,
     sessions: Arc<RwLock<HashMap<[u8; 8], PeerNoiseSession>>>,
     peers: Arc<RwLock<HashMap<[u8; 8], BitChatPeerEntry>>>,
     bcast_tx: Arc<RwLock<Option<broadcast::Sender<Vec<u8>>>>>,
@@ -104,10 +105,35 @@ impl BitChatService {
             config,
             engine,
             running: Arc::new(AtomicBool::new(true)),
+            active_subscribers: Arc::new(AtomicUsize::new(0)),
             sessions: Arc::new(RwLock::new(HashMap::new())),
             peers: Arc::new(RwLock::new(HashMap::new())),
             bcast_tx: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Parses the output of `btmgmt info` to determine whether the given HCI controller
+    /// (e.g. `hci0`) currently has the `advertising` setting active in hardware.
+    /// Returns `Some(true)` if `advertising` is present in `current settings`,
+    /// `Some(false)` if the controller block was found with `current settings:` lacking `advertising`,
+    /// or `None` if the controller block was not present in the output.
+    pub fn parse_btmgmt_advertising_state(btmgmt_output: &str, device_name: &str) -> Option<bool> {
+        let target_header = format!("{}:", device_name.trim());
+        let mut in_target_block = false;
+        for line in btmgmt_output.lines() {
+            let trimmed = line.trim();
+            if !line.starts_with(' ') && !line.starts_with('\t') && trimmed.ends_with(':') || trimmed.contains(":\tPrimary controller") || trimmed.contains(":\tUnconfigured controller") {
+                in_target_block = trimmed.starts_with(&target_header);
+            }
+            if in_target_block && trimmed.starts_with("current settings:") {
+                let settings_str = trimmed.trim_start_matches("current settings:");
+                let has_adv = settings_str
+                    .split_whitespace()
+                    .any(|flag| flag.eq_ignore_ascii_case("advertising"));
+                return Some(has_adv);
+            }
+        }
+        None
     }
 
     /// Terminates all background BLE advertising and notification loops.
@@ -374,6 +400,19 @@ impl BitChatService {
         buf
     }
 
+    /// Returns `true` if a decoded text payload is an internal BitChat application control/sync
+    /// notification (e.g., `[FAVORITED]:npub1...` or `[UNFAVORITED]:npub1...` Nostr key exchange
+    /// rumor sent inside a `0x01` `PrivateMessage` TLV frame when starring/unstarring a peer)
+    /// that must not be treated as a user-initiated emergency alert.
+    pub fn is_bitchat_control_message(text: &str) -> bool {
+        let trimmed = text.trim();
+        let upper = trimmed.to_ascii_uppercase();
+        upper.starts_with("[FAVORITED]:")
+            || upper == "[FAVORITED]"
+            || upper.starts_with("[UNFAVORITED]:")
+            || upper == "[UNFAVORITED]"
+    }
+
     /// Extracts plain text from BitChat decrypted Noise transport payload.
     /// Supports BitChat PrivateMessagePacket (0x01 || tag 0x00 msgID || tag 0x01 content)
     /// as well as strict valid UTF-8 payloads, while rejecting post-handshake binary/control frames.
@@ -414,8 +453,12 @@ impl BitChatService {
                 }
             }
             if let Some(s) = extracted_content.filter(|s| !s.is_empty()) {
+                if Self::is_bitchat_control_message(&s) {
+                    return String::new();
+                }
                 return s;
             }
+            return String::new();
         }
 
         // Fallback: only accept strict valid UTF-8 with no binary control characters
@@ -425,6 +468,7 @@ impl BitChatService {
                 !s.chars()
                     .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
             })
+            .filter(|s| !Self::is_bitchat_control_message(s))
             .map(|s| s.trim().to_string())
             .unwrap_or_default()
     }
@@ -921,33 +965,146 @@ impl BitChatService {
         let adv_name = node_name.clone();
         let _ = adapter.set_alias(adv_name.clone()).await;
         let adv_uuid = service_uuid;
-        let adv_adapter = adapter.clone();
+        let adv_session = _session.clone();
         let running_adv = self.running.clone();
+        let active_subs_adv = self.active_subscribers.clone();
+        let self_healing_enabled = self.config.self_healing_enabled;
+        let watchdog_interval_secs = self.config.watchdog_interval_secs.max(5);
+        let adv_refresh_interval_secs = self.config.adv_refresh_interval_secs;
+        let monitored_devices = self.config.resolved_monitored_devices();
+        let primary_device = self.config.device.clone();
 
         tokio::spawn(async move {
-            
-            let le_advertisement = Advertisement {
-                advertisement_type: bluer::adv::Type::Peripheral,
-                service_uuids: vec![adv_uuid].into_iter().collect::<BTreeSet<_>>(),
-                local_name: Some(adv_name.clone()),
-                discoverable: Some(true),
-                system_includes: vec![bluer::adv::Feature::TxPower].into_iter().collect(),
-                ..Default::default()
-            };
+            info!(
+                "🛡️ BitChat BLE Self-Healing Watchdog initialized [enabled: {}, check_interval: {}s, refresh_interval: {}s, monitored_devices: {:?}]",
+                self_healing_enabled, watchdog_interval_secs, adv_refresh_interval_secs, monitored_devices
+            );
 
-            match adv_adapter.advertise(le_advertisement).await {
-                Ok(handle) => {
-                    info!(
-                        "📡 BitChat BLE peripheral advertising active [Name: '{}', UUID: {}]",
-                        adv_name, adv_uuid
-                    );
-                    while running_adv.load(Ordering::Relaxed) {
-                        sleep(Duration::from_secs(1)).await;
+            while running_adv.load(Ordering::Relaxed) {
+                let current_adapter = match adv_session.adapter(&primary_device) {
+                    Ok(a) => a,
+                    Err(_) => match adv_session.default_adapter().await {
+                        Ok(a) => a,
+                        Err(e) => {
+                            warn!("⚠️ [BLE Self-Healing] Bluetooth adapter '{}' unavailable: {}. Retrying in 5s...", primary_device, e);
+                            sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                    },
+                };
+
+                // Ensure primary and any additional configured monitored HCI adapters are powered and discoverable
+                for dev_name in &monitored_devices {
+                    if let Ok(mon_adapter) = adv_session.adapter(dev_name) {
+                        if !mon_adapter.is_powered().await.unwrap_or(false) {
+                            warn!("🔄 [BLE Self-Healing] Monitored adapter '{}' is powered down; restoring power & discoverability...", dev_name);
+                            let _ = mon_adapter.set_powered(true).await;
+                        }
+                        let _ = mon_adapter.set_discoverable(true).await;
+                        let _ = mon_adapter.set_pairable(true).await;
+                        let _ = mon_adapter.set_discoverable_timeout(0).await;
                     }
-                    drop(handle);
                 }
-                Err(e) => {
-                    warn!("⚠️ Failed to register BLE advertisement: {}", e);
+                let _ = current_adapter.set_alias(adv_name.clone()).await;
+
+                let le_advertisement = Advertisement {
+                    advertisement_type: bluer::adv::Type::Peripheral,
+                    service_uuids: vec![adv_uuid].into_iter().collect::<BTreeSet<_>>(),
+                    local_name: Some(adv_name.clone()),
+                    discoverable: Some(true),
+                    system_includes: vec![bluer::adv::Feature::TxPower].into_iter().collect(),
+                    ..Default::default()
+                };
+
+                match current_adapter.advertise(le_advertisement).await {
+                    Ok(handle) => {
+                        info!(
+                            "📡 BitChat BLE peripheral advertising active [Name: '{}', Device: '{}', UUID: {}]",
+                            adv_name, primary_device, adv_uuid
+                        );
+                        let registered_at = Instant::now();
+                        let mut elapsed_since_check = 0u64;
+
+                        while running_adv.load(Ordering::Relaxed) {
+                            sleep(Duration::from_secs(1)).await;
+                            if !self_healing_enabled {
+                                continue;
+                            }
+
+                            elapsed_since_check += 1;
+                            if elapsed_since_check >= watchdog_interval_secs {
+                                elapsed_since_check = 0;
+                                let subs = active_subs_adv.load(Ordering::Relaxed);
+                                let mut needs_re_advertise = false;
+
+                                for dev_name in &monitored_devices {
+                                    match adv_session.adapter(dev_name) {
+                                        Ok(mon_adapter) => {
+                                            let is_powered = mon_adapter.is_powered().await.unwrap_or(false);
+                                            let active_inst = mon_adapter.active_advertising_instances().await.unwrap_or(1);
+                                            let is_disc = mon_adapter.is_discoverable().await.unwrap_or(true);
+                                            let sysfs_present = std::path::Path::new(&format!("/sys/class/bluetooth/{}", dev_name)).exists();
+                                            if !sysfs_present || !is_powered {
+                                                warn!(
+                                                    "⚠️ [BLE Self-Healing] Adapter '{}' lost power or sysfs state (present: {}, powered: {})! Triggering self-healing cycle...",
+                                                    dev_name, sysfs_present, is_powered
+                                                );
+                                                needs_re_advertise = true;
+                                            } else if !is_disc {
+                                                warn!(
+                                                    "⚠️ [BLE Self-Healing] Adapter '{}' lost discoverable state! Restoring discoverability...",
+                                                    dev_name
+                                                );
+                                                let _ = mon_adapter.set_discoverable(true).await;
+                                                let _ = mon_adapter.set_discoverable_timeout(0).await;
+                                            } else if subs == 0 && dev_name == &primary_device && active_inst == 0 {
+                                                warn!(
+                                                    "⚠️ [BLE Self-Healing] Adapter '{}' reports 0 active D-Bus advertising instances while idle! Re-registering...",
+                                                    dev_name
+                                                );
+                                                needs_re_advertise = true;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            warn!(
+                                                "⚠️ [BLE Self-Healing] Failed to query monitored adapter '{}': {}",
+                                                dev_name, e
+                                            );
+                                            needs_re_advertise = true;
+                                        }
+                                    }
+                                }
+
+                                if !needs_re_advertise
+                                    && subs == 0
+                                    && adv_refresh_interval_secs > 0
+                                    && registered_at.elapsed().as_secs() >= adv_refresh_interval_secs
+                                {
+                                    info!(
+                                        "🔄 [BLE Self-Healing] Proactive idle BLE advertisement refresh ({}s elapsed) on '{}' to keep HCI controller state synchronized",
+                                        adv_refresh_interval_secs, primary_device
+                                    );
+                                    needs_re_advertise = true;
+                                }
+
+                                if needs_re_advertise {
+                                    break;
+                                }
+                            }
+                        }
+
+                        drop(handle);
+                        if running_adv.load(Ordering::Relaxed) {
+                            sleep(Duration::from_millis(500)).await;
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            "⚠️ [BLE Self-Healing] Failed to register BLE advertisement on '{}': {}. Retrying in 5s...",
+                            primary_device, e
+                        );
+                        sleep(Duration::from_secs(5)).await;
+                    }
                 }
             }
         });
@@ -982,6 +1139,7 @@ impl BitChatService {
         let np_sub = Arc::new(noise_pubkey);
         let sender_id_sub = sender_id;
         let bcast_tx_sub = bcast_tx.clone();
+        let active_subs_notify = self.active_subscribers.clone();
 
         let mut noise_hasher = Sha256::new();
         noise_hasher.update(b"bitchat-noise-dh-key-v1-");
@@ -1316,8 +1474,8 @@ impl BitChatService {
                                                                         });
                                                                     }
                                                                 } else {
-                                                                    debug!(
-                                                                        "⚠️ [BitChat E2EE] Ignoring non-text encrypted payload ({} bytes) from peer {}",
+                                                                    info!(
+                                                                        "🔄 [BitChat E2EE Control] Ignoring internal/control PrivateMessage payload ({} bytes) from peer {}",
                                                                         plain_bytes.len(), hex::encode(from_peer)
                                                                     );
                                                                 }
@@ -1363,7 +1521,13 @@ impl BitChatService {
                                             .map(|s| s.trim().to_string())
                                             .unwrap_or_default();
 
-                                        if !txt.is_empty() && txt.chars().any(|c| c.is_alphanumeric()) {
+                                        if Self::is_bitchat_control_message(&txt) {
+                                            info!(
+                                                "🔄 [BitChat GATT Control] Ignoring internal control/favorite sync message from peer {}: \"{}\"",
+                                                hex::encode(from_peer),
+                                                txt
+                                            );
+                                        } else if !txt.is_empty() && txt.chars().any(|c| c.is_alphanumeric()) {
                                             if is_direct_to_me {
                                             info!(
                                                 "💬 [BitChat 1-on-1 Direct Message Received]: \"{}\" (from {})",
@@ -1526,7 +1690,9 @@ impl BitChatService {
                                 let np_s = np_sub.clone();
                                 let sid_s = sender_id_sub;
                                 let tx_welcome = bcast_tx_sub.clone();
+                                let subs_counter = active_subs_notify.clone();
                                 async move {
+                                    subs_counter.fetch_add(1, Ordering::Relaxed);
                                     let initial_ann = Self::build_announce_packet(
                                         &name_s, &sk_s, &np_s,
                                     );
@@ -1570,6 +1736,7 @@ impl BitChatService {
                                         }
                                         sleep(Duration::from_millis(150)).await;
                                     }
+                                    subs_counter.fetch_sub(1, Ordering::Relaxed);
                                 }
                                 .boxed()
                             },
@@ -1744,6 +1911,30 @@ mod tests {
             ""
         );
 
+        // 1c. Verify BitChat [FAVORITED]:npub1... / [UNFAVORITED]:npub1... Nostr rumor inside 0x01 PrivateMessage is rejected
+        // Exact 116-byte decrypted payload from tablet (87dfcb12e0e8becc) on 2026-10-27 08:28:49 CEST:
+        let favorited_tlv_frame = hex::decode(
+            "01002463336336333736332d306538392d343935632d626436312d643435326231643930396562014b5b4641564f52495445445d3a6e7075623139746a6b6e3068687637326d646d6333727074746a61737a3861766a6d6c6478777a666d646e346a35336b37686b357161323471336471766435",
+        )
+        .unwrap();
+        assert!(BitChatService::is_bitchat_control_message(
+            "[FAVORITED]:npub19tjkn0hhv72mdmc3rpttjasz8avjmldxwzfmdn4j53k7hk5qa24q3dqvd5"
+        ));
+        assert!(BitChatService::is_bitchat_control_message(
+            "[UNFAVORITED]:npub19tjkn0hhv72mdmc3rpttjasz8avjmldxwzfmdn4j53k7hk5qa24q3dqvd5"
+        ));
+        assert_eq!(
+            BitChatService::extract_bitchat_private_message(&favorited_tlv_frame),
+            ""
+        );
+        let unfavorited_tlv = BitChatService::encode_bitchat_private_message(
+            "[UNFAVORITED]:npub19tjkn0hhv72mdmc3rpttjasz8avjmldxwzfmdn4j53k7hk5qa24q3dqvd5",
+        );
+        assert_eq!(
+            BitChatService::extract_bitchat_private_message(&unfavorited_tlv),
+            ""
+        );
+
         // 2. Test full handshake and 4-byte nonce prefixed transport
         let pattern: snow::params::NoiseParams = "Noise_XX_25519_ChaChaPoly_SHA256"
             .parse()
@@ -1799,5 +1990,36 @@ mod tests {
         let dec_len = resp_transport.read_message(actual_cipher, &mut dec_buf).unwrap();
         let dec_text = BitChatService::extract_bitchat_private_message(&dec_buf[..dec_len]);
         assert_eq!(dec_text, "FIRE IN SERVER ROOM");
+    }
+
+    #[test]
+    fn test_btmgmt_advertising_parser_and_monitored_devices_config() {
+        let broken_after_0x24 = "Index list with 1 item\nhci0:\tPrimary controller\n\taddr 40:45:DA:08:75:C7 version 10 manufacturer 435 class 0x000000\n\tsupported settings: powered connectable fast-connectable discoverable bondable link-security ssp br/edr le advertising secure-conn debug-keys privacy static-addr phy-configuration\n\tcurrent settings: powered connectable discoverable bondable ssp br/edr le secure-conn\n\tname OpenAlert-FOG-Node02\n\tshort name \n";
+        assert_eq!(
+            BitChatService::parse_btmgmt_advertising_state(broken_after_0x24, "hci0"),
+            Some(false)
+        );
+        assert_eq!(
+            BitChatService::parse_btmgmt_advertising_state(broken_after_0x24, "hci1"),
+            None
+        );
+
+        let healthy_output = "Index list with 1 item\nhci0:\tPrimary controller\n\taddr 40:45:DA:08:75:C7 version 10 manufacturer 435 class 0x000000\n\tsupported settings: powered connectable fast-connectable discoverable bondable link-security ssp br/edr le advertising secure-conn debug-keys privacy static-addr phy-configuration\n\tcurrent settings: powered connectable discoverable bondable ssp br/edr le advertising secure-conn\n\tname OpenAlert-FOG-Node02\n\tshort name \n";
+        assert_eq!(
+            BitChatService::parse_btmgmt_advertising_state(healthy_output, "hci0"),
+            Some(true)
+        );
+
+        // Verify BitChatConfig::resolved_monitored_devices avoids hardcoding and falls back to `device`
+        let mut cfg = BitChatConfig::default();
+        cfg.device = "hci2".to_string();
+        cfg.monitored_devices = vec![];
+        assert_eq!(cfg.resolved_monitored_devices(), vec!["hci2".to_string()]);
+
+        cfg.monitored_devices = vec!["hci0".to_string(), "hci1".to_string(), "hci0".to_string()];
+        assert_eq!(
+            cfg.resolved_monitored_devices(),
+            vec!["hci0".to_string(), "hci1".to_string()]
+        );
     }
 }

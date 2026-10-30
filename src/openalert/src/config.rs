@@ -733,6 +733,41 @@ pub struct BitChatConfig {
     /// Legacy path to external BLE advertiser script (deprecated, native BlueZ advertising is built-in).
     #[serde(default)]
     pub advertiser_script: Option<String>,
+    /// Enable autonomous Bluetooth HCI/BLE advertising watchdog and self-healing (default: true).
+    #[serde(default = "default_ble_self_healing_enabled")]
+    pub self_healing_enabled: bool,
+    /// Interval in seconds for checking HCI controller health and BLE advertising state (default: 30s).
+    #[serde(default = "default_ble_watchdog_interval_secs", alias = "self_healing_interval_secs")]
+    pub watchdog_interval_secs: u64,
+    /// Periodic interval in seconds to proactively re-register the BLE advertisement when idle (0 = only on detected failure, default: 300s).
+    #[serde(default = "default_ble_adv_refresh_interval_secs")]
+    pub adv_refresh_interval_secs: u64,
+    /// Optional list of HCI adapter names to monitor in the self-healing watchdog (defaults to `[device]` when empty).
+    #[serde(default)]
+    pub monitored_devices: Vec<String>,
+}
+
+impl BitChatConfig {
+    /// Returns the deduplicated list of HCI adapter names to monitor for self-healing.
+    /// If `monitored_devices` is empty, defaults to the configured `device` (e.g. `hci0`).
+    pub fn resolved_monitored_devices(&self) -> Vec<String> {
+        let mut devs: Vec<String> = Vec::new();
+        for d in &self.monitored_devices {
+            let trimmed = d.trim().to_string();
+            if !trimmed.is_empty() && !devs.contains(&trimmed) {
+                devs.push(trimmed);
+            }
+        }
+        if devs.is_empty() {
+            let primary = self.device.trim();
+            if !primary.is_empty() {
+                devs.push(primary.to_string());
+            } else {
+                devs.push(default_ble_device());
+            }
+        }
+        devs
+    }
 }
 
 fn default_ble_device() -> String {
@@ -747,6 +782,18 @@ fn default_service_uuid() -> String {
     "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c".to_string()
 }
 
+fn default_ble_self_healing_enabled() -> bool {
+    true
+}
+
+fn default_ble_watchdog_interval_secs() -> u64 {
+    30
+}
+
+fn default_ble_adv_refresh_interval_secs() -> u64 {
+    300
+}
+
 impl Default for BitChatConfig {
     fn default() -> Self {
         Self {
@@ -758,6 +805,10 @@ impl Default for BitChatConfig {
             listen_host: None,
             listen_port: None,
             advertiser_script: None,
+            self_healing_enabled: default_ble_self_healing_enabled(),
+            watchdog_interval_secs: default_ble_watchdog_interval_secs(),
+            adv_refresh_interval_secs: default_ble_adv_refresh_interval_secs(),
+            monitored_devices: Vec::new(),
         }
     }
 }
