@@ -1,0 +1,45 @@
+---
+- name: Apply pending handlers before inspecting the selected IAX configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Inspect the running IAX2 module without sending traffic
+  ansible.builtin.command:
+    argv: [/usr/sbin/asterisk, -rx, "module show like chan_iax2.so"]
+  register: asterisk_py_phone_caller_iax_module
+  changed_when: false
+
+- name: Require a running IAX2 channel driver
+  ansible.builtin.assert:
+    that:
+      - asterisk_py_phone_caller_iax_module.stdout is search('chan_iax2[.]so[^\n]+Running')
+
+- name: Inspect the configured IAX peer without registration or calls
+  ansible.builtin.command:
+    argv: [/usr/sbin/asterisk, -rx, "iax2 show peer {{ local_iax_exten }}"]
+  register: asterisk_py_phone_caller_iax_peer
+  changed_when: false
+  no_log: true
+
+- name: Require the configured IAX peer context and protected secret
+  ansible.builtin.assert:
+    that:
+      - "asterisk_py_phone_caller_iax_peer.stdout is search('Name\\s*:\\s*' ~ (local_iax_exten | string | regex_escape) ~ '\\s')"
+      - "asterisk_py_phone_caller_iax_peer.stdout is search('Context\\s*:\\s*' ~ (asterisk_context | regex_escape) ~ '\\s')"
+      - "asterisk_py_phone_caller_iax_peer.stdout is search('Secret\\s*:\\s*<Set>')"
+  no_log: true
+
+- name: Inspect UDP listeners without sending packets
+  ansible.builtin.command:
+    argv: [ss, -H, -lun]
+  register: asterisk_py_phone_caller_udp_listeners
+  changed_when: false
+
+- name: Require the configured private IAX listener
+  ansible.builtin.assert:
+    that:
+      - >-
+        asterisk_py_phone_caller_udp_listeners.stdout is search(
+        '\s' ~ (asterisk_iax_bindaddr | regex_escape) ~ ':' ~ (asterisk_iax_bindport | string) ~ '\s')
+      - >-
+        asterisk_py_phone_caller_udp_listeners.stdout is not search(
+        '\s(0[.]0[.]0[.]0|\*|\[::\]):' ~ (asterisk_iax_bindport | string) ~ '\s')

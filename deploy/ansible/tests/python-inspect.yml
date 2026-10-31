@@ -1,0 +1,79 @@
+---
+- name: Inspect only disposable runtime metadata
+  hosts: "{{ stack_hosts | default('python-disposable-unselected') }}"
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../roles/deploy_py-phone-caller/defaults/main.yml
+  tasks:
+    - name: Require disposable-host acknowledgement
+      ansible.builtin.assert:
+        that:
+          - stack_disposable_test_acknowledged | default(false) | bool
+
+    - name: Read application and dependency service timestamps
+      ansible.builtin.command:
+        argv: >-
+          {{ ['systemctl', 'show', '--property=Id,ActiveState,ActiveEnterTimestampMonotonic,ExecMainStartTimestampMonotonic,NRestarts']
+             + (py_phone_caller_services | map(attribute='name') | map('replace', '_', '-')
+                | map('regex_replace', '^', py_phone_caller_service_prefix) | map('regex_replace', '$', '.service') | list)
+             + ['asterisk.service', 'openalertd.service', 'openalertd-public.service', 'postgresql.service', 'redis-server.service'] }}
+      changed_when: false
+      register: python_test_starts
+
+    - name: Inspect protected application configuration permissions
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: false
+      loop:
+        - "{{ py_phone_caller_settings_file }}"
+        - "{{ py_phone_caller_secrets_file }}"
+      register: python_test_configuration
+
+    - name: Assert private configuration ownership and permissions
+      ansible.builtin.assert:
+        that:
+          - item.stat.pw_name == py_phone_caller_user
+          - item.stat.mode in ['0600', '0640']
+      loop: "{{ python_test_configuration.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Record effective service network restrictions
+      ansible.builtin.command:
+        argv: [systemctl, show, py-phone-caller-caller-register.service, "--property=IPAddressAllow,IPAddressDeny"]
+      changed_when: false
+      register: python_test_network
+
+    - name: Assert localhost-only application network policy
+      ansible.builtin.assert:
+        that:
+          - "'0.0.0.0/0' in python_test_network.stdout"
+          - "'127.0.0.0/8' in python_test_network.stdout"
+
+    - name: Read installed Python version
+      ansible.builtin.command:
+        argv: ["{{ py_phone_caller_venv_dir }}/bin/python", --version]
+      changed_when: false
+      register: python_test_version
+
+    - name: Record database and queue configuration checksums without contents
+      ansible.builtin.find:
+        paths: [/etc/postgresql, /etc/redis]
+        patterns: ["*.conf"]
+        recurse: true
+        get_checksum: true
+      register: python_test_dependency_files
+
+    - name: Save nonsecret runtime evidence on the controller
+      ansible.builtin.copy:
+        dest: "{{ python_test_report }}"
+        content: >-
+          {{ {'starts': python_test_starts.stdout, 'python': python_test_version.stdout,
+              'network': python_test_network.stdout,
+              'dependency_files': dict(python_test_dependency_files.files | map(attribute='path')
+                | zip(python_test_dependency_files.files | map(attribute='checksum')))} | to_nice_json }}
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      changed_when: false

@@ -1,19 +1,33 @@
 # All-in-one deployment runbook: Asterisk PBX + py-phone-caller
 
-A complete, step-by-step walkthrough from a freshly provisioned VM to a
-working alerting platform: Asterisk with ARI, PostgreSQL, Redis/Valkey, and
-the eleven Python services as systemd units.
+**Current entry point:** `deploy_py-phone-caller_stack.yml` is a compatibility
+wrapper around [`../site.yml`](../site.yml). It retains `app_servers`, selects
+Python and Asterisk, and leaves OpenAlert off. Both implementations now live in
+[`../roles/`](../roles/). Start new deployments with the
+[canonical installer guide](../README.md), not the checked-in live-site inventory.
 
-Every step below states what to run, what you should see, and what to do when
-you see something else. If you follow it in order you will not need to
-improvise.
+The existing `pbx_*` trunk/handset aliases and Python configuration namespaces
+remain supported. ARI/Stasis/dialplan values remain shared for combined installs;
+PBX-only installs do not need Python configuration. Requirements reference the
+shared collection pins, and SSH host-key checking is enabled. No credentials
+are printed in the deployment recap.
 
-Roughly 45 minutes end to end, most of it waiting on `uv sync` to download
-~3 GB of PyTorch and CUDA wheels.
+Current AMD64 checks passed on Debian 13 (explicit AllStarLink provider) and
+Ubuntu 26.04 LTS (**official Ubuntu Asterisk packages**), including PJSIP/IAX2,
+combined startup and zero-change reruns. See the
+[current variable/ownership mapping](../docs/python-native.md). ARM64 hardware,
+real calls and lifecycle/recovery remain separate qualification gates.
 
-> `openalertd` (`src/openalert/`) is a separate Rust daemon with its own
-> packaging under `src/openalert/packaging/`. It is **not** deployed by these
-> playbooks.
+**Historical notes below:** the long runbook retains earlier installation and
+troubleshooting evidence. Its timings, paths, tag behavior, package versions and
+qualification statements are not new-refactor guarantees. Consult the current
+[support matrix](../docs/support-matrix.md), shared-role references and lifecycle
+instructions before acting. Calls, SMS and migrations require separate authorization.
+
+OpenAlert packaging still produces independent Rust artifacts; the new shared
+entry point now consumes them. The historical combined command does not select
+OpenAlert by default. Full Python/TTS dependencies remain installed regardless
+of TTS engine selection; budget substantially more than a 10 GB root disk.
 
 ---
 

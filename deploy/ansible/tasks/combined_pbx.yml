@@ -1,0 +1,20 @@
+---
+- name: Deploy Asterisk with shared ARI and dialplan values
+  ansible.builtin.include_role:
+    name: asterisk_py_phone_caller
+    apply:
+      no_log: true
+      diff: false
+  vars:
+    _stack_python_config: >-
+      {{ py_phone_caller_config
+         | combine(py_phone_caller_config_secrets | default({}), recursive=True)
+         | combine(py_phone_caller_config_overrides | default({}), recursive=True) }}
+    ari_username: "{{ _stack_python_config.commons.asterisk_user }}"
+    ari_password: "{{ _stack_python_config.commons.asterisk_pass }}"
+    ari_app_name: "{{ _stack_python_config.asterisk_ws_monitor.asterisk_stasis_app }}"
+    asterisk_http_bindport: "{{ _stack_python_config.commons.asterisk_web_port }}"
+    asterisk_context: "{{ _stack_python_config.asterisk_call.asterisk_context }}"
+    asterisk_extension: "{{ _stack_python_config.asterisk_call.asterisk_extension }}"
+    callback_service_url: >-
+      {{ _stack_python_config.call_register.call_register_http_scheme }}://127.0.0.1:{{ _stack_python_config.call_register.call_register_port }}

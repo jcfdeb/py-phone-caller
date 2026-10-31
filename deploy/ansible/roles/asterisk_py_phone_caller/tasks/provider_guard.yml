@@ -1,0 +1,50 @@
+---
+- name: Inspect installed PBX packages without changing them
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Inspect installer provider ownership
+  ansible.builtin.stat:
+    path: /var/lib/py-phone-caller-pbx/provider
+  register: asterisk_py_phone_caller_provider_marker
+
+- name: Read installer provider ownership
+  ansible.builtin.slurp:
+    src: /var/lib/py-phone-caller-pbx/provider
+  register: asterisk_py_phone_caller_provider_record
+  when: asterisk_py_phone_caller_provider_marker.stat.exists
+
+- name: Refuse automatic package-provider replacement
+  ansible.builtin.assert:
+    that:
+      - asterisk_package_provider != 'allstarlink' or 'asterisk' not in ansible_facts.packages
+      - asterisk_package_provider != 'distro' or 'asl3-asterisk' not in ansible_facts.packages
+      - >-
+        not asterisk_py_phone_caller_provider_marker.stat.exists or
+        (asterisk_py_phone_caller_provider_record.content | b64decode | trim) == asterisk_package_provider
+    fail_msg: Existing PBX provider conflicts with inventory. An explicit migration is required; no package replacement is performed.
+
+- name: Inspect legacy PBX paths before a fresh AllStarLink install
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /etc/asterisk
+    - /usr/sbin/asterisk
+    - /usr/local/sbin/asterisk
+    - /var/lib/asterisk
+    - /etc/systemd/system/asterisk.service
+    - /usr/lib/systemd/system/asterisk.service
+  register: asterisk_py_phone_caller_legacy_paths
+  when:
+    - asterisk_package_provider == 'allstarlink'
+    - not asterisk_py_phone_caller_provider_marker.stat.exists
+
+- name: Refuse implicit adoption of an unmanaged PBX
+  ansible.builtin.assert:
+    that:
+      - "'asl3-asterisk' not in ansible_facts.packages"
+      - asterisk_py_phone_caller_legacy_paths.results | selectattr('stat.exists') | list | length == 0
+    fail_msg: Unmanaged Asterisk packages, units or data exist. Back up and explicitly migrate; fresh installation will not take them over.
+  when:
+    - asterisk_package_provider == 'allstarlink'
+    - not asterisk_py_phone_caller_provider_marker.stat.exists

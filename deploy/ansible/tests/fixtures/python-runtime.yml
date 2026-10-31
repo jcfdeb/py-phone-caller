@@ -1,0 +1,205 @@
+---
+# Disposable VM startup only. Never load this on an existing application site.
+# Use a fresh database and empty Redis DB 15; do not enqueue tasks, add contacts,
+# schedule calls, or POST to dispatch/audio endpoints. There is no app-wide
+# dry-run switch. Localhost PBX ARI is read-only for this startup observation;
+# its synthetic ARI credentials must be provisioned separately by the parent.
+# Do not change tests/fixtures/python.yml: static contracts still use that file.
+#
+# Controller inputs required separately:
+# - py_phone_caller_local_src_path: absolute repository root, NOT src/;
+#   OR py_phone_caller_git_repo + full 40-character py_phone_caller_git_version.
+# - py_phone_caller_uv_installer_checksum: reviewed SHA256 of the exact installer
+#   https://astral.sh/uv/0.11.15/install.sh (or override URL and checksum together).
+# No checksum is fabricated in this fixture. uv sync remains frozen/all-packages.
+#
+# HTTP ports: asterisk_caller=8081, generate_audio=8082, caller_register=8083,
+# caller_prometheus_webhook=8084, caller_sms=8085, caller_scheduler=8086,
+# caller_address_book=8087, py_phone_caller_ui=5000. asterisk_recaller,
+# asterisk_ws_monitor and celery_worker have no HTTP listener (11 units total).
+# aiohttp binds wildcard addresses; UFW plus systemd IP filtering restrict
+# access to localhost. Parent must verify BPF support and remote-port denial.
+# gTTS has no startup model download; do not request synthesis or /languages.
+
+py_phone_caller_manage_database: true
+py_phone_caller_manage_postgresql: true
+py_phone_caller_manage_local_postgres: true
+py_phone_caller_manage_queue: true
+py_phone_caller_manage_services: true
+py_phone_caller_manage_gateway: false
+py_phone_caller_manage_caddy: false
+py_phone_caller_manage_reverse_proxy: false
+py_phone_caller_manage_firewall: true
+py_phone_caller_firewall_ports: []
+py_phone_caller_firewall_extra_ports: []
+py_phone_caller_service_ip_address_deny: [any]
+py_phone_caller_service_ip_address_allow: [localhost]
+py_phone_caller_ui_reset_password: false
+
+py_phone_caller_config:
+  commons:
+    asterisk_host: 127.0.0.1
+    asterisk_user: fixture
+    asterisk_web_port: '8088'
+    asterisk_http_scheme: http
+    asterisk_ami_user: fixture
+    asterisk_ami_port: 5038
+    sms_db_path: sqlite:////opt/py-phone-caller/data/runtime-sms.db
+  asterisk_call:
+    asterisk_ari_channels: ari/channels
+    asterisk_ari_play: play?media=sound
+    asterisk_context: py-phone-caller
+    asterisk_extension: '3216'
+    asterisk_chan_type: PJSIP/runtime-no-dispatch
+    asterisk_caller_id: Runtime-No-Dispatch
+    asterisk_call_http_scheme: http
+    asterisk_call_host: 127.0.0.1
+    asterisk_call_port: '8081'
+    asterisk_call_app_route_place_call: place_call
+    asterisk_call_app_route_call_to_queue: call_to_queue
+    asterisk_call_app_route_play: play
+    seconds_to_forget: 180
+    client_timeout_total: 5
+  call_register:
+    call_register_http_scheme: http
+    call_register_host: 127.0.0.1
+    call_register_port: '8083'
+    call_register_app_route_register_call: register_call
+    call_register_app_route_voice_message: msg
+    call_register_app_route_acknowledge: ack
+    call_register_app_route_heard: heard
+    call_register_scheduled_call_app_route: scheduled_call
+  asterisk_ws_monitor:
+    asterisk_stasis_app: py-phone-caller
+  asterisk_recaller:
+    times_to_dial: 0
+    call_backup_callee_after_seconds: 60
+    call_backup_callee_max_times: 0
+  generate_audio:
+    generate_audio_http_scheme: http
+    generate_audio_host: 127.0.0.1
+    generate_audio_port: 8082
+    generate_audio_app_route: make_audio
+    tts_engine: google_gtts
+    gcloud_tts_language_code: en
+    aws_polly_region_name: eu-north-1
+    aws_polly_voice: Enrique
+    pre_trained_models_folder: pre_trained_models
+    facebook_mms_models_folder: facebook
+    facebook_mms_language_code: spa
+    facebook_mms_num2words_language_code: es
+    piper_models_folder: piper_tts
+    piper_language_code: en_US
+    piper_language_default_code: en_US
+    piper_python_interpreter: python3
+    piper_voices_url: https://example.invalid/no-model-downloads
+    kokoro_models_folder: kokoro_tts
+    kokoro_lang: a
+    kokoro_python_interpreter: python3
+    kokoro_model_url: https://example.invalid/no-model-downloads
+    kokoro_voices_base_url: https://example.invalid/no-model-downloads
+    kokoro_repo_id: runtime-no-downloads/runtime-no-downloads
+    kokoro_model_filename: kokoro-v1_0.pth
+    silero_models_folder: silero_tts
+    silero_lang: en
+    silero_speaker: en_0
+    silero_sample_rate: 8000
+    silero_python_interpreter: python3
+    serving_audio_folder: audio
+    is_audio_ready_endpoint: is_audio_ready
+    num_of_cpus: 1
+    preload:
+      facebook_mms: []
+      piper_tts: []
+      kokoro_tts: []
+      silero_tts: []
+  caller_prometheus_webhook:
+    prometheus_webhook_port: 8084
+    prometheus_webhook_app_route_call_only: call_only
+    prometheus_webhook_app_route_sms_only: sms_only
+    prometheus_webhook_app_route_sms_before_call: sms_before_call
+    prometheus_webhook_app_route_call_and_sms: call_and_sms
+    prometheus_webhook_receivers: []
+  caller_sms:
+    caller_sms_http_scheme: http
+    caller_sms_host: 127.0.0.1
+    caller_sms_port: '8085'
+    caller_sms_app_route: send_sms
+    sms_before_call_wait_seconds: 120
+    caller_sms_carrier: twilio
+    twilio_sms_from: '+15005550006'
+    on_premise_sms_db: /opt/py-phone-caller/data/runtime-sms.db
+    on_premise_sms_db_retry_records: 0
+    sms_strategy: round_robin
+    modems: []
+  scheduled_calls:
+    scheduled_calls_http_scheme: http
+    scheduled_calls_host: 127.0.0.1
+    scheduled_calls_port: '8086'
+    scheduled_call_app_route: schedule_call
+    local_timezone: UTC
+  caller_address_book:
+    caller_address_book_http_scheme: http
+    caller_address_book_host: 127.0.0.1
+    caller_address_book_port: 8087
+    caller_address_book_route_add_contact: contact_add
+    caller_address_book_route_modify_contact: contact_modify
+    caller_address_book_route_delete_contact: contact_delete
+    caller_address_book_route_on_call_contact: contact_on_call
+    caller_address_book_service_export: contacts_export_csv
+    caller_address_book_service_import: contacts_import_csv
+  database:
+    db_host: 127.0.0.1
+    db_port: 5432
+    db_name: py_phone_caller_runtime
+    db_user: py_phone_caller_runtime
+    db_max_size: 5
+    db_max_inactive_connection_lifetime: 30.0
+  queue:
+    queue_scheme: redis
+    queue_host: 127.0.0.1
+    queue_port: 6379
+    queue_url: redis://127.0.0.1:6379/15
+  py_phone_caller_ui:
+    ui_session_protection: strong
+    ui_listen_on_host: 127.0.0.1
+    ui_listen_on_port: 5000
+    ui_admin_user: runtime-admin@example.invalid
+    min_password_length: 17
+  logs:
+    log_formatter: '%(asctime)s %(message)s'
+    log_level: INFO
+    acknowledge_error: Missing acknowledgement parameters
+    heard_error: Missing heard parameters
+    register_call_error: Missing registration parameters
+    voice_message_error: Missing voice-message parameters
+    asterisk_call_error: Missing call parameters
+    asterisk_play_error: Missing playback parameters
+    generate_audio_error: Missing audio parameters
+    caller_sms_error: Missing SMS parameters
+    scheduled_call_error: Missing schedule parameters
+    lost_directory_error: Missing audio directory
+  gateway:
+    behind_gateway: false
+  auth:
+    provider: local
+    local_fallback_enabled: true
+    oauth2:
+      enabled: false
+  telemetry:
+    enabled: false
+
+py_phone_caller_config_secrets:
+  commons:
+    asterisk_pass: SYNTHETIC_ARI_PASSWORD_NOT_FOR_DEPLOYMENT
+    asterisk_ami_secret: SYNTHETIC_AMI_PASSWORD_NOT_FOR_DEPLOYMENT
+  database:
+    db_password: SYNTHETIC_RUNTIME_DB_PASSWORD_NOT_FOR_DEPLOYMENT
+  caller_sms:
+    twilio_account_sid: AC00000000000000000000000000000000
+    twilio_auth_token: SYNTHETIC_TWILIO_TOKEN_NOT_FOR_DEPLOYMENT
+  py_phone_caller_ui:
+    ui_secret_key: SYNTHETIC_RUNTIME_UI_SECRET_NOT_FOR_DEPLOYMENT
+  auth:
+    oauth2:
+      client_secret: ''

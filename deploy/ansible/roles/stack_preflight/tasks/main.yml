@@ -1,0 +1,33 @@
+---
+- name: Require explicit boolean selectors
+  ansible.builtin.assert:
+    that:
+      - stack_deploy_py_phone_caller is defined and stack_deploy_py_phone_caller is boolean
+      - stack_deploy_asterisk is defined and stack_deploy_asterisk is boolean
+      - stack_deploy_openalert is defined and stack_deploy_openalert is boolean
+    fail_msg: Set all three stack_deploy selectors explicitly to true or false.
+
+- name: Validate native platform and selected components
+  ansible.builtin.assert:
+    that:
+      - stack_deploy_py_phone_caller or stack_deploy_asterisk or stack_deploy_openalert
+      - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+      - >-
+        (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] == '13') or
+        (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '26.04') or
+        ((stack_legacy_platform | default(false) | bool) and not stack_deploy_openalert
+         and ansible_facts['os_family'] in ['Debian', 'RedHat'])
+      - ansible_facts['service_mgr'] == 'systemd'
+    fail_msg: The new native entry point targets Debian 13 or Ubuntu 26.04 on AMD64/ARM64 with systemd; hardware remains separately qualified.
+
+- name: Load component configuration only when selected
+  ansible.builtin.include_tasks: python.yml
+  when: stack_deploy_py_phone_caller
+
+- name: Load PBX configuration only when selected
+  ansible.builtin.include_tasks: pbx.yml
+  when: stack_deploy_asterisk
+
+- name: Load OpenAlert configuration only when selected
+  ansible.builtin.include_tasks: openalert.yml
+  when: stack_deploy_openalert

@@ -1,0 +1,13 @@
+---
+stack:
+  hosts:
+    disposable-openalert:
+      ansible_host: 192.0.2.20
+      ansible_user: deploy
+      ansible_python_interpreter: /usr/bin/python3
+  vars:
+    # This acknowledges destructive test changes on this disposable host only.
+    stack_disposable_test_acknowledged: true
+    stack_deploy_py_phone_caller: false
+    stack_deploy_asterisk: false
+    stack_deploy_openalert: true

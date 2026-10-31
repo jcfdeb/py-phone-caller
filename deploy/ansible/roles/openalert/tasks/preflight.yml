@@ -1,0 +1,134 @@
+---
+- name: Require trusted artifact and named instances
+  ansible.builtin.assert:
+    that:
+      - openalert_release is mapping
+      - openalert_release.source | default('') is match('^(/|https://)')
+      - openalert_release.sha256 | default('') is match('^[a-f0-9]{64}$')
+      - openalert_instances is mapping
+      - openalert_instances | length > 0
+      - openalert_root is match('^/[A-Za-z0-9_/-]+$')
+      - openalert_management_dir is match('^/[A-Za-z0-9_/-]+$')
+      - openalert_helper is match('^/[A-Za-z0-9_/-]+\.py$')
+      - openalert_root not in ['/', '/opt', '/usr', '/var', '/var/lib']
+      - openalert_management_dir not in ['/', '/opt', '/usr', '/var', '/var/lib']
+      - ansible_facts['python']['version']['major'] == 3
+      - ansible_facts['python']['version']['minor'] >= 11
+    fail_msg: Supply a local absolute path or HTTPS URL, a trusted SHA-256 and named instances; target Python 3.11+ is required.
+
+- name: Resolve architecture from managed-host facts
+  ansible.builtin.set_fact:
+    openalert_architecture: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
+    openalert_resolved_instances: []
+
+- name: Normalize per-instance defaults
+  ansible.builtin.set_fact:
+    openalert_resolved_instances: >-
+      {{ openalert_resolved_instances + [openalert_instance_defaults | combine({
+        'name': item.key,
+        'user': 'oa-' ~ item.key,
+        'group': 'oa-' ~ item.key,
+        'service_name': 'openalertd-' ~ item.key ~ '.service',
+        'config_path': '/etc/openalert/' ~ item.key ~ '/openalertd.toml',
+        'state_dir': '/var/lib/openalert/' ~ item.key
+      }) | combine(item.value) | combine({'name': item.key})] }}
+  loop: "{{ openalert_instances | dict2items }}"
+  no_log: true
+
+- name: Validate instance names and systemd-safe values
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[a-z][a-z0-9_-]{0,23}$')
+      - item.user is match('^[a-z_][a-z0-9_-]{0,30}$') and item.user != 'root'
+      - item.group is match('^[a-z_][a-z0-9_-]{0,30}$') and item.group != 'root'
+      - item.service_name is match('^[A-Za-z0-9_-]+\.service$')
+      - item.config_path is match('^/etc/[A-Za-z0-9_/-]+\.toml$')
+      - item.state_dir is match('^/var/lib/[A-Za-z0-9_-]+/[A-Za-z0-9_/-]+$')
+      - "'..' not in item.state_dir and '..' not in item.config_path"
+      - item.config_template is defined
+      - item.health_url | default('') is match('^https?://(127\.0\.0\.1|\[::1\]):[0-9]+/health$')
+      - item.supplementary_groups is sequence and item.supplementary_groups is not string
+      - item.supplementary_groups | select('match', '^[a-z_][a-z0-9_-]{0,30}$') | list | length == item.supplementary_groups | length
+      - item.device_paths is sequence and item.device_paths is not string
+      - item.device_paths | select('match', '^/dev/[A-Za-z0-9_./:-]+$') | list | length == item.device_paths | length
+      - item.capabilities is sequence and item.capabilities is not string
+      - item.capabilities | difference(['CAP_NET_BIND_SERVICE', 'CAP_NET_ADMIN', 'CAP_NET_RAW', 'CAP_SYS_TIME']) | length == 0
+      - item.cpu_quota | string is match('^[0-9]+%$')
+      - item.memory_high | string is match('^[0-9]+[KMG]?$')
+      - item.memory_max | string is match('^[0-9]+[KMG]?$')
+      - item.tasks_max | string is match('^[1-9][0-9]*$')
+      - item.limit_nofile | string is match('^[1-9][0-9]*$')
+      - item.allow_unauthenticated_nonloopback is boolean
+    fail_msg: Invalid OpenAlert instance definition; see the variable reference.
+  loop: "{{ openalert_resolved_instances }}"
+  no_log: true
+
+- name: Reject duplicate service identities and paths
+  ansible.builtin.assert:
+    that:
+      - openalert_resolved_instances | map(attribute=item) | unique | length == openalert_resolved_instances | length
+    fail_msg: Each instance must have a distinct service, account, configuration and state directory.
+  loop: [service_name, user, group, config_path, state_dir]
+
+- name: Reject shared configuration directories
+  ansible.builtin.assert:
+    that:
+      - >-
+        openalert_resolved_instances | map(attribute='config_path') | map('dirname') | unique | length
+        == openalert_resolved_instances | length
+    fail_msg: Each instance requires its own protected configuration directory.
+
+- name: Reject nested state directories
+  ansible.builtin.assert:
+    that:
+      - not item.0.state_dir.startswith(item.1.state_dir ~ '/')
+    fail_msg: State directories must not overlap between instances.
+  loop: "{{ openalert_resolved_instances | product(openalert_resolved_instances) | list }}"
+  no_log: true
+
+- name: Verify controller-local artifact before host changes
+  ansible.builtin.stat:
+    path: "{{ openalert_release.source }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: openalert_local_archive
+  when: openalert_release.source.startswith('/')
+
+- name: Reject absent or corrupt controller-local archive
+  ansible.builtin.assert:
+    that:
+      - openalert_local_archive.stat.isreg | default(false)
+      - openalert_local_archive.stat.checksum | default('') == openalert_release.sha256
+    fail_msg: Local release does not match the inventory-pinned checksum.
+  when: openalert_release.source.startswith('/')
+
+- name: Check declared supplementary groups already exist
+  ansible.builtin.getent:
+    database: group
+    key: "{{ item }}"
+  loop: "{{ openalert_resolved_instances | map(attribute='supplementary_groups') | flatten | unique }}"
+
+- name: Check declared devices exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: true
+  loop: "{{ openalert_resolved_instances | map(attribute='device_paths') | flatten | unique }}"
+  register: openalert_device_stats
+
+- name: Reject missing declared hardware
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.ischr | default(false)
+    fail_msg: A declared device is absent or is not a character device.
+  loop: "{{ openalert_device_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Reject conflicting unmanaged installations
+  ansible.builtin.include_tasks: ownership.yml
+  loop: "{{ openalert_resolved_instances }}"
+  loop_control:
+    loop_var: openalert_instance
+    label: "{{ openalert_instance.name }}"

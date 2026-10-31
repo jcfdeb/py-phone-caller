@@ -1,0 +1,137 @@
+---
+- name: Create dedicated repository keyring and ownership directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/apt/keyrings
+    - /var/lib/py-phone-caller-pbx
+
+- name: Fetch reviewed AllStarLink repository key
+  ansible.builtin.get_url:
+    url: https://repo.allstarlink.org/public/allstarlink.asc
+    dest: /etc/apt/keyrings/py-phone-caller-allstarlink.asc
+    checksum: sha256:88bd5cb1f27cd1ccc3fc60e85f636bb072b2351c33437822f9b0a9edc737d7e7
+    owner: root
+    group: root
+    mode: "0644"
+  register: asterisk_py_phone_caller_repository_key
+
+- name: Configure only the signed production repository for the managed architecture
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/py-phone-caller-allstarlink.sources
+    content: |
+      Types: deb
+      URIs: https://repo.allstarlink.org/public
+      Suites: trixie
+      Components: main
+      Architectures: {{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}
+      Signed-By: /etc/apt/keyrings/py-phone-caller-allstarlink.asc
+    owner: root
+    group: root
+    mode: "0644"
+  register: asterisk_py_phone_caller_repository_source
+
+- name: Restrict third-party repository to the exact PBX package set
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/py-phone-caller-allstarlink
+    content: |
+      Package: asl3-asterisk asl3-asterisk-modules asl3-asterisk-config
+      Pin: version {{ asterisk_allstarlink_version }}
+      Pin-Priority: 1001
+
+      Package: *
+      Pin: origin repo.allstarlink.org
+      Pin-Priority: -1
+    owner: root
+    group: root
+    mode: "0644"
+  register: asterisk_py_phone_caller_repository_pin
+
+- name: Refresh authenticated package indexes when repository inputs change
+  ansible.builtin.apt:
+    update_cache: true
+  when: >-
+    asterisk_py_phone_caller_repository_key.changed or
+    asterisk_py_phone_caller_repository_source.changed or
+    asterisk_py_phone_caller_repository_pin.changed
+
+- name: Record explicit fresh-install ownership before package installation
+  ansible.builtin.copy:
+    dest: /var/lib/py-phone-caller-pbx/provider
+    content: "allstarlink\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install pinned PBX packages without radio-node setup or premature startup
+  ansible.builtin.apt:
+    name:
+      - "asl3-asterisk={{ asterisk_allstarlink_version }}"
+      - "asl3-asterisk-modules={{ asterisk_allstarlink_version }}"
+      - "asl3-asterisk-config={{ asterisk_allstarlink_version }}"
+      - asterisk-core-sounds-en-wav
+    state: present
+    install_recommends: false
+    allow_unauthenticated: false
+    allow_downgrade: false
+    fail_on_autoremove: true
+    policy_rc_d: 101
+    dpkg_options: force-confdef,force-confold
+    update_cache: true
+    cache_valid_time: 3600
+  notify: restart asterisk
+
+- name: Remove package-added hardware groups from the dedicated non-radio account
+  ansible.builtin.user:
+    name: asterisk
+    groups: ""
+    append: false
+
+- name: Replace vendor radio bootstrap with owned PBX include roots
+  ansible.builtin.copy:
+    dest: "/etc/asterisk/{{ item.file }}"
+    content: "{{ item.content }}"
+    owner: asterisk
+    group: asterisk
+    mode: "0640"
+  loop:
+    - file: extensions.conf
+      content: |
+        ; Managed PBX include root; no AllStarLink radio dialplan.
+        [general]
+        static=yes
+        writeprotect=yes
+        #include extensions_py_phone_caller.conf
+    - file: pjsip.conf
+      content: |
+        ; Managed PBX include root.
+        #include pjsip_py_phone_caller.conf
+    - file: iax.conf
+      content: |
+        ; Managed PBX include root; IAX module is loaded only when selected.
+        [general]
+        bindaddr={{ asterisk_iax_bindaddr }}
+        bindport={{ asterisk_iax_bindport }}
+        #include iax_py_phone_caller.conf
+    - file: manager.conf
+      content: |
+        ; ARI is used by this stack; do not inherit vendor AMI access.
+        [general]
+        enabled=no
+        webenabled=no
+  no_log: true
+  diff: false
+  notify: restart asterisk
+
+- name: Manage explicit non-radio PBX module allowlist
+  ansible.builtin.template:
+    src: modules_allstarlink.conf.j2
+    dest: /etc/asterisk/modules.conf
+    owner: asterisk
+    group: asterisk
+    mode: "0640"
+  notify: restart asterisk

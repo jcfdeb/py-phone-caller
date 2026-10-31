@@ -1,0 +1,42 @@
+---
+- name: Inspect explicitly authorized disposable host without dispatch
+  hosts: stack
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Require disposable test authorization and a single expected target
+      ansible.builtin.assert:
+        that:
+          - stack_disposable_test_acknowledged | default(false) | bool
+          - inventory_hostname == test_expected_host
+          - ansible_play_hosts | length == 1
+
+    - name: Read start timestamps without reading application logs
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", --property=ExecMainStartTimestampMonotonic, --value]
+      loop: [openalertd.service, openalertd-public.service]
+      register: test_starts
+      changed_when: false
+      failed_when: test_starts.rc not in [0, 1, 4]
+
+    - name: Read package inventory
+      ansible.builtin.command:
+        argv: [dpkg-query, -W, '-f=${binary:Package}\n']
+      register: test_packages
+      changed_when: false
+
+    - name: Inspect Python workspace absence
+      ansible.builtin.stat:
+        path: /opt/py-phone-caller
+      register: test_workspace
+
+    - name: Write nonsecret evidence on controller
+      ansible.builtin.copy:
+        content: >-
+          {{ {'starts': dict(test_starts.results | map(attribute='item')
+              | zip(test_starts.results | map(attribute='stdout'))),
+              'packages': test_packages.stdout, 'python_workspace': test_workspace.stat.exists} | to_json }}
+        dest: "{{ test_record_path }}"
+        mode: '0600'
+      delegate_to: localhost
+      become: false

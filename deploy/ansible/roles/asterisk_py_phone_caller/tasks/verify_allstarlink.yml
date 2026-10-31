@@ -1,0 +1,36 @@
+---
+- name: Apply only pending configuration and package handlers before health checks
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify authenticated ARI availability without originating calls
+  ansible.builtin.uri:
+    url: >-
+      http://{{ '[::1]' if asterisk_http_bindaddr == '::1' else '127.0.0.1' }}:{{ asterisk_http_bindport }}/ari/asterisk/info
+    url_username: "{{ ari_username }}"
+    url_password: "{{ ari_password }}"
+    force_basic_auth: true
+    status_code: 200
+    return_content: false
+    use_proxy: false
+  no_log: true
+  register: asterisk_py_phone_caller_ari_health
+  until: asterisk_py_phone_caller_ari_health is succeeded
+  retries: 5
+  delay: 2
+
+- name: Inspect loaded PBX modules without exercising hardware
+  ansible.builtin.command:
+    argv: [/usr/sbin/asterisk, -rx, "module show"]
+  register: asterisk_py_phone_caller_loaded_modules
+  changed_when: false
+
+- name: Require running application interfaces and exclude radio modules
+  ansible.builtin.assert:
+    that:
+      - asterisk_py_phone_caller_loaded_modules.stdout is search('chan_pjsip[.]so[^\n]+Running')
+      - asterisk_py_phone_caller_loaded_modules.stdout is search('app_stasis[.]so[^\n]+Running')
+      - asterisk_py_phone_caller_loaded_modules.stdout is search('res_http_websocket[.]so[^\n]+Running')
+      - asterisk_py_phone_caller_loaded_modules.stdout is search('res_ari_channels[.]so[^\n]+Running')
+      - asterisk_py_phone_caller_loaded_modules.stdout is search('res_ari_events[.]so[^\n]+Running')
+      - asterisk_py_phone_caller_loaded_modules.stdout is not search('app_rpt|chan_simpleusb|chan_usbradio|res_rpt|chan_echolink')
+    fail_msg: PBX module validation failed; inspect Asterisk logs locally before using this installation.

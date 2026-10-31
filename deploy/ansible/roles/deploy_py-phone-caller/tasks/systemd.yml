@@ -1,0 +1,31 @@
+---
+- name: Install the systemd units
+  ansible.builtin.template:
+    src: service.j2
+    dest: "/etc/systemd/system/{{ py_phone_caller_service_prefix }}{{ item.name | replace('_', '-') }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ py_phone_caller_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _ppc_units
+
+- name: Record services with changed unit templates
+  ansible.builtin.set_fact:
+    _ppc_changed_services: >-
+      {{ (_ppc_changed_services | default([]))
+         + (_ppc_units.results | selectattr('changed') | map(attribute='item.name') | list) }}
+  changed_when: _ppc_units is changed
+  notify: Restart affected Python services
+
+- name: Enable and start the services
+  ansible.builtin.systemd_service:
+    name: "{{ py_phone_caller_service_prefix }}{{ item.name | replace('_', '-') }}.service"
+    daemon_reload: "{{ (_ppc_units is changed) and ansible_loop.first }}"
+    state: started
+    enabled: true
+  loop: "{{ py_phone_caller_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+    extended: true

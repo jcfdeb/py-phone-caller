@@ -1,0 +1,23 @@
+---
+stack:
+  hosts:
+    openalert-ansible-phase2:
+      ansible_connection: containers.podman.podman
+      ansible_python_interpreter: /usr/bin/python3
+  vars:
+    stack_disposable_test_acknowledged: true
+    stack_deploy_py_phone_caller: false
+    stack_deploy_asterisk: false
+    stack_deploy_openalert: true
+    # The runner supplies openalert_release from an explicitly passed local bundle.
+    openalert_instances:
+      hub:
+        service_name: openalertd.service
+        config_template: "{{ inventory_dir }}/../inventories/examples/templates/private.toml.j2"
+        health_url: http://127.0.0.1:8090/health
+        rest_port: 8090
+      public:
+        service_name: openalertd-public.service
+        config_template: "{{ inventory_dir }}/../inventories/examples/templates/private.toml.j2"
+        health_url: http://127.0.0.1:8092/health
+        rest_port: 8092

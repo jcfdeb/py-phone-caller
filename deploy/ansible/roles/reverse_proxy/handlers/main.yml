@@ -1,0 +1,6 @@
+---
+- name: Reload Caddy
+  ansible.builtin.service:
+    name: caddy
+    state: reloaded
+  when: py_phone_caller_manage_reverse_proxy | bool

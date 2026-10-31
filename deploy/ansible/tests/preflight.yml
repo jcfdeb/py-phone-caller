@@ -1,0 +1,54 @@
+---
+- name: Verify component isolation using synthetic facts without deploying roles
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars:
+    ansible_facts:
+      architecture: aarch64
+      distribution: Debian
+      distribution_major_version: "13"
+      distribution_version: "13.0"
+      service_mgr: systemd
+    stack_deploy_py_phone_caller: false
+    stack_deploy_asterisk: true
+    stack_deploy_openalert: false
+    stack_py_phone_caller_vars_files: "{{ deliberately_undefined_python_config }}"
+    stack_openalert_vars_files: "{{ deliberately_undefined_openalert_config }}"
+  tasks:
+    - name: Assert PBX preflight never resolves disabled component variables
+      ansible.builtin.include_role:
+        name: stack_preflight
+
+    - name: Verify empty selection is rejected
+      vars:
+        stack_deploy_asterisk: false
+      block:
+        - name: Run invalid selector preflight
+          ansible.builtin.include_role:
+            name: stack_preflight
+
+        - name: Fail when invalid selectors were accepted
+          ansible.builtin.fail:
+            msg: Invalid selectors unexpectedly accepted
+      rescue:
+        - name: Confirm rejection came from component selection
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Validate native platform and selected components'
+
+    - name: Verify non-boolean selectors are rejected
+      vars:
+        stack_deploy_asterisk: "true"
+      block:
+        - name: Run invalid boolean preflight
+          ansible.builtin.include_role:
+            name: stack_preflight
+
+        - name: Fail when string selectors were accepted
+          ansible.builtin.fail:
+            msg: String selectors unexpectedly accepted
+      rescue:
+        - name: Confirm rejection came from selector types
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Require explicit boolean selectors'

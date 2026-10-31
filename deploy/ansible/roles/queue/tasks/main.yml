@@ -1,0 +1,16 @@
+---
+- name: Manage the local queue service
+  when:
+    - py_phone_caller_manage_queue | bool
+    - py_phone_caller_final_config.queue.queue_host in py_phone_caller_local_db_hosts
+  block:
+    - name: Install the queue backend
+      ansible.builtin.package:
+        name: "{{ py_phone_caller_queue_packages }}"
+        state: present
+
+    - name: Enable and start the queue backend
+      ansible.builtin.service:
+        name: "{{ py_phone_caller_queue_service }}"
+        state: started
+        enabled: true

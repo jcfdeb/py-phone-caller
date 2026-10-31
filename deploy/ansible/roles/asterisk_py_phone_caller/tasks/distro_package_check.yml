@@ -1,0 +1,25 @@
+---
+- name: Inspect existing distribution package metadata without refreshing or installing
+  ansible.builtin.command:
+    argv: [apt-cache, policy, "{{ item }}"]
+  environment:
+    LC_ALL: C
+  loop: "{{ (system_dependencies + asterisk_packages) | unique }}"
+  register: asterisk_py_phone_caller_distro_candidates
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Require every distribution package candidate before host changes
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - "item.stdout is search('(?m)^\\s*Candidate: (?!\\(none\\))\\S+')"
+    fail_msg: >-
+      No APT candidate for {{ item.item }}. Prepare current distribution repositories
+      and refresh their indexes before retrying (Ubuntu 26.04 requires universe).
+      Alternatively disable stack_deploy_asterisk for an externally managed PBX.
+      AllStarLink is Debian 13 only; never add Debian repositories to Ubuntu.
+  loop: "{{ asterisk_py_phone_caller_distro_candidates.results }}"
+  loop_control:
+    label: "{{ item.item }}"

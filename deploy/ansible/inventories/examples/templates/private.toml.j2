@@ -1,0 +1,45 @@
+# Private, non-dispatching installation example. Supply your own reviewed template.
+{% if openalert_instance.synthetic_secret_sentinel is defined %}
+# Synthetic safety-test sentinel: {{ openalert_instance.synthetic_secret_sentinel }}
+{% endif %}
+[daemon]
+name = "openalert-{{ openalert_instance.name }}"
+log_level = "{{ openalert_instance.log_level | default('info') }}"
+logging = "systemd"
+
+[rest]
+listen_host = "{{ openalert_instance.rest_host | default('127.0.0.1') }}"
+listen_port = {{ openalert_instance.rest_port }}
+enable_cors = false
+
+[rest.auth]
+type = "none"
+
+[dashboard.auth]
+enabled = false
+
+[templates]
+template_dir = "{{ openalert_release_dir }}/templates"
+default_template = "{{ openalert_instance.default_template | default('prometheus_alertmanager.json.tera') }}"
+
+[storage]
+enabled = true
+path = "{{ openalert_instance.state_dir }}/openalert.db"
+recover_pending_on_startup = false
+
+[nostr]
+relays = []
+enable_subscriber = false
+
+[bitchat]
+enabled = false
+
+[peering]
+enabled = false
+
+[sms]
+enabled = false
+
+[routing]
+default_destinations = []
+failover_destinations = []

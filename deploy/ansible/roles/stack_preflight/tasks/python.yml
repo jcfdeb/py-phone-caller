@@ -1,0 +1,14 @@
+---
+- name: Load explicitly supplied Python variable files
+  ansible.builtin.include_vars:
+    file: "{{ item }}"
+  loop: "{{ stack_py_phone_caller_vars_files | default([]) }}"
+  no_log: true
+
+- name: Require Python configuration only for Python deployments
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_config is mapping
+      - py_phone_caller_config | length > 0
+    fail_msg: Supply Python configuration and Vault variables explicitly; the live inventory is never loaded automatically.
+  no_log: true

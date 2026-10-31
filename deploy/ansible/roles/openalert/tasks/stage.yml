@@ -1,0 +1,132 @@
+---
+- name: Create dedicated instance group
+  ansible.builtin.group:
+    name: "{{ openalert_instance.group }}"
+    system: true
+
+- name: Create dedicated non-login instance account
+  ansible.builtin.user:
+    name: "{{ openalert_instance.user }}"
+    group: "{{ openalert_instance.group }}"
+    groups: "{{ openalert_instance.supplementary_groups }}"
+    append: false
+    home: "{{ openalert_instance.state_dir }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+    system: true
+    password_lock: true
+
+- name: Reserve managed identity for safe retry after validation failure
+  ansible.builtin.copy:
+    content: "{{ openalert_instance_identity | to_json }}\n"
+    dest: "{{ openalert_management_dir }}/owners/{{ openalert_instance.name }}.json"
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    openalert_instance_identity:
+      service_name: "{{ openalert_instance.service_name }}"
+      user: "{{ openalert_instance.user }}"
+      group: "{{ openalert_instance.group }}"
+      config_path: "{{ openalert_instance.config_path }}"
+      state_dir: "{{ openalert_instance.state_dir }}"
+
+- name: Create private writable instance state directory
+  ansible.builtin.file:
+    path: "{{ openalert_instance.state_dir }}"
+    state: directory
+    owner: "{{ openalert_instance.user }}"
+    group: "{{ openalert_instance.group }}"
+    mode: "0750"
+
+- name: Create protected configuration and candidate directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: "{{ openalert_instance.group }}"
+    mode: "0750"
+  loop:
+    - "{{ openalert_instance.config_path | dirname }}"
+    - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}"
+    - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}.d"
+
+- name: Render protected candidate without exposing secrets
+  ansible.builtin.template:
+    src: "{{ openalert_instance.config_template }}"
+    dest: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/openalertd.toml"
+    owner: root
+    group: "{{ openalert_instance.group }}"
+    mode: "0640"
+  no_log: true
+  diff: false
+
+- name: Check assets, state, permissions and exposure as service account
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - "{{ openalert_helper }}"
+      - config
+      - --config
+      - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/openalertd.toml"
+      - --state-dir
+      - "{{ openalert_instance.state_dir }}"
+      - --templates-dir
+      - "{{ openalert_release_dir }}/templates"
+      - --health-url
+      - "{{ openalert_instance.health_url }}"
+      - --capabilities
+      - "{{ openalert_instance.capabilities | to_json }}"
+      - --device-paths
+      - "{{ openalert_instance.device_paths | to_json }}"
+      - --allow-unauthenticated-nonloopback
+      - "{{ openalert_instance.allow_unauthenticated_nonloopback | ternary('true', 'false') }}"
+      - --exposure-policy
+      - "{{ openalert_instance.exposure_policy }}"
+  become: true
+  become_user: "{{ openalert_instance.user }}"
+  register: openalert_config_result
+  changed_when: false
+  no_log: true
+
+- name: Check candidate with the release binary as service account
+  ansible.builtin.command:
+    argv:
+      - "{{ openalert_release_dir }}/bin/openalertd"
+      - check
+      - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/openalertd.toml"
+  become: true
+  become_user: "{{ openalert_instance.user }}"
+  changed_when: false
+  no_log: true
+
+- name: Collect validated listener declarations
+  ansible.builtin.set_fact:
+    openalert_candidate_listeners: "{{ openalert_candidate_listeners + [openalert_config_result.stdout | from_json] }}"
+  no_log: true
+
+- name: Stage canonical packaged base unit
+  ansible.builtin.copy:
+    src: "{{ openalert_release_dir }}/systemd/openalertd.service"
+    remote_src: true
+    dest: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Stage least-privilege instance drop-in
+  ansible.builtin.template:
+    src: instance.conf.j2
+    dest: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}.d/instance.conf"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Validate staged systemd unit and drop-in
+  ansible.builtin.command:
+    argv:
+      - systemd-analyze
+      - verify
+      - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}"
+  changed_when: false
+  no_log: true

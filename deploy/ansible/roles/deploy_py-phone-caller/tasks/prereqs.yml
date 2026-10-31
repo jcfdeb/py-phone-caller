@@ -1,0 +1,93 @@
+---
+- name: Configure service host aliases in /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK py-phone-caller host aliases"
+    state: "{{ 'present' if py_phone_caller_hosts_entries | length > 0 else 'absent' }}"
+    block: |-
+      {% for entry in py_phone_caller_hosts_entries %}
+      {{ entry.address }} {{ entry.names | join(' ') }}
+      {% endfor %}
+
+# --------------------------------------------------------------------------
+# Debian / Ubuntu
+# --------------------------------------------------------------------------
+- name: Update the apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == "Debian"
+
+# --------------------------------------------------------------------------
+# RHEL / Rocky: libsndfile and ffmpeg-free come from EPEL, and several build
+# dependencies come from CRB (PowerTools on 8).
+# --------------------------------------------------------------------------
+# On Rocky and AlmaLinux epel-release is in "extras". On Red Hat Enterprise
+# Linux itself it is not packaged: install the EPEL release RPM from
+# dl.fedoraproject.org first, or pre-enable the repository.
+- name: Install EPEL and the dnf plugins
+  ansible.builtin.package:
+    name:
+      - epel-release
+      - dnf-plugins-core
+    state: present
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Check whether the CRB repository is already enabled
+  ansible.builtin.command:
+    cmd: "dnf -q repolist --enabled {{ py_phone_caller_crb_repo }}"
+  register: _ppc_crb_state
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Enable the CRB repository
+  ansible.builtin.command:
+    cmd: "dnf config-manager --set-enabled {{ py_phone_caller_crb_repo }}"
+  when:
+    - ansible_facts['os_family'] == "RedHat"
+    - py_phone_caller_crb_repo not in (_ppc_crb_state.stdout | default(''))
+  changed_when: true
+
+# --------------------------------------------------------------------------
+# Packages
+# --------------------------------------------------------------------------
+- name: Install runtime packages
+  ansible.builtin.package:
+    name: "{{ py_phone_caller_runtime_packages }}"
+    state: present
+
+- name: Install build packages
+  ansible.builtin.package:
+    name: "{{ py_phone_caller_build_packages }}"
+    state: present
+
+# Only the on-premise SMS carrier compiles the native modem engine.
+- name: Install the Rust toolchain
+  ansible.builtin.package:
+    name: "{{ py_phone_caller_rust_packages }}"
+    state: present
+  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+
+# ffmpeg is only needed by the TTS engines that post-process audio with pydub,
+# and on RHEL it is not always reachable without RPM Fusion. Do not let a
+# missing codec package abort the whole deployment.
+- name: Install ffmpeg
+  ansible.builtin.package:
+    name: "{{ py_phone_caller_ffmpeg_packages }}"
+    state: present
+  register: _ppc_ffmpeg
+  ignore_errors: true
+
+- name: Report a missing ffmpeg
+  ansible.builtin.debug:
+    msg: >-
+      Could not install {{ py_phone_caller_ffmpeg_packages | join(', ') }}.
+      generate_audio will fail for TTS engines that post-process audio with
+      pydub. Enable RPM Fusion (RHEL) or install ffmpeg by hand, then re-run
+      with --tags prereqs.
+  when: _ppc_ffmpeg is failed

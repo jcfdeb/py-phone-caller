@@ -1,0 +1,11 @@
+---
+- name: Load explicitly supplied OpenAlert variable files
+  ansible.builtin.include_vars:
+    file: "{{ item }}"
+  loop: "{{ stack_openalert_vars_files | default([]) }}"
+  no_log: true
+
+- name: Validate OpenAlert inputs without mutations
+  ansible.builtin.include_role:
+    name: openalert
+    tasks_from: preflight

@@ -1,0 +1,64 @@
+---
+- name: Render synthetic OpenAlert instances without touching services
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars_files:
+    - ../roles/openalert/defaults/main.yml
+  vars:
+    openalert_release_dir: /opt/openalert/releases/offline-fixture
+    openalert_render_instances:
+      - name: hub
+        user: oa-hub
+        group: oa-hub
+        service_name: openalertd.service
+        config_path: /etc/openalert/hub/openalertd.toml
+        state_dir: /var/lib/openalert/hub
+        rest_port: 8090
+      - name: public
+        user: oa-public
+        group: oa-public
+        service_name: openalertd-public.service
+        config_path: /etc/openalert/public/openalertd.toml
+        state_dir: /var/lib/openalert/public
+        rest_port: 8092
+  tasks:
+    - name: Create local render directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/.rendered"
+        state: directory
+        mode: "0700"
+
+    - name: Render default least-privilege drop-ins
+      ansible.builtin.template:
+        src: ../roles/openalert/templates/instance.conf.j2
+        dest: "{{ playbook_dir }}/.rendered/{{ item.name }}.conf"
+        mode: "0600"
+      vars:
+        openalert_instance: "{{ openalert_instance_defaults | combine(item) }}"
+      loop: "{{ openalert_render_instances }}"
+
+    - name: Render private TOML examples
+      ansible.builtin.template:
+        src: ../inventories/examples/templates/private.toml.j2
+        dest: "{{ playbook_dir }}/.rendered/{{ item.name }}.toml"
+        mode: "0600"
+      vars:
+        openalert_instance: "{{ openalert_instance_defaults | combine(item) }}"
+      loop: "{{ openalert_render_instances }}"
+      no_log: true
+      diff: false
+
+    - name: Assert default privilege reset and instance-specific paths
+      ansible.builtin.assert:
+        that:
+          - "'CapabilityBoundingSet=\n' in rendered"
+          - "'AmbientCapabilities=\n' in rendered"
+          - "'CAP_SYS_TIME' not in rendered"
+          - "('ReadWritePaths=' ~ item.state_dir) in rendered"
+          - "('User=' ~ item.user) in rendered"
+          - "'ProtectClock=yes' in rendered"
+      vars:
+        rendered: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/.rendered/' ~ item.name ~ '.conf') }}"
+      loop: "{{ openalert_render_instances }}"

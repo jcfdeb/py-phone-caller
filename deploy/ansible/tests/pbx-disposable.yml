@@ -1,0 +1,127 @@
+---
+- name: Authorize only the named disposable PBX target
+  hosts: "{{ pbx_test_host | default('pbx-disposable-unselected') }}"
+  gather_facts: false
+  tasks:
+    - name: Require explicit disposable-host authorization
+      ansible.builtin.assert:
+        that:
+          - stack_disposable_test_acknowledged | default(false) | bool
+          - pbx_test_allow_changes | default(false) | bool
+          - not stack_deploy_py_phone_caller
+          - not stack_deploy_openalert
+          - asterisk_http_bindaddr == '127.0.0.1'
+          - asterisk_sip_bindaddr == '127.0.0.1:5060'
+          - not asterisk_sip_trunk_enabled
+          - local_sip
+          - local_iax
+          - asterisk_iax_bindaddr == '127.0.0.1'
+          - asterisk_iax_bindport == 4569
+
+- name: Deploy PBX through the shared entry point
+  ansible.builtin.import_playbook: ../site.yml
+  vars:
+    stack_hosts: "{{ pbx_test_host | default('pbx-disposable-unselected') }}"
+
+- name: Verify PBX without dispatching calls or radio events
+  hosts: "{{ pbx_test_host | default('pbx-disposable-unselected') }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Require authenticated ARI status
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8088/ari/asterisk/info
+        url_username: "{{ ari_username }}"
+        url_password: "{{ ari_password }}"
+        force_basic_auth: true
+        status_code: 200
+        return_content: false
+        use_proxy: false
+      register: pbx_test_health
+      until: pbx_test_health is succeeded
+      retries: 10
+      delay: 2
+      no_log: true
+
+    - name: Require rejection of unauthenticated ARI requests
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8088/ari/asterisk/info
+        status_code: 401
+        return_content: false
+        use_proxy: false
+
+    - name: Inspect loaded modules without exercising them
+      ansible.builtin.command:
+        argv: [/usr/sbin/asterisk, -rx, "module show"]
+      register: pbx_test_modules
+      changed_when: false
+
+    - name: Require operational PBX modules without radio drivers
+      ansible.builtin.assert:
+        that:
+          - pbx_test_modules.stdout is search('chan_pjsip[.]so[^\n]+Running')
+          - pbx_test_modules.stdout is search('app_stasis[.]so[^\n]+Running')
+          - pbx_test_modules.stdout is search('res_http_websocket[.]so[^\n]+Running')
+          - pbx_test_modules.stdout is search('res_ari_channels[.]so[^\n]+Running')
+          - pbx_test_modules.stdout is search('res_ari_events[.]so[^\n]+Running')
+          - pbx_test_modules.stdout is search('chan_iax2[.]so[^\n]+Running')
+          - pbx_test_modules.stdout is not search('app_rpt|chan_simpleusb|chan_usbradio|res_rpt|chan_echolink')
+
+    - name: Inspect the local PJSIP endpoint without sending traffic
+      ansible.builtin.command:
+        argv: [/usr/sbin/asterisk, -rx, "pjsip show endpoint {{ local_sip_exten }}"]
+      register: pbx_test_pjsip
+      changed_when: false
+      no_log: true
+
+    - name: Require the loaded PJSIP endpoint and configured context
+      ansible.builtin.assert:
+        that:
+          - >-
+            pbx_test_pjsip.stdout is search('Endpoint:\\s+' ~ (local_sip_exten | string | regex_escape) ~ '(?:\\s|/)')
+          - >-
+            pbx_test_pjsip.stdout is search('context\\s*:\\s*' ~ (asterisk_context | default('py-phone-caller') | regex_escape) ~ '\\s')
+      no_log: true
+
+    - name: Inspect protected IAX partial permissions
+      ansible.builtin.stat:
+        path: /etc/asterisk/iax_py_phone_caller.conf
+        get_checksum: false
+      register: pbx_test_iax_stat
+
+    - name: Require a protected IAX credential file
+      ansible.builtin.assert:
+        that:
+          - pbx_test_iax_stat.stat.mode == '0640'
+          - pbx_test_iax_stat.stat.pw_name == 'asterisk'
+          - pbx_test_iax_stat.stat.gr_name == 'asterisk'
+
+    - name: Read service start timestamps for rerun and isolation assertions
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - asterisk.service
+          - openalertd.service
+          - openalertd-public.service
+          - --property=Id,ActiveEnterTimestampMonotonic,ExecMainStartTimestampMonotonic
+      register: pbx_test_starts
+      changed_when: false
+
+    - name: Read exact installed PBX package versions
+      ansible.builtin.command:
+        argv: >-
+          {{ ['dpkg-query', '-W', '-f=${binary:Package} ${Version}\n'] +
+             (['asl3-asterisk', 'asl3-asterisk-modules', 'asl3-asterisk-config']
+              if asterisk_package_provider == 'allstarlink' else ['asterisk', 'asterisk-modules']) }}
+      register: pbx_test_versions
+      changed_when: false
+
+    - name: Save nonsecret runtime evidence on the controller
+      ansible.builtin.copy:
+        dest: "{{ pbx_test_report }}"
+        content: "{{ {'starts': pbx_test_starts.stdout, 'versions': pbx_test_versions.stdout, 'modules': pbx_test_modules.stdout} | to_nice_json }}\n"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      changed_when: false

@@ -1,0 +1,11 @@
+---
+# Legacy roles are consolidated and linted in the next phase.
+exclude_paths:
+  - .collections/
+  - on-vm_py-phone-caller/
+  - asterisk_py-phone-caller/
+  - deploy_all/
+  - rh/
+  - tools/
+  - tests/.runtime/
+  - tests/.rendered/

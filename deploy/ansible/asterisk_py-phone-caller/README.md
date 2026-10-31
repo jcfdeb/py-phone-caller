@@ -1,214 +1,101 @@
-# 📘 Ansible Role: Asterisk for Py-Phone-Caller
+# Asterisk compatibility entry point
 
-This role installs and configures **Asterisk PBX** (v18/20+) specifically for the **Py-Phone-Caller** emergency alert system.
+The PBX implementation now lives in [`../roles/asterisk_py_phone_caller`](../roles/asterisk_py_phone_caller/README.md).
+`deploy_asterisk.yml` imports `../site.yml`; it no longer maintains a separate role copy.
+This wrapper sets `stack_deploy_asterisk: true`, `stack_deploy_python: false`,
+`stack_deploy_openalert: false`, and `stack_legacy_platform: true`. It does not load
+Python application configuration or install the Python/OpenAlert services.
 
-It is designed to be **OS-Agnostic** (supporting Ubuntu/Debian and RHEL/Rocky Linux) and **Non-Destructive** (it uses `#include` statements to inject configurations without overwriting system defaults).
+**Compatibility warning:** the original host pattern is **`pbx_servers:all`**, not
+`asterisk`. This union includes every inventory host. It is preserved deliberately;
+always choose the intended inventory and use `--limit` when needed.
 
-## 📋 Requirements
+Run from this directory, or explicitly select this directory's `ansible.cfg`.
+No inventory is selected implicitly. Existing `-i inventory.ini` usage is retained.
+The configuration points at shared roles and collections. Its compatibility-only
+`pbx_legacy_vars` plugin preserves adjacent `group_vars`/`host_vars` after the site
+import, using Ansible's built-in loader (including Vault and group matching).
+Inventory-adjacent variables continue to load normally. The shared entry point
+does not enable this legacy loader by default.
 
-* **Ansible:** 2.12 or higher.
-* **Ansible Collections:** `community.general` (Required for `.ini` configuration).
-* **Target OS:**
-    * Ubuntu 22.04 LTS / 24.04 LTS / 26.04 LTS (**Recommended** / Fully Supported)
-    * Red Hat Enterprise Linux (RHEL) 9 / Rocky Linux 9 / AlmaLinux 9 (**Recommended** / Fully Supported)
-    * RHEL 10 / Rocky Linux 10 / AlmaLinux 10 (**Fully Supported**: Automated DNF installation via `lucamagrone/epel-10-extra` COPR repository)
-    * RHEL/Rocky 8 (Legacy / Supported)
+The shared site's new deployment targets are Debian 13 and Ubuntu 26.04. This
+wrapper explicitly opts into legacy platform compatibility, retaining the old
+Debian-family and RedHat-family package paths; that is not a claim of fresh
+validation on every legacy distribution.
 
-> [!TIP]
-> **Enterprise Linux 10 (Rocky/Alma/RHEL 10):** The role automatically enables the `lucamagrone/epel-10-extra` COPR repository via DNF to install Asterisk packages and modules seamlessly.
-* **Access:** SSH with `sudo` privileges on the target machine.
+## Preserved wrapper variables
 
----
+| Variable | Compatibility value |
+| --- | --- |
+| `ari_password` | `vault_ari_password`, falling back to `change_me` |
+| `sip_username` | `vault_sip_username`, falling back to `py-phone-caller` |
+| `sip_password` | `vault_sip_password`, falling back to `py-phone-caller` |
+| `local_sip` / `local_sip_exten` | `true` / `2500` |
+| `local_iax` / `local_iax_exten` | `true` / `2600` |
+| `local_sip_pass` / `local_iax_pass` | Corresponding `vault_*` variable, falling back to `change_me` |
 
-## 🚀 Installation
+These mappings retain their original play-variable precedence; direct overrides
+can still be supplied with extra variables. **Replace all placeholder passwords
+with Vault-protected values before deployment.** The role's public PBX variable
+names are unchanged. See the shared role README for defaults and safety limits.
 
-There are two ways to install this role into your project.
+## Install dependencies and use the wrapper
 
-### Option A: Local Directory (Recommended for Dev)
-Simply copy the entire folder `asterisk_py_phone_caller` into your project's `roles/` directory.
+From this directory:
 
-Project structure:
-```text
-my-project/
-├── inventory.ini
-├── deploy_asterisk.yml
-└── roles/
-    └── asterisk_py_phone_caller/
-        ├── defaults/
-        ├── tasks/
-        ├── templates/
-        └── ...
-```
-
-### Option B: Via `requirements.yml` (Best for Git Ops)
-If you host this role in a separate Git repository, add it to your `requirements.yml`:
-
-```yaml
-# requirements.yml
-roles:
-  - src: https://github.com/your-org/asterisk_py_phone_caller.git
-    scm: git
-    version: main
-    name: asterisk_py_phone_caller
-```
-
-Then install it:
 ```bash
-ansible-galaxy install -r requirements.yml -p ./roles
+ansible-galaxy collection install -r requirements.yml -p ../.collections
+ansible-playbook -i inventory.ini deploy_asterisk.yml --limit YOUR_PBX_HOST --syntax-check
+ansible-playbook -i inventory.ini deploy_asterisk.yml --limit YOUR_PBX_HOST --check
 ```
 
----
+Remove `--check` only for an authorized deployment. The compatibility requirements
+mirror the exact pins in `../requirements.yml`; an offline regression checks that
+they remain equal. The PBX role itself needs only `community.general` in addition
+to `ansible.builtin`.
 
-## ⚙️ Configuration
+On RedHat, missing core sounds now require `asterisk_core_sounds_version` and a
+trusted `asterisk_core_sounds_sha256` **before any role mutation**. The default
+version is `1.6.1`; no checksum is invented or fetched from the same untrusted
+artifact. Already installed core sounds and Debian's packaged sounds do not
+require this fallback. See the shared role README for the download contract.
 
-### 1. Required Audio Files
-Before running the role, you **must** place your custom `.wav` (or `.gsm`) audio files in the `files/sounds/` directory of the role.
+## Operational limits
 
-```text
-roles/asterisk_py_phone_caller/files/sounds/
-├── greeting-message.wav
-└── press-4-for-acknowledgement.wav
-```
-*The role will skip deployment of these files if they are missing (a warning will be displayed).*
+Debian 13 can opt into [AllStarLink packages](../docs/asterisk-provider.md) using
+`asterisk_package_provider: allstarlink`. This requires loopback ARI and a real
+Vault-managed credential. It refuses automatic takeover/provider changes and
+uses owned non-radio base files; the preservation description below applies to
+the default distribution-package route. Review the wrapper's enabled local
+extensions and set `asterisk_sip_trunk_enabled: false` for isolated tests.
 
-### 2. Role Variables
-These variables can be overridden in your `playbook`, `inventory`, or `group_vars`.
+Ubuntu 26.04 LTS must use `asterisk_package_provider: distro` with Ubuntu's
+`universe` packages available in prepared APT indexes, or an externally managed
+PBX. Missing package candidates fail before role mutations; the role never adds
+Debian AllStarLink sources to Ubuntu. See the provider guide for observed package
+metadata; Ubuntu and enabled-IAX runtime qualification remain separate checks.
 
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| **HTTP / ARI** | | |
-| `asterisk_http_enabled` | `"yes"` | Enables the internal HTTP server for ARI. |
-| `asterisk_http_bindaddr` | `"0.0.0.0"` | IP address to bind HTTP server (0.0.0.0 for all). |
-| `asterisk_http_bindport` | `8088` | Port for ARI (HTTP). |
-| `ari_app_name` | `"py-phone-caller"` | Stasis application name used in Python/Rust. |
-| `ari_username` | `"py-phone-caller"` | ARI API Username. |
-| `ari_password` | `"CHANGE_ME"` | **SECURE:** ARI API Password. |
-| **SIP Trunking** | | |
-| `sip_provider_host` | `"sip.messagenet.it"` | Hostname or IP of the SIP Provider or Gateway. |
-| `sip_provider_port` | `5061` | Port of the SIP Provider or Gateway. |
-| `sip_username` | `"CHANGE_ME"` | SIP Username (Authentication ID). |
-| `sip_password` | `"CHANGE_ME"` | **SECURE:** SIP Password. |
-| `sip_contact_user` | `"CHANGE_ME"` | The number/user presented in the Contact header. |
-| `asterisk_sip_bindaddr` | `"0.0.0.0:5060"` | Local address and port for PJSIP to listen on. |
-| **Integration** | | |
-| `callback_service_url` | `"http://127.0.0.1:8083"` | URL of the Rust/Python service to receive CURL events. |
-| `asterisk_extension` | `"3216"` | The extension number to trigger the Py-Phone-Caller logic. |
+The wrapper still enables both local PJSIP and IAX2. Both need numeric, distinct
+extension numbers and Vault-managed 16–128 character config-safe passwords;
+the historical `change_me` fallback now fails preflight when an endpoint is enabled.
+IAX defaults to `asterisk_iax_bindaddr: 127.0.0.1` and
+`asterisk_iax_bindport: 4569`; only private/loopback IPv4 listeners are accepted.
+IAX call tokens are required. Module/listener changes restart Asterisk, while
+unchanged runs do not. Enabled-IAX verification inspects modules, peer configuration
+and sockets without calls, registration or peer qualification.
 
----
+The role preserves existing Asterisk configuration and adds four managed partial
+includes. Changed configuration can reload Asterisk; package, HTTP listener, or
+module-disable changes can restart it. There is no unconditional role-level
+restart, and handler failures are not swallowed. Check mode no longer forces
+RedHat package/repository mutations.
 
-## 📖 Usage Examples
+Credential-bearing templates and base configuration edits use `no_log: true`
+and `diff: false`. Avoid verbose ad-hoc credential printing, external debugging
+callbacks, or passing plaintext secrets on a command line. Existing HTTP exposure
+defaults are unchanged; secure the PBX network and authentication before use.
 
-### Scenario A: Cloud Provider (Development/Online)
-Use this configuration when connecting to a VoIP provider like Messagenet over the Internet.
-
-```yaml
-# deploy_asterisk.yml
-- name: Deploy Asterisk (Cloud Trunk)
-  hosts: pbx_servers
-  become: yes
-  roles:
-    - asterisk_py_phone_caller
-  vars:
-    sip_provider_host: "sip.messagenet.it"
-    sip_username: "{{ vault_sip_username }}"
-    sip_password: "{{ vault_messagenet_password }}" # Encrypted via Ansible Vault
-    ari_password: "{{ vault_ari_password }}"
-```
-
-### Scenario B: Air-Gapped (Production/Emergency)
-Use this configuration when the PBX is offline and connected via LAN to a physical GSM Gateway (e.g., Yeastar/Dinstar).
-
-```yaml
-# deploy_asterisk.yml
-- name: Deploy Asterisk (Air-Gapped GSM Gateway)
-  hosts: pbx_servers
-  become: yes
-  roles:
-    - asterisk_py_phone_caller
-  vars:
-    # IP Address of the physical GSM Gateway on the LAN
-    sip_provider_host: "192.168.1.200"
-    
-    # Credentials configured INSIDE the GSM Gateway for this trunk
-    sip_username: "asterisk_trunk"
-    sip_password: "{{ vault_gateway_password }}"
-    
-    # How Asterisk identifies itself to the Gateway
-    sip_contact_user: "asterisk"
-```
-
----
-
-## 🏃 How to Run
-
-### 1. Dry Run (Test)
-Check what changes will be made without applying them:
-```bash
-ansible-playbook -i inventory.ini deploy_asterisk.yml --check
-```
-
-### 2. Deploy
-Apply configuration and restart Asterisk:
-```bash
-ansible-playbook -i inventory.ini deploy_asterisk.yml
-```
-
-## ✅ Testing & Verification
-
-After the playbook finishes, verify the status on the target server using the following steps.
-
-### 1. Check SIP Registration
-Verify that Asterisk has successfully registered with your SIP provider (e.g., Messagenet):
-```bash
-asterisk -x "pjsip show registrations"
-```
-*Expected status: **Registered***
-
-### 2. Verify PJSIP Endpoints
-Ensure the `py-phone-caller` endpoint is active and bound to the correct transport:
-```bash
-asterisk -x "pjsip show endpoints"
-```
-
-### 3. Check ARI User & Connectivity
-Verify that the ARI user is correctly configured and the HTTP interface is reachable:
-```bash
-# Check ARI user in Asterisk
-asterisk -x "ari show users"
-
-# Test ARI connectivity via CURL (Run from the server)
-# Replace 'CHANGE_ME' with your actual ari_password
-curl -v -u py-phone-caller:CHANGE_ME http://localhost:8088/ari/asterisk/info
-```
-
-### 4. Validate Dialplan
-Ensure the custom dialplan context and extension are properly loaded:
-```bash
-asterisk -x "dialplan show py-phone-caller"
-```
-*You should see extension `3216` (or your custom `asterisk_extension`) with its associated priorities.*
-
-### 5. Confirm Audio Deployment
-Check that the custom alert messages are present and have the correct ownership:
-```bash
-ls -l /var/lib/asterisk/sounds/en/greeting-message.wav
-ls -l /var/lib/asterisk/sounds/en/press-4-for-acknowledgement.wav
-```
-
----
-
-## 🧩 Architecture Notes
-* **Non-Destructive:** This role injects configuration via `#include` in `pjsip.conf`, `extensions.conf`, and `ari.conf`. It does not delete existing configurations.
-* **Module Management:** The role explicitly disables the deprecated `chan_sip.so` in `modules.conf` to avoid port conflicts with PJSIP (standard port 5060).
-* **Security:** This role configures Asterisk with `dialout` permissions (on RHEL) only if strictly necessary. For Air-Gapped GSM setups using SIP Gateways, no special hardware privileges are required.
-* **Logs:** Asterisk logs are located at `/var/log/asterisk/full` (or `messages.log` on some Debian systems).
-
----
-### 🛠 Troubleshooting: 403 Forbidden Errors
-If you see a `403 Forbidden` error during SIP registration:
-1. **Check Credentials:** Ensure `sip_username` and `sip_password` are correct in `deploy_asterisk.yml`.
-2. **Account Status:** Verify with your provider (e.g., Messagenet) that the account is active and not locked due to too many failed attempts.
-3. **Wait it Out:** The role now configures `forbidden_retry_interval=600`, which means Asterisk will wait 10 minutes before retrying after a 403 error. This prevents your IP from being blacklisted by the provider. You can trigger a manual retry by reloading PJSIP: `asterisk -x "pjsip reload"`.
-
----
-**Maintained by:** Py-Phone-Caller Team
+Offline tests use synthetic variables and temporary configuration fixtures only,
+and perform no calls, messages, PBX probes, package installation, or service changes.
+Live-host validation of this
+consolidation must be performed separately after integration review.

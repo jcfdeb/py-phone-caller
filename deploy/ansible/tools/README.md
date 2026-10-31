@@ -3,6 +3,11 @@
 Turns the TOML configuration under `src/config/` into the Ansible vars files
 that the `deploy_py-phone-caller` role reads.
 
+The implementation now lives in the shared
+[`deploy/ansible/roles/`](../roles/) tree. See the
+[canonical native installer guide](../README.md). The converter's output
+defaults are unchanged for compatibility with existing commands.
+
 `src/config/settings.toml` and `src/config/.secrets.toml` stay the single
 source of truth for the platform: the same values drive local development, the
 container images and the systemd deployment. This tool is the bridge to the
@@ -13,7 +18,7 @@ src/config/settings.toml  ─┐
 src/config/.secrets.toml  ─┴─▶ toml_to_ansible_vars.py ─▶ group_vars/*.yml
                                                              │
                                             ansible-playbook ▼
-                                     /opt/py-phone-caller/src/config/*.toml
+                                     /opt/py-phone-caller/app/config/*.toml
 ```
 
 The role re-renders TOML on the target, so a value written in
@@ -36,6 +41,21 @@ deploy/ansible/tools/toml_to_ansible_vars.py
 inside `group_vars/<group>/`, but auto-loads a plain file only when its stem
 is exactly the group name, so a `group_vars/app_servers.secrets.yml` would be
 skipped silently and the secrets would never reach the play.
+
+For a new isolated inventory, choose output paths explicitly rather than
+overwriting the legacy deployment's files:
+
+```bash
+deploy/ansible/tools/toml_to_ansible_vars.py \
+  --input /secure/config/settings.toml --input /secure/config/secrets.toml \
+  --output /secure/inventory/group_vars/stack/config.yml \
+  --secrets-output /secure/inventory/group_vars/stack/secrets.yml
+ansible-vault encrypt /secure/inventory/group_vars/stack/secrets.yml
+```
+
+Review the nonsecret output too: endpoints, receiver lists and hardware paths
+remain environment-specific. Avoid `--stdout` or `--no-split-secrets` for real
+credentials. The shared entry point does not load the checked-in live inventory.
 
 The directory is git-ignored: it mirrors the live configuration, phone
 numbers and credentials included. Committed samples live in
@@ -116,7 +136,10 @@ pytest deploy/ansible/tools/test_toml_to_ansible_vars.py
 python3 deploy/ansible/tools/test_toml_to_ansible_vars.py
 
 # Render the role templates locally and diff the result against the merged
-# configuration, key by key. No target host is contacted.
+# synthetic configuration, key by key. No target host is contacted.
 cd deploy/ansible/on-vm_py-phone-caller
 ansible-playbook -i localhost, -c local render_check.yml
 ```
+
+The render check now defaults to synthetic fixtures. To render your own files,
+set `render_check_vars_files` explicitly; secret values and diffs are suppressed.

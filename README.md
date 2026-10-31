@@ -152,7 +152,8 @@ The native Rust engine automatically communicates over the AT command interface 
 ## Deployment Options
 
 - **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**: Production-grade setup with Apache APISIX, Keycloak OIDC authentication, 3-tier RBAC (`alert-admin`, `alert-operator`, `alert-viewer`), and Ansible Vault credential hardening. Includes step-by-step manual and automated paths.
-- **Ansible all-in-one stack**: `deploy/ansible/deploy_all/README.md`
+- **[Modular native Ansible installer](deploy/ansible/README.md)**: independently select OpenAlert, Python and Asterisk on AMD64/ARM64; consult the recorded qualification matrix.
+- **Ansible all-in-one compatibility wrapper**: `deploy/ansible/deploy_all/README.md`
 - **Ansible roles**: `deploy/ansible/asterisk_py-phone-caller/README.md` and `deploy/ansible/on-vm_py-phone-caller/README.md`
 - **Docker Compose stack (Asterisk external)**: `deploy/compose/README.md`
 
@@ -202,39 +203,31 @@ Pick one path.
      docker compose logs -f py_phone_caller_ui
      ```
 
-### Option B: Ansible all-in-one (installs Asterisk and the stack)
+### Option B: Modular native Ansible installation
 
-1. Go to the playbook directory:
-   ```bash
-   cd deploy/ansible/deploy_all
-   ```
-2. Install required collection:
-   ```bash
-   ansible-galaxy collection install community.general
-   ```
-3. Edit the inventory:
-   - `deploy/ansible/on-vm_py-phone-caller/inventory`
-4. Edit `deploy_py-phone-caller_stack.yml` and set at least:
-   - `ari_password`
-   - `sip_username`
-   - `sip_password`
-   - `py_phone_caller_config.commons.asterisk_user` (if you do not use the default)
-   - `py_phone_caller_config.commons.asterisk_host`
-   - `py_phone_caller_config.commons.asterisk_pass`
-   - `py_phone_caller_config.database.db_password`
-   - Make sure `ari_password` and `py_phone_caller_config.commons.asterisk_pass` match.
-   - For intentional first-time admin bootstrap or password reset, set `py_phone_caller_ui_reset_password: true` for one run and set it back to `false` afterwards.
-5. Run the deployment:
-   ```bash
-   ansible-playbook deploy_py-phone-caller_stack.yml
-   ```
-6. Open the UI and retrieve the admin password:
-   - UI: http://<host>:5000
-   - Admin email defaults to `admin@py-phone-caller.link` (change via `ui_admin_user`).
-   - If `py_phone_caller_ui_reset_password: true`, the generated password is logged by the UI service:
-     ```bash
-     journalctl -u py-phone-caller-py_phone_caller_ui.service -n 200 --no-pager
-     ```
+Use the [canonical guide](deploy/ansible/README.md), a separate reviewed inventory
+and Vault-protected secrets. Set all three component selectors explicitly;
+the managed host determines artifact architecture, not the controller.
+
+```bash
+cd deploy/ansible
+ansible-galaxy collection install -r requirements.yml -p "$PWD/.collections"
+ansible-playbook -i /secure/inventory/hosts.yml site.yml --ask-vault-pass
+```
+
+For an all-in-one deployment select both `stack_deploy_py_phone_caller` and
+`stack_deploy_asterisk`; OpenAlert remains independently selectable. Internal
+listeners, local/external dependencies and hardware access must be configured
+for the target. Selecting a lightweight TTS engine does not change the locked
+workspace dependency installation.
+
+Existing [combined](deploy/ansible/deploy_all/README.md),
+[Python](deploy/ansible/on-vm_py-phone-caller/README.md) and
+[PBX](deploy/ansible/asterisk_py-phone-caller/README.md) commands remain compatibility
+entry points. Do not deploy the repository's live-site inventory to a new host.
+Consult the [support matrix](deploy/ansible/docs/support-matrix.md) before treating
+a platform or hardware profile as qualified. Installation verification does not
+authorize calls, SMS, radio transmissions or migration of an existing host.
 
 ## Configuration
 

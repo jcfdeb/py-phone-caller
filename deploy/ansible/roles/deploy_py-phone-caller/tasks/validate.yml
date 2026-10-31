@@ -1,0 +1,133 @@
+---
+# Catch configuration mistakes here rather than in a crash-looping unit.
+
+- name: Assert that every configuration section is present
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config[item] is mapping
+    fail_msg: >-
+      Configuration section '{{ item }}' is missing or is not a mapping.
+      Regenerate the vars with deploy/ansible/tools/toml_to_ansible_vars.py.
+    quiet: true
+  loop:
+    - commons
+    - asterisk_call
+    - call_register
+    - asterisk_ws_monitor
+    - asterisk_recaller
+    - generate_audio
+    - caller_prometheus_webhook
+    - caller_sms
+    - scheduled_calls
+    - queue
+    - database
+    - py_phone_caller_ui
+    - logs
+    - caller_address_book
+
+- name: Assert that mandatory database settings are set
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config.database.db_host | default('', true) | length > 0
+      - py_phone_caller_final_config.database.db_name | default('', true) | length > 0
+      - py_phone_caller_final_config.database.db_user | default('', true) | length > 0
+      - py_phone_caller_final_config.database.db_password | default('', true) | length > 0
+    fail_msg: "database.db_host, db_name, db_user and db_password must all be set."
+    quiet: true
+  no_log: true
+
+- name: Assert that placeholder secrets were replaced
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config.database.db_password not in _ppc_placeholders
+      - py_phone_caller_final_config.py_phone_caller_ui.ui_secret_key not in _ppc_placeholders
+      - py_phone_caller_final_config.commons.asterisk_pass not in _ppc_placeholders
+    fail_msg: >-
+      Placeholder credentials are still in place. Set real values in
+      src/config/.secrets.toml and regenerate group_vars with
+      deploy/ansible/tools/toml_to_ansible_vars.py, or pass
+      py_phone_caller_config_secrets from an ansible-vault file.
+    quiet: true
+  vars:
+    _ppc_placeholders:
+      - "change_me"
+      - "super_secure_password"
+  no_log: true
+
+- name: Assert that build and download inputs are pinned
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_uv_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - py_phone_caller_uv_installer_checksum is match('^sha256:[0-9a-f]{64}$')
+      - py_phone_caller_python_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - py_phone_caller_maturin_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - py_phone_caller_git_repo | length == 0 or py_phone_caller_git_version is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      Supply a reviewed uv installer SHA256, exact uv/Python/maturin versions,
+      and an immutable Git commit when using Git delivery.
+    quiet: true
+
+- name: Assert that the Kokoro spaCy model download is reviewed
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_spacy_model_checksum is match('^sha256:[0-9a-f]{64}$')
+    fail_msg: Supply py_phone_caller_spacy_model_checksum for the pinned spaCy wheel.
+    quiet: true
+  when: py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'
+
+- name: Assert that the app layout does not overlap protected directories
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_src_dir == py_phone_caller_install_dir ~ '/app'
+      - py_phone_caller_checkout_dir == py_phone_caller_install_dir ~ '/.source'
+      - py_phone_caller_install_dir is match('^/[^/].+')
+      - py_phone_caller_install_dir not in ['/', '/opt', '/usr', '/var', '/etc']
+      - py_phone_caller_uv_cache_dir == py_phone_caller_install_dir ~ '/.uv/cache'
+    fail_msg: Use the app and .source subdirectories; legacy src and state are preserved.
+    quiet: true
+
+- name: Assert that gateway images use reviewed digests
+  ansible.builtin.assert:
+    that:
+      - item is match('^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$')
+    fail_msg: Supply inventory-reviewed image digests before enabling the gateway.
+    quiet: true
+  loop:
+    - "{{ py_phone_caller_etcd_image }}"
+    - "{{ py_phone_caller_apisix_image }}"
+    - "{{ py_phone_caller_apisix_dashboard_image }}"
+    - "{{ py_phone_caller_keycloak_image }}"
+  when: py_phone_caller_manage_gateway | bool
+
+- name: Assert that on-premise SMS declares at least one modem
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_final_config.caller_sms.modems | default([]) | length > 0
+      - py_phone_caller_final_config.caller_sms.modems | selectattr('port', 'defined') | list | length == py_phone_caller_final_config.caller_sms.modems |
+        length
+    fail_msg: >-
+      caller_sms_carrier is 'on_premise' but caller_sms.modems is empty or has
+      entries without a 'port'.
+    quiet: true
+  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+
+- name: Assert that /etc/hosts entries are well formed
+  ansible.builtin.assert:
+    that:
+      - item.address is defined
+      - item.names is defined
+      - item.names | length > 0
+    fail_msg: "Each py_phone_caller_hosts_entries item needs 'address' and a non-empty 'names' list."
+    quiet: true
+  loop: "{{ py_phone_caller_hosts_entries }}"
+  loop_control:
+    label: "{{ item.address | default('<no address>') }}"
+
+- name: Assert that a source of truth for the code was given
+  ansible.builtin.assert:
+    that:
+      - (py_phone_caller_git_repo | length > 0) or (py_phone_caller_local_src_path | length > 0)
+    fail_msg: >-
+      Set either py_phone_caller_git_repo or py_phone_caller_local_src_path so the
+      role knows where to take the application code from.
+    quiet: true

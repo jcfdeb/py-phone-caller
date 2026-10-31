@@ -1,0 +1,163 @@
+---
+# Both delivery paths preserve the workspace under app/, outside persistent
+# state. Git is staged separately and never forced over the live installation.
+
+- name: Clone the repository
+  ansible.builtin.git:
+    repo: "{{ py_phone_caller_git_repo }}"
+    dest: "{{ py_phone_caller_checkout_dir }}"
+    version: "{{ py_phone_caller_git_version }}"
+    force: false
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  when: py_phone_caller_git_repo | length > 0
+  no_log: true
+  diff: false
+
+- name: Check the local checkout
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_local_src_path }}/{{ item }}"
+  delegate_to: localhost
+  become: false
+  register: _ppc_local_root
+  loop: [pyproject.toml, uv.lock, src]
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Assert that the local checkout is a repository root
+  ansible.builtin.assert:
+    that:
+      - _ppc_local_root.results | rejectattr('stat.exists') | list | length == 0
+    fail_msg: >-
+      py_phone_caller_local_src_path must point at the repository root (the
+      directory holding pyproject.toml and uv.lock), not at its src/
+      subdirectory. Got: {{ py_phone_caller_local_src_path }}
+    quiet: true
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+# Synchronize application sources from local src/ directly to remote app/
+- name: Synchronise application sources into app directory
+  ansible.posix.synchronize:
+    src: "{{ py_phone_caller_local_src_path }}/src/"
+    dest: "{{ py_phone_caller_src_dir }}/"
+    archive: true
+    owner: false
+    group: false
+    delete: true
+    compress: true
+    use_ssh_args: true
+    rsync_opts: "{{ _ppc_app_rsync_filters }}"
+  register: _ppc_local_sync
+  become: "{{ py_phone_caller_sync_become | bool }}"
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Synchronise Git application sources into app directory
+  ansible.builtin.command:
+    argv: >-
+      {{ ['rsync', '-a', '--delete', '--out-format=<<CHANGED>>%i %n%L'] + _ppc_app_rsync_filters
+         + [py_phone_caller_checkout_dir ~ '/src/', py_phone_caller_src_dir ~ '/'] }}
+  register: _ppc_git_sync
+  changed_when: "'<<CHANGED>>' in _ppc_git_sync.stdout"
+  when: py_phone_caller_git_repo | length > 0
+
+- name: Record services affected by application source changes
+  ansible.builtin.set_fact:
+    _ppc_changed_services: "{{ (_ppc_changed_services | default([])) + [item.name] }}"
+  loop: "{{ py_phone_caller_services }}"
+  vars:
+    _ppc_source_changes: "{{ (_ppc_local_sync.msg | default('')) ~ (_ppc_git_sync.stdout | default('')) }}"
+  when: >-
+    (item.source_dir | default(item.name)) ~ '/' in _ppc_source_changes or
+    'py-phone-caller-utils/' in _ppc_source_changes
+  changed_when: true
+  notify: Restart affected Python services
+
+# Synchronize top-level project metadata (README, LICENSE, etc.)
+- name: Synchronise root project metadata
+  ansible.posix.synchronize:
+    src: "{{ py_phone_caller_local_src_path }}/"
+    dest: "{{ py_phone_caller_install_dir }}/"
+    archive: true
+    owner: false
+    group: false
+    delete: false
+    compress: true
+    use_ssh_args: true
+    rsync_opts: "{{ _ppc_root_rsync_filters }}"
+  vars:
+    _ppc_root_rsync_filters: >-
+      {{ ['--chown=' ~ py_phone_caller_user ~ ':' ~ py_phone_caller_group, '--omit-dir-times',
+          '--include=/README.md', '--include=/LICENSE', '--include=/babel.cfg', '--exclude=*'] }}
+  become: "{{ py_phone_caller_sync_become | bool }}"
+  when:
+    - py_phone_caller_git_repo | length == 0
+    - py_phone_caller_local_src_path | length > 0
+
+- name: Read Git workspace metadata on the target
+  ansible.builtin.slurp:
+    src: "{{ py_phone_caller_checkout_dir }}/{{ item }}"
+  loop: [pyproject.toml, uv.lock]
+  register: _ppc_git_metadata
+  when: py_phone_caller_git_repo | length > 0
+
+- name: Deliver local workspace metadata with app workspace paths
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file', py_phone_caller_local_src_path ~ '/' ~ item, rstrip=false) | replace('"src/', '"app/') | replace("'src/", "'app/") }}
+    dest: "{{ py_phone_caller_install_dir }}/{{ item }}"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
+  notify: Restart py-phone-caller services
+  loop: [pyproject.toml, uv.lock]
+  when: py_phone_caller_git_repo | length == 0
+
+- name: Deliver Git workspace metadata with app workspace paths
+  ansible.builtin.copy:
+    content: >-
+      {{ item.content | b64decode | replace('"src/', '"app/') | replace("'src/", "'app/") }}
+    dest: "{{ py_phone_caller_install_dir }}/{{ item.item }}"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
+  notify: Restart py-phone-caller services
+  loop: "{{ _ppc_git_metadata.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: py_phone_caller_git_repo | length > 0
+
+- name: Deliver Git root project metadata
+  ansible.builtin.copy:
+    src: "{{ py_phone_caller_checkout_dir }}/{{ item }}"
+    dest: "{{ py_phone_caller_install_dir }}/{{ item }}"
+    remote_src: true
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
+  loop: [README.md, LICENSE, babel.cfg]
+  when: py_phone_caller_git_repo | length > 0
+
+- name: Ensure the writable runtime directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0755"
+  loop:
+    - "{{ py_phone_caller_install_dir }}/data"
+    - "{{ py_phone_caller_src_dir }}/generate_audio/audio"
+    - "{{ py_phone_caller_src_dir }}/generate_audio/pre_trained_models"
+
+- name: Own the installation directory
+  ansible.builtin.file:
+    path: "{{ py_phone_caller_install_dir }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0755"

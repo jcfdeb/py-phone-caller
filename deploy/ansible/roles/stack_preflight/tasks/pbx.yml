@@ -1,0 +1,6 @@
+---
+- name: Load explicitly supplied PBX variable files
+  ansible.builtin.include_vars:
+    file: "{{ item }}"
+  loop: "{{ stack_asterisk_vars_files | default([]) }}"
+  no_log: true

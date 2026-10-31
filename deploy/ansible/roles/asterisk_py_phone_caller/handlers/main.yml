@@ -1,0 +1,14 @@
+---
+# Preserve legacy notification identifiers used by partial task includes.
+- name: restart asterisk # noqa: name[casing]
+  ansible.builtin.service:
+    name: "{{ asterisk_service }}"
+    state: restarted
+    enabled: true
+  when: not ansible_check_mode
+
+- name: reload asterisk # noqa: name[casing]
+  ansible.builtin.service:
+    name: "{{ asterisk_service }}"
+    state: reloaded
+  when: not ansible_check_mode

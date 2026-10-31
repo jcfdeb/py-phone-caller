@@ -1,0 +1,38 @@
+---
+- name: "Load OS-specific variables for {{ ansible_facts['os_family'] }}"
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
+
+- name: Validate PBX inputs before changing the host
+  ansible.builtin.include_tasks: preflight.yml
+
+- name: "Install Asterisk for {{ ansible_facts['os_family'] }}"
+  ansible.builtin.include_tasks: "install_{{ ansible_facts['os_family'] }}.yml"
+
+- name: Ensure Asterisk group exists
+  ansible.builtin.group:
+    name: "{{ asterisk_group }}"
+    state: present
+    system: true
+
+- name: Ensure Asterisk user exists
+  ansible.builtin.user:
+    name: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    state: present
+    system: true
+    shell: /sbin/nologin
+
+- name: "Configure Asterisk and Deploy Audio"
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Verify the selected AllStarLink PBX without dispatch
+  ansible.builtin.include_tasks: verify_allstarlink.yml
+  when:
+    - asterisk_package_provider == 'allstarlink'
+    - not ansible_check_mode
+
+- name: Verify explicitly selected IAX2 without dispatch
+  ansible.builtin.include_tasks: verify_iax.yml
+  when:
+    - local_iax
+    - not ansible_check_mode

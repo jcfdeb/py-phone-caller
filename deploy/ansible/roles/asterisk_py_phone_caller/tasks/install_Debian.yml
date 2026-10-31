@@ -1,0 +1,22 @@
+---
+- name: Reject conflicting package providers before installation
+  ansible.builtin.include_tasks: provider_guard.yml
+
+- name: Require distribution package candidates before any mutations
+  ansible.builtin.include_tasks: distro_package_check.yml
+  when: asterisk_package_provider == 'distro'
+
+- name: Install explicitly selected AllStarLink provider
+  ansible.builtin.include_tasks: install_allstarlink.yml
+  when: asterisk_package_provider == 'allstarlink'
+
+- name: Install System Dependencies and Asterisk
+  ansible.builtin.apt:
+    name: "{{ system_dependencies + asterisk_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+    allow_unauthenticated: false
+  when: asterisk_package_provider == 'distro'
+  notify: restart asterisk

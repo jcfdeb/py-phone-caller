@@ -1,0 +1,28 @@
+---
+gateway_keycloak_environment:
+  KEYCLOAK_URL: "http://127.0.0.1:{{ py_phone_caller_keycloak_http_port }}"
+  KEYCLOAK_ADMIN_USER: "{{ py_phone_caller_keycloak_admin_user }}"
+  KEYCLOAK_ADMIN_PASS: "{{ _ppc_keycloak_admin_password }}"
+  KEYCLOAK_REALM: "{{ py_phone_caller_keycloak_realm }}"
+  KEYCLOAK_M2M_SECRET: "{{ _ppc_keycloak_m2m_client_secret }}"
+  KEYCLOAK_PUBLIC_URL: "{{ _ppc_effective_public_url }}"
+  KEYCLOAK_USER_ADMIN_PASS: "{{ _ppc_keycloak_user_admin_password }}"
+  KEYCLOAK_USER_OPERATOR_PASS: "{{ _ppc_keycloak_user_operator_password }}"
+  KEYCLOAK_USER_VIEWER_PASS: "{{ _ppc_keycloak_user_viewer_password }}"
+gateway_apisix_environment:
+  APISIX_DASHBOARD_URL: "http://127.0.0.1:{{ py_phone_caller_gateway_dashboard_port }}"
+  APISIX_DASHBOARD_USER: "{{ py_phone_caller_apisix_dashboard_user }}"
+  APISIX_DASHBOARD_PASS: "{{ _ppc_apisix_dashboard_password }}"
+  UPSTREAM_HOST: "{{ py_phone_caller_service_host }}"
+  KEYCLOAK_PORT: "{{ py_phone_caller_keycloak_http_port }}"
+# Persist hashes, never credentials. Removing a completion stamp explicitly
+# requests reprovisioning after out-of-band changes or remote data loss.
+gateway_keycloak_fingerprint: >-
+  {{ {'script': lookup('ansible.builtin.file', 'setup_keycloak.py'),
+      'environment': gateway_keycloak_environment,
+      'database': py_phone_caller_final_config.database,
+      'image': py_phone_caller_keycloak_image} | to_json(sort_keys=true) | hash('sha256') }}
+gateway_apisix_fingerprint: >-
+  {{ {'script': lookup('ansible.builtin.file', 'setup_apisix_routes.py'),
+      'environment': gateway_apisix_environment,
+      'image': py_phone_caller_apisix_image} | to_json(sort_keys=true) | hash('sha256') }}

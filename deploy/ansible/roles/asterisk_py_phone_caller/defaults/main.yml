@@ -1,0 +1,56 @@
+---
+# Distribution packages remain the compatibility default; AllStarLink is opt-in.
+asterisk_package_provider: distro
+asterisk_allstarlink_version: "2:22.10.1+asl3-3.10.8-1.deb13"
+
+# --- HTTP Server (ARI Interface) ---
+asterisk_http_enabled: "yes"
+asterisk_http_bindaddr: "0.0.0.0"
+asterisk_http_bindport: 8088
+
+# --- ARI Credentials ---
+ari_app_name: "py-phone-caller"
+ari_username: "py-phone-caller"
+ari_password: "CHANGE_ME" # Use Ansible Vault in production
+
+# --- SIP Provider (e.g., Messagenet) ---
+asterisk_sip_trunk_enabled: true
+sip_provider_host: "sip.messagenet.it"
+sip_provider_port: 5061
+sip_username: "CHANGE_ME"
+sip_password: "CHANGE_ME" # Use Ansible Vault in production
+sip_contact_user: "CHANGE_ME"
+
+# --- Callback URL (Rust/Python Service) ---
+# The URL Asterisk calls to register events or ACKs
+callback_service_url: "http://127.0.0.1:8083"
+
+# --- SIP Transport ---
+asterisk_sip_bindaddr: "0.0.0.0:5060"
+
+# --- Asterisk Dialplan ---
+# Must match asterisk_call.asterisk_context / asterisk_extension in
+# src/config/settings.toml.
+asterisk_context: "py-phone-caller"
+asterisk_extension: "3216"
+
+# --- Custom Audio ---
+# These files must exist in roles/asterisk_py_phone_caller/files/sounds/
+custom_audio_files:
+  - greeting-message.wav
+  - press-4-for-acknowledgement.wav
+
+# RedHat fallback only: supply a trusted digest before downloading missing core sounds.
+asterisk_core_sounds_version: "1.6.1"
+asterisk_core_sounds_sha256: ""
+
+# --- Local Extensions (Air-Gapped Mode) ---
+local_sip: false
+local_sip_exten: 2500
+local_sip_pass: "change_me"
+
+local_iax: false
+local_iax_exten: 2500
+local_iax_pass: "change_me"
+asterisk_iax_bindaddr: "127.0.0.1"
+asterisk_iax_bindport: 4569

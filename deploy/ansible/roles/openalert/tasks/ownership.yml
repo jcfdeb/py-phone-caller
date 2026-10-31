@@ -1,0 +1,69 @@
+---
+- name: Inspect instance ownership record
+  ansible.builtin.stat:
+    path: "{{ openalert_management_dir }}/owners/{{ openalert_instance.name }}.json"
+  register: openalert_owner_stat
+
+- name: Read existing ownership record
+  ansible.builtin.slurp:
+    src: "{{ openalert_management_dir }}/owners/{{ openalert_instance.name }}.json"
+  register: openalert_owner_data
+  when: openalert_owner_stat.stat.exists
+  no_log: true
+
+- name: Reject silent identity or path migration
+  ansible.builtin.assert:
+    that:
+      - openalert_owner_stat.stat.uid == 0
+      - (openalert_owner_data.content | b64decode | from_json) == openalert_instance_identity
+    fail_msg: Managed identity or paths changed; explicit adoption is required, not a fresh deployment.
+  vars:
+    openalert_instance_identity:
+      service_name: "{{ openalert_instance.service_name }}"
+      user: "{{ openalert_instance.user }}"
+      group: "{{ openalert_instance.group }}"
+      config_path: "{{ openalert_instance.config_path }}"
+      state_dir: "{{ openalert_instance.state_dir }}"
+  when: openalert_owner_stat.stat.exists
+  no_log: true
+
+- name: Inspect unowned paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ openalert_instance.config_path | dirname }}"
+    - "{{ openalert_instance.state_dir }}"
+    - "/etc/systemd/system/{{ openalert_instance.service_name }}"
+    - "/etc/systemd/system/{{ openalert_instance.service_name }}.d"
+  register: openalert_unowned_paths
+  when: not openalert_owner_stat.stat.exists
+
+- name: Inspect account conflicts without changing existing users
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ openalert_instance.user }}"
+    fail_key: false
+  when: not openalert_owner_stat.stat.exists
+
+- name: Refuse adoption of an existing unowned account
+  ansible.builtin.assert:
+    that: ansible_facts.getent_passwd[openalert_instance.user] is none
+    fail_msg: The requested service account already exists without an ownership record.
+  when: not openalert_owner_stat.stat.exists
+
+- name: Inspect unit registrations outside the local unit directory
+  ansible.builtin.command:
+    argv: [systemctl, show, "{{ openalert_instance.service_name }}", --property=LoadState, --value]
+  register: openalert_existing_unit
+  changed_when: false
+  failed_when: openalert_existing_unit.rc not in [0, 1, 4]
+  check_mode: false
+  when: not openalert_owner_stat.stat.exists
+
+- name: Refuse to overwrite unmanaged units or state
+  ansible.builtin.assert:
+    that:
+      - openalert_unowned_paths.results | selectattr('stat.exists') | list | length == 0
+      - openalert_existing_unit.stdout | trim == 'not-found'
+    fail_msg: Conflicting unmanaged OpenAlert installation; adoption must be explicitly planned and backed up.
+  when: not openalert_owner_stat.stat.exists

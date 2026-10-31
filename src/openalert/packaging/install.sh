@@ -47,7 +47,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 log_info "Starting OpenAlert Daemon (openalertd) bare-metal installation..."
 
@@ -65,15 +65,24 @@ fi
 
 if [[ -z "${BINARY_PATH}" || ! -f "${BINARY_PATH}" ]]; then
     log_warn "Precompiled openalertd release binary not found in standard paths."
-    if command -v cargo >/dev/null 2>&1; then
-        log_info "Compiling openalertd from source using cargo (--release)..."
-        (cd "${REPO_ROOT}/src/openalert" && cargo build --release)
+    if [[ ! -f "${REPO_ROOT}/src/openalert/Cargo.toml" || ! -f "${REPO_ROOT}/src/openalert/Cargo.lock" ]]; then
+        log_err "Source fallback requires an OpenAlert source tree with Cargo.toml and Cargo.lock."
+        log_err "Please provide a precompiled release bundle instead."
+        exit 1
+    elif command -v cargo >/dev/null 2>&1; then
+        log_info "Compiling openalertd from source using cargo (--release --locked)..."
+        (cd "${REPO_ROOT}/src/openalert" && cargo build --release --locked)
         BINARY_PATH="${REPO_ROOT}/src/openalert/target/release/openalertd"
     else
         log_err "Neither precompiled binary nor 'cargo' toolchain was found."
         log_err "Please build openalertd first or provide the release bundle."
         exit 1
     fi
+fi
+
+if [[ ! -f "${BINARY_PATH}" ]]; then
+    log_err "Build did not produce the expected openalertd release binary."
+    exit 1
 fi
 
 # 3. Create dedicated system user and group
@@ -106,18 +115,9 @@ install -d -m 0755 -o root -g openalert /etc/openalertd/templates
 install -d -m 0750 -o openalert -g openalert /var/lib/openalertd
 install -d -m 0750 -o openalert -g openalert /var/log/openalertd
 
-# 5. Copy executable binary and set capabilities
+# 5. Copy executable binary (capabilities are supplied by the systemd unit)
 log_info "Installing openalertd binary to /usr/local/bin/openalertd..."
 install -m 0755 "${BINARY_PATH}" /usr/local/bin/openalertd
-
-if command -v setcap >/dev/null 2>&1; then
-    log_info "Setting ambient file capabilities (CAP_NET_BIND_SERVICE, CAP_NET_ADMIN, CAP_NET_RAW)..."
-    setcap 'cap_net_bind_service,cap_net_admin,cap_net_raw=+ep' /usr/local/bin/openalertd || {
-        log_warn "setcap failed (filesystem may not support extended attributes). Relying on systemd AmbientCapabilities."
-    }
-else
-    log_warn "'setcap' utility not found. Systemd AmbientCapabilities will be used."
-fi
 
 # 6. Install default template files
 TEMPLATE_SRC=""
@@ -170,10 +170,19 @@ fi
 
 # 9. Dry-run validate configuration
 log_info "Running dry-run validation check..."
-if /usr/local/bin/openalertd check /etc/openalertd/openalertd.toml; then
-    log_ok "Configuration dry-run check succeeded!"
+if command -v runuser >/dev/null 2>&1; then
+    CHECK_COMMAND=(runuser -u openalert -g openalert -- /usr/local/bin/openalertd)
+elif command -v su >/dev/null 2>&1; then
+    CHECK_COMMAND=(su -s /bin/sh openalert -c 'exec "$@"' sh /usr/local/bin/openalertd)
 else
-    log_warn "Configuration dry-run reported issues. Please review /etc/openalertd/openalertd.toml"
+    log_warn "Cannot run validation as openalert; checking as root without verifying service-account access."
+    CHECK_COMMAND=(/usr/local/bin/openalertd)
+fi
+if (cd /var/lib/openalertd && "${CHECK_COMMAND[@]}" check /etc/openalertd/openalertd.toml) >/dev/null 2>&1; then
+    log_ok "Configuration dry-run check succeeded (not a transport or delivery test)."
+else
+    log_err "Configuration dry-run failed; review /etc/openalertd/openalertd.toml locally. Output suppressed to protect secrets."
+    exit 1
 fi
 
 # 10. Optional Wi-Fi Access Point & Port 80 SOS Captive Portal setup

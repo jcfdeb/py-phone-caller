@@ -1,21 +1,22 @@
 ---
-- name: Deploy Asterisk for Py-Phone-Caller
-  hosts: pbx_servers:all
-  become: yes
-
+- name: Deploy Asterisk through the shared compatibility entry point
+  ansible.builtin.import_playbook: ../site.yml
   vars:
+    stack_hosts: "pbx_servers:all"
+    stack_deploy_asterisk: true
+    stack_deploy_python: false
+    stack_deploy_py_phone_caller: "{{ stack_deploy_python }}"
+    stack_deploy_openalert: false
+    stack_legacy_platform: true
     # Define these with Ansible Vault, inventory/group_vars, or --extra-vars.
     ari_password: "{{ vault_ari_password | default('change_me') }}"
     sip_username: "{{ vault_sip_username | default('py-phone-caller') }}"
     sip_password: "{{ vault_sip_password | default('py-phone-caller') }}"
 
     # --- Local Extensions (Air-Gapped Mode) ---
-    local_sip: yes
+    local_sip: true
     local_sip_exten: 2500
     local_sip_pass: "{{ vault_local_sip_pass | default('change_me') }}"
-    local_iax: yes
+    local_iax: true
     local_iax_exten: 2600
     local_iax_pass: "{{ vault_local_iax_pass | default('change_me') }}"
-
-  roles:
-    - asterisk_py_phone_caller

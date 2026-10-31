@@ -1,0 +1,48 @@
+# Managed by the native OpenAlert role. The packaged base remains canonical.
+[Unit]
+# Dependency ordering in the packaged base is intentionally retained.
+Wants=network-online.target
+After=network-online.target
+{% if 'CAP_NET_RAW' in openalert_instance.capabilities %}
+Requires=dbus.service
+After=dbus.service bluetooth.target
+{% endif %}
+
+[Service]
+User={{ openalert_instance.user }}
+Group={{ openalert_instance.group }}
+SupplementaryGroups=
+{% if openalert_instance.supplementary_groups %}
+SupplementaryGroups={{ openalert_instance.supplementary_groups | join(' ') }}
+{% endif %}
+WorkingDirectory={{ openalert_instance.state_dir }}
+ExecStart=
+ExecStart={{ openalert_release_dir }}/bin/openalertd {{ openalert_instance.config_path }}
+ExecReload=
+Environment=
+Environment=RUST_LOG=info
+SyslogIdentifier={{ openalert_instance.service_name | regex_replace('\.service$', '') }}
+ConfigurationDirectory=
+StateDirectory=
+LogsDirectory=
+RuntimeDirectory=
+RuntimeDirectory=openalert-{{ openalert_instance.name }}
+RuntimeDirectoryMode=0750
+ReadWritePaths=
+ReadWritePaths={{ openalert_instance.state_dir }}
+CapabilityBoundingSet=
+AmbientCapabilities=
+{% if openalert_instance.capabilities %}
+CapabilityBoundingSet={{ openalert_instance.capabilities | join(' ') }}
+AmbientCapabilities={{ openalert_instance.capabilities | join(' ') }}
+{% endif %}
+ProtectClock={{ 'no' if 'CAP_SYS_TIME' in openalert_instance.capabilities else 'yes' }}
+PrivateDevices={{ 'no' if openalert_instance.device_paths or 'CAP_NET_RAW' in openalert_instance.capabilities else 'yes' }}
+RestrictAddressFamilies=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX{% if 'CAP_NET_RAW' in openalert_instance.capabilities %} AF_BLUETOOTH AF_NETLINK{% endif %}
+
+CPUQuota={{ openalert_instance.cpu_quota }}
+MemoryHigh={{ openalert_instance.memory_high }}
+MemoryMax={{ openalert_instance.memory_max }}
+TasksMax={{ openalert_instance.tasks_max }}
+LimitNOFILE={{ openalert_instance.limit_nofile }}

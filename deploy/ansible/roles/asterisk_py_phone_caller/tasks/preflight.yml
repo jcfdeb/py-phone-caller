@@ -1,0 +1,94 @@
+---
+- name: Require a supported PBX OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['Debian', 'RedHat']
+    fail_msg: The PBX role requires Debian or RedHat family packages.
+
+- name: Validate explicit package provider and trunk selection
+  ansible.builtin.assert:
+    that:
+      - asterisk_package_provider in ['distro', 'allstarlink']
+      - asterisk_sip_trunk_enabled is boolean
+      - local_sip is boolean
+      - local_iax is boolean
+    fail_msg: Select distro or allstarlink; disable stack_deploy_asterisk for an externally managed PBX.
+
+- name: Require a private IPv4 IAX listener and valid UDP port
+  ansible.builtin.assert:
+    that:
+      - asterisk_iax_bindaddr is string
+      - asterisk_iax_bindaddr is match('^(127|10|172[.](1[6-9]|2[0-9]|3[01])|192[.]168)[.]')
+      - asterisk_iax_bindaddr is match('^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}$')
+      - asterisk_iax_bindaddr.split('.') | map('int') | max <= 255
+      - asterisk_iax_bindaddr.split('.') | map('int') | join('.') == asterisk_iax_bindaddr
+      - "'\n' not in asterisk_iax_bindaddr and '\r' not in asterisk_iax_bindaddr"
+      - asterisk_iax_bindport is integer
+      - asterisk_iax_bindport >= 1 and asterisk_iax_bindport <= 65535
+    fail_msg: IAX requires a loopback or RFC1918 IPv4 bind address and an integer UDP port (1-65535).
+
+- name: Require protected credentials and safe local extension identifiers
+  ansible.builtin.assert:
+    that:
+      - item.extension | string is match('^[0-9]{1,16}$')
+      - "'\n' not in (item.extension | string) and '\r' not in (item.extension | string)"
+      - item.password is string
+      - item.password is match('^[A-Za-z0-9_~!@$%^&*()+,.:/?=-]{16,128}$')
+      - "'\n' not in item.password and '\r' not in item.password"
+      - item.password | lower not in ['change_me', 'changeme', 'py-phone-caller']
+    fail_msg: Enabled local endpoints require numeric identifiers and Vault-managed 16-128 character config-safe passwords.
+  loop:
+    - { enabled: "{{ local_sip }}", extension: "{{ local_sip_exten }}", password: "{{ local_sip_pass }}" }
+    - { enabled: "{{ local_iax }}", extension: "{{ local_iax_exten }}", password: "{{ local_iax_pass }}" }
+  when: item.enabled
+  no_log: true
+
+- name: Require distinct local extension numbers when both protocols are enabled
+  ansible.builtin.assert:
+    that:
+      - local_sip_exten | string != local_iax_exten | string
+    fail_msg: Local PJSIP and IAX extension numbers must differ.
+  when: local_sip and local_iax
+
+- name: Restrict AllStarLink to its reviewed Debian 13 package contract
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Debian'
+      - ansible_facts['distribution_major_version'] == '13'
+      - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+      - asterisk_http_bindaddr in ['127.0.0.1', '::1']
+      - asterisk_allstarlink_version is string
+      - asterisk_allstarlink_version is match('^2:[0-9]+[.][0-9]+[.][0-9]+[+]asl3-[0-9]+[.][0-9]+[.][0-9]+-[0-9]+[.]deb13$')
+    fail_msg: AllStarLink requires Debian 13 AMD64/ARM64, loopback ARI binding and an exact reviewed deb13 package version.
+  when: asterisk_package_provider == 'allstarlink'
+
+- name: Require non-placeholder ARI credentials for the opt-in provider
+  ansible.builtin.assert:
+    that:
+      - ari_username is match('^[a-zA-Z0-9_-]+$')
+      - ari_password is string
+      - ari_password | length >= 16
+      - "'\n' not in ari_password and '\r' not in ari_password"
+      - ari_password | lower not in ['change_me', 'changeme']
+    fail_msg: Supply a private ARI credential using Vault before installing AllStarLink.
+  no_log: true
+  when: asterisk_package_provider == 'allstarlink'
+
+- name: Check for installed core sounds before any host changes
+  ansible.builtin.stat:
+    path: "{{ asterisk_sounds_dir }}/beep.wav"
+    get_checksum: false
+  register: standard_sounds_check
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Require a pinned verified core sounds release when the RedHat fallback is needed
+  ansible.builtin.assert:
+    that:
+      - asterisk_core_sounds_version is string
+      - asterisk_core_sounds_version is match('^[0-9]+[.][0-9]+[.][0-9]+$')
+      - asterisk_core_sounds_sha256 is string
+      - asterisk_core_sounds_sha256 is match('^[0-9a-fA-F]{64}$')
+    fail_msg: Set a fixed asterisk_core_sounds_version and a trusted asterisk_core_sounds_sha256 before installing missing RedHat core sounds.
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - not standard_sounds_check.stat.exists

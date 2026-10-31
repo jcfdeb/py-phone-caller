@@ -1,0 +1,232 @@
+---
+# --- 1. Prepare Directories ---
+- name: Ensure Asterisk data directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0755"
+  loop:
+    - "{{ asterisk_conf_dir }}"
+    - "{{ asterisk_data_dir }}"
+    - "{{ asterisk_data_dir }}/tmp"
+    - "{{ asterisk_cache_dir }}"
+    - "{{ asterisk_cache_dir }}/tmp"
+
+# --- 2. Deploy Custom Audio ---
+- name: Create custom sounds directory
+  ansible.builtin.file:
+    path: "{{ asterisk_sounds_dir }}"
+    state: directory
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0755"
+
+- name: Create root-owned core sounds download cache (RedHat)
+  ansible.builtin.file:
+    path: /var/cache/asterisk-core-sounds
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - not standard_sounds_check.stat.exists
+
+- name: Download verified Asterisk Core Sounds (RedHat)
+  ansible.builtin.get_url:
+    url: "https://downloads.asterisk.org/pub/telephony/sounds/releases/asterisk-core-sounds-en-wav-{{ asterisk_core_sounds_version }}.tar.gz"
+    dest: "/var/cache/asterisk-core-sounds/asterisk-core-sounds-en-wav-{{ asterisk_core_sounds_version }}.tar.gz"
+    checksum: "sha256:{{ asterisk_core_sounds_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - not standard_sounds_check.stat.exists
+
+- name: Install verified Asterisk Core Sounds (RedHat)
+  ansible.builtin.unarchive:
+    src: "/var/cache/asterisk-core-sounds/asterisk-core-sounds-en-wav-{{ asterisk_core_sounds_version }}.tar.gz"
+    dest: "{{ asterisk_sounds_dir }}"
+    creates: "{{ asterisk_sounds_dir }}/beep.wav"
+    remote_src: true
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - not standard_sounds_check.stat.exists
+    - not ansible_check_mode
+
+- name: Check if custom audio files exist
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/sounds/{{ item }}"
+  delegate_to: localhost
+  loop: "{{ custom_audio_files }}"
+  register: audio_files_stat
+  become: false
+
+- name: Deploy custom .wav files
+  ansible.builtin.copy:
+    src: "sounds/{{ item.item }}"
+    dest: "{{ asterisk_sounds_dir }}/{{ item.item }}"
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0644"
+  loop: "{{ audio_files_stat.results }}"
+  when: item.stat.exists
+
+- name: Warn if audio files are missing
+  ansible.builtin.debug:
+    msg: "WARNING: Audio file {{ item.item }} not found in {{ role_path }}/files/sounds/. Skipping."
+  loop: "{{ audio_files_stat.results }}"
+  when: not item.stat.exists
+
+# --- 3. Deploy Config Templates ---
+- name: Deploy Py-Phone-Caller partial configurations
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ asterisk_conf_dir }}/{{ item.dest }}"
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0640"
+  loop:
+    - { src: "extensions.conf.j2", dest: "extensions_py_phone_caller.conf" }
+    - { src: "pjsip.conf.j2", dest: "pjsip_py_phone_caller.conf" }
+    - { src: "ari.conf.j2", dest: "ari_py_phone_caller.conf" }
+    - { src: "iax.conf.j2", dest: "iax_py_phone_caller.conf" }
+  no_log: true
+  diff: false
+  notify: reload asterisk
+
+# --- 4. Inject Includes (Non-Destructive) ---
+- name: Inject Includes into main configuration files
+  ansible.builtin.lineinfile:
+    path: "{{ asterisk_conf_dir }}/{{ item.file }}"
+    line: "#include {{ item.include }}"
+    state: present
+    insertafter: EOF
+    create: true
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0640"
+  loop:
+    - { file: "extensions.conf", include: "extensions_py_phone_caller.conf" }
+    - { file: "pjsip.conf", include: "pjsip_py_phone_caller.conf" }
+    - { file: "ari.conf", include: "ari_py_phone_caller.conf" }
+    - { file: "iax.conf", include: "iax_py_phone_caller.conf" }
+  no_log: true
+  diff: false
+  notify: reload asterisk
+
+# --- 5. Disable Conflicting Modules ---
+- name: Check if modules.conf exists
+  ansible.builtin.stat:
+    path: "{{ asterisk_conf_dir }}/modules.conf"
+  register: modules_conf_stat
+
+- name: Disable deprecated chan_sip to free up port 5060
+  ansible.builtin.lineinfile:
+    path: "{{ asterisk_conf_dir }}/modules.conf"
+    line: "noload => chan_sip.so"
+    insertafter: "\\[modules\\]"
+    state: present
+  when:
+    - modules_conf_stat.stat.exists
+    - asterisk_package_provider == 'distro'
+  notify: restart asterisk
+
+- name: Select IAX2 explicitly without replacing distribution module configuration
+  ansible.builtin.lineinfile:
+    path: "{{ asterisk_conf_dir }}/modules.conf"
+    regexp: "^\\s*(?:no)?load\\s*=>?\\s*chan_iax2[.]so\\s*$"
+    line: "{{ 'load' if local_iax else 'noload' }} => chan_iax2.so"
+    insertafter: "\\[modules\\]"
+  when:
+    - modules_conf_stat.stat.exists
+    - asterisk_package_provider == 'distro'
+  no_log: true
+  diff: false
+  notify: restart asterisk
+
+- name: Configure the private distribution IAX listener before service startup
+  community.general.ini_file:
+    path: "{{ asterisk_conf_dir }}/iax.conf"
+    section: general
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    no_extra_spaces: true
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0640"
+    backup: false
+  loop:
+    - { option: bindaddr, value: "{{ asterisk_iax_bindaddr }}" }
+    - { option: bindport, value: "{{ asterisk_iax_bindport | string }}" }
+  when:
+    - asterisk_package_provider == 'distro'
+    - local_iax
+  no_log: true
+  diff: false
+  notify: restart asterisk
+
+# --- 6. Configure HTTP & ARI Server ---
+- name: Configure HTTP Server settings
+  community.general.ini_file:
+    path: "{{ asterisk_conf_dir }}/http.conf"
+    section: general
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    no_extra_spaces: true
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0640"
+    backup: false
+  loop:
+    - { option: "enabled", value: "{{ asterisk_http_enabled }}" }
+    - { option: "bindaddr", value: "{{ asterisk_http_bindaddr }}" }
+    - { option: "bindport", value: "{{ asterisk_http_bindport | string }}" }
+  no_log: true
+  diff: false
+  notify: restart asterisk
+
+- name: Ensure ARI general configuration is enabled
+  community.general.ini_file:
+    path: "{{ asterisk_conf_dir }}/ari.conf"
+    section: general
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    no_extra_spaces: true
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0640"
+    backup: false
+  loop:
+    - { option: "enabled", value: "yes" }
+    - { option: "pretty", value: "yes" }
+    - { option: "allowed_origins", value: "*" }
+  no_log: true
+  diff: false
+  notify: reload asterisk
+
+# --- 7. SELinux Configuration ---
+- name: Allow Asterisk to connect to custom HTTP ports (SELinux)
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  community.general.seport:
+    ports: "{{ item }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  loop:
+    - 8082
+    - 8083
+  when: ansible_facts['os_family'] == "RedHat" and ansible_facts['selinux'].status == "enabled"
+
+- name: Ensure Asterisk service is started and enabled
+  ansible.builtin.service:
+    name: "{{ asterisk_service }}"
+    state: started
+    enabled: true
+  when: not ansible_check_mode

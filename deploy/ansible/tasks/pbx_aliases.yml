@@ -1,0 +1,18 @@
+---
+- name: Preserve legacy combined-stack PBX aliases when explicitly supplied
+  ansible.builtin.set_fact:
+    "{{ item.destination }}": "{{ lookup('ansible.builtin.vars', item.source) }}"
+  loop:
+    - { source: pbx_sip_provider_host, destination: sip_provider_host }
+    - { source: pbx_sip_provider_port, destination: sip_provider_port }
+    - { source: pbx_sip_username, destination: sip_username }
+    - { source: pbx_sip_password, destination: sip_password }
+    - { source: pbx_sip_contact_user, destination: sip_contact_user }
+    - { source: pbx_local_sip, destination: local_sip }
+    - { source: pbx_local_sip_exten, destination: local_sip_exten }
+    - { source: pbx_local_sip_pass, destination: local_sip_pass }
+    - { source: pbx_local_iax, destination: local_iax }
+    - { source: pbx_local_iax_exten, destination: local_iax_exten }
+    - { source: pbx_local_iax_pass, destination: local_iax_pass }
+  when: item.source in vars
+  no_log: true

@@ -1,11 +1,25 @@
-# Deploying py-phone-caller on a VM
+# Python deployment compatibility entry point
 
-Installs the eleven py-phone-caller microservices as systemd units behind a
-Caddy reverse proxy, with PostgreSQL and Redis/Valkey provisioning, on
-Debian/Ubuntu or RHEL/Rocky.
+The implementation lives in [`../roles/deploy_py-phone-caller`](../roles/deploy_py-phone-caller/).
+`deploy_py-phone-caller.yml` is now a thin wrapper around [`../site.yml`](../site.yml),
+retaining the `app_servers` group, Python-only selection and existing
+`py_phone_caller_*` variables. The old commands remain available; new installations
+should follow the [canonical guide](../README.md) with an isolated inventory.
 
-`openalertd` (`src/openalert/`) is **not** part of this deployment; it ships
-separately through `src/openalert/packaging/`.
+PostgreSQL, queue, gateway, reverse-proxy and firewall implementations are shared
+roles with explicit management boundaries. Turning management off leaves existing
+resources untouched. Do not inherit the checked-in VPS gateway configuration on
+a new host. Credentials are no longer printed in the deployment recap.
+
+This wrapper does not select OpenAlert; use `site.yml` to select it independently.
+The legacy Debian/Red Hat branches are retained, but only the recorded
+[support matrix](../docs/support-matrix.md) establishes qualification.
+
+The shared implementation passed Python-only and combined startup/unchanged-rerun
+checks on Debian 13 and Ubuntu 26.04 LTS AMD64. See the
+[current variable/ownership mapping](../docs/python-native.md); ARM64 awaits devices.
+`verify.yml` now delegates to [`../verify.yml`](../verify.yml), keeping the same
+non-dispatch checks without requiring live-site variables in shared tests.
 
 ---
 
@@ -25,7 +39,7 @@ on-vm_py-phone-caller/
 │       ├── config.yml                 from src/config/settings.toml
 │       └── secrets.yml                from src/config/.secrets.toml
 ├── examples/                          committed samples of the two above
-└── roles/deploy_py-phone-caller/
+└── ../roles/deploy_py-phone-caller/    shared implementation
 ```
 
 `group_vars/app_servers/` is a **directory**, not two `app_servers*.yml`
@@ -42,7 +56,8 @@ and phone numbers included.
 
 **Control node**
 
-* `ansible-core` 2.15+ and the collections in `requirements.yml`
+* The pinned controller environment from `../tests/requirements-controller.txt`
+  and collections in `requirements.yml` (a reference to the shared pins)
 * `rsync` (the role ships the code with `ansible.posix.synchronize`)
 * Python 3.11+ for `../tools/toml_to_ansible_vars.py`
 
@@ -52,8 +67,9 @@ and phone numbers included.
 * SSH as `root`, or as a user with **passwordless** sudo — `synchronize` runs
   rsync over SSH as the connection user
 * `rsync` and `sudo` installed
-* 2 GB RAM and ~6 GB free disk: the workspace pulls in PyTorch and the TTS
-  models
+* Budget disk space for the full locked PyTorch/TTS workspace and model cache;
+  the disposable test disk was expanded to 50 GB. A 10 GB root disk is too small
+  for full validation. Memory requirements depend on worker/model choices.
 * Outbound HTTPS for PyPI, astral.sh (uv) and Hugging Face, unless you point
   `py_phone_caller_uv_extra_index_url` at an internal mirror
 
@@ -73,8 +89,8 @@ src/config/.secrets.toml   ──┴─▶ tools/toml_to_ansible_vars.py
                                           │
                                  deploy_py-phone-caller.yml
                                           │
-                    /opt/py-phone-caller/src/config/settings.toml   (0640)
-                    /opt/py-phone-caller/src/config/.secrets.toml   (0600)
+                    /opt/py-phone-caller/app/config/settings.toml   (0640)
+                    /opt/py-phone-caller/app/config/.secrets.toml   (0600)
 ```
 
 Four layers are merged, later wins:
@@ -90,13 +106,18 @@ The overrides layer is what keeps regeneration safe: `settings.toml` can keep
 saying `postgresql.lan` for the container stack while `all.yml` redirects the
 VM to loopback.
 
-At runtime each unit gets `CALLER_CONFIG_DIR=/opt/py-phone-caller/src/config`,
+At runtime each unit gets `CALLER_CONFIG_DIR=/opt/py-phone-caller/app/config`,
 so Dynaconf reads exactly those two files — no guessing from `__file__` or the
 working directory.
 
 ---
 
 ## Deploying
+
+The render check defaults to synthetic fixtures, not `group_vars/all.yml` or
+generated site secrets. Set `render_check_vars_files` explicitly to render your
+own protected configuration. Review the inventory and management selectors
+before the real deployment command below; SSH host-key verification is enabled.
 
 ```bash
 cd deploy/ansible/on-vm_py-phone-caller

@@ -1,0 +1,44 @@
+---
+# Synthetic fixture, not credentials or live-site settings.
+py_phone_caller_config:
+  commons:
+    asterisk_host: 127.0.0.1
+    asterisk_user: fixture
+    asterisk_web_port: '8088'
+    asterisk_http_scheme: http
+  asterisk_ws_monitor:
+    asterisk_stasis_app: py-phone-caller
+  asterisk_call:
+    asterisk_context: py-phone-caller
+    asterisk_extension: '3216'
+  call_register:
+    call_register_http_scheme: http
+    call_register_port: '8083'
+  database:
+    db_host: 127.0.0.1
+    db_port: 5432
+    db_name: py_phone_caller
+    db_user: py_phone_caller
+  queue:
+    queue_host: 127.0.0.1
+    queue_port: 6379
+    queue_url: redis://127.0.0.1:6379/7
+  caller_prometheus_webhook:
+    prometheus_webhook_receivers: []
+  caller_sms:
+    modems: []
+  generate_audio:
+    num_of_cpus: 1
+  py_phone_caller_ui:
+    ui_listen_on_host: 127.0.0.1
+    ui_admin_user: admin@example.invalid
+py_phone_caller_config_secrets:
+  commons:
+    asterisk_pass: SYNTHETIC_ARI_PASSWORD_NOT_FOR_DEPLOYMENT
+  database:
+    db_password: SYNTHETIC_DB_PASSWORD_NOT_FOR_DEPLOYMENT
+  py_phone_caller_ui:
+    ui_secret_key: SYNTHETIC_UI_SECRET_NOT_FOR_DEPLOYMENT
+py_phone_caller_manage_gateway: false
+py_phone_caller_manage_caddy: false
+py_phone_caller_manage_firewall: false

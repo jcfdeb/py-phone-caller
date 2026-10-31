@@ -1,0 +1,10 @@
+---
+# Run with ANSIBLE_PLAYBOOK_VARS_ROOT=top to exclude adjacent live-site variables.
+- name: Exercise the legacy Python entry point with synthetic inventory
+  ansible.builtin.import_playbook: ../on-vm_py-phone-caller/deploy_py-phone-caller.yml
+
+- name: Verify application startup without dispatch
+  ansible.builtin.import_playbook: ../verify.yml
+
+- name: Record service and dependency isolation evidence
+  ansible.builtin.import_playbook: python-inspect.yml

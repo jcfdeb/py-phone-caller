@@ -1,0 +1,27 @@
+---
+- name: Authorize only an explicitly named disposable Python target
+  hosts: "{{ stack_hosts | default('python-disposable-unselected') }}"
+  gather_facts: false
+  tasks:
+    - name: Require isolated non-dispatch runtime inputs
+      ansible.builtin.assert:
+        that:
+          - stack_disposable_test_acknowledged | default(false) | bool
+          - python_test_allow_changes | default(false) | bool
+          - py_phone_caller_service_ip_address_deny == ['any']
+          - py_phone_caller_service_ip_address_allow == ['localhost']
+          - not py_phone_caller_manage_gateway
+          - not asterisk_sip_trunk_enabled
+          - py_phone_caller_config.database.db_name == 'py_phone_caller_runtime'
+          - py_phone_caller_config.queue.queue_url == 'redis://127.0.0.1:6379/15'
+          - py_phone_caller_config.caller_prometheus_webhook.prometheus_webhook_receivers == []
+          - py_phone_caller_config.caller_sms.modems == []
+
+- name: Install selected components through the shared entry point
+  ansible.builtin.import_playbook: ../site.yml
+
+- name: Verify application startup without dispatch
+  ansible.builtin.import_playbook: ../verify.yml
+
+- name: Record service and dependency isolation evidence
+  ansible.builtin.import_playbook: python-inspect.yml

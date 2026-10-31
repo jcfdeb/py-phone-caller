@@ -1,0 +1,22 @@
+---
+openalert_root: /opt/openalert
+openalert_management_dir: /var/lib/openalert-installer
+openalert_helper: /usr/local/libexec/openalert-contract.py
+openalert_runtime_packages:
+  - dbus
+  - libdbus-1-3
+  - libgcc-s1
+  - acl
+openalert_release: {}
+openalert_instances: {}
+openalert_instance_defaults:
+  supplementary_groups: []
+  capabilities: []
+  device_paths: []
+  allow_unauthenticated_nonloopback: false
+  exposure_policy: ""
+  cpu_quota: "50%"
+  memory_high: 100M
+  memory_max: 150M
+  tasks_max: 256
+  limit_nofile: 65536

@@ -1,0 +1,46 @@
+{#
+    Renders py_phone_caller_final_config as TOML.
+
+    _ppc_render_secrets = false -> every key except py_phone_caller_secret_paths
+    _ppc_render_secrets = true  -> only the keys in py_phone_caller_secret_paths
+
+    Dotted secret paths are checked recursively, including OAuth subtables.
+    JSON quoting handles scalar strings, numbers, booleans and arrays.
+#}
+# Managed by Ansible (role: deploy_py-phone-caller). Local edits are lost on
+# the next run. Change src/config/{{ '{settings,.secrets}' }}.toml, regenerate the
+# group_vars with deploy/ansible/tools/toml_to_ansible_vars.py, and re-deploy.
+{% macro render_table(values, path, tablearray=false, inherited_secret=false) %}
+{% set table_secret = inherited_secret or (path | join('.')) in py_phone_caller_secret_paths %}
+{% set scalars = [] %}
+{% set subtables = [] %}
+{% set tablearrays = [] %}
+{% for key, value in values.items() %}
+{% set is_secret = table_secret or ((path + [key]) | join('.')) in py_phone_caller_secret_paths %}
+{% if value is mapping %}
+{% set _ = subtables.append((key, value)) %}
+{% elif value is sequence and value is not string and value | length > 0 and value[0] is mapping %}
+{% set _ = tablearrays.append((key, value)) %}
+{% elif is_secret == _ppc_render_secrets %}
+{% set _ = scalars.append((key, value)) %}
+{% endif %}
+{% endfor %}
+{% if scalars or ((tablearray or not values) and table_secret == _ppc_render_secrets) %}
+
+{{ '[[' if tablearray else '[' }}{{ path | map('to_json') | join('.') }}{{ ']]' if tablearray else ']' }}
+{% for key, value in scalars %}
+{{ key | to_json }} = {{ value | to_json }}
+{% endfor %}
+{% endif %}
+{% for key, table in subtables %}
+{{ render_table(table, path + [key], inherited_secret=table_secret) }}
+{% endfor %}
+{% for key, rows in tablearrays %}
+{% for row in rows %}
+{{ render_table(row, path + [key], tablearray=true, inherited_secret=table_secret) }}
+{% endfor %}
+{% endfor %}
+{% endmacro %}
+{% for section, values in py_phone_caller_final_config.items() %}
+{{ render_table(values, [section]) }}
+{% endfor %}

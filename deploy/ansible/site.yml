@@ -1,0 +1,36 @@
+---
+- name: Deploy explicitly selected native components
+  hosts: "{{ stack_hosts | default('stack') }}"
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Validate stack inputs before host changes
+      ansible.builtin.include_role:
+        name: stack_preflight
+
+    - name: Deploy independently managed OpenAlert instances
+      ansible.builtin.include_role:
+        name: openalert
+      when: stack_deploy_openalert
+
+    - name: Apply compatible PBX aliases only for selected PBX
+      ansible.builtin.include_tasks: tasks/pbx_aliases.yml
+      when: stack_deploy_asterisk
+
+    - name: Deploy standalone PBX using its own inventory variables
+      ansible.builtin.include_role:
+        name: asterisk_py_phone_caller
+      when:
+        - stack_deploy_asterisk
+        - not stack_deploy_py_phone_caller
+
+    - name: Deploy PBX wired to the selected Python application
+      ansible.builtin.include_tasks: tasks/combined_pbx.yml
+      when:
+        - stack_deploy_asterisk
+        - stack_deploy_py_phone_caller
+
+    - name: Deploy Python application using the existing role
+      ansible.builtin.include_role:
+        name: deploy_py-phone-caller
+      when: stack_deploy_py_phone_caller
