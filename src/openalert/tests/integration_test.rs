@@ -2946,3 +2946,65 @@ async fn test_dashboard_test_alert_routing_and_rapid_dispatch() {
 
     println!("✅ Dashboard test alert routing and rapid dispatch deduplication bypass verified!");
 }
+
+#[tokio::test]
+async fn test_phase1_nip_alert_severity_and_tag_d_filter() {
+    use openalertd::nostr_relay::NostrFilter;
+
+    let config = test_config();
+    let engine = AlertEngine::new(config).expect("Failed to create engine");
+    let publisher = engine.nostr_publisher();
+
+    // 1. Verify Emergency severity round-trip and cleartext tag schema
+    let alert = Alert {
+        alert_id: "sos-emerg-9001".to_string(),
+        severity: AlertSeverity::Emergency,
+        summary: "[MEDICAL] (Jorge | GPS:41.9028,12.4964 (±5m)): Urgent evacuation required [openalertd-fog-arm]".to_string(),
+        description: None,
+        source: AlertSource::Rest,
+        sender: Some("Jorge".to_string()),
+        node: Some("openalertd-fog-arm".to_string()),
+        starts_at: chrono::Utc::now(),
+        destinations: vec!["nostr".to_string()],
+        origin_peer: None,
+        hop: 3,
+    };
+
+    let event = publisher.sign_alert(&alert).expect("sign_alert");
+    assert_eq!(event.kind, 30000);
+
+    // Check mandatory & optional tags defined by NIP-ALERT
+    assert!(event.tags.iter().any(|t| t == &vec!["d".to_string(), "sos-emerg-9001".to_string()]));
+    assert!(event.tags.iter().any(|t| t == &vec!["severity".to_string(), "emergency".to_string()]));
+    assert!(event.tags.iter().any(|t| t == &vec!["source".to_string(), "rest".to_string()]));
+    assert!(event.tags.iter().any(|t| t == &vec!["t".to_string(), "alert".to_string()]));
+    assert!(event.tags.iter().any(|t| t == &vec!["t".to_string(), "openalert".to_string()]));
+    assert!(event.tags.iter().any(|t| t == &vec!["sender".to_string(), "Jorge".to_string()]));
+    assert!(event.tags.iter().any(|t| t == &vec!["node".to_string(), "openalertd-fog-arm".to_string()]));
+    assert_eq!(AlertSeverity::parse_str("emergency"), AlertSeverity::Emergency);
+
+    // 2. Verify EmbeddedNostrRelay NostrFilter #d matching
+    let filter_match: NostrFilter = serde_json::from_value(serde_json::json!({
+        "kinds": [30000],
+        "#d": ["sos-emerg-9001"],
+        "#t": ["openalert"]
+    }))
+    .expect("parse NostrFilter");
+    assert!(filter_match.matches(&event), "NostrFilter with matching #d and #t must match event");
+
+    let filter_miss: NostrFilter = serde_json::from_value(serde_json::json!({
+        "kinds": [30000],
+        "#d": ["other-alert-id"]
+    }))
+    .expect("parse NostrFilter");
+    assert!(!filter_miss.matches(&event), "NostrFilter with non-matching #d must not match event");
+
+    // 3. Verify NIP-40 expired event filtering in NostrFilter
+    let mut expired_event = event.clone();
+    expired_event.tags.retain(|t| t.first().map(|s| s.as_str()) != Some("expiration"));
+    expired_event.tags.push(vec!["expiration".to_string(), "1000".to_string()]);
+    let filter_any = NostrFilter::default();
+    assert!(!filter_any.matches(&expired_event), "Expired NIP-40 event must not match NostrFilter");
+
+    println!("✅ Phase 1 NIP-ALERT tag schema, Emergency severity, #d filter, and NIP-40 expiration verified!");
+}

@@ -562,11 +562,7 @@ pub async fn sos_trigger_handler(
     }
 
     // 3. Build canonical Alert with originating node name appended at the end of the message
-    let severity = match app_cfg.sos.default_severity.trim().to_lowercase().as_str() {
-        "info" => AlertSeverity::Info,
-        "warning" | "warn" => AlertSeverity::Warning,
-        _ => AlertSeverity::Critical,
-    };
+    let severity = AlertSeverity::parse_str(app_cfg.sos.default_severity.trim());
 
     let sender_clean = req
         .sender

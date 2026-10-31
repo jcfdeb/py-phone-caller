@@ -652,19 +652,17 @@ impl NostrSubscriber {
             let mut alert_id = event.id[..12.min(event.id.len())].to_string();
             let mut severity = AlertSeverity::Critical;
             let mut sender = event.pubkey.clone();
+            let mut node: Option<String> = None;
 
             for tag in &event.tags {
                 if tag.len() >= 2 {
                     match tag[0].as_str() {
                         "d" => alert_id = tag[1].clone(),
                         "severity" => {
-                            severity = match tag[1].to_lowercase().as_str() {
-                                "info" => AlertSeverity::Info,
-                                "warning" => AlertSeverity::Warning,
-                                _ => AlertSeverity::Critical,
-                            }
+                            severity = AlertSeverity::parse_str(&tag[1]);
                         }
                         "sender" => sender = tag[1].clone(),
+                        "node" => node = Some(tag[1].clone()),
                         _ => {}
                     }
                 }
@@ -677,7 +675,7 @@ impl NostrSubscriber {
                 description: Some(event.content),
                 source: AlertSource::Nostr,
                 sender: Some(sender),
-                node: None,
+                node,
                 starts_at: chrono::DateTime::from_timestamp(event.created_at as i64, 0)
                     .unwrap_or_else(chrono::Utc::now),
                 destinations: vec!["webhook".to_string()],

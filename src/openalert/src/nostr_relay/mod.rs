@@ -42,6 +42,8 @@ pub struct NostrFilter {
     pub tag_p: Option<Vec<String>>,
     #[serde(rename = "#t", default)]
     pub tag_t: Option<Vec<String>>,
+    #[serde(rename = "#d", default)]
+    pub tag_d: Option<Vec<String>>,
     #[serde(default)]
     pub since: Option<u64>,
     #[serde(default)]
@@ -99,6 +101,26 @@ impl NostrFilter {
                 t.len() >= 2 && t[0] == "t" && tag_t_list.iter().any(|topic| topic.eq_ignore_ascii_case(&t[1]))
             });
             if !matched {
+                return false;
+            }
+        }
+        if let Some(ref tag_d_list) = self.tag_d {
+            let matched = event.tags.iter().any(|t| {
+                t.len() >= 2 && t[0] == "d" && tag_d_list.iter().any(|d_val| d_val == &t[1])
+            });
+            if !matched {
+                return false;
+            }
+        }
+        // NIP-40: Do not match expired events
+        let now_secs = chrono::Utc::now().timestamp().max(0) as u64;
+        for t in &event.tags {
+            if t.len() >= 2
+                && t[0] == "expiration"
+                && let Ok(exp_ts) = t[1].parse::<u64>()
+                && exp_ts > 0
+                && now_secs > exp_ts
+            {
                 return false;
             }
         }
@@ -195,7 +217,12 @@ impl RelayState {
                     )
                     .await
                 {
-                    return events.into_iter().map(Arc::new).collect();
+                    return events
+                        .into_iter()
+                        .filter(|ev| filter.matches(ev))
+                        .take(limit)
+                        .map(Arc::new)
+                        .collect();
                 }
         }
 
@@ -312,7 +339,7 @@ async fn handle_root_or_ws(
             "name": state.config.name,
             "description": state.config.description,
             "contact": state.config.contact,
-            "supported_nips": [1, 4, 11, 17, 20, 44, 59],
+            "supported_nips": [1, 4, 11, 17, 20, 33, 40, 44, 57, 59],
             "software": "openalertd-embedded-relay",
             "version": env!("CARGO_PKG_VERSION"),
         });

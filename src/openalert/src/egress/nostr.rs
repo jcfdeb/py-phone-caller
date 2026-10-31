@@ -638,7 +638,7 @@ impl NostrPublisher {
             ];
             (b64, enc_tags)
         } else {
-            let pub_tags = vec![
+            let mut pub_tags = vec![
                 vec!["d".to_string(), alert.alert_id.clone()],
                 vec![
                     "severity".to_string(),
@@ -649,7 +649,14 @@ impl NostrPublisher {
                     format!("{:?}", alert.source).to_lowercase(),
                 ],
                 vec!["t".to_string(), "alert".to_string()],
+                vec!["t".to_string(), "openalert".to_string()],
             ];
+            if let Some(ref s) = alert.sender && !s.trim().is_empty() {
+                pub_tags.push(vec!["sender".to_string(), s.trim().to_string()]);
+            }
+            if let Some(ref n) = alert.node && !n.trim().is_empty() {
+                pub_tags.push(vec!["node".to_string(), n.trim().to_string()]);
+            }
             (alert.summary.clone(), pub_tags)
         };
 
