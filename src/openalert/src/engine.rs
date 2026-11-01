@@ -35,6 +35,7 @@ pub struct AlertEngine {
     peering_service: Arc<RwLock<Option<Arc<PeeringService>>>>,
     sms_service: Arc<RwLock<Option<Arc<SmsService>>>>,
     bitchat_service: Arc<RwLock<Option<Arc<crate::bitchat::BitChatService>>>>,
+    embedded_relay: Arc<RwLock<Option<Arc<crate::nostr_relay::EmbeddedNostrRelay>>>>,
     started_at: Instant,
 }
 
@@ -99,6 +100,7 @@ impl AlertEngine {
             peering_service: Arc::new(RwLock::new(None)),
             sms_service: Arc::new(RwLock::new(None)),
             bitchat_service: Arc::new(RwLock::new(None)),
+            embedded_relay: Arc::new(RwLock::new(None)),
             started_at: Instant::now(),
         })
     }
@@ -194,6 +196,17 @@ impl AlertEngine {
     /// Returns a reference to the active BitChatService if attached.
     pub async fn bitchat_service(&self) -> Option<Arc<crate::bitchat::BitChatService>> {
         self.bitchat_service.read().await.clone()
+    }
+
+    /// Links the in-process EmbeddedNostrRelay to this engine for direct zero-hop mirroring.
+    pub async fn set_embedded_relay(&self, relay: Arc<crate::nostr_relay::EmbeddedNostrRelay>) {
+        let mut guard = self.embedded_relay.write().await;
+        *guard = Some(relay);
+    }
+
+    /// Returns a reference to the active in-process EmbeddedNostrRelay if attached.
+    pub async fn embedded_relay(&self) -> Option<Arc<crate::nostr_relay::EmbeddedNostrRelay>> {
+        self.embedded_relay.read().await.clone()
     }
 
     /// Returns a reference to the daemon configuration.
@@ -450,6 +463,28 @@ impl AlertEngine {
         }
 
         cache.insert(key.to_string(), now);
+        false
+    }
+
+    /// Read-only check evaluating whether an arbitrary key has already been recorded in the deduplication cache or SQLite storage.
+    pub async fn has_seen_dedup_key(&self, key: &str) -> bool {
+        let dedup_window = Duration::from_secs(self.config.routing.dedup_ttl_seconds);
+        let now = Instant::now();
+        {
+            let cache = self.dedup_cache.lock().await;
+            if let Some(seen_at) = cache.get(key)
+                && now.duration_since(*seen_at) < dedup_window
+            {
+                return true;
+            }
+        }
+        if let Some(ref storage) = self.storage
+            && let Ok((is_dup, _)) = storage
+                .is_duplicate(&[key.to_string()], self.config.routing.dedup_ttl_seconds)
+                .await
+        {
+            return is_dup;
+        }
         false
     }
 

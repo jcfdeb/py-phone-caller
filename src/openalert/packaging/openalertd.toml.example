@@ -53,9 +53,12 @@ default_severity = "critical"
 captcha_enabled = true
 # Cooldown in seconds between SOS alert dispatches to prevent radio flooding
 cooldown_seconds = 10
-# Enable 0xChat / Nostr encrypted DM recipient field and Bot npub display on the SOS portal
+# Enable optional one-tap GPS coordinates button on the SOS portal
 gps_enabled = true
+# Enable 0xChat / Nostr encrypted DM recipient field and Bot npub display on the SOS portal
 nostr_dm_enabled = true
+# Enable NIP-57 Lightning Zap Alert form on the /sos portal (requires [nostr.zaps] enabled = true and [nostr.profile] lud16)
+zap_enabled = false
 # Optional public Nostr relay URL shown to users on the SOS portal
 # public_relay_url = "wss://py-phone-caller.link/nostr"
 # Optional PIN (plaintext or "sha256:<hash>") required to unlock the Bot npub and custom npub DM delivery
@@ -105,6 +108,31 @@ alert_ttl_seconds = 3600
 # Historical catch-up lookback in seconds on startup (0 = only live events, 300 = past 5 minutes)
 subscription_lookback_seconds = 300
 
+[nostr.profile]
+# NIP-01 Kind 0 Bot Profile Metadata published to relays on startup
+enabled = true
+display_name = "🚨 OpenAlert Emergency Bot"
+about = "Off-Grid LoRa, BitChat BLE & Nostr Tactical Alerting Node"
+# Optional Lightning Address (lud16) for NIP-57 Zaps (e.g. "openalert@getalby.com")
+# lud16 = "openalert@getalby.com"
+
+[nostr.zaps]
+# NIP-57 Lightning Zap Receipt (Kind 9735) Verification & Nostr/0xChat Alert Adapter
+# Strictly isolated to Nostr / Embedded Relay / 0xChat egress (never triggers telephony, SMS, BLE, or LoRa).
+enabled = false
+# Optional target Nostr pubkey (hex or npub1...; defaults to this daemon's derived Nostr pubkey if omitted)
+# target_pubkey = ""
+# Optional allowlist of trusted LNURL provider Nostr pubkeys (hex or npub1...) permitted to sign Kind 9735 receipts
+trusted_provider_pubkeys = []
+# Tiered Satoshi Anti-Spam & Severity Escalation Thresholds:
+min_sats_warning = 21
+min_sats_critical = 1000
+min_sats_emergency = 10000
+# Mirror verified Kind 9735 Zap receipts to the local Embedded Nostr Relay
+mirror_to_embedded_relay = true
+# Notify 0xChat subscribers via NIP-17 Gift Wrap (Kind 1059) when a verified Zap arrives
+notify_oxchat_subscribers = true
+
 [nostr.privacy]
 # Nostr alert privacy and group encryption.
 # Mode options:
@@ -119,6 +147,20 @@ shared_key = ""
 authorized_senders = []
 # When mode is "encrypted", whether to accept unencrypted public alerts. Default: false.
 allow_unencrypted_fallback = false
+
+[nostr.oxchat]
+# 0xChat mobile client integration and interactive C2 subsystem
+enabled = false
+# Operational presentation mode:
+#   "dm"     - End-to-End Encrypted 1-on-1 Direct Messages (NIP-04 ECDH + AES-256-CBC) to recipients.
+#   "public" - Markdown text note (NIP-01 Kind 1) on team timeline with severity tags.
+mode = "dm"
+# List of authorized operator public keys (32-byte hex) to receive alerts
+recipients = []
+# Interactive Command & Control (C2) over 0xChat encrypted Direct Messages
+c2_enabled = false
+# Whitelist of operator public keys (32-byte hex) authorized to execute C2 commands
+c2_authorized_operators = []
 
 [bitchat]
 # Native Bluetooth Low Energy (BlueZ D-Bus GATT peripheral & advertising)
@@ -197,12 +239,16 @@ base_timeout_ms = 250
 max_timeout_ms = 8000
 
 [peering.time_sync]
-# Off-Grid Authenticated LoRa Time Synchronization (3-Tier Hybrid Architecture)
+# Off-Grid Authenticated LoRa Time Synchronization & Bidirectional Link Heartbeat (3-Tier Hybrid Architecture)
 enabled = true
 # Role: "auto" (serves time if OS clock is NTP-synced, otherwise acts as client), "server", or "client"
 role = "auto"
-# Periodic TimeBeacon broadcast interval in hours (when role = "server" or "auto" with NTP sync)
+# Periodic TimeBeacon broadcast interval in minutes for server nodes (if > 0, overrides beacon_interval_hours; default: 15)
+beacon_interval_minutes = 15
+# Fallback TimeBeacon broadcast interval in hours when beacon_interval_minutes = 0
 beacon_interval_hours = 12
+# Periodic bidirectional LoRa heartbeat (TimeSyncReq) interval in minutes for client nodes (0 = disabled, default: 10)
+heartbeat_interval_minutes = 10
 # Dispatch a one-shot challenge-response TimeSyncReq on cold boot if unsynchronized
 request_on_boot = true
 # Attempt to step the OS system clock via clock_settime(CLOCK_REALTIME) in addition to atomic offset
@@ -230,7 +276,8 @@ step_system_clock = true
 # Disabled by default. Set enabled = true when a USB GSM/LTE modem (e.g. SIM7600, SIM7100) is attached.
 enabled = false
 
-# Serial AT command port (e.g. /dev/ttyUSB2 for SIMCom Cat-1/Cat-4 modem AT port)
+# Serial AT command port.
+# Recommended: '/dev/ttySMS' (persistent udev symlink to SIMCom AT port), or '/dev/ttyUSB2'
 port = "/dev/ttyUSB2"
 
 # Serial baud rate (standard 115200)

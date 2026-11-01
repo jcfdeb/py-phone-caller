@@ -1,0 +1,116 @@
+# ==============================================================================
+# OpenAlert & py-phone-caller v1.0.0 - Production Docker Compose Stack
+#
+# Quick Start (Software Transports: REST, /sos Portal, Nostr Quorum, Embedded
+# Nostr Micro-Relay :8088, NIP-57 Lightning Zap Adapter & Telephony Bridge):
+#   docker compose up -d
+#
+# With Physical Hardware Passthrough (GSM /dev/ttyUSB*, LoRa /dev/ttyACM*, BlueZ BLE):
+#   docker compose -f docker-compose.yml -f docker-compose.hardware.yml up -d
+#
+# Build ARM64 Image (Fast Cross-Compilation on x86_64 or Native on ARM64):
+#   docker buildx build --platform linux/arm64 -f src/openalert/Dockerfile.arm64 \
+#     -t localhost/openalertd:1.0.0-arm64 --load src/openalert
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. OpenAlert Tactical Edge & Gateway Router (Rust / Debian Bookworm Slim)
+  # ----------------------------------------------------------------------------
+  openalertd:
+    build:
+      context: ./src/openalert
+      dockerfile: ${OPENALERT_DOCKERFILE:-Dockerfile}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/openalertd:${VERSION:-1.0.0}
+    container_name: openalertd
+    restart: unless-stopped
+    ports:
+      - "${OPENALERT_HTTP_PORT:-8090}:8090"
+      - "${OPENALERT_RELAY_PORT:-8088}:8088"
+      - "${OPENALERT_PEERING_PORT:-19876}:19876/udp"
+    environment:
+      OPENALERT_DAEMON__NAME: ${OPENALERT_NODE_NAME:-openalertd-hub}
+      OPENALERT_DAEMON__LOG_LEVEL: ${OPENALERT_LOG_LEVEL:-info}
+      OPENALERT_REST__LISTEN_HOST: "0.0.0.0"
+      OPENALERT_REST__LISTEN_PORT: "8090"
+      OPENALERT_STORAGE__ENABLED: "true"
+      OPENALERT_STORAGE__PATH: "/var/lib/openalertd/data/openalert.db"
+      OPENALERT_TEMPLATES__TEMPLATE_DIR: "/templates"
+      # Embedded Nostr Micro-Relay (:8088) enabled out-of-the-box for 0xChat & local clients
+      OPENALERT_NOSTR__RELAY_SERVER__ENABLED: ${OPENALERT_RELAY_SERVER_ENABLED:-true}
+      OPENALERT_NOSTR__RELAY_SERVER__BIND_ADDRESS: "0.0.0.0:8088"
+      OPENALERT_NOSTR__RELAY_SERVER__STORAGE_BACKEND: "sqlite"
+      # NIP-57 Lightning Zap Adapter (set OPENALERT_NOSTR__PROFILE__LUD16 to enable /sos QR invoices)
+      OPENALERT_SOS__ENABLED: "true"
+      OPENALERT_SOS__ZAP_ENABLED: ${OPENALERT_SOS_ZAP_ENABLED:-true}
+      OPENALERT_NOSTR__ZAPS__ENABLED: ${OPENALERT_NOSTR_ZAPS_ENABLED:-true}
+      # Hardware transports default to false in base compose so cloud VMs / laptops boot cleanly;
+      # use docker-compose.hardware.yml to enable physical GSM, LoRa & BlueZ BLE devices.
+      OPENALERT_SMS__ENABLED: ${OPENALERT_SMS_ENABLED:-false}
+      OPENALERT_BITCHAT__ENABLED: ${OPENALERT_BITCHAT_ENABLED:-false}
+      # Internal bridge webhook to py-phone-caller companion container
+      OPENALERT_PY_PHONE_CALLER__WEBHOOK_URL: ${OPENALERT_WEBHOOK_URL:-http://py-phone-caller:8084/sms_before_call}
+    volumes:
+      - openalert_data:/var/lib/openalertd
+    networks:
+      - openalert_net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # 2. py-phone-caller Alertmanager Webhook & Telephony Dispatch Bridge
+  # ----------------------------------------------------------------------------
+  py-phone-caller:
+    build:
+      context: .
+      dockerfile: src/caller_prometheus_webhook/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_prometheus_webhook:${VERSION:-1.0.0}
+    container_name: py-phone-caller-webhook
+    restart: unless-stopped
+    depends_on:
+      generate_audio:
+        condition: service_healthy
+    environment:
+      ENABLE_TELEMETRY: ${ENABLE_TELEMETRY:-false}
+      DYNACONF_COMMONS__ASTERISK_HOST: ${ASTERISK_HOST:-host.containers.internal}
+      DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST: generate_audio
+      DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_PORT: 8082
+      DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: ${ASTERISK_CALL_HOST:-asterisk_caller}
+      DYNACONF_ASTERISK_CALL__ASTERISK_CALL_PORT: 8081
+      DYNACONF_CALLER_SMS__CALLER_SMS_HOST: ${CALLER_SMS_HOST:-caller_sms}
+      DYNACONF_CALLER_SMS__CALLER_SMS_PORT: 8085
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    networks:
+      - openalert_net
+
+  # ----------------------------------------------------------------------------
+  # 3. Offline Neural Voice Synthesis Service (Piper TTS)
+  # ----------------------------------------------------------------------------
+  generate_audio:
+    build:
+      context: .
+      dockerfile: src/generate_audio/Dockerfile
+    image: ${MY_DOCKER_REGISTRY:-localhost}/generate_audio:${VERSION:-1.0.0}
+    container_name: py-phone-caller-audio
+    restart: unless-stopped
+    environment:
+      ENABLE_TELEMETRY: ${ENABLE_TELEMETRY:-false}
+    volumes:
+      - piper_tts_models:/app/audio
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    networks:
+      - openalert_net
+
+volumes:
+  openalert_data:
+  piper_tts_models:
+
+networks:
+  openalert_net:
+    driver: bridge

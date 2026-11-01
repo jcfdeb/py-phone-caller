@@ -112,16 +112,24 @@ docker run -d \
   -e OPENALERT_DAEMON__LOG_LEVEL=info \
   -e OPENALERT_STORAGE__PATH="/data/openalert.db" \
   -v openalert-data:/data \
-  ghcr.io/openalert/openalertd:v0.2.0
+  localhost/openalertd:1.0.0
 ```
 
-### Docker Compose
-```yaml
-version: "3.8"
+### Docker Compose (`docker-compose.yml` & `docker-compose.hardware.yml`)
+The repository root provides a ready-to-run `docker-compose.yml` stack along with an optional `docker-compose.hardware.yml` overlay for physical USB GSM, LoRa, and BlueZ BLE passthrough:
 
+```bash
+# 1. Software stack (NOC UI :8090, /sos Portal, Nostr Quorum, Embedded Relay :8088, NIP-57 Zaps & py-phone-caller):
+docker compose up -d
+
+# 2. With physical hardware passthrough (/dev/ttyUSB2, /dev/ttyACM0, /var/run/dbus, NET_ADMIN/NET_RAW):
+docker compose -f docker-compose.yml -f docker-compose.hardware.yml up -d
+```
+
+```yaml
 services:
   openalertd:
-    image: ghcr.io/openalert/openalertd:v0.2.0
+    image: localhost/openalertd:1.0.0
     restart: unless-stopped
     ports:
       - "8090:8090"
@@ -160,7 +168,7 @@ spec:
     spec:
       containers:
         - name: openalertd
-          image: ghcr.io/openalert/openalertd:v0.2.0
+          image: localhost/openalertd:1.0.0
           ports:
             - containerPort: 8090
               name: rest-api
@@ -220,11 +228,28 @@ title = "OpenAlert Emergency SOS"
 default_severity = "critical"
 captcha_enabled = true
 cooldown_seconds = 10
+gps_enabled = true
+nostr_dm_enabled = true
+zap_enabled = true
 
 [sos.auth]
 enabled = false
 username = "sos"
 password_hash = ""
+
+[nostr.profile]
+enabled = true
+display_name = "🚨 OpenAlert Emergency Bot"
+lud16 = "openalert@getalby.com"
+
+[nostr.zaps]
+enabled = true
+trusted_provider_pubkeys = []
+min_sats_warning = 21
+min_sats_critical = 1000
+min_sats_emergency = 10000
+mirror_to_embedded_relay = true
+notify_oxchat_subscribers = true
 ```
 
 ### Outbound Webhook Egress (`[py_phone_caller.webhooks.auth]`)
@@ -273,6 +298,8 @@ For bare-metal and VM installations, operators can inspect and modify configurat
 | `sos.default_severity` | `OPENALERT_SOS__DEFAULT_SEVERITY` | String | `"critical"` | Default severity for SOS alerts |
 | `sos.captcha_enabled` | `OPENALERT_SOS__CAPTCHA_ENABLED` | Bool | `true` | Offline 4-digit SVG visual CAPTCHA |
 | `sos.cooldown_seconds` | `OPENALERT_SOS__COOLDOWN_SECONDS` | u64 | `10` | Minimum cooldown between SOS submissions |
+| `sos.gps_enabled` | `OPENALERT_SOS__GPS_ENABLED` | Bool | `true` | One-tap browser GPS coordinates button on `/sos` |
+| `sos.zap_enabled` | `OPENALERT_SOS__ZAP_ENABLED` | Bool | `false` | NIP-57 Lightning Zap invoice & QR generator on `/sos` |
 | `sos.auth.enabled` | `OPENALERT_SOS__AUTH__ENABLED` | Bool | `false` | Optional HTTP Basic Auth for `/sos` |
 | `storage.path` | `OPENALERT_STORAGE__PATH` | String | `"data/openalert.db"` | Path to SQLite database (`:memory:` for ephemeral RAM) |
 | `storage.retention_days` | `OPENALERT_STORAGE__RETENTION_DAYS` | u32 | `30` | Sliding window alert retention |
@@ -281,6 +308,13 @@ For bare-metal and VM installations, operators can inspect and modify configurat
 | `routing.dedup_ttl_seconds` | `OPENALERT_ROUTING__DEDUP_TTL_SECONDS` | u64 | `3600` | De-duplication time window |
 | `nostr.kind` | `OPENALERT_NOSTR__KIND` | u64 | `30000` | Default event kind |
 | `nostr.alert_ttl_seconds` | `OPENALERT_NOSTR__ALERT_TTL_SECONDS` | u64 | `3600` | NIP-40 alert expiration window |
+| `nostr.profile.lud16` | `OPENALERT_NOSTR__PROFILE__LUD16` | String | `None` | Lightning Address (`user@domain`) for NIP-57 Zaps |
+| `nostr.zaps.enabled` | `OPENALERT_NOSTR__ZAPS__ENABLED` | Bool | `false` | 6-stage `Kind 9735` NIP-57 Zap Receipt verifier |
+| `nostr.zaps.min_sats_warning` | `OPENALERT_NOSTR__ZAPS__MIN_SATS_WARNING` | u64 | `21` | Minimum satoshis for `Warning` Zap alert (anti-spam) |
+| `nostr.zaps.min_sats_critical` | `OPENALERT_NOSTR__ZAPS__MIN_SATS_CRITICAL` | u64 | `1000` | Minimum satoshis for `Critical` Zap alert |
+| `nostr.zaps.min_sats_emergency` | `OPENALERT_NOSTR__ZAPS__MIN_SATS_EMERGENCY` | u64 | `10000` | Minimum satoshis for `Emergency` Zap alert |
+| `nostr.zaps.mirror_to_embedded_relay` | `OPENALERT_NOSTR__ZAPS__MIRROR_TO_EMBEDDED_RELAY` | Bool | `true` | Mirror verified `Kind 9735` receipts to `:8088` relay |
+| `nostr.zaps.notify_oxchat_subscribers` | `OPENALERT_NOSTR__ZAPS__NOTIFY_OXCHAT_SUBSCRIBERS` | Bool | `true` | Dispatch NIP-17 Gift Wrap DMs on verified Zaps |
 | `nostr.relay_server.enabled` | `OPENALERT_NOSTR__RELAY_SERVER__ENABLED` | Bool | `false` | Embedded micro-relay server |
 | `nostr.relay_server.bind_address`| `OPENALERT_NOSTR__RELAY_SERVER__BIND_ADDRESS` | String | `"0.0.0.0:8088"` | Embedded relay bind socket |
 | `bitchat.enabled` | `OPENALERT_BITCHAT__ENABLED` | Bool | `false` | BitChat BLE mesh engine |

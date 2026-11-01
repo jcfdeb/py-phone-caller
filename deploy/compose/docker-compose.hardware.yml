@@ -1,0 +1,27 @@
+# ==============================================================================
+# OpenAlert v1.0.0 - Physical Hardware Passthrough Overlay (deploy/compose)
+#
+# Usage:
+#   cd deploy/compose
+#   docker compose -f docker-compose.yml -f docker-compose.hardware.yml up -d
+# ==============================================================================
+
+services:
+  openalertd:
+    environment:
+      OPENALERT_SMS__ENABLED: "true"
+      OPENALERT_SMS__PORT: ${OPENALERT_GSM_DEVICE:-/dev/ttyUSB2}
+      OPENALERT_BITCHAT__ENABLED: "true"
+      OPENALERT_BITCHAT__DEVICE: ${OPENALERT_BLE_HCI:-hci0}
+    group_add:
+      - dialout
+      - bluetooth
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - "${OPENALERT_GSM_DEVICE:-/dev/ttyUSB2}:${OPENALERT_GSM_DEVICE:-/dev/ttyUSB2}"
+      - "${OPENALERT_LORA_DEVICE:-/dev/ttyACM0}:${OPENALERT_LORA_DEVICE:-/dev/ttyACM0}"
+    volumes:
+      - /var/run/dbus:/var/run/dbus
+      - /run/udev:/run/udev:ro

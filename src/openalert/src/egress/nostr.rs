@@ -345,7 +345,7 @@ impl NostrPublisher {
     }
 
     /// Signs and publishes a NIP-01 Kind 0 Profile Metadata event to all configured relays
-    /// so Nostr / 0xChat clients display the Bot's configured name, description, and avatar.
+    /// so Nostr / 0xChat clients display the Bot's configured name, description, avatar, and `lud16` Lightning Address.
     pub async fn publish_profile_metadata(
         &self,
         profile: &crate::config::NostrProfileConfig,
@@ -368,8 +368,11 @@ impl NostrPublisher {
         meta.insert("name".to_string(), json!(handle_name));
         meta.insert("display_name".to_string(), json!(profile.display_name.trim()));
         meta.insert("about".to_string(), json!(profile.about.trim()));
-        if let Some( pic) = profile.picture.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if let Some(pic) = profile.picture.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
             meta.insert("picture".to_string(), json!(pic));
+        }
+        if let Some(lud16) = profile.lud16.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            meta.insert("lud16".to_string(), json!(lud16));
         }
 
         let content = serde_json::to_string(&meta)?;
@@ -638,7 +641,7 @@ impl NostrPublisher {
             ];
             (b64, enc_tags)
         } else {
-            let pub_tags = vec![
+            let mut pub_tags = vec![
                 vec!["d".to_string(), alert.alert_id.clone()],
                 vec![
                     "severity".to_string(),
@@ -649,7 +652,14 @@ impl NostrPublisher {
                     format!("{:?}", alert.source).to_lowercase(),
                 ],
                 vec!["t".to_string(), "alert".to_string()],
+                vec!["t".to_string(), "openalert".to_string()],
             ];
+            if let Some(ref s) = alert.sender && !s.trim().is_empty() {
+                pub_tags.push(vec!["sender".to_string(), s.trim().to_string()]);
+            }
+            if let Some(ref n) = alert.node && !n.trim().is_empty() {
+                pub_tags.push(vec!["node".to_string(), n.trim().to_string()]);
+            }
             (alert.summary.clone(), pub_tags)
         };
 

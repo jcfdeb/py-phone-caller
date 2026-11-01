@@ -22,6 +22,9 @@ doc/
 ├── 🏛️ Architecture & Specifications
 │   ├── architecture-and-call-flows.md  # 📐 End-to-End Call, SMS & DTMF Sequence Flows
 │   ├── services-and-endpoints.md       # 🔌 Complete Microservices & REST API Reference
+│   ├── openalert/README.md             # 🚨 OpenAlert Decentralized Mesh & Nostr Bridge
+│   ├── openalert/NIP-ALERT.md          # 📜 Formal NIP-ALERT (Kind 30000) Nostr Specification
+│   ├── openalert/CONFIGURATION_GUIDE.md# ⚙️ Multi-Layered Configuration & NIP-57 Zaps Guide
 │   └── uv-migration-and-workspace-guide.md # 🐍 Python 3.14 UV Workspace & Packaging Guide
 │
 ├── 🖥️ Web Console & User Interface
@@ -61,6 +64,8 @@ doc/
   Exhaustive REST API reference covering all 11 microservices, exact port allocations (`8081` through `8087`, `5000`), request/response JSON schemas, query parameters, health checks (`/health`, `/healthz`, `/live`), and Prometheus metric endpoints (`/metrics`).
 - **[UV Workspace & Packaging Guide](uv-migration-and-workspace-guide.md)**  
   Technical guide explaining the Python 3.14 multi-package `uv` workspace, unified `uv.lock` dependency locking, editable shared library linking (`py_phone_caller_utils`), wheel generation, and container build contexts.
+- **[OpenAlert Architecture & Nostr Alerting Specification (`NIP-ALERT`)](openalert/README.md)**  
+  Covers the `openalertd` v1.0.0 Rust mesh daemon, [`NIP-ALERT.md`](openalert/NIP-ALERT.md) (`Kind 30000` parameterized replaceable alerts), NIP-57 Lightning Zap Receipt verification (`Kind 9735`), 0xChat NIP-17 E2EE C2, Embedded Nostr Micro-Relay (`:8088`), `/sos` Captive Portal, LoRa RF, BitChat BLE, and multi-stage / ARM64 Docker packaging ([`CONFIGURATION_GUIDE.md`](openalert/CONFIGURATION_GUIDE.md)).
 
 ---
 

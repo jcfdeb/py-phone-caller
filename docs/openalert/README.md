@@ -29,16 +29,24 @@ OpenAlert is fundamentally bidirectional, acting as both a listener and a broadc
 For civilians, bystanders, or field personnel who do not have **BitChat** or **0xChat** installed on their mobile devices, OpenAlert provides a dedicated, simplified **Emergency SOS Web Portal**:
 * **Configurable SOS Endpoint (`[sos]`):** Served by default at `/sos` (configurable via `sos.path`). Provides a mobile-first, high-contrast emergency dispatch form (Category: `SOS`, `MEDICAL`, `FIRE`, `SECURITY`, `INFRASTRUCTURE`, Sender/Location, and Emergency Message) completely isolated from the administrative NOC dashboard (`/`).
 * **Offline 4-Digit SVG Visual CAPTCHA:** Generates dynamic, distorted 4-digit SVG challenges in-memory signed with an ephemeral **HMAC-SHA256** key and one-time nonce verification (`GET /api/v1/sos/challenge` $\rightarrow$ `POST /api/v1/sos/trigger`), preventing automated bot abuse or radio flooding completely offline without external internet dependencies.
+* **One-Tap Browser GPS Geolocation (`gps_enabled = true`):** Optional mobile geolocation button appending `GPS:lat,lon (±acc_m)` to the SOS alert summary.
+* **⚡ NIP-57 Lightning Zap Alert Adapter (`[sos] zap_enabled` & `[nostr.zaps]`):** Optional collapsible section on `/sos` (`POST /api/v1/sos/zap-invoice` & `GET /api/v1/sos/zap-status/{id}`) that constructs a signed `Kind 9734` Zap Request, resolves the node's `lud16` Lightning Address, renders an inline SVG BOLT-11 QR code + `lightning:` wallet deep-link, and verifies the resulting `Kind 9735` Zap Receipt via a 6-stage cryptographic pipeline with tiered satoshi severity escalation (`min_sats_warning = 21`, `min_sats_critical = 1000`, `min_sats_emergency = 10000`) and **strict Nostr/0xChat-only egress isolation**.
 * **Configurable Authentication & Rate-Limiting (`[sos.auth]`):** Open access by default (protected by the offline SVG CAPTCHA and `cooldown_seconds` rate-limiting), with optional HTTP Basic Auth (`username` + SHA-256 `password_hash`) configurable in `openalertd.toml`.
 * **Turnkey Linux Wi-Fi Access Point & Port 80 Isolation (`packaging/wifi-ap/`):** Includes an optional, standard Linux OS configuration bundle (`hostapd` + `dnsmasq` + `nginx-light`) for embedded ARM SBCs (such as Orange Pi Zero 3 and Raspberry Pi). Broadcasts the `OpenAlert-SOS` Wi-Fi network (`10.42.0.1/24`), intercepts iOS/Android/Windows captive portal probes on Port 80, and automatically pops up the `/sos` emergency form on any smartphone that joins the Wi-Fi hotspot—even when the node has zero Ethernet or internet connectivity.
 
+### Standardized Nostr Alert Events ([`NIP-ALERT.md`](NIP-ALERT.md))
+OpenAlert defines a formal Nostr specification ([`NIP-ALERT.md`](NIP-ALERT.md)) for addressable parameterized replaceable alert events (`Kind 30000`):
+* **Standardized Tag Schema:** Mandatory `d` (`<alert_id>`), `severity` (`warning`, `critical`, `emergency`, `info`), `source` (`rest`, `prometheus`, `nostr`, `bitchat`, `peering`, `sms`), `expiration` (NIP-40 Unix timestamp), and `t` (`alert`, `openalert`), plus optional `sender`, `node`, and `enc` (`xchacha20poly1305-v1`) tags.
+* **Dual Privacy Modes:** Cleartext mode (`[nostr.privacy] mode = "public"`) for public community advisories, and Authenticated AEAD Group-Encrypted mode (`mode = "encrypted"`, `XChaCha20-Poly1305` with 24-byte random nonce and 256-bit pre-shared key) so untrusted relays cannot inspect alert contents or originating node metadata.
+
 ### 0xChat & Embedded Nostr Tactical Micro-Relay
 To provide secure, human-in-the-loop mobile alerting and Command & Control (C2) without cloud dependencies:
-* **Embedded Tactical Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server running directly inside `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, SQLite event indexing).
+* **Embedded Tactical Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server running directly inside `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, NIP-33 `#d` filtering, NIP-40 expiration, NIP-57 Zap mirroring, SQLite event indexing).
 * **NIP-17 / NIP-59 / NIP-44 Onion Encryption:** Dual-mode DM engine supporting both legacy NIP-04 Kind 4 and modern three-tier Gift Wraps (`Kind 1059` Wrap $\rightarrow$ `Kind 13` Seal $\rightarrow$ `Kind 14` Rumor) with ChaCha20-Poly1305.
 * **Interactive Tactical C2:** Operators interact directly from 0xChat using `status`, `ping`, `mesh <msg>`, `sms <num> <msg>`, `ack`, or `help`.
 * **Thread-Aware Reply ACK:** Tapping "Reply" on an alert in 0xChat and sending `ack` or `ok` automatically follows the NIP-10 `#e` event tag to mark the alert resolved in SQLite.
 * **Dual SSL / TLS Strategy (Proxy Offloading & Native TLS):** Production deployments delegate WSS termination to edge reverse proxies (Caddy, Nginx). For air-gapped field kits, `openalertd` integrates battle-ready native TLS (`[nostr.relay_server.tls]`) using `tokio-rustls` for direct `wss://` encrypted sockets without third-party dependencies.
+* **NIP-57 Lightning Zap Receipt Verifier (`[nostr.zaps]`):** 6-stage cryptographic verification of `Kind 9735` Zap Receipts (`Kind 9735` BIP-340 Schnorr signature + provider allowlist, inner `Kind 9734` Schnorr signature, recipient `#p` match, BOLT-11 Bech32 checksum + `description_hash` binding, and tiered satoshi anti-spam thresholds). Verified Zaps are mirrored to the Embedded Nostr Relay (`:8088`) and dispatched to 0xChat subscribers while strictly isolated from telephony/SMS/BLE/LoRa egress.
 
 ### BitChat Bluetooth LE Mesh Implementation
 To guarantee event delivery when standard internet routing (TCP/IP) fails, OpenAlert natively implements the BitChat protocol.
@@ -75,6 +83,15 @@ cargo run -- config/openalertd.toml
 
 # Install as a hardened systemd service (optionally with the Wi-Fi SOS Captive Portal)
 sudo ./packaging/install.sh --with-wifi-ap
+
+# Build Multi-Stage Docker Image (native x86_64 / arm64):
+docker build -t openalertd:1.0.0 -f Dockerfile .
+
+# Build ARM64 Image via Fast Cross-Compilation (no QEMU rustc slowdown):
+docker buildx build --platform linux/arm64 -f Dockerfile.arm64 -t openalertd:1.0.0-arm64 --load .
+
+# Launch Docker Compose stack (from repo root, with optional hardware passthrough):
+docker compose -f ../../docker-compose.yml -f ../../docker-compose.hardware.yml up -d
 ```
 
 ---

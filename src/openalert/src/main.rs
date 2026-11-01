@@ -73,6 +73,7 @@ fn extract_url(args: &[String]) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let args: Vec<String> = env::args().collect();
     let subcommand = args.get(1).map(|s| s.as_str()).unwrap_or("");
 
@@ -333,11 +334,12 @@ async fn main() -> Result<()> {
 
     // Start embedded Nostr micro-relay if enabled in configuration
     if config.nostr.relay_server.enabled {
-        let relay = openalertd::EmbeddedNostrRelay::with_publisher(
+        let relay = Arc::new(openalertd::EmbeddedNostrRelay::with_publisher(
             config.nostr.relay_server.clone(),
             engine.storage().cloned(),
             engine.nostr_publisher_arc(),
-        );
+        ));
+        engine.set_embedded_relay(relay.clone()).await;
         if let Err(e) = relay.start().await {
             error!("Failed to bind embedded Nostr micro-relay on {}: {}", config.nostr.relay_server.bind_address, e);
         }
