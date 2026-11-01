@@ -1,6 +1,6 @@
 # NIP-ALERT: Decentralized Critical Alert Events & Out-of-Band Bridging
 
-`draft` `optional` `author:fdpergolini` `author:jcfdeb`
+`draft` `optional` `author:fdpergolini` `author:Jorge C. Franco`
 
 This NIP defines a standardized event schema, encryption envelope, radio-safe payload MTU, and operator Command-and-Control (C2) protocol for publishing, routing, and acknowledging critical alerts over Nostr and bridging them across off-grid / out-of-band transports (sub-GHz LoRa, Bluetooth Low Energy mesh, GSM/LTE SMS, and SIP/PSTN voice telephony).
 

@@ -27,6 +27,7 @@ mkdir -p "${STAGE_DIR}/templates"
 mkdir -p "${STAGE_DIR}/systemd"
 mkdir -p "${STAGE_DIR}/profiles"
 mkdir -p "${STAGE_DIR}/wifi-ap"
+mkdir -p "${STAGE_DIR}/docker"
 
 # Copy binary
 cp "${CRATE_DIR}/target/release/openalertd" "${STAGE_DIR}/bin/openalertd"
@@ -47,6 +48,14 @@ cp "${SCRIPT_DIR}/systemd/openalertd.service" "${STAGE_DIR}/systemd/openalertd.s
 if [[ -d "${SCRIPT_DIR}/wifi-ap" ]]; then
     cp -r "${SCRIPT_DIR}/wifi-ap/"* "${STAGE_DIR}/wifi-ap/"
     chmod 0755 "${STAGE_DIR}/wifi-ap/setup_wifi_ap.sh" 2>/dev/null || true
+fi
+
+# Copy Docker & ARM64 multi-stage build manifests and Compose files
+cp "${CRATE_DIR}/Dockerfile" "${STAGE_DIR}/docker/Dockerfile"
+cp "${CRATE_DIR}/Dockerfile.arm64" "${STAGE_DIR}/docker/Dockerfile.arm64"
+if [[ -f "${CRATE_DIR}/../../docker-compose.yml" ]]; then
+    cp "${CRATE_DIR}/../../docker-compose.yml" "${STAGE_DIR}/docker/docker-compose.yml"
+    cp "${CRATE_DIR}/../../docker-compose.hardware.yml" "${STAGE_DIR}/docker/docker-compose.hardware.yml"
 fi
 
 # Copy installer and verification scripts

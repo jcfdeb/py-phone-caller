@@ -4,7 +4,8 @@
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![HRF Grant](https://img.shields.io/badge/supported%20by-HRF%20Bitcoin%20Dev%20Fund-f7931a.svg)](https://x.com/gladstein/status/2092304843037884677)
-[![Tests](https://img.shields.io/badge/tests-100%2B%20passed-success.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
+[![Tests](https://img.shields.io/badge/tests-110%20passed-success.svg)]()
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg)]()
 
 > **OpenAlert** is a decentralized, resilient alerting daemon designed to bridge emergency notifications across isolated networks and physical air gaps. Developed with the support of a grant from the **[Human Rights Foundation (HRF) Bitcoin Development Fund](https://x.com/gladstein/status/2092304843037884677)**, `openalertd` ensures that life-safety alarms, disaster advisories, and critical infrastructure telemetries reach first responders even under total internet blackouts, grid collapses, or adversarial censorship.
@@ -45,15 +46,25 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 ### 🚨 Simplified Emergency SOS Web Portal (`/sos`) & Off-Grid Wi-Fi Captive Portal
 * **Configurable SOS Endpoint (`[sos]`):** Exposes a simplified, mobile-first Emergency SOS Web UI (default `/sos`, configurable via `sos.path`) so civilians or field operators without BitChat or 0xChat installed can trigger life-safety alerts without exposing the administrative NOC UI (`/`).
 * **Offline 4-Digit SVG Visual CAPTCHA:** Generates dynamic, distorted 4-digit SVG challenges signed with an ephemeral **HMAC-SHA256** key and one-time nonce verification (`GET /api/v1/sos/challenge` $\rightarrow$ `POST /api/v1/sos/trigger`), blocking automated bot flooding completely offline.
+* **One-Tap Browser GPS Geolocation (`gps_enabled`):** Optional mobile geolocation button (`navigator.geolocation.getCurrentPosition`) that appends `GPS:lat,lon (±acc_m)` to emergency dispatches.
+* **⚡ NIP-57 Lightning Zap Alert Adapter (`[sos] zap_enabled` & `[nostr.zaps]`):** Optional collapsible section on `/sos` (`POST /api/v1/sos/zap-invoice` & `GET /api/v1/sos/zap-status/{id}`) that builds a signed `Kind 9734` Zap Request, resolves the node's `lud16` Lightning Address, renders an inline SVG BOLT-11 QR code + `lightning:` deep-link, and verifies the resulting `Kind 9735` Zap Receipt via a 6-stage cryptographic pipeline with tiered satoshi severity escalation (`min_sats_warning = 21`, `min_sats_critical = 1000`, `min_sats_emergency = 10000`) and **strict Nostr/0xChat-only egress isolation**.
 * **Optional SOS Authentication (`[sos.auth]`):** Supports open emergency access (guarded by the offline SVG CAPTCHA and `cooldown_seconds` rate-limiting) or HTTP Basic Authentication (`username` + SHA-256 `password_hash`).
 * **Optional Linux Wi-Fi Access Point & Port 80 Isolation (`packaging/wifi-ap/`):** Turnkey provisioning script (`setup_wifi_ap.sh` / `install.sh --with-wifi-ap`) configuring `hostapd` (`SSID: OpenAlert-SOS`), `dnsmasq` (`10.42.0.1/24` DHCP + wildcard DNS), and `nginx-light` on Port `80` so any smartphone joining the Wi-Fi hotspot automatically pops up the `/sos` emergency form via native OS captive portal detection.
 
+### 📜 Standardized Nostr Alert Events ([`NIP-ALERT.md`](../../docs/openalert/NIP-ALERT.md))
+* **Addressable Parameterized Replaceable Alerts (`Kind 30000`):** Formal specification for decentralized alert publishing and subscription (`d`, `severity`, `source`, `expiration`, `t`, `sender`, `node`, `enc` tags), NIP-40 expiration enforcement, and `#d` tag filtering in the embedded relay.
+* **Dual Privacy Modes:** Cleartext mode (`mode = "public"`) for open community advisories and `XChaCha20-Poly1305` AEAD Group-Encrypted mode (`mode = "encrypted"`, `enc = "xchacha20poly1305-v1"`) for confidential infrastructure & HRF field operations.
+
 ### 📱 0xChat Mobile Integration & Embedded Nostr Micro-Relay
-* **Tactical In-Process Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server embedded directly in `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, SQLite persistence).
+* **Tactical In-Process Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server embedded directly in `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, NIP-33 `#d` filtering, NIP-40 expiration, NIP-57 Zap mirroring, SQLite persistence).
 * **Modern E2EE Onion Encryption:** Dual-mode encrypted DM engine wrapping notifications in NIP-59 / NIP-17 Gift Wraps (`Kind 1059` Wrap $\rightarrow$ `Kind 13` Seal $\rightarrow$ `Kind 14` Rumor) using NIP-44 v2 ChaCha20-Poly1305 authenticated encryption.
 * **Interactive Tactical C2 & Thread-Aware Replies:** Real-time authenticated C2 parsing (`status`, `ping`, `mesh <msg>`, `sms <num> <msg>`, `ack`, `help`) with prefix flexibility (`!`, `/`, or bare verbs). Thread-aware parent resolution enables instant 1-tap `ack`/`ok` by replying directly to alert cards in 0xChat.
 * **Multi-Bearer Cross-Bridging:** Seamless translation across 0xChat (Nostr) $\longleftrightarrow$ BitChat (BLE Mesh) $\longleftrightarrow$ Cellular (4G LTE SMS).
 * **Dual SSL / TLS Strategy:** Production deployments delegate WSS termination to reverse proxies (Caddy, Nginx). For single-box air-gapped field kits, `openalertd` features battle-ready native TLS (`[nostr.relay_server.tls]`) via `tokio-rustls` for direct `wss://` sockets without external services.
+
+### ⚡ NIP-57 Lightning Zap Receipt Verifier (`[nostr.zaps]`)
+* **6-Stage Cryptographic Verification Pipeline:** Validates incoming `Kind 9735` Zap Receipts from public relays or the embedded micro-relay: (1) deduplication (`nostr-zap:<id>`), (2) outer `Kind 9735` BIP-340 Schnorr signature & optional `trusted_provider_pubkeys` ACL, (3) inner `Kind 9734` Zap Request extraction from `description` tag & BIP-340 Schnorr verification, (4) recipient `p` tag matching on both events, (5) BOLT-11 Bech32 checksum + `h` tag (`description_hash`) constant-time comparison against `SHA256(description)` and millisatoshi amount consistency, and (6) tiered satoshi threshold classification (`Warning` / `Critical` / `Emergency`).
+* **Strict Nostr & 0xChat Egress Isolation:** Verified Zap alerts are mirrored to the local `EmbeddedNostrRelay` (`:8088`) and dispatched via NIP-17 Gift Wrap DMs to 0xChat subscribers, while **never** triggering `py-phone-caller` phone calls, SMS, BitChat BLE, or LoRa RF traffic.
 
 ### 📡 Decentralized & Hybrid Transport Transceivers
 * **Nostr Pub/Sub Mesh:** Publishes cryptographically signed BIP-340 Schnorr events (Kind 30000 / Kind 1) across multi-relay pools with NIP-20 delivery confirmation and dynamic relay health scoring.
@@ -323,7 +334,7 @@ All HTTP endpoints bind to unprivileged ports ($\ge 1024$), default `8090`.
 
 ### Health & Metrics
 * **`GET /health`**  
-  Returns `{ "status": "ok", "version": "0.2.0", "uptime_seconds": 124 }`. Unauthenticated.
+  Returns `{ "status": "ok", "version": "1.0.0", "uptime_seconds": 124 }`. Unauthenticated.
 * **`GET /metrics`**  
   Prometheus exposition format (`openalert_alerts_received_total`, `openalert_alerts_routed_total`, `openalert_peering_spool_backlog`, etc.).
 
@@ -334,6 +345,12 @@ All HTTP endpoints bind to unprivileged ports ($\ge 1024$), default `8090`.
   Generates a fresh 4-digit distorted SVG visual CAPTCHA challenge and HMAC-SHA256 signed one-time token (`{ "captcha_enabled": true, "svg": "<svg...>", "token": "..." }`).
 * **`POST /api/v1/sos/trigger`**  
   Verifies the one-time HMAC-SHA256 CAPTCHA token and cooldown window, then dispatches the emergency alert across all configured node destinations (`202 Accepted`).
+* **`POST /api/v1/sos/nostr-info`**  
+  Verifies the optional `[sos] nostr_pin` and returns the daemon's `npub1...`, inline QR SVG, and public relay URL.
+* **`POST /api/v1/sos/zap-invoice`**  
+  Constructs and signs an ephemeral `Kind 9734` Zap Request, queries the node's `lud16` LNURLp callback, and returns a BOLT-11 invoice (`bolt11`, `bolt11_qr_svg`, `zap_request_id`, `amount_sats`, `severity`).
+* **`GET /api/v1/sos/zap-status/{zap_request_id}`**  
+  Lightweight polling endpoint returning `{ "status": "ok", "zap_request_id": "...", "settled": true|false }` once the corresponding `Kind 9735` Zap Receipt is cryptographically verified.
 
 ### Operational Tools & Configuration Endpoints
 * **`GET /api/v1/config`**  
@@ -429,7 +446,7 @@ To generate a production-ready, stripped binary distribution tarball with SHA-25
 ```bash
 bash packaging/build_release_bundle.sh
 ```
-Outputs `openalertd-v0.2.0-linux-<arch>.tar.gz` containing the binary, templates, turnkey profiles, systemd service, optional Wi-Fi AP Captive Portal bundle (`wifi-ap/`), installer, and verification scripts.
+Outputs `openalertd-v1.0.0-linux-<arch>.tar.gz` containing the binary, templates, turnkey profiles, systemd service, Docker & ARM64 multi-stage manifests (`docker/`), optional Wi-Fi AP Captive Portal bundle (`wifi-ap/`), installer, and verification scripts.
 
 ### 3. Automated POSIX Installer & Optional Wi-Fi SOS Captive Portal
 ```bash
@@ -441,6 +458,22 @@ sudo bash packaging/install.sh --with-wifi-ap
 
 # Run the 7-point post-installation verification audit
 sudo bash packaging/verify_install.sh
+```
+
+### 4. Multi-Stage Docker, ARM64 Cross-Compilation & Docker Compose
+```bash
+# 1. Build optimal multi-stage image (~35-40 MB, Debian Bookworm Slim):
+docker build -t openalertd:1.0.0 -f Dockerfile .
+
+# 2. Fast ARM64 (aarch64) image build (native-speed cross-compilation on x86_64 or native on ARM64):
+docker buildx build --platform linux/arm64 -f Dockerfile.arm64 -t openalertd:1.0.0-arm64 --load .
+
+# 3. Launch full Docker Compose stack from repository root (software transports + py-phone-caller):
+cd ../..
+docker compose up -d
+
+# 4. Launch with physical USB GSM (/dev/ttyUSB2), LoRa (/dev/ttyACM0), and BlueZ BLE passthrough:
+docker compose -f docker-compose.yml -f docker-compose.hardware.yml up -d
 ```
 
 ---

@@ -78,7 +78,7 @@ flowchart TB
 | `generate_audio` | Multi-engine text-to-speech audio generation with dynamic language discovery and preloading. | [README](src/generate_audio/README.md) |
 | `py_phone_caller_ui` | Web UI for operations, scheduling, users, audio preview, and incident audits. | [README](src/py_phone_caller_ui/README.md) |
 | `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, telemetry, and circuit breakers. | [README](src/py-phone-caller-utils/README.md) |
-| `openalertd` | Decentralized Nostr (0xChat E2EE, embedded micro-relay) and BitChat BLE mesh gateway bridging air-gapped field alerts. | [README](src/openalert/README.md) |
+| `openalertd` | Decentralized Nostr (`NIP-ALERT` Kind 30000, NIP-57 Lightning Zap Adapter, 0xChat NIP-17 E2EE C2, Embedded Micro-Relay `:8088`), `/sos` Captive Portal, LoRa RF, and BitChat BLE mesh gateway bridging air-gapped field alerts. | [README](src/openalert/README.md) |
 
 ## Prerequisites & Requirements (What You Need to Run)
 
@@ -155,6 +155,8 @@ The native Rust engine automatically communicates over the AT command interface 
 - **Ansible all-in-one stack**: `deploy/ansible/deploy_all/README.md`
 - **Ansible roles**: `deploy/ansible/asterisk_py-phone-caller/README.md` and `deploy/ansible/on-vm_py-phone-caller/README.md`
 - **Docker Compose stack (Asterisk external)**: `deploy/compose/README.md`
+- **OpenAlert Turnkey Docker Compose & Hardware Overlay (`v1.0.0`)**: Root [`docker-compose.yml`](docker-compose.yml) and [`docker-compose.hardware.yml`](docker-compose.hardware.yml) (plus multi-stage [`Dockerfile`](src/openalert/Dockerfile) and fast ARM64 cross-compiling [`Dockerfile.arm64`](src/openalert/Dockerfile.arm64))
+- **OpenAlert Nostr Alert Specification (`NIP-ALERT`)**: [`docs/openalert/NIP-ALERT.md`](docs/openalert/NIP-ALERT.md)
 
 ## Quick Start
 

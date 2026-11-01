@@ -305,6 +305,9 @@ pub struct SosConfig {
     /// Optional PIN (plaintext or "sha256:<hex>") required to view the daemon Nostr npub and dispatch custom npub DMs.
     #[serde(default)]
     pub nostr_pin: Option<String>,
+    /// Whether the NIP-57 Lightning Zap Alert form is displayed on the `/sos` portal (requires `[nostr.zaps] enabled = true`).
+    #[serde(default)]
+    pub zap_enabled: bool,
     /// Optional authentication settings specifically for the SOS portal and endpoint.
     #[serde(default)]
     pub auth: DashboardAuthConfig,
@@ -355,6 +358,7 @@ impl Default for SosConfig {
             nostr_dm_enabled: default_sos_nostr_dm_enabled(),
             public_relay_url: None,
             nostr_pin: None,
+            zap_enabled: false,
             auth: DashboardAuthConfig::default(),
         }
     }
@@ -495,6 +499,9 @@ pub struct NostrProfileConfig {
     /// Avatar image URL (`picture` field in Kind 0 JSON).
     #[serde(default)]
     pub picture: Option<String>,
+    /// Optional Lightning Address (`lud16` in Kind 0 JSON, e.g., `openalert@getalby.com`) or LNURLp endpoint for NIP-57 Zaps.
+    #[serde(default)]
+    pub lud16: Option<String>,
 }
 
 fn default_nostr_profile_enabled() -> bool {
@@ -517,6 +524,127 @@ impl Default for NostrProfileConfig {
             display_name: default_nostr_profile_display_name(),
             about: default_nostr_profile_about(),
             picture: None,
+            lud16: None,
+        }
+    }
+}
+
+/// NIP-57 Lightning Zap receipt (`Kind 9735`) verification and tiered Nostr/0xChat alert adapter settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrZapsConfig {
+    /// Whether NIP-57 Lightning Zap receipt (`Kind 9735`) verification and ingress are enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Optional target Nostr public key (64-char hex or `npub1...`) that must be tagged in the `p` tag of `Kind 9735` / `Kind 9734`.
+    /// If empty or omitted, defaults to the daemon's own derived Nostr public key.
+    #[serde(default)]
+    pub target_pubkey: Option<String>,
+    /// Optional allowlist of trusted LNURL provider Nostr public keys (64-char hex or `npub1...`) authorized to sign `Kind 9735` receipts.
+    /// If empty, any cryptographically valid `Kind 9735` receipt with a valid `Kind 9734` and BOLT-11 `description_hash` is accepted.
+    #[serde(default)]
+    pub trusted_provider_pubkeys: Vec<String>,
+    /// Minimum Zap amount in satoshis to accept and classify as `Warning` severity (default: 21 sats).
+    #[serde(default = "default_zap_min_sats_warning")]
+    pub min_sats_warning: u64,
+    /// Minimum Zap amount in satoshis to escalate to `Critical` severity (default: 1000 sats).
+    #[serde(default = "default_zap_min_sats_critical")]
+    pub min_sats_critical: u64,
+    /// Minimum Zap amount in satoshis to escalate to `Emergency` severity (default: 10000 sats).
+    #[serde(default = "default_zap_min_sats_emergency")]
+    pub min_sats_emergency: u64,
+    /// Mirror verified incoming `Kind 9735` Zap receipts directly into the local Embedded Nostr Relay (`ws://<node>:7777`).
+    #[serde(default = "default_zap_mirror_to_embedded_relay")]
+    pub mirror_to_embedded_relay: bool,
+    /// Dispatch an encrypted NIP-17 Gift Wrap (`Kind 1059`) notification to 0xChat subscribers when a verified Zap arrives.
+    #[serde(default = "default_zap_notify_oxchat_subscribers")]
+    pub notify_oxchat_subscribers: bool,
+}
+
+fn default_zap_min_sats_warning() -> u64 {
+    21
+}
+
+fn default_zap_min_sats_critical() -> u64 {
+    1000
+}
+
+fn default_zap_min_sats_emergency() -> u64 {
+    10000
+}
+
+fn default_zap_mirror_to_embedded_relay() -> bool {
+    true
+}
+
+fn default_zap_notify_oxchat_subscribers() -> bool {
+    true
+}
+
+impl Default for NostrZapsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            target_pubkey: None,
+            trusted_provider_pubkeys: Vec::new(),
+            min_sats_warning: default_zap_min_sats_warning(),
+            min_sats_critical: default_zap_min_sats_critical(),
+            min_sats_emergency: default_zap_min_sats_emergency(),
+            mirror_to_embedded_relay: default_zap_mirror_to_embedded_relay(),
+            notify_oxchat_subscribers: default_zap_notify_oxchat_subscribers(),
+        }
+    }
+}
+
+impl NostrZapsConfig {
+    /// Normalizes a public key string (`npub1...` or 64-char hex) to lowercase 64-char hex.
+    pub fn normalize_pubkey_hex(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if let Ok(conv) = crate::cli::convert_key(trimmed)
+            && !conv.input_format.starts_with("nsec")
+        {
+            return Some(conv.hex_value.to_lowercase());
+        }
+        if trimmed.len() == 64 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(trimmed.to_lowercase());
+        }
+        None
+    }
+
+    /// Resolves the target recipient public key (64-char lowercase hex), falling back to the daemon's own pubkey.
+    pub fn resolved_target_pubkey(&self, fallback_pubkey_hex: &str) -> String {
+        self.target_pubkey
+            .as_deref()
+            .and_then(Self::normalize_pubkey_hex)
+            .unwrap_or_else(|| fallback_pubkey_hex.trim().to_lowercase())
+    }
+
+    /// Checks whether a `Kind 9735` outer signer public key is permitted by `trusted_provider_pubkeys`.
+    /// If `trusted_provider_pubkeys` is empty, any valid provider signature is allowed.
+    pub fn is_provider_authorized(&self, provider_pubkey_hex: &str) -> bool {
+        if self.trusted_provider_pubkeys.is_empty() {
+            return true;
+        }
+        let candidate = provider_pubkey_hex.trim().to_lowercase();
+        self.trusted_provider_pubkeys
+            .iter()
+            .filter_map(|pk| Self::normalize_pubkey_hex(pk))
+            .any(|allowed| allowed == candidate)
+    }
+
+    /// Evaluates the settled satoshi amount against the configured tiered thresholds.
+    /// Returns `None` if `amount_sats < min_sats_warning` (anti-spam threshold not met).
+    pub fn classify_severity(&self, amount_sats: u64) -> Option<crate::models::AlertSeverity> {
+        if amount_sats < self.min_sats_warning {
+            None
+        } else if amount_sats >= self.min_sats_emergency {
+            Some(crate::models::AlertSeverity::Emergency)
+        } else if amount_sats >= self.min_sats_critical {
+            Some(crate::models::AlertSeverity::Critical)
+        } else {
+            Some(crate::models::AlertSeverity::Warning)
         }
     }
 }
@@ -563,6 +691,9 @@ pub struct NostrConfig {
     /// Optional embedded in-process Nostr micro-relay server.
     #[serde(default)]
     pub relay_server: NostrRelayServerConfig,
+    /// NIP-57 Lightning Zap receipt (`Kind 9735`) verification and tiered Nostr/0xChat alert settings.
+    #[serde(default)]
+    pub zaps: NostrZapsConfig,
 }
 
 /// Configuration for the embedded in-process Nostr micro-relay server.
@@ -693,6 +824,7 @@ impl Default for NostrConfig {
             oxchat: OxChatConfig::default(),
             profile: NostrProfileConfig::default(),
             relay_server: NostrRelayServerConfig::default(),
+            zaps: NostrZapsConfig::default(),
         }
     }
 }

@@ -18,6 +18,19 @@ Or build the full service image set with:
 ./src/build_all_images.sh
 ```
 
+### Building `openalertd` (Multi-Stage x86_64 & Fast ARM64 Cross-Compilation)
+
+`openalertd` includes both a standard multi-stage `Dockerfile` and a dedicated `Dockerfile.arm64` that cross-compiles at native `x86_64` speed without slow QEMU `rustc` emulation:
+
+```bash
+# Native architecture multi-stage build (~35-40 MB runtime image):
+docker build -t localhost/openalertd:1.0.0 -f src/openalert/Dockerfile src/openalert
+
+# Fast ARM64 (aarch64) cross-compilation from x86_64 (or native build on ARM64 SBCs):
+docker buildx build --platform linux/arm64 -f src/openalert/Dockerfile.arm64 \
+  -t localhost/openalertd:1.0.0-arm64 --load src/openalert
+```
+
 Optional build-script environment variables:
 
 ```bash
@@ -49,6 +62,12 @@ or, with Docker Compose:
 
 ```bash
 docker compose up -d
+```
+
+To enable physical USB GSM (`/dev/ttyUSB2`), LoRa (`/dev/ttyACM0`), and BlueZ BLE (`hci0` + `/var/run/dbus`) passthrough into `openalertd`, include `docker-compose.hardware.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hardware.yml up -d
 ```
 
 ## Important environment variables

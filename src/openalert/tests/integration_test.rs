@@ -3008,3 +3008,295 @@ async fn test_phase1_nip_alert_severity_and_tag_d_filter() {
 
     println!("✅ Phase 1 NIP-ALERT tag schema, Emergency severity, #d filter, and NIP-40 expiration verified!");
 }
+
+#[tokio::test]
+async fn test_phase2_nip57_lightning_zap_adapter_e2e_and_strict_isolation() {
+    use axum::body::to_bytes;
+    use openalertd::config::NostrRelayServerConfig;
+    use openalertd::ingress::nostr::{NostrSubscriber, encode_bolt11_with_description_hash};
+    use openalertd::ingress::sos::{
+        SosZapInvoiceRequest, sos_zap_invoice_handler, sos_zap_status_handler,
+    };
+    use openalertd::models::NostrEvent;
+    use openalertd::nostr_relay::{EmbeddedNostrRelay, NostrFilter};
+    use sha2::{Digest, Sha256};
+    use std::collections::HashMap;
+
+    // 1. Spawn a mock py-phone-caller webhook server to prove telephony is NEVER triggered by Zaps
+    let webhook_counter = Arc::new(AtomicUsize::new(0));
+    let (webhook_url, _wh_handle) =
+        spawn_mock_webhook_server(axum::http::StatusCode::OK, webhook_counter.clone()).await;
+
+    // 2. Generate a mock LNURL provider secp256k1 keypair
+    let secp = secp256k1::Secp256k1::new();
+    let mut rng = secp256k1::rand::rngs::OsRng;
+    let provider_kp = secp256k1::Keypair::new(&secp, &mut rng);
+    let (provider_xonly, _) = provider_kp.x_only_public_key();
+    let provider_pubkey_hex = hex::encode(provider_xonly.serialize());
+
+    // 3. Spawn a local mock LNURLp HTTP server (/.well-known/lnurlp/alerts and /lnurlp/callback)
+    let captured_nostr_req: Arc<tokio::sync::Mutex<Option<String>>> =
+        Arc::new(tokio::sync::Mutex::new(None));
+    let captured_clone = captured_nostr_req.clone();
+
+    let lnurl_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let lnurl_port = lnurl_listener.local_addr().unwrap().port();
+    let provider_pk_for_meta = provider_pubkey_hex.clone();
+
+    let lnurl_app = axum::Router::new()
+        .route(
+            "/.well-known/lnurlp/alerts",
+            axum::routing::get(move || {
+                let pk = provider_pk_for_meta.clone();
+                async move {
+                    axum::Json(serde_json::json!({
+                        "tag": "payRequest",
+                        "callback": format!("http://127.0.0.1:{}/lnurlp/callback", lnurl_port),
+                        "minSendable": 1000,
+                        "maxSendable": 100_000_000,
+                        "allowsNostr": true,
+                        "nostrPubkey": pk
+                    }))
+                }
+            }),
+        )
+        .route(
+            "/lnurlp/callback",
+            axum::routing::get(
+                move |axum::extract::Query(params): axum::extract::Query<
+                    HashMap<String, String>,
+                >| {
+                    let captured = captured_clone.clone();
+                    async move {
+                        let amount_msats: u64 = params
+                            .get("amount")
+                            .and_then(|a| a.parse().ok())
+                            .unwrap_or(100000);
+                        let nostr_json = params.get("nostr").cloned().unwrap_or_default();
+                        *captured.lock().await = Some(nostr_json.clone());
+
+                        let desc_hash: [u8; 32] = Sha256::digest(nostr_json.as_bytes()).into();
+                        let bolt11 =
+                            encode_bolt11_with_description_hash(amount_msats / 1000, &desc_hash);
+
+                        axum::Json(serde_json::json!({
+                            "pr": bolt11,
+                            "routes": []
+                        }))
+                    }
+                },
+            ),
+        );
+
+    tokio::spawn(async move {
+        let _ = axum::serve(lnurl_listener, lnurl_app).await;
+    });
+
+    // 4. Configure OpenAlert with NIP-57 Zaps enabled and mock LNURLp lud16
+    let mut config = test_config();
+    config.sos.enabled = true;
+    config.sos.zap_enabled = true;
+    config.sos.captcha_enabled = false;
+    config.nostr.profile.lud16 = Some(format!("alerts@127.0.0.1:{}", lnurl_port));
+    config.nostr.zaps.enabled = true;
+    config.nostr.zaps.trusted_provider_pubkeys = vec![provider_pubkey_hex.clone()];
+    config.nostr.zaps.min_sats_warning = 21;
+    config.nostr.zaps.min_sats_critical = 100;
+    config.nostr.zaps.min_sats_emergency = 1000;
+    config.nostr.zaps.mirror_to_embedded_relay = true;
+    config.py_phone_caller.webhook_url = Some(webhook_url);
+
+    let engine = Arc::new(AlertEngine::new(config.clone()).expect("Failed to create engine"));
+
+    // Attach in-memory EmbeddedNostrRelay to engine so we can verify Kind 9735 mirroring
+    let relay = Arc::new(EmbeddedNostrRelay::new(
+        NostrRelayServerConfig {
+            enabled: true,
+            storage_backend: "memory".to_string(),
+            ..Default::default()
+        },
+        None,
+    ));
+    engine.set_embedded_relay(relay.clone()).await;
+
+    let state = openalertd::ingress::rest::AppState {
+        engine: engine.clone(),
+        config: config.rest.clone(),
+    };
+
+    // 5. Call POST /api/v1/sos/zap-invoice with 250 sats (Critical tier)
+    let inv_req = SosZapInvoiceRequest {
+        amount_sats: 250,
+        message: "Substation transformer oil pressure critical".to_string(),
+        lud16: None,
+        sender: Some("Unit-7".to_string()),
+        category: Some("INFRA".to_string()),
+        recipient_npub: None,
+        nostr_pin: None,
+        captcha_token: None,
+        captcha_answer: None,
+    };
+    let inv_resp = sos_zap_invoice_handler(
+        axum::http::HeaderMap::new(),
+        axum::extract::State(state.clone()),
+        axum::Json(inv_req),
+    )
+    .await;
+    assert_eq!(inv_resp.status(), axum::http::StatusCode::OK);
+
+    let inv_bytes = to_bytes(inv_resp.into_body(), 65536).await.unwrap();
+    let inv_json: serde_json::Value = serde_json::from_slice(&inv_bytes).unwrap();
+    assert_eq!(inv_json["status"], "ok");
+    assert_eq!(inv_json["amount_sats"], 250);
+    assert_eq!(inv_json["severity"], "critical");
+    let bolt11 = inv_json["bolt11"].as_str().unwrap().to_string();
+    let zap_request_id = inv_json["zap_request_id"].as_str().unwrap().to_string();
+    let target_pubkey = inv_json["target_pubkey"].as_str().unwrap().to_string();
+    assert!(inv_json["bolt11_qr_svg"].as_str().unwrap().contains("<svg"));
+    assert!(
+        inv_json["qr_png_url"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("{}.png", zap_request_id))
+    );
+
+    let png_resp = openalertd::ingress::sos::sos_zap_qr_png_handler(
+        axum::extract::Path(format!("{}.png", zap_request_id)),
+        axum::extract::State(state.clone()),
+    )
+    .await;
+    assert_eq!(png_resp.status(), axum::http::StatusCode::OK);
+
+    // 6. Verify /api/v1/sos/zap-status/{zap_request_id} initially reports settled = false
+    let st_resp_before = sos_zap_status_handler(
+        axum::extract::Path(zap_request_id.clone()),
+        axum::extract::State(state.clone()),
+    )
+    .await;
+    let st_bytes_before = to_bytes(st_resp_before.into_body(), 4096).await.unwrap();
+    let st_json_before: serde_json::Value = serde_json::from_slice(&st_bytes_before).unwrap();
+    assert_eq!(st_json_before["settled"], false);
+
+    // 7. Construct and sign the LNURL provider's Kind 9735 Zap Receipt using the captured Kind 9734 JSON
+    let kind_9734_json = captured_nostr_req
+        .lock()
+        .await
+        .clone()
+        .expect("LNURLp callback must have received Kind 9734 JSON");
+    let created_at = chrono::Utc::now().timestamp() as u64;
+    let receipt_tags = vec![
+        vec!["p".to_string(), target_pubkey.clone()],
+        vec!["bolt11".to_string(), bolt11.clone()],
+        vec!["description".to_string(), kind_9734_json],
+    ];
+    let receipt_serialized = serde_json::to_string(&serde_json::json!([
+        0,
+        provider_pubkey_hex,
+        created_at,
+        9735u64,
+        receipt_tags,
+        ""
+    ]))
+    .unwrap();
+    let receipt_id_bytes = Sha256::digest(receipt_serialized.as_bytes());
+    let receipt_id_hex = hex::encode(receipt_id_bytes);
+    let receipt_sig = secp.sign_schnorr(receipt_id_bytes.as_slice(), &provider_kp);
+
+    let zap_receipt_9735 = NostrEvent {
+        id: receipt_id_hex.clone(),
+        pubkey: provider_pubkey_hex,
+        created_at,
+        kind: 9735,
+        tags: receipt_tags,
+        content: String::new(),
+        sig: hex::encode(receipt_sig.as_ref()),
+    };
+
+    // 8. Feed Kind 9735 into NostrSubscriber::process_nostr_event
+    let subscriber = NostrSubscriber::new(config.nostr.clone(), engine.clone());
+    subscriber.process_nostr_event(zap_receipt_9735).await;
+
+    // 9. Verify /api/v1/sos/zap-status/{zap_request_id} now reports settled = true
+    let st_resp_after = sos_zap_status_handler(
+        axum::extract::Path(zap_request_id),
+        axum::extract::State(state),
+    )
+    .await;
+    let st_bytes_after = to_bytes(st_resp_after.into_body(), 4096).await.unwrap();
+    let st_json_after: serde_json::Value = serde_json::from_slice(&st_bytes_after).unwrap();
+    assert_eq!(
+        st_json_after["settled"], true,
+        "Zap status endpoint must report settled = true after Kind 9735 verification"
+    );
+
+    // 10. Verify Kind 9735 receipt was mirrored into the Embedded Nostr Relay
+    let mirrored = relay
+        .state()
+        .query_events(&NostrFilter {
+            kinds: Some(vec![9735]),
+            ..Default::default()
+        })
+        .await;
+    assert_eq!(mirrored.len(), 1);
+    assert_eq!(mirrored[0].id, receipt_id_hex);
+
+    // 11. STRICT ISOLATION CHECK: Verify py-phone-caller webhook was NEVER called
+    assert_eq!(
+        webhook_counter.load(Ordering::SeqCst),
+        0,
+        "NIP-57 Zap Receipt MUST NEVER trigger telephony/SMS/webhook egress"
+    );
+
+    println!("✅ Phase 2 NIP-57 Lightning Zap Adapter (LNURLp invoice proxy, 6-stage Kind 9735 verifier, embedded relay mirror, and strict egress isolation) verified end-to-end!");
+}
+
+#[test]
+fn test_phase3_container_packaging_and_v1_0_0_release_artifacts() {
+    use std::path::Path;
+
+    // 1. Verify crate version is 1.0.0
+    assert_eq!(env!("CARGO_PKG_VERSION"), "1.0.0");
+
+    // 2. Verify Multi-Stage Dockerfile (x86_64 / native)
+    let dockerfile = std::fs::read_to_string("Dockerfile").expect("Read src/openalert/Dockerfile");
+    assert!(
+        dockerfile.contains("FROM docker.io/library/rust:1-slim-bookworm AS builder"),
+        "Dockerfile must include multi-stage Rust builder"
+    );
+    assert!(
+        dockerfile.contains("FROM docker.io/library/debian:bookworm-slim AS runtime"),
+        "Dockerfile must include minimal Debian Bookworm Slim runtime stage"
+    );
+    assert!(dockerfile.contains("EXPOSE 8090 8088"));
+
+    // 3. Verify ARM64 Cross-Compiling Multi-Stage Dockerfile.arm64
+    let dockerfile_arm64 =
+        std::fs::read_to_string("Dockerfile.arm64").expect("Read src/openalert/Dockerfile.arm64");
+    assert!(dockerfile_arm64.contains("aarch64-unknown-linux-gnu"));
+    assert!(dockerfile_arm64.contains("gcc-aarch64-linux-gnu"));
+    assert!(dockerfile_arm64.contains("FROM --platform=linux/arm64"));
+
+    // 4. Verify packaging/docker/ mirrors both Dockerfiles
+    assert!(Path::new("packaging/docker/Dockerfile").exists());
+    assert!(Path::new("packaging/docker/Dockerfile.arm64").exists());
+
+    // 5. Verify root docker-compose.yml & docker-compose.hardware.yml
+    let root_compose = std::fs::read_to_string("../../docker-compose.yml")
+        .expect("Read root docker-compose.yml");
+    assert!(root_compose.contains("openalertd:"));
+    assert!(root_compose.contains("py-phone-caller:"));
+    assert!(root_compose.contains("generate_audio:"));
+    assert!(root_compose.contains("openalert_data:"));
+    assert!(root_compose.contains("piper_tts_models:"));
+
+    let hw_compose = std::fs::read_to_string("../../docker-compose.hardware.yml")
+        .expect("Read root docker-compose.hardware.yml");
+    assert!(hw_compose.contains("OPENALERT_SMS__ENABLED: \"true\""));
+    assert!(hw_compose.contains("OPENALERT_BITCHAT__ENABLED: \"true\""));
+    assert!(hw_compose.contains("/var/run/dbus:/var/run/dbus"));
+    assert!(hw_compose.contains("NET_ADMIN"));
+
+    println!(
+        "✅ Phase 3 v1.0.0 multi-stage Dockerfile, ARM64 Dockerfile.arm64, docker-compose.yml, and docker-compose.hardware.yml verified!"
+    );
+}

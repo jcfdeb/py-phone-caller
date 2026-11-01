@@ -338,12 +338,49 @@ services:
       DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: caller_scheduler
     restart: always
 
+  openalertd:
+    build:
+      context: ../../src/openalert
+      dockerfile: ${OPENALERT_DOCKERFILE:-Dockerfile}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/openalertd:${VERSION:-latest}
+    container_name: openalertd
+    depends_on:
+      caller_prometheus_webhook:
+        condition: service_healthy
+    ports:
+      - "${OPENALERT_HTTP_PORT:-8090}:8090"
+      - "${OPENALERT_RELAY_PORT:-8088}:8088"
+      - "${OPENALERT_PEERING_PORT:-19876}:19876/udp"
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      OPENALERT_DAEMON__NAME: ${OPENALERT_NODE_NAME:-openalertd-hub}
+      OPENALERT_DAEMON__LOG_LEVEL: ${OPENALERT_LOG_LEVEL:-info}
+      OPENALERT_REST__LISTEN_HOST: "0.0.0.0"
+      OPENALERT_REST__LISTEN_PORT: "8090"
+      OPENALERT_STORAGE__ENABLED: "true"
+      OPENALERT_STORAGE__PATH: "/var/lib/openalertd/data/openalert.db"
+      OPENALERT_TEMPLATES__TEMPLATE_DIR: "/templates"
+      OPENALERT_NOSTR__RELAY_SERVER__ENABLED: ${OPENALERT_RELAY_SERVER_ENABLED:-true}
+      OPENALERT_NOSTR__RELAY_SERVER__BIND_ADDRESS: "0.0.0.0:8088"
+      OPENALERT_NOSTR__RELAY_SERVER__STORAGE_BACKEND: "sqlite"
+      OPENALERT_SOS__ENABLED: "true"
+      OPENALERT_SOS__ZAP_ENABLED: ${OPENALERT_SOS_ZAP_ENABLED:-true}
+      OPENALERT_NOSTR__ZAPS__ENABLED: ${OPENALERT_NOSTR_ZAPS_ENABLED:-true}
+      OPENALERT_SMS__ENABLED: ${OPENALERT_SMS_ENABLED:-false}
+      OPENALERT_BITCHAT__ENABLED: ${OPENALERT_BITCHAT_ENABLED:-false}
+      OPENALERT_PY_PHONE_CALLER__WEBHOOK_URL: "http://caller_prometheus_webhook:8084/sms_before_call"
+    volumes:
+      - openalert_data:/var/lib/openalertd
+    restart: always
+
 volumes:
   pgdata:
   redis_data:
   audio_data:
   caddy_data:
   caddy_config:
+  openalert_data:
     
 networks:
   default:

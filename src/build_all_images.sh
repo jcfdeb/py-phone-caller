@@ -90,6 +90,27 @@ for SERVICE in "${SERVICES[@]}"; do
     COUNT=$((COUNT + 1))
 done
 
+# Build OpenAlert Daemon (openalertd) multi-stage Rust image
+OPENALERT_DOCKERFILE="${PROJECT_ROOT}/src/openalert/Dockerfile"
+if [[ -f "${OPENALERT_DOCKERFILE}" ]]; then
+    echo -e "\n[OpenAlert] Building image: ${IMAGE_REGISTRY}/openalertd:${IMAGE_TAG}..."
+    echo "------------------------------------------------------------------------------"
+    OA_ARGS=()
+    if [[ "${CONTAINER_ENGINE}" == *"podman"* ]]; then
+        OA_ARGS+=(--format docker)
+    fi
+    if "${CONTAINER_ENGINE}" build "${OA_ARGS[@]}" \
+        -f "${OPENALERT_DOCKERFILE}" \
+        "${PROJECT_ROOT}/src/openalert" \
+        -t "${IMAGE_REGISTRY}/openalertd:${IMAGE_TAG}" \
+        -t "openalertd:${IMAGE_TAG}"; then
+        echo "✅ [OpenAlert] Successfully built: openalertd"
+    else
+        echo "❌ [OpenAlert] Failed to build: openalertd"
+        exit 1
+    fi
+fi
+
 echo -e "\n=============================================================================="
 echo " 🎉 All ${TOTAL} images built successfully!"
 echo "=============================================================================="

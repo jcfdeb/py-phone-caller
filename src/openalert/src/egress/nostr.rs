@@ -345,7 +345,7 @@ impl NostrPublisher {
     }
 
     /// Signs and publishes a NIP-01 Kind 0 Profile Metadata event to all configured relays
-    /// so Nostr / 0xChat clients display the Bot's configured name, description, and avatar.
+    /// so Nostr / 0xChat clients display the Bot's configured name, description, avatar, and `lud16` Lightning Address.
     pub async fn publish_profile_metadata(
         &self,
         profile: &crate::config::NostrProfileConfig,
@@ -368,8 +368,11 @@ impl NostrPublisher {
         meta.insert("name".to_string(), json!(handle_name));
         meta.insert("display_name".to_string(), json!(profile.display_name.trim()));
         meta.insert("about".to_string(), json!(profile.about.trim()));
-        if let Some( pic) = profile.picture.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if let Some(pic) = profile.picture.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
             meta.insert("picture".to_string(), json!(pic));
+        }
+        if let Some(lud16) = profile.lud16.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            meta.insert("lud16".to_string(), json!(lud16));
         }
 
         let content = serde_json::to_string(&meta)?;

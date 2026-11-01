@@ -263,6 +263,16 @@ impl EmbeddedNostrRelay {
         Self { config, state }
     }
 
+    /// Returns a reference to the shared in-memory / SQLite relay state.
+    pub fn state(&self) -> &Arc<RelayState> {
+        &self.state
+    }
+
+    /// Directly saves and broadcasts a Nostr event into the embedded relay in-process.
+    pub async fn save_event(&self, event: NostrEvent) -> Result<bool, String> {
+        self.state.save_event(event).await
+    }
+
     /// Starts the micro-relay TCP/HTTP/WebSocket listener.
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let bind_addr: SocketAddr = self.config.bind_address.parse()?;

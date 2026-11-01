@@ -12,7 +12,12 @@ htmlcov
 .git
 .gitignore
 .dockerignore
-**/Cargo.lock
 **/target
+**/target-arm64
+src/openalert/dist
+src/openalert/data
+**/*.db
+**/*.db-shm
+**/*.db-wal
 **/*.egg-info
 **/*.whl

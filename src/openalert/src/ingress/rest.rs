@@ -413,6 +413,22 @@ impl RestServer {
                 "/api/v1/sos/trigger",
                 post(crate::ingress::sos::sos_trigger_handler),
             )
+            .route(
+                "/api/v1/sos/zap-invoice",
+                post(crate::ingress::sos::sos_zap_invoice_handler),
+            )
+            .route(
+                "/api/v1/sos/zap-status/{zap_request_id}",
+                get(crate::ingress::sos::sos_zap_status_handler),
+            )
+            .route(
+                "/api/v1/sos/zap-qr/{id}",
+                get(crate::ingress::sos::sos_zap_qr_png_handler),
+            )
+            .route(
+                "/api/v1/sos/zap-send-oxchat",
+                post(crate::ingress::sos::sos_zap_send_oxchat_handler),
+            )
             .route("/health", get(health_check))
             .route("/api/v1/logo", get(crate::ingress::dashboard::logo_handler))
             .route("/logo.png", get(crate::ingress::dashboard::logo_handler))
