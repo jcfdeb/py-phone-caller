@@ -3264,8 +3264,9 @@ fn test_phase3_container_packaging_and_v1_0_0_release_artifacts() {
         "Dockerfile must include multi-stage Rust builder"
     );
     assert!(
-        dockerfile.contains("FROM docker.io/library/debian:bookworm-slim AS runtime"),
-        "Dockerfile must include minimal Debian Bookworm Slim runtime stage"
+        dockerfile.contains("FROM docker.io/library/debian:trixie-slim AS runtime")
+            || dockerfile.contains("FROM docker.io/library/debian:bookworm-slim AS runtime"),
+        "Dockerfile must include minimal Debian Slim runtime stage"
     );
     assert!(dockerfile.contains("EXPOSE 8090 8088"));
 
@@ -3300,3 +3301,62 @@ fn test_phase3_container_packaging_and_v1_0_0_release_artifacts() {
         "✅ Phase 3 v1.0.0 multi-stage Dockerfile, ARM64 Dockerfile.arm64, docker-compose.yml, and docker-compose.hardware.yml verified!"
     );
 }
+
+#[tokio::test]
+async fn test_bitchat_consecutive_private_dms_not_suppressed_by_dedup_ttl() {
+    let mut cfg = test_config();
+    cfg.storage.enabled = false;
+    cfg.bitchat.enabled = true;
+    cfg.routing.dedup_ttl_seconds = 3600;
+    cfg.routing.default_destinations = vec!["bitchat".to_string()];
+
+    let engine = AlertEngine::new(cfg).expect("AlertEngine");
+    let (tx, mut rx) = tokio::sync::broadcast::channel::<Vec<u8>>(32);
+    engine.bitchat_egress.attach_broadcast_sender(tx).await;
+
+    // Send 4 consecutive 1-to-1 BitChat DMs (including repeated text "5") with distinct message IDs
+    for (idx, body) in [(1, "5"), (2, "o"), (3, "v"), (4, "5")] {
+        let alert = openalertd::models::Alert {
+            alert_id: format!("bitchat-dm-2a7bc99a-msg{}", idx),
+            severity: openalertd::models::AlertSeverity::Critical,
+            summary: format!("🚨 [SOS] [Jorge] {} — Node: openalert-node02", body),
+            description: Some(format!("🚨 [SOS] [Jorge] {} — Node: openalert-node02", body)),
+            source: openalertd::models::AlertSource::BitChat,
+            sender: Some("Jorge".to_string()),
+            node: Some("openalert-node02".to_string()),
+            starts_at: chrono::Utc::now(),
+            destinations: Vec::new(),
+            origin_peer: None,
+            hop: 5,
+        };
+        engine.route_alert(alert).await.expect("Route consecutive BitChat DM");
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
+    // All 4 consecutive DMs must be dispatched (none dropped by 3600s content dedup)
+    let mut dispatched = 0;
+    while rx.try_recv().is_ok() {
+        dispatched += 1;
+    }
+    assert_eq!(dispatched, 4);
+
+    // An actual BLE mesh duplicate with the SAME message ID (`bitchat-dm-2a7bc99a-msg4`) MUST still be deduplicated
+    let mesh_dup = openalertd::models::Alert {
+        alert_id: "bitchat-dm-2a7bc99a-msg4".to_string(),
+        severity: openalertd::models::AlertSeverity::Critical,
+        summary: "🚨 [SOS] [Jorge] 5 — Node: openalert-node02".to_string(),
+        description: Some("🚨 [SOS] [Jorge] 5 — Node: openalert-node02".to_string()),
+        source: openalertd::models::AlertSource::BitChat,
+        sender: Some("Jorge".to_string()),
+        node: Some("openalert-node02".to_string()),
+        starts_at: chrono::Utc::now(),
+        destinations: Vec::new(),
+        origin_peer: None,
+        hop: 5,
+    };
+    engine.route_alert(mesh_dup).await.expect("Mesh duplicate check");
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+    assert!(rx.try_recv().is_err(), "Exact mesh duplicate ID must be suppressed");
+}
+

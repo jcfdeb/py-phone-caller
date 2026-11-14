@@ -868,12 +868,18 @@ pub struct BitChatConfig {
     /// Enable autonomous Bluetooth HCI/BLE advertising watchdog and self-healing (default: true).
     #[serde(default = "default_ble_self_healing_enabled")]
     pub self_healing_enabled: bool,
-    /// Interval in seconds for checking HCI controller health and BLE advertising state (default: 30s).
+    /// Interval in seconds for checking HCI controller health and BLE advertising state (default: 15s).
     #[serde(default = "default_ble_watchdog_interval_secs", alias = "self_healing_interval_secs")]
     pub watchdog_interval_secs: u64,
-    /// Periodic interval in seconds to proactively re-register the BLE advertisement when idle (0 = only on detected failure, default: 300s).
+    /// Periodic interval in seconds to proactively re-register the BLE advertisement (0 = only on detected failure, default: 90s).
     #[serde(default = "default_ble_adv_refresh_interval_secs")]
     pub adv_refresh_interval_secs: u64,
+    /// Minimum BLE advertising interval in milliseconds when idle (default: 250ms, ~4 beacons/sec at <0.1% RF duty cycle).
+    #[serde(default = "default_ble_adv_min_interval_ms")]
+    pub adv_min_interval_ms: u64,
+    /// Maximum BLE advertising interval in milliseconds when idle (default: 500ms).
+    #[serde(default = "default_ble_adv_max_interval_ms")]
+    pub adv_max_interval_ms: u64,
     /// Optional list of HCI adapter names to monitor in the self-healing watchdog (defaults to `[device]` when empty).
     #[serde(default)]
     pub monitored_devices: Vec<String>,
@@ -900,6 +906,38 @@ impl BitChatConfig {
         }
         devs
     }
+
+    /// Computes energy-aware `(min_interval, max_interval)` durations for BLE advertising.
+    /// - When `active_subscribers == 0` (idle, waiting for first responder): uses the configured
+    ///   fast/low-power discovery window (`adv_min_interval_ms`..`adv_max_interval_ms`, default 250ms..500ms,
+    ///   providing ~4x faster mobile discovery than BlueZ's 1280ms default while keeping radio TX duty cycle < 0.1%).
+    /// - When `active_subscribers > 0` (at least one peer already connected): scales intervals to an
+    ///   eco/multi-peer window (`>= 500ms`..`>= 1000ms`) so additional devices (e.g. second phone/tablet)
+    ///   can still discover and join the mesh while minimizing radio airtime and battery drain.
+    /// - Returns `(None, None)` if either interval is set to `0` (use kernel/BlueZ default).
+    pub fn adaptive_adv_intervals(
+        &self,
+        active_subscribers: usize,
+    ) -> (Option< std::time::Duration >, Option< std::time::Duration >) {
+        if self.adv_min_interval_ms == 0 || self.adv_max_interval_ms == 0 {
+            return (None, None);
+        }
+        let base_min = self.adv_min_interval_ms.clamp(20, 10_240);
+        let base_max = self.adv_max_interval_ms.clamp(base_min, 10_240);
+        if active_subscribers > 0 {
+            let eco_min = (base_min * 2).clamp(500, 10_240);
+            let eco_max = (base_max * 2).clamp(eco_min.max(1000), 10_240);
+            (
+                Some(std::time::Duration::from_millis(eco_min)),
+                Some(std::time::Duration::from_millis(eco_max)),
+            )
+        } else {
+            (
+                Some(std::time::Duration::from_millis(base_min)),
+                Some(std::time::Duration::from_millis(base_max)),
+            )
+        }
+    }
 }
 
 fn default_ble_device() -> String {
@@ -919,11 +957,19 @@ fn default_ble_self_healing_enabled() -> bool {
 }
 
 fn default_ble_watchdog_interval_secs() -> u64 {
-    30
+    15
 }
 
 fn default_ble_adv_refresh_interval_secs() -> u64 {
-    300
+    90
+}
+
+fn default_ble_adv_min_interval_ms() -> u64 {
+    250
+}
+
+fn default_ble_adv_max_interval_ms() -> u64 {
+    500
 }
 
 impl Default for BitChatConfig {
@@ -940,6 +986,8 @@ impl Default for BitChatConfig {
             self_healing_enabled: default_ble_self_healing_enabled(),
             watchdog_interval_secs: default_ble_watchdog_interval_secs(),
             adv_refresh_interval_secs: default_ble_adv_refresh_interval_secs(),
+            adv_min_interval_ms: default_ble_adv_min_interval_ms(),
+            adv_max_interval_ms: default_ble_adv_max_interval_ms(),
             monitored_devices: Vec::new(),
         }
     }

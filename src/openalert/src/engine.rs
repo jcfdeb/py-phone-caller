@@ -394,8 +394,13 @@ impl AlertEngine {
         check_keys.push(fp.clone());
 
         // Key 3: Normalized content key (summary + severity + sender)
-        // Manual operator test alerts bypass identical content suppression to allow rapid testing.
-        if !alert.alert_id.starts_with("test-") {
+        // Manual operator test alerts and interactive 1-to-1 BitChat DMs bypass identical content
+        // suppression (they are already deduplicated per unique message ID via Key 1 & Key 2),
+        // ensuring subsequent user DMs with repeated text (e.g. "SOS" or "test") are always answered.
+        if !alert.alert_id.starts_with("test-")
+            && !alert.alert_id.starts_with("bitchat-dm-")
+            && !alert.alert_id.starts_with("bitchat-msg-")
+        {
             let clean_summary = alert.summary.trim();
             if !clean_summary.is_empty() {
                 let sender_str = alert.sender.as_deref().unwrap_or("");

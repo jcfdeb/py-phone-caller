@@ -17,10 +17,10 @@ use axum::{
 use std::collections::HashMap;
 
 /// Master transparent OpenAlert logo (Midnight / dark theme).
-pub static LOGO_PNG: &[u8] = include_bytes!("../../../../docs/openalert/openalert-logo.png");
+pub static LOGO_PNG: &[u8] = include_bytes!("../../templates/openalert-logo.png");
 
 /// Pre-adapted high-contrast tactical sapphire OpenAlert logo (Day / sunlight theme).
-pub static LOGO_DAY_PNG: &[u8] = include_bytes!("../../../../docs/openalert/openalert-logo-day.png");
+pub static LOGO_DAY_PNG: &[u8] = include_bytes!("../../templates/openalert-logo-day.png");
 
 /// HTTP handler serving the embedded logo asset with day/night adaptation.
 pub async fn logo_handler(

@@ -209,7 +209,7 @@ pub fn parse_bolt11_invoice(raw_bolt11: &str) -> std::result::Result<Bolt11Summa
             .checked_mul(100)
             .ok_or_else(|| "BOLT-11 nBTC amount overflow".to_string())?,
         Some('p') => {
-            if amount_num % 10 != 0 {
+            if !amount_num.is_multiple_of(10) {
                 return Err("Sub-millisatoshi pBTC amount is not divisible by 10".to_string());
             }
             amount_num / 10
@@ -1060,7 +1060,7 @@ impl NostrSubscriber {
                 unwrapped.content.trim()
             );
 
-            let response_text = match self.execute_c2_command(&unwrapped.content, Some(&unwrapped.tags)).await {
+            let response_text = amatch self.execute_c2_command(&unwrapped.content, Some(&unwrapped.tags)).await {
                 Ok(resp) => resp,
                 Err(err) => format!("❌ Command Error: {}", err),
             };
