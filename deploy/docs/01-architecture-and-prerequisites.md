@@ -65,7 +65,7 @@ Every deployment method (Ansible, Docker Compose, Kubernetes, Helm, RPM/DEB, and
 | `openalertd` | `/usr/local/bin/openalertd` | `8090/tcp` (`HTTP`)<br>`8088/tcp` (`Nostr`)<br>`19876/udp` (`Peer`) | `GET /health`<br>`GET /api/v1/status` | Decentralized Nostr (`NIP-ALERT`), Captive Portal (`/sos`), LoRa RF, and BLE mesh daemon |
 
 > [!WARNING]
-> **Port `8088` Co-Location Note**: Both Asterisk's built-in HTTP/ARI server and `openalertd`'s embedded Nostr Micro-Relay default to port `8088`. When running Asterisk and `openalertd` on the **same host** (as in the Ansible combined topology), bind `openalertd`'s relay to a distinct port (e.g., `127.0.0.1:8089` or disable `[relay]` if unused) so it does not collide with Asterisk ARI on `8088`.
+> **Port `8088` Co-Location Note**: Both Asterisk's built-in HTTP/ARI server and `openalertd`'s embedded Nostr Micro-Relay default to port `8088`. When running Asterisk and `openalertd` on the **same host** (as in the Ansible combined topology), bind `openalertd`'s relay to a distinct port (e.g., `127.0.0.1:8089` or disable `[nostr.relay_server]` if unused) so it does not collide with Asterisk ARI on `8088`.
 
 ---
 

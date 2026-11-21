@@ -91,7 +91,7 @@ flowchart TB
 | `generate_audio` | Multi-engine text-to-speech audio generation with dynamic language discovery and preloading. | [README](src/generate_audio/README.md) |
 | `py_phone_caller_ui` | Web UI for operations, scheduling, users, audio preview, and incident audits. | [README](src/py_phone_caller_ui/README.md) |
 | `py_phone_caller_utils` | Shared library for config, DB, TTS, SMS, telemetry, and circuit breakers. | [README](src/py-phone-caller-utils/README.md) |
-| `openalertd` | Decentralized Nostr (`NIP-ALERT` Kind 30000, NIP-57 Lightning Zap Adapter, 0xChat NIP-17 E2EE C2, Embedded Micro-Relay `:8088`), `/sos` Captive Portal, LoRa RF, and BitChat BLE mesh gateway bridging air-gapped field alerts. | [README](src/openalert/README.md) |
+| `openalertd` | Decentralized Nostr (`NIP-ALERT` Kind 30000, NIP-57 Lightning Zap Adapter, 0xChat NIP-17 E2EE C2, optional Embedded Micro-Relay `:8088` — move to `:8089` or disable when co-located with Asterisk ARI), `/sos` Captive Portal, LoRa RF, and BitChat BLE mesh gateway bridging air-gapped field alerts. | [README](src/openalert/README.md) |
 
 ## Prerequisites & Requirements (What You Need to Run)
 
