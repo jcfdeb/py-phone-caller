@@ -67,7 +67,7 @@ When backhauls fail or are unavailable, OpenAlert operates an autonomous peering
 
 ## 3. Quickstart & Building `openalertd`
 
-The production daemon is located in [`src/openalert`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert):
+The production daemon is located in [`src/openalert`](../../src/openalert):
 
 ```bash
 cd src/openalert

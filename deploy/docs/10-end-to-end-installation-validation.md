@@ -18,7 +18,7 @@ Run **Gates 1 and 11** from your **Ansible controller**, and **Gates 2–10 and 
 | **Gate 6** | OpenAlert Daemon (`openalertd`) | `/health` `{"status":"ok",...}`, `/api/v1/status` `HTTP 200`, cgroup v2 limits active |
 | **Gate 7** | Python Microservices & Native Rust SMS Engine | 7/7 `/health` endpoints `HTTP 200`; `import rust_engine` loads native `.so` |
 | **Gate 8** | Local Piper TTS WAV Synthesis | `POST /make_audio` `HTTP 200`; output verified as `RIFF WAVE, Microsoft PCM, 16 bit, mono 8000 Hz` |
-| **Gate 9** | Admin Bootstrap & Caddy Strict-TLS Web UI Login | `GET /login` `200` → `POST /login` `302 -> /` → `GET /` `200` (`py-phone-caller Dashboard`) |
+| **Gate 9** | Admin Bootstrap, Strict-TLS Web UI, Health & `/api/docs` | Login `200`, `/health` & `/ready` `200`, `/api/cluster_health` `200`, 8/8 `/api/docs` OpenAPI specs `200` |
 | **Gate 10** | Air-Gapped Isolation Audit *(air-gapped hosts)* | `IPAddressDeny=0.0.0.0/0 ::/0`, `PPC_OFFLINE=1`, `HF_HUB_OFFLINE=1`, signed `file:` APT only |
 | **Gate 11** | Ansible Idempotency Rerun (`site.yml`) | `changed=0 failed=0`, identical `ExecMainStartTimestamp` across all 16 services |
 | **Gate 12** | Cold Reboot Recovery & Thermal/Storage Health | All 16 services auto-start with `NRestarts=0` after `sudo reboot`, `verify.yml` passes |
@@ -263,11 +263,47 @@ echo "GET / (authenticated) HTTP: $DASH_CODE ($(wc -c < /tmp/ppc-dash.html) byte
 grep -o '<title>[^<]*</title>' /tmp/ppc-dash.html | head -n 1
 sudo rm -f /tmp/ppc-dash.html
 
-# 4. Confirm PostgreSQL recorded last_login
+# 4. Authenticated full-stack cluster health JSON (PostgreSQL, Redis, Asterisk, SMS, Gateway, IAM)
+echo "GET /api/cluster_health:"
+sudo curl -sS --cacert "$CA" -b "$COOKIES" "https://${DOMAIN}/api/cluster_health"; echo ""
+
+# 5. Confirm PostgreSQL recorded last_login
 sudo -u postgres psql -d py_phone_caller -c "SELECT email, is_active, last_login FROM users;"
 ```
 
-**Pass criterion:** `GET /login` → `200`, `POST /login` → `302` to `https://<domain>/`, `GET /` → `200` with `<title>py-phone-caller Dashboard</title>`, and `last_login` is populated in PostgreSQL.
+### Step 9.3: Verify Public Health Probes & Unified `/api/docs` Portal (8/8 OpenAPI Specs)
+
+```bash
+DOMAIN="appliance.internal"
+CA="/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt"
+
+# 1. Public (unauthenticated) liveness & readiness probes over HTTPS
+for p in /health /ready; do
+  printf "%-10s " "$p"
+  sudo curl -sS --cacert "$CA" -w " (HTTP %{http_code})\n" "https://${DOMAIN}${p}"
+done
+
+# 2. Unified OpenAPI portal + all 8 same-origin specs (plus negative 404 allowlist guard)
+echo "GET /api/docs -> HTTP $(sudo curl -sS --cacert "$CA" -o /dev/null -w '%{http_code}' "https://${DOMAIN}/api/docs")"
+for p in \
+  /docs/swagger.json \
+  /api/v1/alerts/docs/swagger.json \
+  /api/v1/telephony/docs/swagger.json \
+  /api/v1/sms/docs/swagger.json \
+  /api/v1/contacts/docs/swagger.json \
+  /api/v1/schedules/docs/swagger.json \
+  /api/v1/audio/docs/swagger.json \
+  /api/v1/registry/docs/swagger.json \
+  /api/v1/unknown/docs/swagger.json; do
+  printf "%-40s HTTP %s\n" "$p" \
+    "$(sudo curl -sS --cacert "$CA" -o /dev/null -w '%{http_code}' "https://${DOMAIN}${p}")"
+done
+```
+
+**Pass criterion:**
+- `GET /login` → `200`, `POST /login` → `302` to `https://<domain>/`, `GET /` → `200` with `<title>py-phone-caller Dashboard</title>`, and `last_login` is populated in PostgreSQL.
+- `GET /health` and `GET /ready` return `HTTP 200` without authentication; `GET /api/cluster_health` returns `HTTP 200` JSON when authenticated (and redirects to `/login` when unauthenticated).
+- `GET /api/docs` and all 8 OpenAPI JSON paths return `HTTP 200` over the single HTTPS origin (with zero internal ports exposed), while `/api/v1/unknown/docs/swagger.json` returns `HTTP 404`.
 
 *(For `enterprise` topology with Keycloak OIDC, follow the interactive OIDC login validation in [Guide 07](07-enterprise-gateway-and-observability.md).)*
 

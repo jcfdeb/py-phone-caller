@@ -891,6 +891,118 @@ def test_unified_openapi_developer_portal(client):
     assert "SwaggerUIBundle" in html
     assert "/api/v1/alerts/docs/swagger.json" in html
     assert "/api/v1/telephony/docs/swagger.json" in html
+    assert "(:8081)" not in html
+    assert "(:8084)" not in html
+
+
+def test_unified_openapi_developer_portal_offline_mode(client, monkeypatch):
+    monkeypatch.setenv("PPC_OFFLINE", "1")
+    res = client.get("/api/docs")
+    assert res.status_code == 200
+    html = res.data.decode("utf-8")
+    assert "cdn.jsdelivr.net" not in html
+    assert "(:5000)" not in html
+    assert "(:8081)" not in html
+    for expected_href in (
+        "/docs/swagger.json",
+        "/api/v1/alerts/docs/swagger.json",
+        "/api/v1/telephony/docs/swagger.json",
+        "/api/v1/sms/docs/swagger.json",
+        "/api/v1/contacts/docs/swagger.json",
+        "/api/v1/schedules/docs/swagger.json",
+        "/api/v1/audio/docs/swagger.json",
+        "/api/v1/registry/docs/swagger.json",
+    ):
+        assert f'href="{expected_href}"' in html
+
+
+@pytest.mark.parametrize(
+    "slug,expected_port",
+    [
+        ("alerts", 8084),
+        ("telephony", 8081),
+        ("sms", 8085),
+        ("contacts", 8087),
+        ("schedules", 8086),
+        ("audio", 8082),
+        ("registry", 8083),
+    ],
+)
+def test_api_v1_service_swagger_json_proxy_success(client, slug, expected_port):
+    captured_urls = []
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(
+        return_value={
+            "openapi": "3.0.3",
+            "info": {"title": f"{slug}-service", "version": "1.0.0"},
+            "paths": {"/health": {"get": {"summary": "Health check"}}},
+        }
+    )
+
+    mock_get_ctx = MagicMock()
+    mock_get_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_get_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    def _fake_get(url, *args, **kwargs):
+        captured_urls.append(url)
+        return mock_get_ctx
+
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(side_effect=_fake_get)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("py_phone_caller_ui.home.aiohttp.ClientSession", return_value=mock_session):
+        res = client.get(f"/api/v1/{slug}/docs/swagger.json")
+
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["openapi"] == "3.0.3"
+    assert data["info"]["title"] == f"{slug}-service"
+    assert len(captured_urls) == 1
+    assert captured_urls[0].endswith(f":{expected_port}/docs/swagger.json")
+
+
+def test_api_v1_service_swagger_json_unknown_slug_returns_404(client):
+    res = client.get("/api/v1/not_a_service/docs/swagger.json")
+    assert res.status_code == 404
+    data = res.get_json()
+    assert "Unknown API documentation service" in data["error"]
+
+
+def test_api_v1_service_swagger_json_upstream_error_returns_502(client):
+    mock_resp = MagicMock()
+    mock_resp.status = 500
+
+    mock_get_ctx = MagicMock()
+    mock_get_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_get_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(return_value=mock_get_ctx)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("py_phone_caller_ui.home.aiohttp.ClientSession", return_value=mock_session):
+        res = client.get("/api/v1/alerts/docs/swagger.json")
+
+    assert res.status_code == 502
+    assert "HTTP 500" in res.get_json()["error"]
+
+
+def test_api_v1_service_swagger_json_upstream_unreachable_returns_502(client):
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(side_effect=OSError("Connection refused"))
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("py_phone_caller_ui.home.aiohttp.ClientSession", return_value=mock_session):
+        res = client.get("/api/v1/audio/docs/swagger.json")
+
+    assert res.status_code == 502
+    assert "unreachable" in res.get_json()["error"]
 
 
 def test_comprehensive_openapi_swagger_json(client):

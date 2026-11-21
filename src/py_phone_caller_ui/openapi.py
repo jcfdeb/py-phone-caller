@@ -1415,6 +1415,48 @@ def get_ui_openapi_spec() -> Dict[str, Any]:
                 },
             }
         },
+        "/api/docs": {
+            "get": {
+                "tags": ["System & Observability"],
+                "summary": "Unified OpenAPI Developer Portal",
+                "description": "Aggregates OpenAPI 3.0 specifications for the Web UI and all internal microservices. Renders static same-origin OpenAPI JSON links when PPC_OFFLINE=1.",
+                "operationId": "getUnifiedApiDocsPortal",
+                "responses": {
+                    "200": {
+                        "description": "HTML developer portal page.",
+                        "content": {"text/html": {"schema": {"type": "string"}}},
+                    }
+                },
+            }
+        },
+        "/api/v1/{service_slug}/docs/swagger.json": {
+            "get": {
+                "tags": ["System & Observability"],
+                "summary": "Microservice OpenAPI Specification Proxy",
+                "description": "Read-only same-origin proxy that fetches the OpenAPI 3.0 JSON specification from an allowlisted internal microservice without exposing internal ports.",
+                "operationId": "getMicroserviceOpenApiSpec",
+                "parameters": [
+                    {
+                        "name": "service_slug",
+                        "in": "path",
+                        "required": True,
+                        "description": "Allowlisted internal microservice slug.",
+                        "schema": {
+                            "type": "string",
+                            "enum": ["alerts", "telephony", "sms", "contacts", "schedules", "audio", "registry"],
+                        },
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Upstream microservice OpenAPI 3.0 JSON specification.",
+                        "content": {"application/json": {"schema": {"type": "object"}}},
+                    },
+                    "404": {"description": "Unknown microservice slug."},
+                    "502": {"description": "Upstream microservice OpenAPI specification is unreachable or returned an error."},
+                },
+            }
+        },
     }
 
     servers = [

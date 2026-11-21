@@ -252,18 +252,18 @@ authorize calls, SMS, radio transmissions or migration of an existing host.
 
 ## Documentation
 
-- **[Centralized Deployment Documentation Hub (`deploy/docs/`)](deploy/docs/README.md)** - Complete modular step-by-step installation guides across Ansible, Docker Compose, Kubernetes/Helm, DEB/RPM, and PyPI/systemd.
-- **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** - Step-by-step manual and automated guide for Apache APISIX & Keycloak OIDC.
+- **[Centralized Deployment Documentation Hub (`deploy/docs/`)](deploy/docs/README.md)** - Complete modular step-by-step installation guides across Ansible, Docker Compose, Kubernetes/Helm, DEB/RPM, PyPI/systemd, ARM64/Air-Gapped appliances, and 12-Gate validation.
 - **[Master Documentation Library](docs/README.md)** - Comprehensive documentation map, architectural guides, and operational manuals.
-- **[Release 1.0.1 Notes & Enhancement Report](docs/1.0.1-release.md)** - Detailed release summary for v1.0.1 enhancements.
-- **[Operator Installation Guide (A to Z)](docs/OPERATOR_INSTALLATION_GUIDE.md)** - Step-by-step production installation for Ansible, Docker/Podman Compose, and Native Systemd.
-- **[Architecture & Call Flows Guide](docs/architecture-and-call-flows.md)** - End-to-end call lifecycle, DTMF acknowledgment ('4' key), retry loops, and SMS flows.
-- **[Services & Endpoints Reference](docs/services-and-endpoints.md)** - Complete REST API specification for all 11 microservices and health probes.
-- **[FreePBX & Asterisk Setup Guide](docs/freepbx-asterisk-setup-guide.md)** - Visual configuration guide for Trunks, Extensions, Stasis Dialplan, and ARI users.
-- **[Web UI Operator Tour](docs/web-ui-tour/README.md)** - Visual walkthrough of the Web Management UI, calls table, SMS dashboard, and on-call calendars.
-- **[OpenTelemetry & Observability Guide](docs/opentelemetry-guide.md)** - Metrics scraping (`/metrics`), health checks (`/health`), and distributed tracing.
-- **[UV Workspace & Migration Guide](docs/uv-migration-and-workspace-guide.md)** - Python 3.14 UV workspace, dependency management, and container builds.
-- **[VirtualBox Local Lab Setup Guide](docs/virtualbox-setup.md)** - Local virtualization lab environment configuration.
+- **[Release Notes & Current Capabilities](docs/1.0.1-release.md)** - Detailed release summary, post-1.0.1 capabilities, and upgrade guide.
+- **[Architecture & Call Flows Guide](docs/architecture-and-call-flows.md)** - End-to-end call lifecycle, DTMF acknowledgment (`4` key), dual-channel SMS/SIP `MESSAGE` routing, always-UCS-2 GSM SMS, retry loops, and OpenAlert mesh bridge.
+- **[Services & Endpoints Reference](docs/services-and-endpoints.md)** - Complete REST API specification for all microservices, `/ready` probes, OpenAPI `/docs`, and Piccolo ORM schemas.
+- **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** - Automated and manual guide for Apache APISIX & Keycloak OIDC.
+- **[FreePBX & Asterisk Setup Guide](docs/freepbx-asterisk-setup-guide.md)** - Visual FreePBX setup plus native Asterisk 22 Ansible automation & local SIP Extension `1000`.
+- **[OpenAlert Architecture & Nostr Alerting (`NIP-ALERT`)](docs/openalert/README.md)** - Decentralized LoRa RF, BitChat BLE, `/sos` Captive Portal, and Nostr bridge (`openalertd`).
+- **[Web UI Operator Tour](docs/web-ui-tour/README.md)** - Visual walkthrough of the multilingual Web Management UI, calls table, SMS dashboard, and on-call calendars.
+- **[OpenTelemetry & Observability Guide](docs/opentelemetry-guide.md)** - Metrics scraping (`/metrics`), health/readiness probes (`/health`, `/ready`), and distributed tracing ([Tempo](docs/tempo_traces.md)).
+- **[UV Workspace & Packaging Guide](docs/uv-migration-and-workspace-guide.md)** - Python 3.14 UV workspace, Maturin Rust SMS engine, dependency management, and container builds.
+- **[Archived Documentation Index](docs/archive/README.md)** - Preserved pre-release, historical audit, and superseded legacy guides.
 - `LICENSE` - BSD 3-Clause license.
 
 ## Further Readings

@@ -34,7 +34,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
            +---> [ FreePBX / Asterisk VM ] (192.168.56.101 / 10.22.22.234)
 ```
 
-![Main Screen Overview](virtualbox-vms/vm-00.png)
+![Main Screen Overview](../virtualbox-vms/vm-00.png)
 
 ---
 
@@ -42,7 +42,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
 
 1. Open VirtualBox, click **File** in the top menu, and select **Host Network Manager...**
 
-   ![Host Network Manager](virtualbox-vms/vm-01.png)
+   ![Host Network Manager](../virtualbox-vms/vm-01.png)
 
 2. Select `vboxnet0` (or create a new host-only adapter by clicking **Create**).
 3. Under **Properties**, ensure the IPv4 configuration is set to:
@@ -50,7 +50,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
    - **IPv4 Network Mask**: `255.255.255.0`
 4. Click **Apply**.
 
-   ![Host Network Properties](virtualbox-vms/vm-02.png)
+   ![Host Network Properties](../virtualbox-vms/vm-02.png)
 
 ---
 
@@ -58,13 +58,13 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
 
 1. In the top menu, click **File** ➔ **Preferences...** (or **Tools** ➔ **Network**).
 
-   ![VirtualBox Preferences](virtualbox-vms/vm-03.png)
+   ![VirtualBox Preferences](../virtualbox-vms/vm-03.png)
 
 2. Select **Network** in the left sidebar.
 3. If `py-phone-caller` does not exist, click the **+** button to add a new NAT Network.
 4. Click the gear icon (**Edit**) on the network.
 
-   ![Networking Settings](virtualbox-vms/vm-04.png)
+   ![Networking Settings](../virtualbox-vms/vm-04.png)
 
 5. Configure:
    - **Network Name**: `py-phone-caller`
@@ -72,7 +72,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
    - **Enable DHCP**: Checked (`Yes`)
 6. Click **OK**.
 
-   ![NAT Network Details](virtualbox-vms/vm-05.png)
+   ![NAT Network Details](../virtualbox-vms/vm-05.png)
 
 ---
 
@@ -80,7 +80,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
 
 1. Select the `py-phone-caller` virtual machine, right-click, and select **Settings...**
 
-   ![VM Settings](virtualbox-vms/vm-06.png)
+   ![VM Settings](../virtualbox-vms/vm-06.png)
 
 2. Click **Network** in the sidebar.
 3. Under **Adapter 1**:
@@ -88,7 +88,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
    - **Name**: `py-phone-caller`
    - **Cable Connected**: Checked (`Yes`)
 
-   ![Adapter 1 NAT Network](virtualbox-vms/vm-07.png)
+   ![Adapter 1 NAT Network](../virtualbox-vms/vm-07.png)
 
 4. Under **Adapter 2**:
    - Check **Enable Network Adapter**
@@ -97,7 +97,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
    - **Cable Connected**: Checked (`Yes`)
 5. Click **OK**.
 
-   ![Adapter 2 Host Only](virtualbox-vms/vm-08.png)
+   ![Adapter 2 Host Only](../virtualbox-vms/vm-08.png)
 
 ---
 
@@ -105,15 +105,15 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
 
 1. Select the `freepbx` virtual machine, right-click, and select **Settings...**
 
-   ![FreePBX VM Settings](virtualbox-vms/vm-09.png)
-   ![FreePBX Settings Dialog](virtualbox-vms/vm-10.png)
+   ![FreePBX VM Settings](../virtualbox-vms/vm-09.png)
+   ![FreePBX Settings Dialog](../virtualbox-vms/vm-10.png)
 
 2. Under **Adapter 1**:
    - **Attached to**: `NAT Network`
    - **Name**: `py-phone-caller`
    - **Cable Connected**: Checked (`Yes`)
 
-   ![FreePBX Adapter 1](virtualbox-vms/vm-11.png)
+   ![FreePBX Adapter 1](../virtualbox-vms/vm-11.png)
 
 3. Under **Adapter 2**:
    - Check **Enable Network Adapter**
@@ -122,7 +122,7 @@ The lab setup isolates telephony and inter-service communication inside a Virtua
    - **Cable Connected**: Checked (`Yes`)
 4. Click **OK**.
 
-   ![FreePBX Adapter 2](virtualbox-vms/vm-12.png)
+   ![FreePBX Adapter 2](../virtualbox-vms/vm-12.png)
 
 ---
 

@@ -668,3 +668,21 @@ def test_kokoro_cjk_readiness_reflects_installed_deps(tmp_path):
             assert by_code["ja"]["ready"] is True
             assert by_code["zh"]["ready"] is True
 
+
+@pytest.mark.asyncio
+async def test_generate_audio_openapi_spec_and_root_catalog(cli):
+    resp_spec = await cli.get("/docs/swagger.json")
+    assert resp_spec.status == 200
+    spec = await resp_spec.json()
+    assert spec["openapi"] == "3.0.3"
+    assert spec["info"]["title"] == "generate_audio"
+    assert isinstance(spec["paths"], dict)
+    assert f"/{GENERATE_AUDIO_APP_ROUTE}" in spec["paths"]
+    assert f"/{IS_AUDIO_READY_ENDPOINT}" in spec["paths"]
+    assert "/languages" in spec["paths"]
+
+    resp_root = await cli.get("/")
+    assert resp_root.status == 200
+    catalog = await resp_root.json()
+    assert catalog["service"] == "generate_audio"
+    assert catalog["openapi_spec"] == "/docs/swagger.json"

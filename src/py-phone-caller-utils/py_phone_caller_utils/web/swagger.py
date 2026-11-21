@@ -110,14 +110,14 @@ def generate_unified_swagger_portal_html(
     """
     if services is None:
         services = [
-            {"name": "Web Dashboard & Operations Center (:5000)", "url": "/docs/swagger.json"},
-            {"name": "Prometheus Alerts Webhook (:8084)", "url": "/api/v1/alerts/docs/swagger.json"},
-            {"name": "Telephony & Asterisk Caller (:8081)", "url": "/api/v1/telephony/docs/swagger.json"},
-            {"name": "SMS Gateway & Carrier Engine (:8085)", "url": "/api/v1/sms/docs/swagger.json"},
-            {"name": "Address Book & Duty Roster (:8087)", "url": "/api/v1/contacts/docs/swagger.json"},
-            {"name": "Call Scheduler Engine (:8086)", "url": "/api/v1/schedules/docs/swagger.json"},
-            {"name": "Audio Synthesis & TTS Engine (:8082)", "url": "/api/v1/audio/docs/swagger.json"},
-            {"name": "Call Registry & DTMF Acknowledgment (:8083)", "url": "/api/v1/registry/docs/swagger.json"},
+            {"name": "Web Dashboard & Operations Center", "url": "/docs/swagger.json"},
+            {"name": "Prometheus Alerts Webhook", "url": "/api/v1/alerts/docs/swagger.json"},
+            {"name": "Telephony & Asterisk Caller", "url": "/api/v1/telephony/docs/swagger.json"},
+            {"name": "SMS Gateway & Carrier Engine", "url": "/api/v1/sms/docs/swagger.json"},
+            {"name": "Address Book & Duty Roster", "url": "/api/v1/contacts/docs/swagger.json"},
+            {"name": "Call Scheduler Engine", "url": "/api/v1/schedules/docs/swagger.json"},
+            {"name": "Audio Synthesis & TTS Engine", "url": "/api/v1/audio/docs/swagger.json"},
+            {"name": "Call Registry & DTMF Acknowledgment", "url": "/api/v1/registry/docs/swagger.json"},
         ]
 
     if os.environ.get("PPC_OFFLINE") == "1":

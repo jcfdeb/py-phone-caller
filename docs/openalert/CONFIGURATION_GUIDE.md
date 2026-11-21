@@ -48,9 +48,9 @@ Pre-tuned profiles are available in `config/profiles/` for specific field deploy
 
 | Profile | Target Hardware / Topology | Key Characteristics |
 | :--- | :--- | :--- |
-| [`edge-sensor.toml`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert/config/profiles/edge-sensor.toml) | Solar/Battery Edge Nodes | Minimal footprint, RF LoRa + BLE + `/sos` portal, REST on `127.0.0.1:8091`. |
-| [`mesh-repeater.toml`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert/config/profiles/mesh-repeater.toml) | Hilltop Towers / Relay Pods | Bridges RF LoRa clusters to LAN Ethernet / VPN backhaul routers. |
-| [`central-gateway.toml`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert/config/profiles/central-gateway.toml) | NOC / Datacenter Servers | Web UI Mission Control, Asterisk telephony egress, Nostr quorum, WireGuard VPN. |
+| [`edge-sensor.toml`](../../src/openalert/config/profiles/edge-sensor.toml) | Solar/Battery Edge Nodes | Minimal footprint, RF LoRa + BLE + `/sos` portal, REST on `127.0.0.1:8091`. |
+| [`mesh-repeater.toml`](../../src/openalert/config/profiles/mesh-repeater.toml) | Hilltop Towers / Relay Pods | Bridges RF LoRa clusters to LAN Ethernet / VPN backhaul routers. |
+| [`central-gateway.toml`](../../src/openalert/config/profiles/central-gateway.toml) | NOC / Datacenter Servers | Web UI Mission Control, Asterisk telephony egress, Nostr quorum, WireGuard VPN. |
 
 ```bash
 # Launch using a specific turnkey profile

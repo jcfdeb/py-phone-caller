@@ -1,13 +1,13 @@
 # 📊 OpenTelemetry & Observability Guide
 
-This guide explains how to monitor, trace, and scrape metrics across the **py-phone-caller** (Release 1.0.0) microservices stack.
+This guide explains how to monitor, trace, and scrape metrics across the **py-phone-caller** microservices stack. For turnkey Grafana dashboard provisioning and APISIX/Keycloak gateway telemetry, also see **[`deploy/docs/07-enterprise-gateway-and-observability.md`](../deploy/docs/07-enterprise-gateway-and-observability.md)** and **[`deploy/dashboards/`](../deploy/dashboards/README.md)**.
 
 ---
 
 ## 📑 Table of Contents
 
 1. [Observability Architecture Overview](#1-observability-architecture-overview)
-2. [Standardized Health & Liveness Probes](#2-standardized-health--liveness-probes)
+2. [Standardized Health, Liveness & Readiness Probes](#2-standardized-health-liveness--readiness-probes)
 3. [Prometheus Metrics Scraping (`/metrics`)](#3-prometheus-metrics-scraping-metrics)
 4. [Distributed Tracing with OpenTelemetry (OTel)](#4-distributed-tracing-with-opentelemetry-otel)
 5. [Starting a Local Jaeger or Grafana Tempo Collector](#5-starting-a-local-jaeger-or-grafana-tempo-collector)
@@ -18,26 +18,25 @@ This guide explains how to monitor, trace, and scrape metrics across the **py-ph
 ## 1. Observability Architecture Overview
 
 **py-phone-caller** provides a dual-mode observability architecture:
-1. **Pull-based Metrics & Health Checks**: Every web-based service exposes standardized `/health` and Prometheus `/metrics` endpoints.
+1. **Pull-based Metrics & Health/Readiness Probes**: Every HTTP microservice exposes standardized `/health`, `/healthz`, `/live`, dependency-aware `/ready`, and Prometheus `/metrics` endpoints.
 2. **Push-based Distributed Tracing**: When enabled, services push OpenTelemetry (OTel) spans over OTLP gRPC to a centralized trace collector (Jaeger or Grafana Tempo).
 
 ```text
-[ Prometheus / Scrapers ] <--- HTTP GET /metrics & /health --- [ All py-phone-caller Microservices ]
-                                                                       |
-[ Grafana Tempo / Jaeger ] <--- OTLP gRPC (Port 4317) -----------------+
+[ Prometheus / Scrapers ] <--- HTTP GET /metrics, /health & /ready --- [ All py-phone-caller Microservices ]
+                                                                               |
+[ Grafana Tempo / Jaeger ] <--- OTLP gRPC (Port 4317) -------------------------+
 ```
 
 ---
 
-## 2. Standardized Health & Liveness Probes
+## 2. Standardized Health, Liveness & Readiness Probes
 
-Every HTTP microservice automatically registers uniform JSON health check endpoints via `py_phone_caller_utils.telemetry`:
+Every HTTP microservice automatically registers uniform JSON liveness endpoints via `py_phone_caller_utils.telemetry`, alongside dependency-aware readiness probes (`ReadinessRegistry`):
 
-- `GET /health`
-- `GET /healthz`
-- `GET /live`
+- **Liveness**: `GET /health`, `GET /healthz`, `GET /live` (HTTP `200 OK` when the process is alive).
+- **Readiness**: `GET /ready` (HTTP `200 OK` when downstream dependencies such as PostgreSQL pools, Redis broker, or Asterisk ARI/PJSIP trunk are ready; HTTP `503 Service Unavailable` when degraded).
 
-### Response Payload Schema:
+### Liveness Response Payload Schema:
 ```json
 {
   "status": "healthy",
@@ -46,7 +45,7 @@ Every HTTP microservice automatically registers uniform JSON health check endpoi
 }
 ```
 
-These endpoints are used by Docker `HEALTHCHECK` directives, Kubernetes `livenessProbe`/`readinessProbe`, and the `verify_deployment.py` automated validator script.
+These endpoints are used by Docker `HEALTHCHECK` directives, Kubernetes `livenessProbe`/`readinessProbe` manifests (`deploy/k8s/` & `deploy/helm/`), `verify_deployment.py`, and the [12-Gate End-to-End Validation Checklist](../deploy/docs/10-end-to-end-installation-validation.md).
 
 ---
 
@@ -54,16 +53,16 @@ These endpoints are used by Docker `HEALTHCHECK` directives, Kubernetes `livenes
 
 Each HTTP microservice exposes Prometheus metrics on its primary port:
 
-| Microservice | Port | Metric URL | Health URL |
+| Microservice | Port | Metric URL | Liveness / Readiness URLs |
 | :--- | :---: | :--- | :--- |
-| **`py_phone_caller_ui`** | `5000` | `http://<host>:5000/metrics` | `http://<host>:5000/health` |
-| **`asterisk_caller`** | `8081` | `http://<host>:8081/metrics` | `http://<host>:8081/health` |
-| **`generate_audio`** | `8082` | `http://<host>:8082/metrics` | `http://<host>:8082/health` |
-| **`caller_register`** | `8083` | `http://<host>:8083/metrics` | `http://<host>:8083/health` |
-| **`caller_prometheus_webhook`** | `8084` | `http://<host>:8084/metrics` | `http://<host>:8084/health` |
-| **`caller_sms`** | `8085` | `http://<host>:8085/metrics` | `http://<host>:8085/health` |
-| **`caller_scheduler`** | `8086` | `http://<host>:8086/metrics` | `http://<host>:8086/health` |
-| **`caller_address_book`** | `8087` | `http://<host>:8087/metrics` | `http://<host>:8087/health` |
+| **`py_phone_caller_ui`** | `5000` | `http://<host>:5000/metrics` | `/health`, `/live` |
+| **`asterisk_caller`** | `8081` | `http://<host>:8081/metrics` | `/health`, `/ready` (Asterisk ARI & PJSIP) |
+| **`generate_audio`** | `8082` | `http://<host>:8082/metrics` | `/health`, `/languages` |
+| **`caller_register`** | `8083` | `http://<host>:8083/metrics` | `/health`, `/ready` (PostgreSQL pool) |
+| **`caller_prometheus_webhook`** | `8084` | `http://<host>:8084/metrics` | `/health`, `/live` |
+| **`caller_sms`** | `8085` | `http://<host>:8085/metrics` | `/health`, `/ready` (PostgreSQL pool) |
+| **`caller_scheduler`** | `8086` | `http://<host>:8086/metrics` | `/health`, `/ready` (Redis broker) |
+| **`caller_address_book`** | `8087` | `http://<host>:8087/metrics` | `/health`, `/ready` (PostgreSQL pool) |
 
 ### Prometheus Scrape Configuration (`prometheus.yml`):
 ```yaml

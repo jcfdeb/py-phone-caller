@@ -345,8 +345,78 @@ async def init_app():
         show_index=True,
     )
 
-    create_service_catalog(app, "generate_audio", GENERATE_AUDIO_PORT)
-    setup_swagger_routes(app, "generate_audio", "Generate Audio Service", "1.0.0")
+    async def root_catalog(request: web.Request) -> web.Response:
+        catalog = create_service_catalog(
+            service_name="generate_audio",
+            description="Multi-engine offline & cloud Text-to-Speech audio synthesis service",
+            version="1.0.0",
+            docs_url="/docs",
+            openapi_spec="/docs/swagger.json",
+            endpoints={
+                f"POST /{GENERATE_AUDIO_APP_ROUTE}": "Synthesizes 8 kHz mono WAV audio from text (message, msg_chk_sum, lang, speed, engine)",
+                f"GET /{IS_AUDIO_READY_ENDPOINT}": "Checks whether synthesized WAV audio is ready (msg_chk_sum, lang)",
+                f"GET /{LANGUAGES_ENDPOINT}": "Lists installed offline TTS models and supported languages",
+                f"GET /{SERVING_AUDIO_FOLDER}/{{filename}}": "Downloads synthesized WAV audio file",
+                "GET /health": "Liveness health check",
+                "GET /metrics": "Prometheus telemetry metrics",
+            },
+        )
+        return web.json_response(catalog)
+
+    app.router.add_get("/", root_catalog)
+    setup_swagger_routes(
+        app=app,
+        service_name="generate_audio",
+        description="Multi-engine Text-to-Speech (Kokoro, Silero, Piper, MMS, Polly, gTTS) audio synthesis service",
+        paths={
+            f"/{GENERATE_AUDIO_APP_ROUTE}": {
+                "post": {
+                    "summary": "Generate WAV audio from text",
+                    "description": "Triggers 8 kHz 16-bit mono WAV synthesis using the configured or overridden TTS engine.",
+                    "parameters": [
+                        {"name": "message", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "msg_chk_sum", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "lang", "in": "query", "required": False, "schema": {"type": "string"}},
+                        {"name": "speed", "in": "query", "required": False, "schema": {"type": "number"}},
+                        {"name": "engine", "in": "query", "required": False, "schema": {"type": "string"}},
+                    ],
+                    "responses": {
+                        "200": {"description": "Audio synthesis started or already cached"},
+                        "400": {"description": "Missing required message or msg_chk_sum parameter"},
+                    },
+                }
+            },
+            f"/{IS_AUDIO_READY_ENDPOINT}": {
+                "get": {
+                    "summary": "Check audio synthesis readiness",
+                    "parameters": [
+                        {"name": "msg_chk_sum", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "lang", "in": "query", "required": False, "schema": {"type": "string"}},
+                    ],
+                    "responses": {"200": {"description": "Readiness status JSON ({exists: bool})"}},
+                }
+            },
+            f"/{LANGUAGES_ENDPOINT}": {
+                "get": {
+                    "summary": "Discover installed offline TTS models and languages",
+                    "responses": {"200": {"description": "Active engine, languages, and installed models catalog"}},
+                }
+            },
+            f"/{SERVING_AUDIO_FOLDER}/{{filename}}": {
+                "get": {
+                    "summary": "Serve synthesized WAV audio file",
+                    "parameters": [
+                        {"name": "filename", "in": "path", "required": True, "schema": {"type": "string"}},
+                    ],
+                    "responses": {
+                        "200": {"description": "16-bit mono 8 kHz WAV file"},
+                        "404": {"description": "Audio file not found"},
+                    },
+                }
+            },
+        },
+        version="1.0.0",
+    )
     instrument_aiohttp_app(app, "generate_audio")
 
     return app

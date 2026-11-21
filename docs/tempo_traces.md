@@ -118,7 +118,7 @@ Tempo uses **TraceQL** for fast span and trace search:
 
 ### Trace search for specific HTTP routes:
 ```traceql
-{span.http.route = "/call_to_queue" || span.http.route = "/make_audio"}
+{span.http.route = "/call_to_queue" || span.http.route = "/make_audio" || span.http.route = "/send_sms"}
 ```
 
 ### Complex multi-service trace query:
@@ -135,17 +135,17 @@ When querying in Grafana, filter by these registered service names:
 
 | Service Name | Component Role |
 | :--- | :--- |
-| `py_phone_caller_ui` | Web Management Console & BFF |
-| `asterisk_caller` | Outbound Call Queue & ARI Controller |
-| `generate_audio` | Multi-engine TTS Neural Synthesis |
+| `py_phone_caller_ui` | Multilingual Web Management Console & BFF |
+| `asterisk_caller` | Outbound Call Queue, ARI Controller & Circuit Breaker |
+| `generate_audio` | Multi-Engine Offline TTS Synthesis (Kokoro, Silero, Piper, MMS) |
 | `caller_register` | Database Migrations & Call State Registry |
-| `caller_prometheus_webhook` | Alertmanager Webhook Receiver |
-| `caller_sms` | SMS Gateway & Carrier Dispatcher |
+| `caller_prometheus_webhook` | Alertmanager & OpenAlert Webhook Receiver |
+| `caller_sms` | Dual-Channel SMS & SIP `MESSAGE` Dispatcher |
 | `caller_scheduler` | Delayed Call Scheduler |
-| `caller_address_book` | Contact Directory & On-Call Rotation |
+| `caller_address_book` | Dual-Channel Contact Directory & On-Call Rotation |
 | `asterisk_ws_monitor` | Asterisk Stasis WebSocket Listener |
 | `asterisk_recaller` | Call Retry & Backup Escalation Loop |
-| `celery_worker` | Celery Background Task Consumer |
+| `celery_worker` | Celery Priority Task Consumer (`p0_emergency`, `default`) |
 
 ---
 
@@ -159,12 +159,12 @@ In Grafana's waterfall view, an end-to-end incident call displays as a connected
   │     └── [ Redis: Celery Task Enqueue ] (2ms)
   ├── [ celery_worker: do_this_call ] (1.8s)
   │     └── [ asterisk_caller: POST /call_to_queue ] (12ms)
-  │           └── [ caller_address_book: GET /on_call_contact ] (4ms)
+  │           └── [ caller_address_book: GET /contact_on_call ] (4ms)
   │                 └── [ PostgreSQL: SELECT FROM address_book ] (1ms)
   └── [ asterisk_ws_monitor: StasisStart Event ] (850ms)
-        ├── [ caller_register: POST /voice_message ] (5ms)
+        ├── [ caller_register: POST /msg ] (5ms)
         ├── [ generate_audio: POST /make_audio ] (620ms)
-        │     └── [ Neural Model: Kokoro-82M TTS Synthesis ] (580ms)
+        │     └── [ Neural Model: Kokoro / Silero / Piper TTS Synthesis ] (580ms)
         └── [ asterisk_caller: POST /play ] (10ms)
 ```
 
@@ -172,3 +172,5 @@ Clicking any individual span reveals:
 - Exact HTTP status codes and headers
 - Database query strings and execution duration
 - Python exception stack traces in case of failure
+
+For Prometheus scraping, health/readiness probes, and turnkey Grafana dashboards, see the [OpenTelemetry & Observability Guide](opentelemetry-guide.md) and [`deploy/docs/07-enterprise-gateway-and-observability.md`](../deploy/docs/07-enterprise-gateway-and-observability.md).

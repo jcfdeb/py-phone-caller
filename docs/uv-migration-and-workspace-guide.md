@@ -19,7 +19,7 @@ A comprehensive guide to the **Multi-Package UV Workspace** architecture in `py-
 4. **No Path Hacking**:
    Eliminates manual `sys.path.append` or custom `PYTHONPATH` tricks in Dockerfiles and development scripts.
 5. **Python 3.14.x Native**:
-   The workspace is pinned to Python 3.14 via [`.python-version`](../.python-version) and `requires-python = ">=3.14, <3.15"`.
+   The workspace is pinned to Python 3.14 in [`pyproject.toml`](../pyproject.toml) via `requires-python = ">=3.14, <3.15"`.
 
 ---
 
@@ -273,13 +273,12 @@ uv publish --publish-url "https://gitlab.com/api/v4/projects/<PROJECT_ID>/packag
 
 ---
 
-## 8. Rust SMS Engine (`sms_rust_backend`) with Maturin
+## 8. Rust Components: SMS Engine (`rust_engine`) & OpenAlert (`openalertd`)
 
-The [`py_phone_caller_utils`](../src/py-phone-caller-utils) package includes a high-performance native Rust extension used when `caller_sms` is configured with `caller_sms_carrier = "on_premise"`.
+### 8.1 Native USB GSM SMS Engine (`rust_engine`) with Maturin
+The [`py_phone_caller_utils`](../src/py-phone-caller-utils) package includes a native Rust extension built with **[Maturin](https://www.maturin.rs/)** and **PyO3**, used when `caller_sms` is configured with `caller_sms_carrier = "on_premise"`. It drives multi-modem AT serial ports with **always-UCS-2 UTF-8 encoding** and automatic **70 UTF-16 code-unit multipart chunking** (never splitting surrogate pairs).
 
-The Rust backend is built using **[Maturin](https://www.maturin.rs/)** and **PyO3**:
-
-- **Graceful Fallback**: When the compiled Rust extension is not present, Python cleanly falls back to Twilio mode without crashing.
+- **Graceful Fallback**: When the compiled Rust extension is not present (or no GSM modem is attached), `caller_sms` cleanly falls back to configured carriers (`asterisk_sip` RFC 3428 SIP `MESSAGE` for local SIP extensions, or `twilio` if `sms_saas_fallback = true`).
 - **Local Development**:
   ```bash
   cd src/py-phone-caller-utils
@@ -292,9 +291,17 @@ The Rust backend is built using **[Maturin](https://www.maturin.rs/)** and **PyO
   ```
   The built wheel is placed into `src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/wheels/`.
 
+### 8.2 OpenAlert Field Mesh Daemon (`openalertd`)
+The optional decentralized mesh bridge (`src/openalert/`) is a standalone Rust crate (LoRa RF, BitChat BLE with BlueZ HCI self-healing, `/sos` Captive Portal, Nostr `NIP-ALERT`, Embedded Relay `:8088`, and direct always-UCS-2 USB GSM SMS). Build and test it directly with Cargo:
+```bash
+cd src/openalert
+cargo build --release
+cargo test
+```
+
 ---
 
-## 9. Container Builds (Docker / Podman)
+## 9. Container & Release Artifact Builds
 
 Dockerfiles leverage multi-stage builds with `uv` for reproducible image builds from the root workspace lockfile:
 
@@ -314,11 +321,11 @@ RUN uv python install 3.14 && \
     uv sync --frozen --no-dev --package asterisk-caller
 ```
 
-To build all container images across the stack:
-
-```bash
-./src/build_all_images.sh
-```
+- **Build all container images**:
+  ```bash
+  ./src/build_all_images.sh
+  ```
+- **Build all release artifacts (PyPI wheels, `.deb`, `.rpm`, Helm chart, SHA256SUMS)**: See **[`deploy/docs/08-release-packaging.md`](../deploy/docs/08-release-packaging.md)** (`deploy/packaging/build_all_releases.py`) and **[`deploy/docs/06-pypi-and-systemd-deployment.md`](../deploy/docs/06-pypi-and-systemd-deployment.md)**.
 
 ---
 
@@ -332,6 +339,9 @@ cp src/config/settings.toml src/config/.secrets.toml
 
 ### Q: `ModuleNotFoundError: No module named 'audioop'` on Python 3.14?
 **Answer**: Python 3.13 and 3.14 removed standard library `audioop`. The workspace automatically includes [`audioop-lts`](https://pypi.org/project/audioop-lts/) to maintain seamless compatibility with `pydub` and TTS engines.
+
+### Q: Cython compilation errors when building `curated-tokenizers` on Python 3.14?
+**Answer**: The root [`pyproject.toml`](../pyproject.toml) pins `build-constraint-dependencies = ["cython<3.1"]` under `[tool.uv]` so `uv sync` builds source distributions cleanly without Cython 3.1 incompatibilities.
 
 ### Q: How do I clean and reset the environment?
 ```bash

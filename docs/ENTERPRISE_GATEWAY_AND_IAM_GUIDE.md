@@ -1,6 +1,9 @@
 # Enterprise Gateway & IAM Deployment Guide: Apache APISIX & Keycloak SSO for py-phone-caller
 
-This guide is designed for **all experience levels**—from curious beginners to seasoned DevOps engineers. It provides both an **automated 1-command deployment** (via Ansible & Ansible Vault) and a **complete, step-by-step manual "copy-and-paste" walkthrough** to help you understand every moving part under the hood.
+This guide is designed for **all experience levels**—from curious beginners to seasoned DevOps engineers. It provides both an **automated 1-command deployment** (via the consolidated Ansible installer `deploy/ansible/site.yml` & Ansible Vault) and a **complete, step-by-step manual "copy-and-paste" walkthrough** to help you understand every moving part under the hood.
+
+> [!TIP]
+> For Docker Compose (`docker-compose.gateway.yml`), Kubernetes/Helm Ingress, and turnkey Grafana NOC dashboards, also see **[`deploy/docs/07-enterprise-gateway-and-observability.md`](../deploy/docs/07-enterprise-gateway-and-observability.md)**.
 
 ---
 
@@ -56,9 +59,9 @@ flowchart TB
     end
 
     subgraph InfraLayer ["Infrastructure & Telephony"]
-        Postgres[("Consolidated PostgreSQL\n• py_phone_caller DB\n• keycloak DB")]
-        Redis[("Redis Queue")]
-        Asterisk["Asterisk PBX / FreePBX\n(ARI & PJSIP)"]
+        Postgres[("Consolidated PostgreSQL 17/18\n• py_phone_caller DB\n• keycloak DB")]
+        Redis[("Redis 7/8 Queue")]
+        Asterisk["Asterisk 22 PBX / FreePBX\n(ARI & PJSIP)"]
     end
 
     User -->|HTTPS :443| EdgeProxy
@@ -78,7 +81,7 @@ flowchart TB
 ```
 
 ### Key Architectural Benefits
-- **Single Public URL**: All traffic enters through `https://your-domain.com`. Users don't have to juggle weird ports like `:8080` or `:5000`.
+- **Single Public URL**: All traffic enters through `https://your-domain.com`. Users don't have to juggle ports like `:8080` or `:5000`.
 - **Zero Port Conflict**: Keycloak management runs on port `9009`, HTTP on `8180`, APISIX Dashboard on `9001`, avoiding standard port collisions.
 - **Enterprise SSO & Local Fallback**: Operators can log in using Keycloak OIDC (SSO). If Keycloak is undergoing maintenance, a local database fallback account remains available.
 - **Microservices Isolation**: Backend daemons (`caller_register`, `asterisk_caller`, etc.) bind only to loopback (`127.0.0.1`), protected by the gateway.
@@ -99,49 +102,38 @@ Keycloak defines 3 standardized roles inside the `py-phone-caller` realm:
 
 ## 3. Method A: Automated Deployment with Ansible (Recommended)
 
-If you have Ansible installed on your workstation, the provided role will automate the entire setup in **under 3 minutes**:
+The consolidated native Ansible installer ([`deploy/ansible/README.md`](../deploy/ansible/README.md) and [`deploy/docs/02-ansible-deployment.md`](../deploy/docs/02-ansible-deployment.md)) automates the entire gateway and IAM stack on Debian 13, Ubuntu 26.04 LTS, and Rocky Linux 10.2:
 
-### Step A.1: Configure Inventory & Public Domain
-Edit `deploy/ansible/on-vm_py-phone-caller/inventory`:
-```ini
-[app_servers]
-openalert ansible_host=your-server-ip ansible_port=22 ansible_user=root
-```
-
-In `deploy/ansible/on-vm_py-phone-caller/group_vars/app_servers/config.yml`, ensure the gateway feature is turned on:
+### Step A.1: Configure Inventory & Enterprise Topology
+In your reviewed inventory (e.g. based on `deploy/ansible/inventories/examples/`), enable the `enterprise` topology and set your public domain:
 ```yaml
-py_phone_caller_manage_gateway: true
+stack_topology: enterprise
+stack_deploy_py_phone_caller: true
+stack_deploy_asterisk: true        # or false if using an external PBX
+stack_deploy_openalert: false      # set true to co-deploy openalertd
 py_phone_caller_public_url: "https://your-domain.com"
 ```
 
-### Step A.2: Run the Playbook
-From `deploy/ansible/on-vm_py-phone-caller/`:
+### Step A.2: Run the Consolidated Playbook
+From `deploy/ansible/`:
 ```bash
-ansible-playbook -i inventory deploy_py-phone-caller.yml
+ansible-galaxy collection install -r requirements.yml -p "$PWD/.collections"
+ansible-playbook -i /secure/inventory/hosts.yml site.yml --ask-vault-pass
 ```
 
-The playbook will:
-1. Generate cryptographically strong 32-character random passwords on your control node in `credentials/`.
-2. Provision container images (`etcd`, `apisix`, `apisix-dashboard`, `keycloak`) using Podman.
-3. Consolidate Keycloak's database into PostgreSQL.
-4. Execute `setup_keycloak.py` and `setup_apisix_routes.py`.
-5. Render server credentials to `/etc/py-phone-caller/credentials.env` (`0600 root:root`).
-6. Print a formatted summary table with all login accounts and passwords.
+The `gateway` role will:
+1. Provision container services (`etcd`, `apisix`, `apisix-dashboard`, `keycloak`) using Podman with Vault-managed secrets.
+2. Consolidate Keycloak's database into PostgreSQL.
+3. Execute hardened `setup_keycloak.py` and `setup_apisix_routes.py` provisioning scripts.
+4. Configure `py_phone_caller_ui` for OIDC SSO and `caller_prometheus_webhook` for M2M Bearer verification.
 
-### Step A.3: Encrypt Secrets with Ansible Vault
-```bash
-ansible-vault encrypt credentials/*
-```
-To inspect credentials anytime on your control machine:
-```bash
-./show-credentials.sh
-```
+*(Compatibility note: legacy wrapper playbooks under `deploy/ansible/on-vm_py-phone-caller/` remain supported and delegate to the same consolidated roles.)*
 
 ---
 
 ## 4. Method B: Step-by-Step Manual Deployment Guide
 
-Follow these steps if you want to deploy manually on a clean Ubuntu 22.04 / 24.04 or Debian 12 server.
+Follow these steps if you want to deploy manually on a clean Debian 12 / 13, Ubuntu 24.04 / 26.04 LTS, or Rocky Linux 9 / 10 server.
 
 ---
 
@@ -433,7 +425,7 @@ systemctl reload apache2
 
 ### Step 5: Keycloak Realm, Roles, and Users Provisioning
 
-Run the automated provisioning script [`setup_keycloak.py`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/deploy/gateway/keycloak/setup_keycloak.py):
+Run the automated provisioning script [`setup_keycloak.py`](../deploy/gateway/keycloak/setup_keycloak.py):
 
 ```bash
 KEYCLOAK_URL="http://127.0.0.1:8180" \
@@ -458,7 +450,7 @@ This will automatically create:
 
 ### Step 6: APISIX Route Provisioning
 
-Run [`setup_apisix_routes.py`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/deploy/gateway/apisix/setup_apisix_routes.py) to configure routing inside APISIX:
+Run [`setup_apisix_routes.py`](../deploy/gateway/apisix/setup_apisix_routes.py) to configure routing inside APISIX:
 
 ```bash
 APISIX_DASHBOARD_URL="http://127.0.0.1:9001" \

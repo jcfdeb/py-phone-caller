@@ -58,6 +58,38 @@ async def api_dashboard_metrics():
     return jsonify(metrics)
 
 
+_OPENAPI_SERVICE_SPECS: Dict[str, tuple[str, str, str, str, int]] = {
+    "alerts": ("caller_prometheus_webhook", "prometheus_webhook_http_scheme", "prometheus_webhook_host", "prometheus_webhook_port", 8084),
+    "telephony": ("asterisk_call", "asterisk_call_http_scheme", "asterisk_call_host", "asterisk_call_port", 8081),
+    "sms": ("caller_sms", "caller_sms_http_scheme", "caller_sms_host", "caller_sms_port", 8085),
+    "contacts": ("caller_address_book", "caller_address_book_http_scheme", "caller_address_book_host", "caller_address_book_port", 8087),
+    "schedules": ("scheduled_calls", "scheduled_calls_http_scheme", "scheduled_calls_host", "scheduled_calls_port", 8086),
+    "audio": ("generate_audio", "generate_audio_http_scheme", "generate_audio_host", "generate_audio_port", 8082),
+    "registry": ("call_register", "call_register_http_scheme", "call_register_host", "call_register_port", 8083),
+}
+
+
+def _resolve_internal_service_base_url(service_slug: str) -> str | None:
+    """Resolves the internal loopback/cluster base URL for an allowlisted microservice."""
+    spec = _OPENAPI_SERVICE_SPECS.get(service_slug)
+    if spec is None:
+        return None
+    section_name, scheme_key, host_key, port_key, default_port = spec
+    section = settings.get(section_name, {})
+    scheme = str(section.get(scheme_key) or "http").strip().lower()
+    if scheme not in ("http", "https"):
+        scheme = "http"
+    host = str(section.get(host_key) or "127.0.0.1").strip()
+    if host in ("", "0.0.0.0", "::", "192.168.101.17", "192.168.101.111"):
+        host = "127.0.0.1"
+    raw_port = section.get(port_key)
+    try:
+        port = int(raw_port) if raw_port is not None and str(raw_port).strip() else default_port
+    except (TypeError, ValueError):
+        port = default_port
+    return f"{scheme}://{host}:{port}"
+
+
 @home_blueprint.route("/api/docs")
 @home_blueprint.route("/api/docs/")
 def api_docs_portal():
@@ -67,6 +99,43 @@ def api_docs_portal():
     """
     html = generate_unified_swagger_portal_html()
     return Response(html, mimetype="text/html")
+
+
+@home_blueprint.route("/api/v1/<service_slug>/docs/swagger.json")
+async def api_v1_service_swagger_json(service_slug: str):
+    """
+    Read-only BFF proxy for microservice OpenAPI 3.0 JSON specifications.
+
+    Enables all links in /api/docs to work over the single public HTTPS origin
+    in standalone and air-gapped deployments (without Apache APISIX) while keeping
+    internal microservice ports (8081-8087) bound strictly to loopback/private LAN.
+    """
+    base_url = _resolve_internal_service_base_url(service_slug)
+    if base_url is None:
+        return jsonify({"error": f"Unknown API documentation service '{service_slug}'"}), 404
+
+    target_url = f"{base_url}/docs/swagger.json"
+    try:
+        timeout = aiohttp.ClientTimeout(total=3.0)
+        async with aiohttp.ClientSession(timeout=timeout) as session_http:
+            async with session_http.get(target_url) as resp:
+                if resp.status == 200:
+                    payload = await resp.json(content_type=None)
+                    return jsonify(payload), 200
+                return jsonify(
+                    {
+                        "error": f"Upstream service '{service_slug}' returned HTTP {resp.status}",
+                        "service": service_slug,
+                    }
+                ), 502
+    except Exception as exc:
+        logger.warning("OpenAPI spec proxy failed for %s (%s): %s", service_slug, target_url, exc)
+        return jsonify(
+            {
+                "error": f"Upstream service '{service_slug}' OpenAPI specification is unreachable",
+                "service": service_slug,
+            }
+        ), 502
 
 
 @home_blueprint.route("/api/cluster_health")

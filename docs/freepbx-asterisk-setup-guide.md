@@ -1,6 +1,12 @@
 # 📞 FreePBX & Asterisk PBX Configuration Guide
 
-This guide details the step-by-step configuration of **Asterisk PBX** and **FreePBX** for seamless integration with **py-phone-caller** (Release 1.0.0).
+This guide details the configuration of **Asterisk PBX (18 / 20 / 21 / 22)** and **FreePBX** for seamless integration with **py-phone-caller**.
+
+> [!TIP]
+> **Automated Native Asterisk 22 Provisioning (Ansible)**  
+> If you are deploying Asterisk directly on Linux (Debian 13 via AllStarLink, Ubuntu 26.04 LTS official packages, or Rocky Linux 10 via Tucny `22.9.0-1.el10`), use the automated [`asterisk_py_phone_caller`](../deploy/ansible/docs/asterisk-provider.md) Ansible role documented in [`deploy/docs/02-ansible-deployment.md`](../deploy/docs/02-ansible-deployment.md).
+>
+> **Ready-to-Use Local SIP Extension `1000` (Optional):** Set `asterisk_sip_exten_1000_enabled: true` in your Ansible inventory to automatically provision a ready-to-register local PJSIP extension (`1000`) with a cryptographically random password logged during execution (and preserved idempotently across reruns). It uses `max_contacts=1` and `qualify_frequency=0` for reliable mobile/VPN/air-gapped softphone registration (e.g., Linphone) and supports both ARI voice calls and RFC 3428 SIP `MESSAGE` text alerts from `caller_sms`.
 
 ---
 
@@ -19,7 +25,7 @@ This guide details the step-by-step configuration of **Asterisk PBX** and **Free
 
 ## 1. Architectural Role of Asterisk & FreePBX
 
-**py-phone-caller** uses the **Asterisk REST Interface (ARI)** to dynamically originate outbound phone calls, control audio playback, and capture real-time dual-tone multi-frequency (DTMF) keypad responses from on-call personnel.
+**py-phone-caller** uses the **Asterisk REST Interface (ARI)** to dynamically originate outbound phone calls, control audio playback, deliver optional RFC 3428 SIP `MESSAGE` notifications (`caller_sms` `asterisk_sip` carrier), and capture real-time dual-tone multi-frequency (DTMF) keypad responses from on-call personnel.
 
 ```text
 +-----------------------+                         +---------------------------+
