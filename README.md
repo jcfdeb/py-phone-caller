@@ -161,20 +161,24 @@ All deployment guides are centralized under **[`deploy/docs/README.md`](deploy/d
 - **[05. Native Linux Packages (`.deb` & `.rpm`) Guide](deploy/docs/05-linux-deb-rpm-deployment.md)** ([`deploy/packaging/linux/`](deploy/packaging/linux/README.md)): Native `apt` (`.deb`) and `dnf` (`.rpm`) installation for Debian/Ubuntu and RHEL/Rocky/AlmaLinux.
 - **[06. Python Wheels (`PyPI`) & Systemd Deployment Guide](deploy/docs/06-pypi-and-systemd-deployment.md)** ([`deploy/packaging/pypi/`](deploy/packaging/pypi/README.md) & `deploy/systemd/`): Installing `py-phone-caller[all]==1.0.0` into a custom virtual environment with `systemd` units.
 - **[07. Enterprise Gateway (`APISIX` + `Keycloak`) & Observability](deploy/docs/07-enterprise-gateway-and-observability.md)** ([`docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md`](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md) & [`deploy/dashboards/`](deploy/dashboards/README.md)): Zero-Trust OIDC SSO, 3-tier RBAC, Prometheus scraping, and turnkey Grafana dashboard.
-- **[08. Release Packaging & Verification Guide](deploy/docs/08-release-packaging.md)** ([`deploy/packaging/`](deploy/packaging/README.md)): Reproducibly building all 33 release artifacts in `dist/` via `deploy/packaging/build_all_releases.py`.
+- **[08. Release Packaging & Verification Guide](deploy/docs/08-release-packaging.md)** ([`deploy/packaging/`](deploy/packaging/README.md)): Reproducibly building all 33 distributable release archives/packages in `dist/` via `deploy/packaging/build_all_releases.py`.
+- **[09. ARM64 Appliance & Air-Gapped Deployment Guide](deploy/docs/09-arm64-appliance-and-airgapped-deployment.md)**: All-in-one Orange Pi 5 Plus (RK3588 `aarch64`) deployment in both `online` and 100% `airgapped` modes (`unshare --net`), signed `file:` APT mirror, USB GSM SIM7600E-H, and local SIP softphone verification.
+- **[10. End-to-End Installation Validation Checklist](deploy/docs/10-end-to-end-installation-validation.md)**: Copy-pasteable 12-Gate verification procedure covering systemd, private listeners, DB/Redis, Asterisk ARI/Stasis, `openalertd`, Rust SMS, Piper TTS, strict-TLS Web UI + `/api/docs`, air-gap isolation, idempotency, and cold reboot recovery.
 - **OpenAlert Nostr Alert Specification (`NIP-ALERT`)**: [`docs/openalert/NIP-ALERT.md`](docs/openalert/NIP-ALERT.md)
 
 ## Quick Start
 
-Pick one path.
+Pick one path (see **[`deploy/docs/README.md`](deploy/docs/README.md)** for the full comparison matrix across all deployment pillars):
 
 ### Option A: Docker Compose (fastest, external Asterisk required)
+
+For the full walkthrough including hardware USB GSM/LoRa/BLE passthrough and the Enterprise APISIX/Keycloak overlay, see **[03. Docker & Docker Compose Deployment Guide](deploy/docs/03-docker-compose-deployment.md)**.
 
 1. Configure Asterisk access used by the containers:
    - `src/config/settings.toml`: set `[commons] asterisk_host`, `asterisk_user`, and `asterisk_web_port` if different.
    - `src/config/.secrets.toml`: set `[commons] asterisk_pass` to your ARI password.
    - If Asterisk runs on the Docker host, use `asterisk_host = "host.containers.internal"`.
-   - Asterisk setup details: `deploy/ansible/asterisk_py-phone-caller/README.md`
+   - Asterisk ARI/dialplan prerequisites: **[01. Architecture & Prerequisites (§3)](deploy/docs/01-architecture-and-prerequisites.md#3-asterisk-pbx-prerequisites-ari-stasis--dialplan)**.
 2. Create the Compose environment files:
    ```bash
    uv run python assets/scripts/config/toml_to_dynaconf_env.py \
@@ -203,7 +207,7 @@ Pick one path.
    docker compose ps
    ```
 5. Open the UI and retrieve the admin password:
-   - UI: http://localhost:5000 (or the Caddy domain you set).
+   - UI: `http://localhost:5000` (or the Caddy HTTPS domain you set).
    - Admin email defaults to `admin@py-phone-caller.link` (change via `ui_admin_user`).
    - If `UI_USER_RESET_PASSWORD=true`, the first-run password is generated and logged by `py_phone_caller_ui`:
      ```bash
@@ -212,9 +216,7 @@ Pick one path.
 
 ### Option B: Modular native Ansible installation
 
-Use the [canonical guide](deploy/ansible/README.md), a separate reviewed inventory
-and Vault-protected secrets. Set all three component selectors explicitly;
-the managed host determines artifact architecture, not the controller.
+Follow **[02. Native Ansible Deployment Guide](deploy/docs/02-ansible-deployment.md)** (or **[09. ARM64 Appliance & Air-Gapped Deployment Guide](deploy/docs/09-arm64-appliance-and-airgapped-deployment.md)** for SBC/air-gapped hosts) using a separate reviewed inventory and Vault-protected secrets. Set all three component selectors explicitly; the managed host determines artifact architecture, not the controller.
 
 ```bash
 cd deploy/ansible
@@ -222,33 +224,23 @@ ansible-galaxy collection install -r requirements.yml -p "$PWD/.collections"
 ansible-playbook -i /secure/inventory/hosts.yml site.yml --ask-vault-pass
 ```
 
-For an all-in-one deployment select both `stack_deploy_py_phone_caller` and
-`stack_deploy_asterisk`; OpenAlert remains independently selectable. Internal
-listeners, local/external dependencies and hardware access must be configured
-for the target. Selecting a lightweight TTS engine does not change the locked
-workspace dependency installation.
+For an all-in-one deployment select both `stack_deploy_py_phone_caller` and `stack_deploy_asterisk`; OpenAlert remains independently selectable. Internal listeners, local/external dependencies and hardware access must be configured for the target. Selecting a lightweight TTS engine does not change the locked workspace dependency installation.
 
-Existing [combined](deploy/ansible/deploy_all/README.md),
-[Python](deploy/ansible/on-vm_py-phone-caller/README.md) and
-[PBX](deploy/ansible/asterisk_py-phone-caller/README.md) commands remain compatibility
-entry points. Do not deploy the repository's live-site inventory to a new host.
-Consult the [support matrix](deploy/ansible/docs/support-matrix.md) before treating
-a platform or hardware profile as qualified. Installation verification does not
-authorize calls, SMS, radio transmissions or migration of an existing host.
+Legacy [combined](deploy/ansible/deploy_all/README.md), [Python](deploy/ansible/on-vm_py-phone-caller/README.md), and [PBX](deploy/ansible/asterisk_py-phone-caller/README.md) entry points remain available for backward compatibility. Do not deploy the repository's live-site inventory to a new host. Consult the [support matrix](deploy/ansible/docs/support-matrix.md) before treating a platform or hardware profile as qualified, and verify your installation with **[10. End-to-End Installation Validation Checklist](deploy/docs/10-end-to-end-installation-validation.md)**.
 
 ## Configuration
 
-- Primary settings file: `src/config/settings.toml`
+- Primary settings file: `src/config/settings.toml` (see **[01. Architecture & Configuration (§4)](deploy/docs/01-architecture-and-prerequisites.md#4-configuration--secrets-contract-settingstoml--secretstoml)** for the per-deployment path table across Ansible, `.deb`/`.rpm`, PyPI/systemd, and containers)
 - Local runs can override config location with `CALLER_CONFIG_DIR` or `CALLER_CONFIG`
 - Container runs should inject generated `DYNACONF_*` env files instead of baking config files into images
-- Core dependencies: Asterisk PBX with ARI enabled, PostgreSQL, Redis
-- Optional integrations: Twilio credentials and TTS model downloads
+- Core dependencies: Asterisk PBX with ARI enabled, PostgreSQL (`16+` / `17` / `18`), Redis (`7+` / `8`) or Valkey (`8+`)
+- Optional integrations: Twilio credentials, USB GSM/LoRa/BLE hardware, and TTS model downloads
 
 ## Project Status
 
-- Core call and SMS flows are stable when deployed in a trusted network.
-- Deployment automation and container orchestration are still evolving.
-- Operating the stack requires Asterisk/FreePBX and Linux admin knowledge.
+- **v1.0.0 Deployment Pillars Qualified**: Native Ansible (Debian 13, Ubuntu 26.04 LTS, Rocky Linux 10.2 `SELinux Enforcing`, plus physical ARM64 Orange Pi 5 Plus in both `online` and 100% `airgapped` modes), Docker Compose, Kubernetes & Helm v3 (`GKE` & `k3s`), native `.deb`/`.rpm` packages, and PyPI/systemd — see **[`deploy/docs/README.md`](deploy/docs/README.md)** and the [support matrix](deploy/ansible/docs/support-matrix.md).
+- Core voice calling, DTMF acknowledgment (`4` key), dual-channel SMS/SIP `MESSAGE`, and OpenAlert mesh flows are verified end-to-end.
+- Operating the stack in production requires Asterisk/FreePBX and Linux administration knowledge.
 
 ## Documentation
 
@@ -280,7 +272,7 @@ authorize calls, SMS, radio transmissions or migration of an existing host.
 - [Generate Audio](src/generate_audio/README.md) - Text-to-speech service for generating call audio files.
 - [py-phone-caller-utils](src/py-phone-caller-utils/README.md) - Shared utility library for config, DB, TTS, SMS, and telemetry helpers.
 - [py_phone_caller_ui](src/py_phone_caller_ui/README.md) - Flask web UI for calls, schedules, users, and WS events.
-- [Ansible: deploy all](deploy/ansible/deploy_all/README.md) - One-command Ansible playbook for the full Asterisk + py-phone-caller stack.
-- [Ansible: Asterisk role](deploy/ansible/asterisk_py-phone-caller/README.md) - Role to install and configure Asterisk PBX for this system.
-- [Ansible: py-phone-caller role](deploy/ansible/on-vm_py-phone-caller/README.md) - Role to deploy the microservices stack on a VM or server.
-- [Docker Compose stack](deploy/compose/README.md) - Containerized full-stack deployment (requires an external Asterisk).
+- [Modular Ansible Deployment Guide](deploy/docs/02-ansible-deployment.md) ([canonical role reference](deploy/ansible/README.md)) - Turnkey native installation across AMD64 and ARM64 (`standard`/`enterprise`, `online`/`airgapped`).
+- [Docker & Docker Compose Guide](deploy/docs/03-docker-compose-deployment.md) ([compose manifests](deploy/compose/README.md)) - Containerized full-stack deployment with hardware and gateway overlays.
+- [Kubernetes & Helm v3 Guide](deploy/docs/04-kubernetes-and-helm-deployment.md) ([Helm chart](deploy/helm/py-phone-caller/README.md) / [Kustomize](deploy/k8s/README.md)) - Cloud-native and k3s deployment.
+- *Compatibility Ansible entry points*: [deploy_all](deploy/ansible/deploy_all/README.md), [Asterisk role](deploy/ansible/asterisk_py-phone-caller/README.md), [py-phone-caller role](deploy/ansible/on-vm_py-phone-caller/README.md).

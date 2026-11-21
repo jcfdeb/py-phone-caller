@@ -7,8 +7,10 @@ This guide provides step-by-step instructions for deploying **`py-phone-caller`*
 > [!NOTE]
 > **Live Kubernetes Qualification (`k3s` & Google Kubernetes Engine `GKE`)**
 > Certified end-to-end on both:
-> - **Google Kubernetes Engine (`GKE v1.36.4-gke.2377000`)**: 2-node cluster (`Container-Optimized OS`, `containerd://2.2.7`, `standard-rwo` CSI Persistent Disks, and Google Artifact Registry) — certified both **Option A (Helm v3, 17/17 Deployments `1/1 Running`)** and **Option B (Kustomize `kubectl apply -k deploy/k8s/`, 18/18 Deployments `1/1 Running`)**, all 3 PVCs `Bound`, and all in-cluster HTTP & cross-VPC Asterisk 22 ARI (`:8088`) endpoints returning `200 OK`.
+> - **Google Kubernetes Engine (`GKE v1.36.4-gke.2377000`)**: 2-node cluster (`Container-Optimized OS`, `containerd://2.2.7`, `standard-rwo` CSI Persistent Disks, and Google Artifact Registry) — certified both **Option A (Helm v3 with `gateway.enabled=true`, 17/17 Deployments `1/1 Running`)** and **Option B (Kustomize `kubectl apply -k deploy/k8s/`, 18/18 Deployments `1/1 Running`)**, all 3 PVCs `Bound`, and all in-cluster HTTP & cross-VPC Asterisk 22 ARI (`:8088`) endpoints returning `200 OK`.
 > - **Single-Node `k3s` (`v1.34.6+k3s1` / `v1.37.2+k3s1`) on Debian 13 AMD64**: Certified with local `containerd` image import and `helm v3`.
+>
+> *Deployment count breakdown*: **13** core (`11` Python + `postgresql` + `redis`, when `openalertd.enabled=false, gateway.enabled=false`), **14** default Helm (`+ openalertd`), **17** Enterprise Helm (`+ apisix-etcd`, `apisix-gateway`, `keycloak`), and **18** Kustomize (`+ haproxy` from `16_haproxy.yml`).
 
 ---
 
@@ -157,7 +159,7 @@ If you prefer raw YAML manifests over Helm, `deploy/k8s/` contains all 20 manife
 | `04_caller_secrets.yml` | `Secret` (`py-phone-caller-secrets`) | Mounts `/app/py-phone-caller/config/.secrets.toml` and environment credentials |
 | `05` – `15_*.yml` | `Deployment` + `Service` (11 microservices) | All 11 Python services + `audio-pvc` |
 | `16_haproxy.yml` | `ConfigMap`, `Deployment`, `Service` (`haproxy-service:8080`) | Internal HAProxy aggregator |
-| `17_openalertd.yml` | `PVC`, `Deployment`, `Service` (`openalertd-service`) | OpenAlert daemon (`:8090`, `:8088`, `:19876/udp`) with `OPENALERT_TEMPLATES__TEMPLATE_DIR=/templates` and `fsGroup: 10001` |
+| `17_openalertd.yml` | `PVC`, `Deployment`, `Service` (`openalertd-service`) | OpenAlert daemon (`:8090`, `:8088` Nostr relay — isolated in its own pod so it does not collide with external `asterisk-service:8088` — and `:19876/udp`) with `OPENALERT_TEMPLATES__TEMPLATE_DIR=/templates` and `fsGroup: 10001` |
 | `18_gateway_apisix_keycloak.yml` | `ConfigMap`, `Deployment`, `Service` (`apisix`, `etcd`, `keycloak`) | Enterprise APISIX + Keycloak OIDC gateway (`apisix-config` pointing to `apisix-etcd-service:2379`) |
 
 ### 1. Edit Asterisk IP, Secrets & Registry Prefix Before Applying

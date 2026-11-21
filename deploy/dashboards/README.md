@@ -11,7 +11,7 @@ The `grafana-py-phone-caller.json` template provides a turnkey, production-grade
 ### Option A: Import via Grafana Web UI (Recommended)
 1. Open your Grafana instance (e.g. `http://grafana.lan:3000`).
 2. Navigate to **Dashboards** -> **New** -> **Import**.
-3. Click **Upload dashboard JSON file** and select [`grafana-py-phone-caller.json`](file:///home/jcf/Workspace/PyCharm/py-phone-caller_release-github/deploy/dashboards/grafana-py-phone-caller.json).
+3. Click **Upload dashboard JSON file** and select [`grafana-py-phone-caller.json`](grafana-py-phone-caller.json).
 4. In the **Prometheus** dropdown, select your active Prometheus datasource.
 5. Click **Import**.
 

@@ -168,7 +168,7 @@ The test suite was executed across all components using Python 3.14.6 in the `uv
 
 ```text
 ============================= test session starts ==============================
-rootdir: /home/jcf/Workspace/Antigravity/py-phone-caller
+rootdir: /path/to/py-phone-caller
 configfile: pytest.ini
 collected 81 items
 

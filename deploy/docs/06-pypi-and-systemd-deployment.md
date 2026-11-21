@@ -6,7 +6,7 @@ This guide explains how to deploy **`py-phone-caller`** directly from the prebui
 
 ## 1. The 13 PyPI Packages & Unified CLI Dispatcher
 
-The `dist/pypi/` directory contains **13 publishable Python packages** (13 `.whl` wheels + 13 `.tar.gz` sdists):
+The `dist/pypi/` directory contains **13 publishable Python packages** (**1** umbrella meta-package `py-phone-caller` + **12** workspace packages: `py_phone_caller_utils` and the 11 services), built as 13 `.whl` wheels + 13 `.tar.gz` sdists:
 
 | Package Name | CLI Binary | Unified CLI Command | Default Port | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -28,7 +28,7 @@ The `dist/pypi/` directory contains **13 publishable Python packages** (13 `.whl
 - `py-phone-caller[services]==1.0.0`: Installs `py_phone_caller_utils` + all 9 backend/worker services (excludes UI and heavy neural TTS weights).
 - `py-phone-caller[ui]==1.0.0`: Installs `py_phone_caller_utils` + `py-phone-caller-ui`.
 - `py-phone-caller[audio]==1.0.0`: Installs `py_phone_caller_utils` + `generate-audio` (includes PyTorch, Kokoro, Piper, Transformers, AWS Boto3, gTTS).
-- `py-phone-caller[all]==1.0.0`: Installs **all 12 workspace packages** in one command.
+- `py-phone-caller[all]==1.0.0`: Installs the `py-phone-caller` umbrella CLI plus **all 12 workspace packages** (all 13 PyPI packages) in one command.
 
 ---
 

@@ -1,6 +1,6 @@
 # 08. Release Packaging & Verification Guide (`deploy/packaging`)
 
-This guide documents how to reproducibly build, inspect, and verify all **33 release artifacts** across the five distribution pillars (`dist/ansible/`, `dist/pypi/`, `dist/linux/`, `dist/k8s/`, plus unified `dist/SHA256SUMS` and `dist/RELEASE_MANIFEST.json`).
+This guide documents how to reproducibly build, inspect, and verify all **33 distributable release archives/packages** (`1` Ansible bundle + `26` PyPI packages [`13` `.whl` + `13` `.tar.gz`] + `4` Linux native packages [`2` `.deb` + `2` `.rpm`] + `2` Kubernetes/Helm bundles = **33**, excluding per-directory `SHA256SUMS`, `.sha256`, `release.json`, and top-level `dist/SHA256SUMS` / `dist/RELEASE_MANIFEST.json` integrity files).
 
 ---
 
@@ -64,4 +64,4 @@ Every artifact produced by `deploy/packaging/build_all_releases.py` was tested o
 | **RPM / DEB (`dist/linux/`)** | Debian 13 (`apt-get install`) & Rocky Linux 10.2 (`dnf install`, `SELinux Enforcing`) | Emits full RPMv4 `RPMTAG_HEADERSIGNATURES` (`62`), `RPMTAG_HEADERIMMUTABLE` (`63`), `RPMTAG_SHA256HEADER` (`273`), `PAYLOADDIGEST` (`5092`/`5097`), and file metadata tables (`1028`..`1118`) while excluding OS-owned directories. Zero warnings on `dnf`/`apt` install. |
 | **PyPI (`dist/pypi/`)** | Debian 13 & Rocky Linux 10.2 (Python 3.14.10) | Offline installation of `py-phone-caller[services,ui]==1.0.0` + `rust_sms_engine` into `/opt/py-phone-caller/venv`; verified `py-phone-caller list-services`, `ppc-*` entrypoints, and systemd units. |
 | **Docker Compose (`deploy/compose/`)** | Debian 13 (Docker Engine `29.2.1`, Compose `v5.0.0`) | Built all 12 images from source; started all 15 core containers + APISIX Gateway overlay (`pyphonecaller-etcd`, `pyphonecaller-gateway`); verified `:8081`–`:8087/health`, `:5000/health`, `:5000/login`, and `:8090/api/v1/status`. |
-| **Kubernetes & Helm (`dist/k8s/`)** | Debian 13 (`k3s v1.37.2+k3s1`, `helm v3.22.1`) | Server-side validated all 43 Kubernetes objects (`kubectl apply -k --dry-run=server`), linted (`helm lint`), and installed `py-phone-caller-1.0.0.tgz`; all 13 Deployments reached `1/1 Running` (`0` restarts) with `Bound` PVCs and `200 OK` `ClusterIP` health probes. |
+| **Kubernetes & Helm (`dist/k8s/`)** | Debian 13 (`k3s v1.37.2+k3s1`, `helm v3.22.1`) | Server-side validated all 43 Kubernetes objects (`kubectl apply -k --dry-run=server`), linted (`helm lint`), and installed `py-phone-caller-1.0.0.tgz`; all 13 core Deployments (`11` Python + PostgreSQL + Redis, with optional `openalertd`/`gateway` disabled) reached `1/1 Running` (`0` restarts) with `Bound` PVCs and `200 OK` `ClusterIP` health probes (see [Guide 04](04-kubernetes-and-helm-deployment.md) for the full 14/17/18 Deployment matrix). |

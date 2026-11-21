@@ -15,11 +15,11 @@ flowchart LR
     APISIX -->|"/realms/*, /resources/*"| KC["Keycloak OIDC (:8080 / :8180)"]
     APISIX -->|"/*"| UI["py_phone_caller_ui (:5000)"]
     APISIX -->|"/api/v1/telephony/*"| AC["asterisk_caller (:8081)"]
-    APISIX -->|"/api/v1/tts/*"| GA["generate_audio (:8082)"]
+    APISIX -->|"/api/v1/audio/*"| GA["generate_audio (:8082)"]
     APISIX -->|"/api/v1/registry/*"| CR["caller_register (:8083)"]
-    APISIX -->|"/api/v1/webhook/*"| CPW["caller_prometheus_webhook (:8084)"]
+    APISIX -->|"/api/v1/alerts/*"| CPW["caller_prometheus_webhook (:8084)"]
     APISIX -->|"/api/v1/sms/*"| SMS["caller_sms (:8085)"]
-    APISIX -->|"/api/v1/scheduler/*"| SCH["caller_scheduler (:8086)"]
+    APISIX -->|"/api/v1/schedules/*"| SCH["caller_scheduler (:8086)"]
     APISIX -->|"/api/v1/contacts/*"| CAB["caller_address_book (:8087)"]
 ```
 
@@ -32,11 +32,11 @@ The provisioning script (`deploy/gateway/keycloak/setup_keycloak.py`) configures
 | **`alert-operator`** | `operator_user` | Trigger outbound calls/SMS, manage schedules and contacts, and acknowledge alerts |
 | **`alert-viewer`** | `viewer_user` | Read-only access to the NOC Wallboard, call registry, and incident audit logs |
 
-### 2. Automated Provisioning via Ansible (`stack_topology_profile: enterprise`)
-When deploying via **[02. Native Ansible Deployment](02-ansible-deployment.md)** with `stack_topology_profile: enterprise`, the `gateway` role automatically:
+### 2. Automated Provisioning via Ansible (`py_phone_caller_topology: enterprise`)
+When deploying via **[02. Native Ansible Deployment](02-ansible-deployment.md)** with `py_phone_caller_topology: enterprise` (and `py_phone_caller_manage_gateway: true`), the `gateway` role automatically:
 1. Starts digest-pinned `etcd`, `apisix`, `apisix-dashboard`, and `keycloak` containers bound strictly to loopback (`127.0.0.1`).
 2. Runs `setup_keycloak.py` and `setup_apisix_routes.py`.
-3. Wires `py_phone_caller_ui` to authenticate against Keycloak OIDC over your `stack_public_url`.
+3. Wires `py_phone_caller_ui` to authenticate against Keycloak OIDC over your `py_phone_caller_public_url`.
 
 ### 3. Provisioning with Docker Compose or Kubernetes
 If you started the gateway via **Docker Compose** (`docker compose -f docker-compose.yml -f docker-compose.gateway.yml up -d`) or **Kubernetes** (`kubectl apply -f deploy/k8s/18_gateway_apisix_keycloak.yml` or Helm `--set gateway.enabled=true`), run the idempotent setup scripts once the containers are healthy:

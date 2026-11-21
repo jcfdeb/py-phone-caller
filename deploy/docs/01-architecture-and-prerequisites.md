@@ -85,11 +85,13 @@ Every deployment method (Ansible, Docker Compose, Kubernetes, Helm, RPM/DEB, and
   - **Python 3.14+** (for native systemd, PyPI, or DEB/RPM deployments).
 
 ### Data Stores
-1. **PostgreSQL (`16+` or `17+` recommended)**:
+1. **PostgreSQL (`16+`, `17+`, or `18` qualified)**:
+   - Container stacks (`Docker Compose`, `Kubernetes`, `Helm`) ship **`postgres:17-alpine`**; native Linux/ARM64 appliance deployments on Ubuntu 26.04 LTS qualify **PostgreSQL `18`**.
    - Database name: `py_phone_caller` (default)
    - User: `py_phone_caller` (default)
-   - You do **not** need to run SQL migrations manually: when `caller_register` starts, it automatically creates and migrates all required tables (`calls`, `contacts`, `on_call_schedules`, `sms_logs`, `users`, etc.).
+   - You do **not** need to run SQL migrations manually: when `caller_register` starts, it automatically creates and migrates all required tables (`calls`, `address_book`, `scheduled_calls`, `sms`, `asterisk_ws_events`, `users`, `dead_letter_queue`).
 2. **Redis (`7+` / `8+`) or Valkey (`8+`)**:
+   - Container stacks ship **`redis:7-alpine`**; Ubuntu 26.04 LTS / ARM64 appliance qualifies **Redis `8`**; Rocky Linux 10 qualifies **Valkey `8`**.
    - Used as the Celery message broker (`redis://<host>:6379/7` by default) and distributed lock store.
 
 ---
@@ -104,7 +106,7 @@ If you connect `py-phone-caller` to an **existing/external Asterisk or FreePBX s
    ```ini
    [general]
    enabled = yes
-   bindaddr = 0.0.0.0 ; or your private management IP
+   bindaddr = 0.0.0.0 ; or your private management IP (127.0.0.1 for single-node)
    bindport = 8088
    ```
 2. **ARI Enabled (`/etc/asterisk/ari.conf`)**:
@@ -119,12 +121,19 @@ If you connect `py-phone-caller` to an **existing/external Asterisk or FreePBX s
    password = YOUR_STRONG_ARI_PASSWORD
    ```
 3. **Stasis Dialplan & DTMF Acknowledgment (`/etc/asterisk/extensions.conf`)**:
-   When `asterisk_caller` originates a call, it drops the answered channel into the `py-phone-caller` Stasis application (`context = "py-phone-caller"`, `extension = "3216"` by default), and when the callee presses `1` (or your configured DTMF digit), Asterisk notifies `caller_register`:
+   When `asterisk_caller` originates a call, it drops the answered channel into the `py-phone-caller` Stasis application (`context = "py-phone-caller"`, `extension = "3216"` by default). After `Stasis` finishes playing the TTS message, the dialplan marks the call as heard (`GET /heard`), prompts the callee to press **`4`** (default acknowledgment digit, matching `deploy/ansible/roles/asterisk_py_phone_caller/templates/extensions.conf.j2`), and invokes `GET /ack` on `caller_register` (`:8083`) when `4` is entered:
    ```ini
    [py-phone-caller]
    exten => 3216,1,NoOp(py-phone-caller outbound alert call)
-    same => n,Answer()
+    same => n,Playback(greeting-message)
     same => n,Stasis(py-phone-caller)
+    same => n,Set(RES=${CURL(http://127.0.0.1:8083/heard?asterisk_chan=${CHANNEL(uniqueid)})})
+    same => n,Playback(press-4-for-acknowledgement)
+    same => n,Playback(beep)
+    same => n,Read(get,"silence/1",,,,2)
+    same => n,GotoIf($["${get}" = "4"]?ack:done)
+    same => n(ack),Set(RES=${CURL(http://127.0.0.1:8083/ack?asterisk_chan=${CHANNEL(uniqueid)})})
+    same => n(done),Playback(vm-goodbye)
     same => n,Hangup()
    ```
 4. **Audio Playback Access**:
@@ -142,6 +151,16 @@ Configuration files are resolved in the following priority order:
 2. Explicit `CALLER_CONFIG_DIR` environment variable (`export CALLER_CONFIG_DIR=/etc/py-phone-caller`).
 3. Relative `./config/settings.toml`, `./py-phone-caller/config/settings.toml` (production layout), or `./src/config/settings.toml` (local dev layout) from the working directory.
 4. System fallback `/etc/py-phone-caller/settings.toml` (used automatically by `.deb` and `.rpm` packages).
+
+### Canonical Filesystem Layout by Deployment Method
+Because each packaging pillar follows its platform's native conventions, file locations differ intentionally across guides (wired automatically via `CALLER_CONFIG_DIR` or container mounts):
+
+| Deployment Method | Application Directory | `settings.toml` & `.secrets.toml` Path | Synthesized Audio Directory |
+| :--- | :--- | :--- | :--- |
+| **Native Ansible (`02`, `09`, `10`)** | `/opt/py-phone-caller/app/` | `/opt/py-phone-caller/app/config/` (`CALLER_CONFIG_DIR`) | `/opt/py-phone-caller/app/generate_audio/audio/` |
+| **Native `.deb`/`.rpm` & PyPI/Systemd (`05`, `06`)** | `/opt/py-phone-caller/py-phone-caller/` | `/etc/py-phone-caller/` (`CALLER_CONFIG_DIR`) | `/opt/py-phone-caller/py-phone-caller/generate_audio/audio/` |
+| **Docker Compose & Kubernetes/Helm (`03`, `04`)** | `/app/py-phone-caller/` *(in-container)* | `/app/py-phone-caller/config/` *(ConfigMap/Secret mount + `DYNACONF_*` env)* | `/app/py-phone-caller/generate_audio/audio/` *(volume / `audio-pvc`)* |
+| **Local Development (`uv`)** | `./src/` | `./src/config/` | `./src/generate_audio/audio/` |
 
 In addition, **any setting** in `settings.toml` or `.secrets.toml` can be overridden via environment variables using the pattern:
 ```text

@@ -18,7 +18,7 @@ During the uv migration / Python `3.14` setup, several independent issues had to
 The final working build command is:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils
+cd /path/to/py-phone-caller/src/py-phone-caller-utils
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 \
 uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
@@ -26,7 +26,7 @@ uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Car
 The final working import checks are:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 uv run python -c "import rust_engine; print(rust_engine); print(rust_engine.enqueue_sms, rust_engine.start_engine)"
 uv run python -c "from py_phone_caller_utils.sms import enqueue_sms, start_engine; print(enqueue_sms, start_engine)"
 ```
@@ -69,7 +69,7 @@ If this import returns `None` or logs `Rust SMS engine not found`, the `on_premi
 From the project root, make sure the `uv` workspace environment is available:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 uv sync
 ```
 
@@ -129,7 +129,7 @@ cc (SUSE Linux) 15.3.0
 The Python package is built with `maturin`. If `maturin` is not available in the workspace environment, add it as a development dependency from the project root:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 uv add --dev maturin
 ```
 
@@ -159,7 +159,7 @@ Do not rely on a globally installed `maturin` for this project. Keeping it in th
 Use `maturin develop` from the `py_phone_caller_utils` package directory and point it to the nested Rust crate manifest:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils
+cd /path/to/py-phone-caller/src/py-phone-caller-utils
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 \
 uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
@@ -191,14 +191,14 @@ src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/Cargo.toml
 After `maturin develop`, verify that Python can import the extension:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 uv run python -c "import rust_engine; print(rust_engine); print(rust_engine.enqueue_sms, rust_engine.start_engine)"
 ```
 
 Also verify that the Python facade can load the native functions:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 uv run python -c "from py_phone_caller_utils.sms import enqueue_sms, start_engine; print(enqueue_sms, start_engine)"
 ```
 
@@ -241,7 +241,7 @@ The relative import can resolve to the source directory `py_phone_caller_utils/s
 For a release artifact, build a wheel:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils
+cd /path/to/py-phone-caller/src/py-phone-caller-utils
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 \
 uv run maturin build --release --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
@@ -279,7 +279,7 @@ caller_sms_carrier = "on_premise"
 Then run the service from the project root:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 CALLER_CONFIG_DIR=src/config \
 PYTHONPATH="src:$PYTHONPATH" \
 uv run python -m caller_sms.caller_sms
@@ -292,15 +292,15 @@ A convenient PyCharm configuration for local development is a Python module run 
 ```text
 Module name: maturin
 Parameters: develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
-Working directory: /home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils
-Interpreter: /home/jcf/Workspace/Antigravity/py-phone-caller/.venv/bin/python
+Working directory: /path/to/py-phone-caller/src/py-phone-caller-utils
+Interpreter: /path/to/py-phone-caller/.venv/bin/python
 Environment: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 ```
 
 If running `maturin` as a Python module is not available, use a shell/external-tool style configuration with:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils && \
+cd /path/to/py-phone-caller/src/py-phone-caller-utils && \
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 \
 uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
@@ -318,14 +318,14 @@ For local Linux development, make sure your user has access to the device, commo
 Install it into the workspace development dependencies:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 uv add --dev maturin
 ```
 
 Then rerun:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller/src/py-phone-caller-utils
+cd /path/to/py-phone-caller/src/py-phone-caller-utils
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 \
 uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Cargo.toml
 ```
@@ -352,13 +352,13 @@ uv run maturin develop --manifest-path py_phone_caller_utils/sms/rust_engine/Car
 Rebuild the extension with `maturin develop`, then verify the selected interpreter is the project virtual environment:
 
 ```bash
-/home/jcf/Workspace/Antigravity/py-phone-caller/.venv/bin/python -c "import sys; print(sys.executable)"
+/path/to/py-phone-caller/.venv/bin/python -c "import sys; print(sys.executable)"
 ```
 
 Also confirm the package import path:
 
 ```bash
-cd /home/jcf/Workspace/Antigravity/py-phone-caller
+cd /path/to/py-phone-caller
 uv run python -c "from py_phone_caller_utils.sms import enqueue_sms, start_engine; print(enqueue_sms, start_engine)"
 ```
 

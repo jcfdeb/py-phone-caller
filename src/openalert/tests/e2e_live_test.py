@@ -77,7 +77,7 @@ def run_test():
     print(f"[+] Started Mock Prometheus Webhook Receiver on http://127.0.0.1:{WEBHOOK_PORT}/alerts")
 
     # 2. Start openalertd binary
-    workspace_dir = "/home/jcf/Workspace/PyCharm/py-phone-caller_release-github/src/openalert"
+    workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     bin_path = os.path.join(workspace_dir, "target/debug/openalertd")
 
     daemon_proc = subprocess.Popen(

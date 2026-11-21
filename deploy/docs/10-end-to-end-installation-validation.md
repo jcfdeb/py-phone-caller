@@ -11,7 +11,7 @@ Run **Gates 1 and 11** from your **Ansible controller**, and **Gates 2–10 and 
 | Gate | Layer Validated | Pass Criterion |
 | :--- | :--- | :--- |
 | **Gate 1** | Automated Ansible Verification (`verify.yml`) | `failed=0`, `units active: 11`, `health endpoints OK: 7`, UI & Caddy `HTTP 200` |
-| **Gate 2** | All 16 Systemd Services | Every unit `ActiveState=active` and `NRestarts=0` |
+| **Gate 2** | All 16 Systemd Services (`11` Python + `5` infra/edge) | Every unit `ActiveState=active` and `NRestarts=0` |
 | **Gate 3** | Network & Private Listener Audit (`ss -tulpn`) | Only Caddy (`:80`, `:443`) listens publicly; all app/DB/Redis/ARI/OpenAlert ports bound to `127.0.0.1` |
 | **Gate 4** | PostgreSQL & Redis/Valkey | `SELECT 1` succeeds on `py_phone_caller`; `redis-cli ping` returns `PONG` |
 | **Gate 5** | Asterisk 22 PBX, ARI & Stasis App | Unauth ARI `401`, Auth ARI `200`, Stasis app `py-phone-caller` registered |
@@ -53,11 +53,15 @@ your-host : ok=11 changed=0 unreachable=0 failed=0 skipped=1
 
 ## Gate 2: Verify All 16 Systemd Services Are Active (`NRestarts=0`)
 
+The full all-in-one host runs **16 systemd units**: **5 infrastructure & edge services** (`asterisk`, `postgresql`, `redis-server`/`valkey`, `caddy`, `openalertd`) plus **11 `py-phone-caller-*` Python services**.
+
 Run on the **deployed host** (omit `asterisk` or `openalertd` if you set their selectors to `false`):
 
 ```bash
 UNITS=(
+  # 5 infrastructure & edge services
   asterisk postgresql redis-server caddy openalertd
+  # 11 Python py-phone-caller microservices
   py-phone-caller-caller-register
   py-phone-caller-asterisk-caller
   py-phone-caller-asterisk-recaller
@@ -77,7 +81,7 @@ for u in "${UNITS[@]}"; do
 done
 ```
 
-*(On Rocky Linux 10, replace `redis-server` with `valkey`.)*
+*(On Rocky Linux 10, replace `redis-server` with `valkey`. Note: `.deb`/`.rpm` and PyPI/systemd installs from Guides `05`/`06` use unit names without the `py-phone-caller-` prefix and store config in `/etc/py-phone-caller/` — see the layout table in [Guide 01 §4](01-architecture-and-prerequisites.md#canonical-filesystem-layout-by-deployment-method).)*
 
 **Pass criterion:** Every deployed unit reports `ActiveState=active` and `NRestarts=0`.
 
@@ -88,7 +92,7 @@ done
 Confirm that internal services bind strictly to loopback (`127.0.0.1` / `::1`) and that only Caddy (`:80`, `:443`) exposes application ingress:
 
 ```bash
-sudo ss -tulpn | grep -E ':(80|443|5000|5038|5060|5432|6379|808[1-8]|8090)\b'
+sudo ss -tulpn | grep -E ':(80|443|5000|5038|5060|5432|6379|808[1-9]|8090)\b'
 ```
 
 **Expected bindings (single-node / appliance profile):**
@@ -97,11 +101,14 @@ sudo ss -tulpn | grep -E ':(80|443|5000|5038|5060|5432|6379|808[1-8]|8090)\b'
 | :--- | :--- | :--- |
 | `80`, `443` | Caddy reverse proxy | `*` / `0.0.0.0` (only public ingress) |
 | `5000` | `py-phone-caller-ui` (Gunicorn) | `127.0.0.1:5000` |
-| `5060`, `5038`, `8088` | Asterisk SIP / AMI / ARI | `127.0.0.1` |
+| `5060`, `5038`, `8088` | Asterisk SIP / AMI / ARI | `127.0.0.1` *(see co-location note below)* |
 | `5432` | PostgreSQL | `127.0.0.1:5432` / `[::1]:5432` |
 | `6379` | Redis / Valkey | `127.0.0.1:6379` / `[::1]:6379` |
 | `8081`–`8087` | 7 Python aiohttp microservices | `127.0.0.1:8081` .. `127.0.0.1:8087` |
 | `8090` | `openalertd` hub REST API | `127.0.0.1:8090` |
+
+> [!NOTE]
+> **Port `8088` Co-Location**: On single-node hosts running both Asterisk and `openalertd`, Asterisk ARI owns `127.0.0.1:8088`; `openalertd`'s optional embedded Nostr relay (`[nostr.relay_server]`) must remain disabled or be moved to a distinct loopback port such as `127.0.0.1:8089` (see [Guide 01 §1](01-architecture-and-prerequisites.md#1-suite-architecture--microservice-inventory)).
 
 ---
 
