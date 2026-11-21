@@ -9,9 +9,22 @@ Automated phone call and SMS alerting platform for Asterisk-based environments.
 
 ## Overview
 
-py-phone-caller is a Python-based alerting platform that turns events into outbound phone calls and SMS messages _(USB GSM Modem and Twilio)_ through Asterisk PBX _(phone calls)_. It can be triggered manually (API/UI), scheduled for later delivery, or driven by Prometheus Alertmanager _(Nagios or Zabbix)_.
+py-phone-caller is a Python-based alerting platform that turns events into outbound phone calls and SMS messages _(USB GSM Modem, SIP MESSAGE, and Twilio)_ through Asterisk PBX _(phone calls)_. It can be triggered manually (API/UI), scheduled for later delivery, or driven by Prometheus Alertmanager _(Nagios, Zabbix, or the optional `openalertd` mesh daemon)_.
 
-The system is built as a set of microservices that communicate over HTTP and queue work with Celery/Redis. Text-to-speech (TTS) services generate the audio played in calls, and a web UI provides operational visibility.
+The system is built as a modular set of microservices that communicate over HTTP and queue work with Celery/Redis. Text-to-speech (TTS) services generate the audio played in calls, and a web UI provides operational visibility.
+
+## Start Here — Pick Your Deployment Tier
+
+You do **not** need to configure all microservices or optional layers on day one. Every pillar (`py-phone-caller`, `asterisk`, `openalertd`, and `APISIX/Keycloak`) is independently selectable and automated end-to-end:
+
+| Tier | Goal | What Gets Installed | Recommended Guide |
+| :--- | :--- | :--- | :--- |
+| **Tier 1 — Fast Evaluation** | Try the UI, TTS, and alerting pipeline locally in minutes | 15-container Docker / Podman Compose stack (connects to an existing Asterisk PBX) | **[03. Docker Compose](deploy/docs/03-docker-compose-deployment.md)** |
+| **Tier 2 — Single-Node Production / Air-Gapped Appliance** | Turnkey, zero-cloud alerting server on a VM or ARM64 SBC (e.g. Orange Pi 5 Plus) | One Ansible playbook wires Asterisk 22, PostgreSQL, Redis/Valkey, Caddy TLS, all 11 Python services, and optional `openalertd` / USB GSM | **[02. Native Ansible](deploy/docs/02-ansible-deployment.md)** · **[09. ARM64 & Air-Gapped](deploy/docs/09-arm64-appliance-and-airgapped-deployment.md)** |
+| **Tier 3 — Cloud-Native & Enterprise SSO** | Kubernetes cluster or Zero-Trust OIDC RBAC + NOC Grafana observability | Helm v3 chart (`GKE`/`k3s`), Apache APISIX gateway, Keycloak OIDC (`admin`/`operator`/`viewer`), Prometheus & Grafana | **[04. Kubernetes & Helm](deploy/docs/04-kubernetes-and-helm-deployment.md)** · **[07. Gateway & Observability](deploy/docs/07-enterprise-gateway-and-observability.md)** |
+
+> [!TIP]
+> **Prefer native packages or a custom virtualenv?** See **[05. Native `.deb` & `.rpm` Packages](deploy/docs/05-linux-deb-rpm-deployment.md)** or **[06. PyPI Wheels & Systemd](deploy/docs/06-pypi-and-systemd-deployment.md)**, then prove your installation with the **[10. 12-Gate End-to-End Validation Checklist](deploy/docs/10-end-to-end-installation-validation.md)**.
 
 ## Key Features
 
@@ -85,7 +98,7 @@ flowchart TB
 Depending on your environment and the features you plan to enable (outbound voice calls, SMS messaging, local neural TTS vs. cloud TTS, monitoring alerts), here is what you need to run **py-phone-caller**:
 
 ### 1. Core System & Compute
-- **Linux Operating System**: Ubuntu (22.04 / 24.04 / 26.04 LTS), Debian 12, RHEL / Rocky Linux (9 / 10), AlmaLinux (9 / 10), or openSUSE.
+- **Linux Operating System**: Debian (`12` / `13 trixie`), Ubuntu (`22.04` / `24.04` / `26.04 LTS`), RHEL / Rocky Linux (`9` / `10`), AlmaLinux (`9` / `10`), or openSUSE (AMD64 & ARM64 `aarch64`).
 - **Hardware Resources**:
   - **Minimum**: 2 vCPUs, 4 GB RAM, 20 GB SSD storage.
   - **Recommended**: 4+ vCPUs, 8 GB RAM (for fast neural speech synthesis), 50 GB SSD storage.
@@ -94,14 +107,14 @@ Depending on your environment and the features you plan to enable (outbound voic
   - **Native Systemd**: Python 3.14+ managed via [uv](https://docs.astral.sh/uv/) and Systemd.
 
 ### 2. Telephony & Infrastructure (Required for Phone Calls)
-- **Asterisk PBX (v18+ / v20+) or FreePBX**:
+- **Asterisk PBX (`v18+` / `v20+` / `v22`) or FreePBX**:
   - **SIP / PJSIP Trunk**: An active SIP trunk or VoIP gateway (e.g. Twilio Elastic SIP Trunking, local telecom SIP provider, or GSM/PSTN hardware gateway) capable of placing outbound calls to landlines and mobile phones.
   - **Asterisk REST Interface (ARI)**: Enabled in `ari.conf` with HTTP/WebSocket support (default port `8088`), an ARI user (default: `py-phone-caller`), and password.
   - **Stasis Dialplan**: A context configured in `extensions.conf` to direct outbound calls into the `py-phone-caller` Stasis application.
-- **PostgreSQL Database (v15+ / v17+)**:
+- **PostgreSQL Database (`v16+` / `v17` / `v18`)**:
   - Stores call logs, address book contacts, on-call schedules, SMS audit history, and web UI user accounts.
   - Relational schema tables and migrations are automatically initialized and managed via Piccolo ORM by `caller_register`.
-- **Redis (v7+) or Valkey**:
+- **Redis (`v7+` / `v8`) or Valkey (`v8+`)**:
   - In-memory message broker used by Celery for asynchronous call scheduling, priority queues, and distributed locking.
 
 ### 3. Text-to-Speech (TTS) Engines: Local vs. Cloud
@@ -128,7 +141,7 @@ Depending on your environment and the features you plan to enable (outbound voic
 When using the on-premise SMS engine with a USB cellular modem (e.g., Qualcomm, Option, Huawei, SIMCom, Quectel devices), verify that the Linux kernel attaches the `option` or `qcserial` serial driver:
 
 ```text
-jcf@lycaon:~> lsusb -tv
+operator@alert-host:~> lsusb -tv
 /:  Bus 05.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/4p, 480M
     |__ Port 1: Dev 2, If 0, Class=Hub, Driver=hub/4p, 480M
         ID 2109:2813 VIA Labs, Inc. VL813 Hub

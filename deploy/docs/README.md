@@ -5,8 +5,16 @@ Welcome to the centralized deployment and operations documentation hub for **`py
 Our mission with these guides is to give operators, system administrators, and DevOps engineers a clear, **verified, step-by-step path** to install, configure, secure, and verify the suite across bare-metal servers, virtual machines, containers, or Kubernetes clusters.
 
 > [!IMPORTANT]
-> **Live Cloud VM & Physical ARM64 Hardware Qualification (`2026-11-07` – `2026-11-19`)**
-> Every deployment pillar documented in `deploy/docs/` has been tested end-to-end on real Google Cloud AMD64 virtual machines (Debian 13 `trixie`, Ubuntu 26.04 LTS `resolute`, and Rocky Linux 10.2 with `SELinux Enforcing`), managed Kubernetes (`GKE` & `k3s`) with `helm`, **and a physical Orange Pi 5 Plus (RK3588 `aarch64`, Armbian 26.11.3 / Ubuntu 26.04 LTS)** in both **connected (`online`)** and **100% air-gapped (`airgapped`)** modes—including offline Piper TTS synthesis, authentic strict-TLS Web UI login, `changed=0` idempotency reruns, and full cold-reboot recovery.
+> **Live Cloud VM & Physical ARM64 Hardware Qualification (`2026-11-07` – `2026-11-21`)**
+> Every deployment pillar documented in `deploy/docs/` has been tested end-to-end on real Google Cloud AMD64 virtual machines (Debian 13 `trixie`, Ubuntu 26.04 LTS `resolute`, and Rocky Linux 10.2 with `SELinux Enforcing`), managed Kubernetes (`GKE` & `k3s`) with `helm`, **and a physical Orange Pi 5 Plus (RK3588 `aarch64`, Armbian 26.11.3 / Ubuntu 26.04 LTS)** in both **connected (`online`)** and **100% air-gapped (`airgapped`)** modes—including offline Piper TTS synthesis, authentic strict-TLS Web UI login, unified `/api/docs` OpenAPI specs, `changed=0` idempotency reruns, and full cold-reboot recovery.
+
+> [!TIP]
+> **New here? Don't read all 10 guides at once — pick your tier:**
+> 1. **Fastest evaluation (containers + existing PBX)** → [Guide 03 (Docker Compose)](03-docker-compose-deployment.md)
+> 2. **Turnkey single-host or air-gapped appliance (VM or ARM64 SBC)** → [Guide 02 (Native Ansible)](02-ansible-deployment.md) or [Guide 09 (ARM64 & Air-Gapped)](09-arm64-appliance-and-airgapped-deployment.md)
+> 3. **Kubernetes / Enterprise OIDC SSO** → [Guide 04 (Kubernetes & Helm)](04-kubernetes-and-helm-deployment.md) + [Guide 07 (Gateway & Observability)](07-enterprise-gateway-and-observability.md)
+>
+> Every optional layer (`asterisk`, `openalertd`, `gateway`) is independently selectable — start minimal and enable extras only when needed.
 
 ---
 
