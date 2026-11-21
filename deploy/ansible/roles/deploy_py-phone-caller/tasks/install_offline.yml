@@ -1,0 +1,340 @@
+---
+- name: Keep service restarts disabled until this offline transaction succeeds
+  ansible.builtin.set_fact:
+    _ppc_airgap_install_ready: false
+
+- name: Recheck the immutable controller source before offline execution
+  stack_airgap_check:
+    operation: source
+    root: "{{ py_phone_caller_local_src_path }}"
+    manifest_path: "{{ py_phone_caller_airgap_source_manifest_path }}"
+    checksum: "{{ py_phone_caller_airgap_source_manifest_checksum }}"
+  delegate_to: localhost
+  become: false
+  register: _ppc_airgap_source
+
+- name: Recheck immutable inputs immediately before consuming the offline bundle
+  ansible.builtin.include_role:
+    name: stack_airgap
+    tasks_from: bundle
+    public: true
+
+- name: Create writable copies of the reviewed build caches
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0755"
+  loop:
+    - "{{ py_phone_caller_uv_cache_dir }}"
+    - "{{ _ppc_airgap_state_dir }}"
+    - "{{ _ppc_sms_wheel_dir }}"
+
+- name: Keep successful offline transaction stamps private
+  ansible.builtin.file:
+    path: "{{ _ppc_airgap_state_dir }}/stamps"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Bind cache seeding to the reviewed bundle and cache destinations
+  ansible.builtin.set_fact:
+    _ppc_airgap_cache_identity: >-
+      {{ ['airgap-cache-v1', py_phone_caller_airgap_manifest_checksum, py_phone_caller_airgap_bundle_dir,
+          py_phone_caller_uv_cache_dir, _ppc_airgap_state_dir] | to_json | hash('sha256') }}
+
+- name: Inspect the last successful cache seed stamp
+  ansible.builtin.stat:
+    path: "{{ _ppc_airgap_state_dir }}/stamps/cache.sha256"
+  register: _ppc_airgap_cache_stamp
+
+- name: Read the last successful cache seed stamp
+  ansible.builtin.slurp:
+    src: "{{ _ppc_airgap_state_dir }}/stamps/cache.sha256"
+  register: _ppc_airgap_cache_previous
+  when: _ppc_airgap_cache_stamp.stat.exists
+
+# Build caches are intentionally mutable; only their immutable seed is verified.
+# Publish this marker after every rsync succeeds, independently of native builds.
+- name: Seed writable caches without modifying the checksum-reviewed bundle
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/rsync
+      - -a
+      - --checksum
+      - --delete
+      - "--chown={{ py_phone_caller_user }}:{{ py_phone_caller_group }}"
+      - --out-format=<<CHANGED>>%i
+      - "{{ py_phone_caller_airgap_bundle_dir }}/{{ item.source }}/"
+      - "{{ item.dest }}/"
+  loop:
+    - { source: uv-cache, dest: "{{ py_phone_caller_uv_cache_dir }}" }
+    - { source: cargo, dest: "{{ _ppc_airgap_state_dir }}/cargo" }
+    - { source: rustup, dest: "{{ _ppc_airgap_state_dir }}/rustup" }
+  register: _ppc_airgap_cache_copy
+  changed_when: "'<<CHANGED>>' in _ppc_airgap_cache_copy.stdout"
+  when: (_ppc_airgap_cache_previous.content | default('') | b64decode | trim) != _ppc_airgap_cache_identity
+
+- name: Record the successfully seeded bundle identity
+  ansible.builtin.copy:
+    content: "{{ _ppc_airgap_cache_identity }}\n"
+    dest: "{{ _ppc_airgap_state_dir }}/stamps/cache.sha256"
+    owner: root
+    group: root
+    mode: "0600"
+  when: (_ppc_airgap_cache_previous.content | default('') | b64decode | trim) != _ppc_airgap_cache_identity
+
+- name: Install the checksum-verified uv executable at the usual role path
+  ansible.builtin.copy:
+    src: "{{ py_phone_caller_airgap_bundle_dir }}/bin/uv"
+    dest: "{{ py_phone_caller_uv_bin }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Build the entire frozen workspace with downloads and build-script networking disabled
+  ansible.builtin.command:
+    argv: >-
+      {{ _ppc_airgap_command_prefix + [py_phone_caller_airgap_bundle_dir ~ '/bin/uv', '--offline', '--no-config',
+         'sync', '--frozen', '--all-packages', '--no-dev', '--inexact', '--python',
+         py_phone_caller_airgap_bundle_dir ~ '/python/bin/python3.14', '--no-python-downloads'] }}
+    chdir: "{{ py_phone_caller_install_dir }}"
+  register: _ppc_airgap_sync
+  changed_when: "'Installed' in (_ppc_airgap_sync.stdout ~ _ppc_airgap_sync.stderr) or 'Uninstalled' in (_ppc_airgap_sync.stdout ~ _ppc_airgap_sync.stderr)"
+  timeout: "{{ py_phone_caller_uv_sync_timeout }}"
+
+# Upstream PyPI wheel nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_aarch64.whl
+# ships internal .dist-info/WHEEL metadata tagged "manylinux2014_sbsa", causing uv sync
+# on aarch64 to see a platform-tag mismatch and reinstall it on every rerun. Normalize
+# only the mutable venv metadata (never the immutable air-gapped bundle) so reruns stay changed=0.
+- name: Normalize aarch64 SBSA wheel tag in installed offline virtualenv metadata
+  ansible.builtin.command:
+    argv: >-
+      {{ _ppc_airgap_command_prefix + [py_phone_caller_venv_dir ~ '/bin/python', '-I', '-B', '-c',
+         "import pathlib, sys; [p.write_text(p.read_text(encoding='utf-8').replace('Tag: py3-none-manylinux2014_sbsa', 'Tag: py3-none-manylinux2014_aarch64'), encoding='utf-8') for p in pathlib.Path(sys.argv[1]).glob('lib/python*/site-packages/nvidia_cusparselt_cu13-*.dist-info/WHEEL') if 'Tag: py3-none-manylinux2014_sbsa' in p.read_text(encoding='utf-8')]",
+         py_phone_caller_venv_dir] }}
+  changed_when: false
+  when:
+    - (ansible_facts['architecture'] | default('')) == 'aarch64'
+    - _ppc_airgap_sync is changed
+
+- name: Check whether the offline bundle includes the reviewed spaCy English wheel
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_airgap_bundle_dir }}/wheels/en_core_web_sm-3.8.0-py3-none-any.whl"
+  register: _ppc_airgap_spacy_wheel
+
+- name: Install the reviewed local spaCy model without dependency or index fallback
+  ansible.builtin.command:
+    argv: >-
+      {{ _ppc_airgap_command_prefix + [py_phone_caller_airgap_bundle_dir ~ '/bin/uv', '--offline', '--no-config',
+         'pip', 'install', '--no-index', '--no-deps', '--python', py_phone_caller_venv_dir ~ '/bin/python',
+         py_phone_caller_airgap_bundle_dir ~ '/wheels/en_core_web_sm-3.8.0-py3-none-any.whl'] }}
+  register: _ppc_airgap_spacy
+  changed_when: "'Installed' in (_ppc_airgap_spacy.stdout ~ _ppc_airgap_spacy.stderr)"
+  when: >-
+    py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'
+    or (py_phone_caller_install_spacy_model | default(false) | bool)
+    or (_ppc_airgap_spacy_wheel.stat.exists | default(false))
+
+- name: Check whether the offline bundle includes Kokoro CJK G2P wheels
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_airgap_bundle_dir }}/wheels/kokoro-cjk"
+  register: _ppc_airgap_kokoro_cjk_dir
+
+- name: Install reviewed local Kokoro CJK G2P wheels without index fallback
+  ansible.builtin.command:
+    argv: >-
+      {{ _ppc_airgap_command_prefix + [py_phone_caller_airgap_bundle_dir ~ '/bin/uv', '--offline', '--no-config',
+         'pip', 'install', '--no-index', '--find-links', py_phone_caller_airgap_bundle_dir ~ '/wheels/kokoro-cjk',
+         '--python', py_phone_caller_venv_dir ~ '/bin/python']
+         + (py_phone_caller_kokoro_cjk_packages | default([])) }}
+  register: _ppc_airgap_kokoro_cjk
+  changed_when: "'Installed' in (_ppc_airgap_kokoro_cjk.stdout ~ _ppc_airgap_kokoro_cjk.stderr)"
+  when: >-
+    (_ppc_airgap_kokoro_cjk_dir.stat.isdir | default(false))
+    and (py_phone_caller_kokoro_cjk_packages | default([]) | length > 0)
+    and (py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'
+         or (py_phone_caller_install_kokoro_cjk | default(false) | bool)
+         or (_ppc_airgap_kokoro_cjk_dir.stat.isdir | default(false)))
+
+- name: Hash native SMS sources and the effective build interpreter and toolchain
+  ansible.builtin.command:
+    argv: >-
+      {{ _ppc_airgap_command_prefix + [py_phone_caller_venv_dir ~ '/bin/python', '-I', '-B', '-c',
+         _ppc_airgap_sms_hash_script, _ppc_sms_engine_dir, py_phone_caller_install_dir,
+         py_phone_caller_airgap_manifest_checksum, py_phone_caller_airgap_bundle_dir,
+         py_phone_caller_airgap_rust_toolchain, py_phone_caller_maturin_version,
+         _ppc_airgap_build_environment | to_json] }}
+    chdir: "{{ py_phone_caller_install_dir }}"
+  vars:
+    # Do not hash the whole source manifest: UI edits must not rebuild Rust.
+    # Cargo output is mutable, but all native inputs and ancestor build config count.
+    _ppc_airgap_sms_hash_script: |
+      import hashlib
+      import json
+      import os
+      from pathlib import Path
+      import sys
+      import sysconfig
+
+      native, project = (Path(value).resolve() for value in sys.argv[1:3])
+      if not native.is_relative_to(project) or not all((native / name).is_file() for name in ("Cargo.toml", "Cargo.lock")):
+          raise ValueError("Native SMS source and Cargo lockfile must be inside the installed project")
+
+      def digest(path):
+          with path.open("rb") as stream:
+              return hashlib.file_digest(stream, "sha256").hexdigest()
+
+      inputs = {}
+
+      def record(path):
+          if not path.resolve().is_relative_to(project) or not path.is_file():
+              raise ValueError("Native build inputs must be regular files inside the installed project")
+          inputs[str(path.relative_to(project))] = [digest(path), path.stat().st_mode & 0o111,
+                                                   os.readlink(path) if path.is_symlink() else None]
+
+      for directory, directories, filenames in os.walk(native):
+          directories[:] = [name for name in directories if name not in (".git", "__pycache__")
+                            and not (Path(directory) == native and name == "target")]
+          if any((Path(directory) / name).is_symlink() for name in directories):
+              raise ValueError("Native source directory symlinks are not supported")
+          for name in filenames:
+              record(Path(directory) / name)
+      for directory in (native, *native.parents):
+          for name in ("Cargo.toml", "Cargo.lock", "pyproject.toml", "rust-toolchain", "rust-toolchain.toml",
+                       ".cargo/config", ".cargo/config.toml"):
+              path = directory / name
+              if path.exists() or path.is_symlink():
+                  record(path)
+          if directory == project:
+              break
+      identity = {"schema": "airgap-native-v1", "sources": inputs, "bundle": sys.argv[3:5],
+                  "toolchain": sys.argv[5], "maturin": sys.argv[6], "environment": json.loads(sys.argv[7]),
+                  "python": [sys.executable, str(Path(sys.executable).resolve()), digest(Path(sys.executable)),
+                             sys.version, sys.base_prefix, sysconfig.get_config_var("SOABI")]}
+      print(hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest())
+  register: _ppc_airgap_sms_identity
+  changed_when: false
+
+- name: Inspect the last successful native installation stamp
+  ansible.builtin.stat:
+    path: "{{ _ppc_airgap_state_dir }}/stamps/native.sha256"
+  register: _ppc_airgap_sms_stamp
+
+- name: Read the last successful native installation stamp
+  ansible.builtin.slurp:
+    src: "{{ _ppc_airgap_state_dir }}/stamps/native.sha256"
+  register: _ppc_airgap_sms_previous
+  when: _ppc_airgap_sms_stamp.stat.exists
+
+- name: Check for an interrupted native installation
+  ansible.builtin.stat:
+    path: "{{ _ppc_airgap_state_dir }}/stamps/native.pending"
+  register: _ppc_airgap_sms_pending
+
+- name: Check the installed native import before trusting a matching stamp
+  ansible.builtin.command:
+    argv: "{{ _ppc_airgap_command_prefix + [py_phone_caller_venv_dir ~ '/bin/python', '-I', '-B', '-c', 'import rust_engine'] }}"
+  register: _ppc_airgap_sms_current
+  changed_when: false
+  failed_when: false
+
+- name: Decide whether native SMS needs a new successful installation
+  ansible.builtin.set_fact:
+    _ppc_airgap_sms_rebuild: >-
+      {{ (_ppc_airgap_sms_previous.content | default('') | b64decode | trim) != _ppc_airgap_sms_identity.stdout
+         or _ppc_airgap_sms_current.rc != 0 or _ppc_airgap_sms_pending.stat.exists }}
+
+- name: Build and install only a changed or non-importable native SMS candidate
+  when: _ppc_airgap_sms_rebuild
+  block:
+    # Keep the previous success marker, but never trust it after a partial install.
+    - name: Mark the native candidate pending before any build or installation
+      ansible.builtin.copy:
+        content: "{{ _ppc_airgap_sms_identity.stdout }}\n"
+        dest: "{{ _ppc_airgap_state_dir }}/stamps/native.pending"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Allocate an empty candidate wheel directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ _ppc_sms_wheel_dir }}"
+        prefix: candidate-
+      register: _ppc_airgap_sms_candidate
+
+    - name: Allow the build account to write the candidate wheel
+      ansible.builtin.file:
+        path: "{{ _ppc_airgap_sms_candidate.path }}"
+        owner: "{{ py_phone_caller_user }}"
+        group: "{{ py_phone_caller_group }}"
+        mode: "0700"
+
+    - name: Build the native SMS wheel using only the staged locked Rust toolchain and crates
+      ansible.builtin.command:
+        argv: >-
+          {{ _ppc_airgap_command_prefix + [py_phone_caller_airgap_bundle_dir ~ '/bin/uv', '--offline', '--no-config',
+             'tool', 'run', '--python', py_phone_caller_airgap_bundle_dir ~ '/python/bin/python3.14',
+             '--from', 'maturin==' ~ py_phone_caller_maturin_version, 'maturin', 'build', '--release', '--frozen',
+             '--manifest-path', _ppc_sms_engine_dir ~ '/Cargo.toml', '--interpreter',
+             py_phone_caller_venv_dir ~ '/bin/python', '--out', _ppc_airgap_sms_candidate.path] }}
+        chdir: "{{ py_phone_caller_install_dir }}"
+      changed_when: true
+      timeout: "{{ py_phone_caller_uv_sync_timeout }}"
+
+    - name: Locate the native SMS wheel produced by the offline build
+      ansible.builtin.find:
+        paths: "{{ _ppc_airgap_sms_candidate.path }}"
+        patterns: sms_rust_backend-*.whl
+        file_type: file
+      register: _ppc_airgap_sms_wheels
+
+    - name: Require one unambiguous native wheel
+      ansible.builtin.assert:
+        that: _ppc_airgap_sms_wheels.matched == 1
+        fail_msg: The offline build must produce exactly one native SMS wheel in its empty candidate directory.
+
+    - name: Install the native SMS engine without an index or dependency fallback
+      ansible.builtin.command:
+        argv: >-
+          {{ _ppc_airgap_command_prefix + [py_phone_caller_airgap_bundle_dir ~ '/bin/uv', '--offline', '--no-config',
+             'pip', 'install', '--reinstall', '--no-index', '--no-deps', '--python', py_phone_caller_venv_dir ~ '/bin/python',
+             _ppc_airgap_sms_wheels.files[0].path] }}
+      register: _ppc_airgap_sms_install
+      changed_when: "'Installed' in (_ppc_airgap_sms_install.stdout ~ _ppc_airgap_sms_install.stderr)"
+  always:
+    - name: Remove only this transaction's temporary wheel directory
+      ansible.builtin.file:
+        path: "{{ _ppc_airgap_sms_candidate.path }}"
+        state: absent
+      when: _ppc_airgap_sms_candidate.path is defined
+
+- name: Verify the native SMS engine imports without network access
+  ansible.builtin.command:
+    argv: "{{ _ppc_airgap_command_prefix + [py_phone_caller_venv_dir ~ '/bin/python', '-I', '-B', '-c', 'import rust_engine'] }}"
+  changed_when: false
+
+- name: Publish the native stamp only after build installation and import succeed
+  ansible.builtin.copy:
+    content: "{{ _ppc_airgap_sms_identity.stdout }}\n"
+    dest: "{{ _ppc_airgap_state_dir }}/stamps/native.sha256"
+    owner: root
+    group: root
+    mode: "0600"
+  when: _ppc_airgap_sms_rebuild
+
+- name: Clear the pending native candidate only after publishing success
+  ansible.builtin.file:
+    path: "{{ _ppc_airgap_state_dir }}/stamps/native.pending"
+    state: absent
+  when: _ppc_airgap_sms_rebuild
+
+- name: Permit service restarts only after every offline installation step succeeds
+  ansible.builtin.set_fact:
+    _ppc_airgap_install_ready: true
+  changed_when: _ppc_airgap_sync is changed or _ppc_airgap_spacy is changed or _ppc_airgap_sms_rebuild
+  notify: Restart py-phone-caller services

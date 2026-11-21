@@ -1,6 +1,13 @@
 ; Managed non-radio PBX. Never autoload AllStarLink radio or registration modules.
 [modules]
 autoload=no
+{% if asterisk_package_provider | default('allstarlink') == 'tucny' %}
+load=res_speech.so
+load=res_geolocation.so
+load=res_agi.so
+load=res_statsd.so
+load=res_crypto.so
+{% endif %}
 load=pbx_config.so
 load=app_dial.so
 load=app_playback.so

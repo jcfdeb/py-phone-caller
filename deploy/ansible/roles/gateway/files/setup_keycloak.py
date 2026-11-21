@@ -18,6 +18,7 @@ ADMIN_PASS = os.getenv("KEYCLOAK_ADMIN_PASS", os.getenv("ADMIN_PASS", ""))
 REALM_NAME = os.getenv("KEYCLOAK_REALM", os.getenv("REALM_NAME", "py-phone-caller"))
 M2M_SECRET = os.getenv("KEYCLOAK_M2M_SECRET", os.getenv("M2M_SECRET", ""))
 PUBLIC_URL = os.getenv("KEYCLOAK_PUBLIC_URL", os.getenv("PUBLIC_URL", "https://127.0.0.1:9443"))
+TOPOLOGY = os.getenv("PPC_TOPOLOGY", "legacy")
 
 USER_ADMIN_PASS = os.getenv("KEYCLOAK_USER_ADMIN_PASS", "")
 USER_OPERATOR_PASS = os.getenv("KEYCLOAK_USER_OPERATOR_PASS", "")
@@ -87,13 +88,18 @@ def main():
 
     if REALM_NAME in realms:
         print(f"[+] Realm '{REALM_NAME}' already exists.")
+        if TOPOLOGY != "legacy":
+            res = requests.put(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}", headers=headers,
+                               json={"sslRequired": "external"}, verify=False, timeout=10)
+            res.raise_for_status()
+            print(f"[+] Realm '{REALM_NAME}' TLS policy updated.")
     else:
         print(f"[*] Creating realm '{REALM_NAME}'...")
         realm_payload = {
             "realm": REALM_NAME,
             "enabled": True,
             "displayName": "PyPhoneCaller Identity & Access Management",
-            "sslRequired": "none",
+            "sslRequired": "none" if TOPOLOGY == "legacy" else "external",
             "registrationAllowed": False,
             "rememberMe": True,
             "verifyEmail": False,

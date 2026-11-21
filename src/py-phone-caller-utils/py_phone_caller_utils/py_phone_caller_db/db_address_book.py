@@ -74,6 +74,7 @@ async def add_contact(payload: Dict[str, Any]) -> str:
         state=payload.get("state", ""),
         country=payload.get("country", ""),
         phone_number=payload["phone_number"],
+        sms_phone_number=(payload.get("sms_phone_number") or "").strip(),
         on_call_availability=payload["on_call_availability"],
         created_time=datetime.now(UTC).replace(tzinfo=None),
         enabled=bool(payload["enabled"]),
@@ -113,6 +114,7 @@ async def modify_contact(contact_id: str, changes: Dict[str, Any]) -> int:
         "state": AddressBook.state,
         "country": AddressBook.country,
         "phone_number": AddressBook.phone_number,
+        "sms_phone_number": AddressBook.sms_phone_number,
         "on_call_availability": AddressBook.on_call_availability,
         "enabled": AddressBook.enabled,
         "annotations": AddressBook.annotations,
@@ -218,6 +220,7 @@ async def get_on_call_contacts(
         AddressBook.name,
         AddressBook.surname,
         AddressBook.phone_number,
+        AddressBook.sms_phone_number,
         AddressBook.created_time,
         AddressBook.on_call_availability,
     ).where(AddressBook.enabled == True)
@@ -240,6 +243,7 @@ async def get_on_call_contacts(
                         "name": row.get("name"),
                         "surname": row.get("surname"),
                         "phone_number": row.get("phone_number"),
+                        "sms_phone_number": row.get("sms_phone_number") or "",
                         "created_time": row.get("created_time"),
                         "priority": prio,
                     }

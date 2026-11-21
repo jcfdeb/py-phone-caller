@@ -20,11 +20,11 @@ use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use futures_util::FutureExt;
 use sha2::{Digest, Sha256};
 use snow::TransportState;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, Notify, RwLock};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519StaticSecret};
@@ -33,6 +33,7 @@ pub const DEFAULT_BITCHAT_SERVICE_UUID: &str = "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a
 pub const DEFAULT_BITCHAT_CHAR_UUID: &str = "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d";
 
 pub const PACKET_VERSION: u8 = 0x01;
+pub const PACKET_VERSION_V2: u8 = 0x02;
 pub const PACKET_TYPE_ANNOUNCE: u8 = 0x01;
 pub const PACKET_TYPE_MESSAGE: u8 = 0x02;
 pub const PACKET_TYPE_NOISE_HANDSHAKE: u8 = 0x10;
@@ -42,14 +43,16 @@ pub const PACKET_TYPE_KEY_EXCHANGE_RESP: u8 = 0x10;
 pub const PACKET_TYPE_KEY_EXCHANGE_FINAL: u8 = 0x10;
 pub const PACKET_TYPE_ENCRYPTED_MESSAGE: u8 = 0x11;
 pub const PACKET_TYPE_ENCRYPTED_ACK: u8 = 0x11;
-pub const PACKET_TYPE_REQUEST_SYNC: u8 = 0x20;
+pub const PACKET_TYPE_LEGACY_SYNC: u8 = 0x20;
+pub const PACKET_TYPE_REQUEST_SYNC: u8 = 0x21;
 pub const PACKET_TYPE_SYNC_RESPONSE: u8 = 0x21;
 
 pub const BITCHAT_BROADCAST_RECIPIENT: [u8; 8] = [0xff; 8];
 
 pub const FLAG_HAS_RECIPIENT: u8 = 0x01;
 pub const FLAG_HAS_SIGNATURE: u8 = 0x02;
-pub const FLAG_HAS_ROUTE: u8 = 0x04;
+pub const FLAG_IS_COMPRESSED: u8 = 0x04;
+pub const FLAG_HAS_ROUTE: u8 = 0x08;
 pub const FLAG_IS_RSR: u8 = 0x10;
 
 pub const TLV_TAG_NICKNAME: u8 = 0x01;
@@ -59,17 +62,30 @@ pub const TLV_TAG_ROUTE_PEER_ID: u8 = 0x04;
 
 pub const MESSAGE_TTL_HOPS: u8 = 0x07;
 pub const BITCHAT_BUCKET_SIZE_256: usize = 256;
+pub const MAX_TRACKED_SESSION_NONCES: usize = 128;
+pub const MAX_TRACKED_SESSION_MSG_IDS: usize = 128;
+pub const DIRECT_NEIGHBOR_FRESHNESS_SECS: u64 = 65;
+pub const MAX_ANNOUNCE_NEIGHBORS: usize = 10;
 
 /// Live state representation for peer-to-peer Noise encryption handshakes and transport.
 pub enum PeerNoiseSession {
-    Handshaking(Box<snow::HandshakeState>),
-    Established(TransportState),
+    HandshakingResponder(Box<snow::HandshakeState>),
+    HandshakingInitiator {
+        state: Box<snow::HandshakeState>,
+        started_at: Instant,
+    },
+    Established {
+        transport: TransportState,
+        seen_nonces: VecDeque<u64>,
+        seen_msg_ids: VecDeque<String>,
+    },
 }
 
 /// Represents a parsed and cryptographically validated incoming BitChat packet.
 #[derive(Debug, Clone)]
 pub struct ParsedPacket {
     pub packet_type: u8,
+    pub ttl: u8,
     pub sender_id: [u8; 8],
     pub recipient_id: Option<[u8; 8]>,
     pub payload: Option<Vec<u8>>,
@@ -83,6 +99,8 @@ pub struct BitChatPeerEntry {
     pub nickname: String,
     pub verified: bool,
     pub last_seen: Instant,
+    pub last_direct_seen: Option<Instant>,
+    pub last_announce_reply_at: Option<Instant>,
     pub messages_received: u64,
     pub messages_sent: u64,
 }
@@ -92,6 +110,7 @@ pub struct BitChatService {
     config: BitChatConfig,
     engine: Option<Arc<AlertEngine>>,
     running: Arc<AtomicBool>,
+    shutdown_notify: Arc<Notify>,
     active_subscribers: Arc<AtomicUsize>,
     sessions: Arc<RwLock<HashMap<[u8; 8], PeerNoiseSession>>>,
     peers: Arc<RwLock<HashMap<[u8; 8], BitChatPeerEntry>>>,
@@ -105,6 +124,7 @@ impl BitChatService {
             config,
             engine,
             running: Arc::new(AtomicBool::new(true)),
+            shutdown_notify: Arc::new(Notify::new()),
             active_subscribers: Arc::new(AtomicUsize::new(0)),
             sessions: Arc::new(RwLock::new(HashMap::new())),
             peers: Arc::new(RwLock::new(HashMap::new())),
@@ -136,9 +156,167 @@ impl BitChatService {
         None
     }
 
+    /// Returns true when a BlueZ/HCI error string indicates a transient controller state
+    /// (e.g. Spreadtrum/Unisoc UART adapter returning `0x0a Busy` or `InProgress` during power cycle).
+    pub fn is_retryable_hci_error(err_msg: &str) -> bool {
+        let lower = err_msg.to_ascii_lowercase();
+        lower.contains("busy")
+            || lower.contains("0x0a")
+            || lower.contains("inprogress")
+            || lower.contains("in progress")
+            || lower.contains("notready")
+            || lower.contains("not ready")
+            || lower.contains("failed")
+    }
+
+    /// Disconnects any currently connected BLE/Bluetooth peers on the adapter so centrals
+    /// do not hold stale GATT attribute handles across daemon restarts or HCI recovery.
+    async fn disconnect_stale_devices(adapter: &bluer::Adapter, dev_name: &str) -> usize {
+        let mut disconnected = 0usize;
+        if let Ok(addrs) = adapter.device_addresses().await {
+            for addr in addrs {
+                if let Ok(dev) = adapter.device(addr)
+                    && dev.is_connected().await.unwrap_or(false)
+                {
+                    info!(
+                        "🔄 [BLE Self-Healing] Disconnecting stale connected peer {} on '{}' to flush GATT cache...",
+                        addr, dev_name
+                    );
+                    if let Err(e) = dev.disconnect().await {
+                        debug!(
+                            "Could not disconnect peer {} on '{}': {}",
+                            addr, dev_name, e
+                        );
+                    } else {
+                        disconnected += 1;
+                    }
+                }
+            }
+        }
+        disconnected
+    }
+
+    /// Powers on an HCI adapter with progressive retry/backoff when UART BLE controllers
+    /// (such as Spreadtrum/Unisoc) transiently respond with `0x0a (Busy)` or `InProgress`.
+    async fn ensure_adapter_powered_with_retry(
+        adapter: &bluer::Adapter,
+        dev_name: &str,
+        max_attempts: u32,
+    ) -> bool {
+        for attempt in 1..=max_attempts.max(1) {
+            if adapter.is_powered().await.unwrap_or(false) {
+                return true;
+            }
+            match adapter.set_powered(true).await {
+                Ok(()) => {
+                    sleep(Duration::from_millis(250)).await;
+                    if adapter.is_powered().await.unwrap_or(true) {
+                        if attempt > 1 {
+                            info!(
+                                "✅ [BLE Self-Healing] Adapter '{}' powered on after attempt {}/{}",
+                                dev_name, attempt, max_attempts
+                            );
+                        }
+                        return true;
+                    }
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    let backoff_ms = 500u64 * u64::from(attempt);
+                    if Self::is_retryable_hci_error(&msg) && attempt < max_attempts {
+                        warn!(
+                            "⏳ [BLE Self-Healing] Adapter '{}' power-on attempt {}/{} returned transient error ({}); retrying in {}ms...",
+                            dev_name, attempt, max_attempts, msg, backoff_ms
+                        );
+                        sleep(Duration::from_millis(backoff_ms)).await;
+                    } else {
+                        warn!(
+                            "⚠️ [BLE Self-Healing] Could not power on adapter '{}' (attempt {}/{}): {}",
+                            dev_name, attempt, max_attempts, msg
+                        );
+                        if attempt < max_attempts {
+                            sleep(Duration::from_millis(backoff_ms)).await;
+                        }
+                    }
+                }
+            }
+        }
+        adapter.is_powered().await.unwrap_or(false)
+    }
+
+    /// Flushes stale BlueZ/HCI peripheral state (stale connections, wedged Spreadtrum UART
+    /// advertising/GATT firmware state) via optional power-cycle with `Busy`-safe retry backoff.
+    async fn sanitize_hci_adapter(
+        adapter: &bluer::Adapter,
+        dev_name: &str,
+        alias: &str,
+        force_power_cycle: bool,
+    ) -> bool {
+        let stale = Self::disconnect_stale_devices(adapter, dev_name).await;
+        if stale > 0 {
+            sleep(Duration::from_millis(400)).await;
+        }
+
+        if force_power_cycle {
+            if adapter.is_powered().await.unwrap_or(false) {
+                info!(
+                    "🔄 [BLE Self-Healing] Power-cycling '{}' to clear stale BlueZ GATT/advertising state...",
+                    dev_name
+                );
+                if let Err(e) = adapter.set_powered(false).await {
+                    warn!(
+                        "⚠️ [BLE Self-Healing] Power-off '{}' returned: {} (continuing recovery)",
+                        dev_name, e
+                    );
+                }
+                // Give UART BLE firmware (e.g. Spreadtrum/Unisoc) time to finish HCI teardown
+                // before powering back on so it does not reject with status 0x0a (Busy).
+                sleep(Duration::from_millis(1200)).await;
+            }
+        }
+
+        let powered = Self::ensure_adapter_powered_with_retry(adapter, dev_name, 6).await;
+        if powered {
+            if let Err(e) = adapter.set_discoverable(true).await {
+                debug!("Could not set discoverable on '{}': {}", dev_name, e);
+            }
+            if let Err(e) = adapter.set_pairable(true).await {
+                debug!("Could not set pairable on '{}': {}", dev_name, e);
+            }
+            if let Err(e) = adapter.set_discoverable_timeout(0).await {
+                debug!("Could not set discoverable timeout on '{}': {}", dev_name, e);
+            }
+            if !alias.is_empty() {
+                let _ = adapter.set_alias(alias.to_string()).await;
+            }
+        }
+        powered
+    }
+
     /// Terminates all background BLE advertising and notification loops.
     pub fn stop(&self) {
         self.running.store(false, Ordering::Relaxed);
+        self.shutdown_notify.notify_waiters();
+    }
+
+    /// Gracefully stops BitChat BLE GATT/advertising loops, gives BlueZ time to unregister
+    /// D-Bus handles, and disconnects active BLE peers so they reconnect cleanly on restart.
+    pub async fn shutdown(&self) {
+        self.stop();
+        if !self.config.enabled {
+            return;
+        }
+        // Allow advertising + GATT tasks woken by `shutdown_notify` to drop their BlueZ handles.
+        sleep(Duration::from_millis(450)).await;
+        if let Ok(sess) = Session::new().await {
+            let adapter = match sess.adapter(&self.config.device) {
+                Ok(a) => Ok(a),
+                Err(_) => sess.default_adapter().await,
+            };
+            if let Ok(adapt) = adapter {
+                let _ = Self::disconnect_stale_devices(&adapt, &self.config.device).await;
+            }
+        }
     }
 
     /// Sends an upstream delivery confirmation (e.g., LoRa RF ACK or Gateway ARQ ACK) back to the
@@ -202,7 +380,7 @@ impl BitChatService {
         if mode == "dm" {
             if let Some(peer_id) = target_peer {
                 let mut s_guard = self.sessions.write().await;
-                if let Some(PeerNoiseSession::Established(transport)) = s_guard.get_mut(&peer_id) {
+                if let Some(PeerNoiseSession::Established { transport, .. }) = s_guard.get_mut(&peer_id) {
                     let send_nonce = transport.sending_nonce() as u32;
                     let tlv_payload = Self::encode_bitchat_private_message(&status_txt);
                     let mut enc_ack_buf = vec![0u8; tlv_payload.len() + 32];
@@ -262,6 +440,8 @@ impl BitChatService {
             nickname: nickname.to_string(),
             verified,
             last_seen: Instant::now(),
+            last_direct_seen: None,
+            last_announce_reply_at: None,
             messages_received: 0,
             messages_sent: 0,
         });
@@ -281,11 +461,14 @@ impl BitChatService {
 
         for (sender_id, entry) in peers_guard.iter() {
             let session_state = match sessions_guard.get(sender_id) {
-                Some(PeerNoiseSession::Established(_)) => {
+                Some(PeerNoiseSession::Established { .. }) => {
                     active_sessions_count += 1;
                     "Established (E2EE 🔒)".to_string()
                 }
-                Some(PeerNoiseSession::Handshaking(_)) => "Handshaking...".to_string(),
+                Some(
+                    PeerNoiseSession::HandshakingResponder(_)
+                    | PeerNoiseSession::HandshakingInitiator { .. },
+                ) => "Handshaking...".to_string(),
                 None => "Announced / Discovered".to_string(),
             };
 
@@ -413,24 +596,25 @@ impl BitChatService {
             || upper == "[UNFAVORITED]"
     }
 
-    /// Extracts plain text from BitChat decrypted Noise transport payload.
-    /// Supports BitChat PrivateMessagePacket (0x01 || tag 0x00 msgID || tag 0x01 content)
+    /// Extracts `(Option<msg_id>, content)` from a BitChat decrypted Noise transport payload.
+    /// Supports BitChat PrivateMessagePacket (`0x01 || tag 0x00 msgID || tag 0x01 content`)
     /// as well as strict valid UTF-8 payloads, while rejecting post-handshake binary/control frames.
-    pub fn extract_bitchat_private_message(plaintext: &[u8]) -> String {
+    pub fn extract_bitchat_private_message_with_id(plaintext: &[u8]) -> (Option<String>, String) {
         if plaintext.is_empty() {
-            return String::new();
+            return (None, String::new());
         }
 
         // Ignore known non-chat Noise control/sync payload types:
         // 0x02 = readReceipt, 0x03 = delivered, 0x10 = verifyChallenge,
         // 0x11 = verifyResponse, 0x20 = requestSync, 0x21 = identity/sync response
         if matches!(plaintext[0], 0x02 | 0x03 | 0x10 | 0x11 | 0x20 | 0x21) {
-            return String::new();
+            return (None, String::new());
         }
 
         // Check for BitChat Noise privateMessage packet: 0x01 || TLV blocks
         if plaintext[0] == 0x01 && plaintext.len() >= 4 {
             let mut offset = 1;
+            let mut extracted_id: Option<String> = None;
             let mut extracted_content: Option<String> = None;
             while offset + 2 <= plaintext.len() {
                 let tag = plaintext[offset];
@@ -438,7 +622,12 @@ impl BitChatService {
                 offset += 2;
                 if offset + len <= plaintext.len() {
                     let val = &plaintext[offset..offset + len];
-                    if tag == 0x01 {
+                    if tag == 0x00 {
+                        extracted_id = std::str::from_utf8(val)
+                            .ok()
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty());
+                    } else if tag == 0x01 {
                         extracted_content = std::str::from_utf8(val)
                             .ok()
                             .filter(|s| {
@@ -454,15 +643,15 @@ impl BitChatService {
             }
             if let Some(s) = extracted_content.filter(|s| !s.is_empty()) {
                 if Self::is_bitchat_control_message(&s) {
-                    return String::new();
+                    return (extracted_id, String::new());
                 }
-                return s;
+                return (extracted_id, s);
             }
-            return String::new();
+            return (extracted_id, String::new());
         }
 
         // Fallback: only accept strict valid UTF-8 with no binary control characters
-        std::str::from_utf8(plaintext)
+        let fallback_text = std::str::from_utf8(plaintext)
             .ok()
             .filter(|s| {
                 !s.chars()
@@ -470,7 +659,13 @@ impl BitChatService {
             })
             .filter(|s| !Self::is_bitchat_control_message(s))
             .map(|s| s.trim().to_string())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        (None, fallback_text)
+    }
+
+    /// Extracts plain text from BitChat decrypted Noise transport payload.
+    pub fn extract_bitchat_private_message(plaintext: &[u8]) -> String {
+        Self::extract_bitchat_private_message_with_id(plaintext).1
     }
 
     pub fn build_announce_payload(
@@ -478,13 +673,38 @@ impl BitChatService {
         noise_pubkey: &[u8; 32],
         ed_pubkey: &[u8; 32],
     ) -> Vec<u8> {
-        let mut payload = Vec::with_capacity(2 + node_name.len().min(32) + 34 + 34);
+        Self::build_announce_payload_with_neighbors(node_name, noise_pubkey, ed_pubkey, &[])
+    }
 
+    /// Builds BitChat Announce TLV payload including optional `directNeighbors` (TLV `0x04`)
+    /// so `MeshGraphService` on Android/iOS confirms bidirectional multi-hop mesh edges.
+    pub fn build_announce_payload_with_neighbors(
+        node_name: &str,
+        noise_pubkey: &[u8; 32],
+        ed_pubkey: &[u8; 32],
+        direct_neighbors: &[[u8; 8]],
+    ) -> Vec<u8> {
         let name_bytes = node_name.as_bytes();
-        let name_len = name_bytes.len().min(32) as u8;
+        let name_len = name_bytes.len().min(32);
+        let base_len = (2 + name_len) + 34 + 34;
+
+        // Keep total signed packet < 256 bytes (header 14 + sender 8 + payload + sig 64 <= 255)
+        // so single-MTU BLE peripheral notifications never fragment.
+        let max_fitting_neighbors = BITCHAT_BUCKET_SIZE_256
+            .saturating_sub(1 + 14 + 8 + base_len + 64 + 2)
+            / 8;
+        let neighbor_cap = direct_neighbors
+            .len()
+            .min(MAX_ANNOUNCE_NEIGHBORS)
+            .min(max_fitting_neighbors);
+
+        let mut payload = Vec::with_capacity(
+            base_len + if neighbor_cap > 0 { 2 + neighbor_cap * 8 } else { 0 },
+        );
+
         payload.push(TLV_TAG_NICKNAME);
-        payload.push(name_len);
-        payload.extend_from_slice(&name_bytes[..name_len as usize]);
+        payload.push(name_len as u8);
+        payload.extend_from_slice(&name_bytes[..name_len]);
 
         payload.push(TLV_TAG_NOISE_PUBKEY);
         payload.push(32);
@@ -494,7 +714,44 @@ impl BitChatService {
         payload.push(32);
         payload.extend_from_slice(ed_pubkey);
 
+        if neighbor_cap > 0 {
+            payload.push(TLV_TAG_ROUTE_PEER_ID);
+            payload.push((neighbor_cap * 8) as u8);
+            for peer_id in direct_neighbors.iter().take(neighbor_cap) {
+                payload.extend_from_slice(peer_id);
+            }
+        }
+
         payload
+    }
+
+    /// Collects up to `MAX_ANNOUNCE_NEIGHBORS` fresh direct 1-hop BLE neighbors seen within `DIRECT_NEIGHBOR_FRESHNESS_SECS`.
+    pub async fn collect_direct_neighbors(
+        peers: &RwLock<HashMap<[u8; 8], BitChatPeerEntry>>,
+        my_sender_id: &[u8; 8],
+    ) -> Vec<[u8; 8]> {
+        let now = Instant::now();
+        let guard = peers.read().await;
+        let mut fresh: Vec<([u8; 8], Duration)> = guard
+            .values()
+            .filter(|entry| entry.sender_id != *my_sender_id)
+            .filter_map(|entry| {
+                entry.last_direct_seen.and_then(|seen| {
+                    let age = now.saturating_duration_since(seen);
+                    if age.as_secs() <= DIRECT_NEIGHBOR_FRESHNESS_SECS {
+                        Some((entry.sender_id, age))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        fresh.sort_by_key(|(_, age)| *age);
+        fresh
+            .into_iter()
+            .take(MAX_ANNOUNCE_NEIGHBORS)
+            .map(|(id, _)| id)
+            .collect()
     }
 
     /// Constructs a fully signed and bucket-padded BitChat Node Announce packet (Type 0x01).
@@ -503,10 +760,25 @@ impl BitChatService {
         signing_key: &SigningKey,
         noise_pubkey: &[u8; 32],
     ) -> Vec<u8> {
+        Self::build_announce_packet_with_neighbors(node_name, signing_key, noise_pubkey, &[])
+    }
+
+    /// Constructs a signed and bucket-padded BitChat Node Announce packet (Type 0x01) with `directNeighbors` TLV `0x04`.
+    pub fn build_announce_packet_with_neighbors(
+        node_name: &str,
+        signing_key: &SigningKey,
+        noise_pubkey: &[u8; 32],
+        direct_neighbors: &[[u8; 8]],
+    ) -> Vec<u8> {
         let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
         let ed_pubkey = signing_key.verifying_key().to_bytes();
         let sender_id = Self::derive_sender_id(noise_pubkey);
-        let payload = Self::build_announce_payload(node_name, noise_pubkey, &ed_pubkey);
+        let payload = Self::build_announce_payload_with_neighbors(
+            node_name,
+            noise_pubkey,
+            &ed_pubkey,
+            direct_neighbors,
+        );
         let payload_len = payload.len() as u16;
 
         let mut data_before_sig = Vec::with_capacity(14 + 8 + payload.len());
@@ -519,13 +791,48 @@ impl BitChatService {
         data_before_sig.extend_from_slice(&sender_id);
         data_before_sig.extend_from_slice(&payload);
 
-        let signing_preimage = Self::canonical_signing_preimage(&data_before_sig, BITCHAT_BUCKET_SIZE_256);
+        let bucket_size = if data_before_sig.len() + 64 < BITCHAT_BUCKET_SIZE_256 {
+            BITCHAT_BUCKET_SIZE_256
+        } else {
+            512
+        };
+        let signing_preimage = Self::canonical_signing_preimage(&data_before_sig, bucket_size);
         let signature = signing_key.sign(&signing_preimage);
 
         let mut live_packet = data_before_sig;
         live_packet.extend_from_slice(&signature.to_bytes());
 
-        Self::pad_to_bucket(live_packet, BITCHAT_BUCKET_SIZE_256)
+        Self::pad_to_bucket(live_packet, bucket_size)
+    }
+
+    /// Initiates a Noise XX handshake (`-> e`, 32 bytes, Type `0x10`) toward `target_peer` so peers holding
+    /// stale pre-restart Noise sessions immediately reset and re-establish mutual transport keys.
+    pub fn initiate_noise_handshake(
+        my_sender_id: &[u8; 8],
+        target_peer: &[u8; 8],
+        noise_privkey: &[u8; 32],
+        signing_key: &SigningKey,
+    ) -> Option<(PeerNoiseSession, Vec<u8>)> {
+        let pattern: snow::params::NoiseParams = "Noise_XX_25519_ChaChaPoly_SHA256".parse().ok()?;
+        let mut handshake = snow::Builder::new(pattern)
+            .local_private_key(&noise_privkey[..])
+            .build_initiator()
+            .ok()?;
+        let mut msg1_buf = [0u8; 128];
+        let msg1_len = handshake.write_message(&[], &mut msg1_buf).ok()?;
+        let pkt = Self::build_key_exchange_response(
+            my_sender_id,
+            target_peer,
+            &msg1_buf[..msg1_len],
+            signing_key,
+        );
+        Some((
+            PeerNoiseSession::HandshakingInitiator {
+                state: Box::new(handshake),
+                started_at: Instant::now(),
+            },
+            pkt,
+        ))
     }
 
     /// Constructs a signed and bucket-padded BitChat Chat Message packet (Type 0x02).
@@ -567,18 +874,18 @@ impl BitChatService {
         Self::pad_to_bucket(live_packet, BITCHAT_BUCKET_SIZE_256)
     }
 
-    /// Constructs a signed BitChat Key Exchange Response packet (Type 0x10) carrying Noise XX Message 2 payload.
+    /// Constructs a signed BitChat Key Exchange packet (Type 0x10) carrying Noise XX handshake payload.
     pub fn build_key_exchange_response(
         my_sender_id: &[u8; 8],
         recipient_id: &[u8; 8],
-        noise_msg2_payload: &[u8],
+        noise_msg_payload: &[u8],
         signing_key: &SigningKey,
     ) -> Vec<u8> {
         let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
-        let payload_len = noise_msg2_payload.len() as u16;
+        let payload_len = noise_msg_payload.len() as u16;
         let flags = FLAG_HAS_RECIPIENT | FLAG_HAS_SIGNATURE;
 
-        let mut data_before_sig = Vec::with_capacity(14 + 8 + 8 + noise_msg2_payload.len());
+        let mut data_before_sig = Vec::with_capacity(14 + 8 + 8 + noise_msg_payload.len());
         data_before_sig.push(PACKET_VERSION);
         data_before_sig.push(PACKET_TYPE_NOISE_HANDSHAKE);
         data_before_sig.push(MESSAGE_TTL_HOPS);
@@ -587,7 +894,7 @@ impl BitChatService {
         data_before_sig.extend_from_slice(&payload_len.to_be_bytes());
         data_before_sig.extend_from_slice(my_sender_id);
         data_before_sig.extend_from_slice(recipient_id);
-        data_before_sig.extend_from_slice(noise_msg2_payload);
+        data_before_sig.extend_from_slice(noise_msg_payload);
 
         let signing_preimage = Self::canonical_signing_preimage(&data_before_sig, BITCHAT_BUCKET_SIZE_256);
         let signature = signing_key.sign(&signing_preimage);
@@ -629,7 +936,7 @@ impl BitChatService {
         Self::pad_to_bucket(live_packet, BITCHAT_BUCKET_SIZE_256)
     }
 
-    /// Constructs a Route-Sync-Response frame (Type 0x21) in response to peer discovery.
+    /// Constructs a legacy Route-Sync-Response frame (Type 0x20) if requested by legacy peers.
     pub fn build_sync_response(sender_id: &[u8; 8], _incoming_pkt: &[u8]) -> Vec<u8> {
         let timestamp_ms = crate::time_sync::now_utc_ms() as u64;
         let sync_payload = [
@@ -639,8 +946,8 @@ impl BitChatService {
 
         let mut packet = Vec::with_capacity(14 + 8 + sync_payload.len());
         packet.push(PACKET_VERSION);
-        packet.push(PACKET_TYPE_SYNC_RESPONSE);
-        packet.push(MESSAGE_TTL_HOPS);
+        packet.push(PACKET_TYPE_LEGACY_SYNC);
+        packet.push(0x00);
         packet.extend_from_slice(&timestamp_ms.to_be_bytes());
         packet.push(0x00);
         packet.extend_from_slice(&payload_len.to_be_bytes());
@@ -650,21 +957,32 @@ impl BitChatService {
         packet
     }
 
-    /// Parses and decodes an incoming raw Bluetooth Low Energy BitChat packet.
+    /// Parses and decodes an incoming raw Bluetooth Low Energy BitChat v1 or v2 packet.
     pub fn parse_incoming_packet(data: &[u8]) -> Option<ParsedPacket> {
         if data.len() < 14 {
             return None;
         }
 
-        let _pkt_version = data[0];
+        let pkt_version = data[0];
         let pkt_type = data[1];
+        let ttl = data[2];
         let flags = data[11];
-        let payload_len = u16::from_be_bytes([data[12], data[13]]) as usize;
+
+        let (mut offset, payload_len) = if pkt_version == PACKET_VERSION_V2 {
+            if data.len() < 16 {
+                return None;
+            }
+            let len = u32::from_be_bytes([data[12], data[13], data[14], data[15]]) as usize;
+            (16usize, len)
+        } else {
+            let len = u16::from_be_bytes([data[12], data[13]]) as usize;
+            (14usize, len)
+        };
 
         let has_recipient = (flags & FLAG_HAS_RECIPIENT) != 0;
         let has_signature = (flags & FLAG_HAS_SIGNATURE) != 0;
+        let has_route = (flags & FLAG_HAS_ROUTE) != 0;
 
-        let mut offset = 14;
         if data.len() < offset + 8 {
             return None;
         }
@@ -685,6 +1003,21 @@ impl BitChatService {
         } else {
             None
         };
+
+        // BitChat v2 source-routed mesh packets embed `hop_count: u8` followed by `hop_count * 8` peer IDs
+        // immediately before `payload` when `FLAG_HAS_ROUTE` (0x08) is set.
+        if has_route {
+            if data.len() <= offset {
+                return None;
+            }
+            let hop_count = data[offset] as usize;
+            let route_bytes = 1usize.saturating_add(hop_count.saturating_mul(8));
+            if hop_count <= 32 && data.len() >= offset + route_bytes + payload_len {
+                offset += route_bytes;
+            } else {
+                return None;
+            }
+        }
 
         if data.len() < offset + payload_len {
             return None;
@@ -720,11 +1053,15 @@ impl BitChatService {
 
                 if let Some(ed_pub_bytes) = found_ed_pub
                     && let Ok(verifying_key) = VerifyingKey::from_bytes(&ed_pub_bytes)
-                    && let Ok(signature) = ed25519_dalek::Signature::from_slice(sig_bytes) {
-                    let canonical_preimage = Self::canonical_signing_preimage(
-                        &data[..payload_end_offset],
-                        BITCHAT_BUCKET_SIZE_256,
-                    );
+                    && let Ok(signature) = ed25519_dalek::Signature::from_slice(sig_bytes)
+                {
+                    let bucket_size = if data.len() > BITCHAT_BUCKET_SIZE_256 {
+                        512
+                    } else {
+                        BITCHAT_BUCKET_SIZE_256
+                    };
+                    let canonical_preimage =
+                        Self::canonical_signing_preimage(&data[..payload_end_offset], bucket_size);
                     if verifying_key.verify(&canonical_preimage, &signature).is_ok() {
                         sig_valid = true;
                     } else {
@@ -764,7 +1101,8 @@ impl BitChatService {
                     if p_off + tlen <= raw_payload.len() {
                         let tval = &raw_payload[p_off..p_off + tlen];
                         if tag == TLV_TAG_NICKNAME
-                            && let Ok(name_str) = std::str::from_utf8(tval) {
+                            && let Ok(name_str) = std::str::from_utf8(tval)
+                        {
                             peer_name = name_str.trim().to_string();
                         }
                         p_off += tlen;
@@ -774,14 +1112,16 @@ impl BitChatService {
                 }
 
                 info!(
-                    "📡 [BitChat Node Announce] Nickname: '{}', Sender ID: {}, Verified: {}",
+                    "📡 [BitChat Node Announce] Nickname: '{}', Sender ID: {}, TTL: {}, Verified: {}",
                     peer_name,
                     hex::encode(sender_id),
+                    ttl,
                     if sig_valid { "✅ Valid" } else { "⚠️ Unsigned/Legacy" }
                 );
 
                 Some(ParsedPacket {
                     packet_type: pkt_type,
+                    ttl,
                     sender_id: sender_id_arr,
                     recipient_id: recipient_id_opt,
                     payload: Some(peer_name.into_bytes()),
@@ -810,21 +1150,24 @@ impl BitChatService {
 
                 if let Ok(txt) = std::str::from_utf8(payload_to_read) {
                     info!(
-                        "💬 [BitChat {} Received]: \"{}\" (from {})",
+                        "💬 [BitChat {} Received]: \"{}\" (from {}, ttl={})",
                         prefix,
                         txt,
-                        hex::encode(sender_id)
+                        hex::encode(sender_id),
+                        ttl
                     );
                 } else {
                     info!(
-                        "💬 [BitChat {} Received Raw] ({} bytes, from {})",
+                        "💬 [BitChat {} Received Raw] ({} bytes, from {}, ttl={})",
                         prefix,
                         payload_to_read.len(),
-                        hex::encode(sender_id)
+                        hex::encode(sender_id),
+                        ttl
                     );
                 }
                 Some(ParsedPacket {
                     packet_type: pkt_type,
+                    ttl,
                     sender_id: sender_id_arr,
                     recipient_id: recipient_id_opt,
                     payload: Some(payload_to_read.to_vec()),
@@ -840,12 +1183,14 @@ impl BitChatService {
                     "Noise XX Message 3 (-> s, se, handshake final)"
                 };
                 info!(
-                    "🔐 [BitChat Noise Handshake] {} from peer {}",
+                    "🔐 [BitChat Noise Handshake] {} from peer {} (ttl={})",
                     desc,
-                    hex::encode(sender_id)
+                    hex::encode(sender_id),
+                    ttl
                 );
                 Some(ParsedPacket {
                     packet_type: pkt_type,
+                    ttl,
                     sender_id: sender_id_arr,
                     recipient_id: recipient_id_opt,
                     payload: Some(raw_payload.to_vec()),
@@ -854,25 +1199,29 @@ impl BitChatService {
             }
             PACKET_TYPE_NOISE_ENCRYPTED => {
                 info!(
-                    "🔐 [BitChat Encrypted Direct Message] Received ciphertext ({} bytes) from peer {}",
+                    "🔐 [BitChat Encrypted Direct Message] Received ciphertext ({} bytes) from peer {} (ttl={})",
                     raw_payload.len(),
-                    hex::encode(sender_id)
+                    hex::encode(sender_id),
+                    ttl
                 );
                 Some(ParsedPacket {
                     packet_type: pkt_type,
+                    ttl,
                     sender_id: sender_id_arr,
                     recipient_id: recipient_id_opt,
                     payload: Some(raw_payload.to_vec()),
                     signature_valid: true,
                 })
             }
-            PACKET_TYPE_REQUEST_SYNC | PACKET_TYPE_SYNC_RESPONSE => {
-                info!(
-                    "🔄 [BitChat Sync] Handshake/Sync received from peer {}",
+            PACKET_TYPE_LEGACY_SYNC | PACKET_TYPE_REQUEST_SYNC => {
+                debug!(
+                    "🔄 [BitChat Sync] Gossip/Sync frame (0x{:02x}) received from peer {}",
+                    pkt_type,
                     hex::encode(sender_id)
                 );
                 Some(ParsedPacket {
                     packet_type: pkt_type,
+                    ttl,
                     sender_id: sender_id_arr,
                     recipient_id: recipient_id_opt,
                     payload: None,
@@ -880,7 +1229,7 @@ impl BitChatService {
                 })
             }
             _ => {
-                info!(
+                debug!(
                     "📡 [BitChat Packet] Type 0x{:02x} (len: {}, sender: {})",
                     pkt_type,
                     data.len(),
@@ -888,6 +1237,7 @@ impl BitChatService {
                 );
                 Some(ParsedPacket {
                     packet_type: pkt_type,
+                    ttl,
                     sender_id: sender_id_arr,
                     recipient_id: recipient_id_opt,
                     payload: None,
@@ -946,17 +1296,20 @@ impl BitChatService {
                 },
             };
 
-            if let Err(e) = adapt.set_powered(true).await {
-                warn!("⚠️ Could not power on Bluetooth adapter: {}", e);
-            }
-            if let Err(e) = adapt.set_discoverable(true).await {
-                debug!("Could not set discoverable: {}", e);
-            }
-            if let Err(e) = adapt.set_pairable(true).await {
-                debug!("Could not set pairable: {}", e);
-            }
-            if let Err(e) = adapt.set_discoverable_timeout(0).await {
-                debug!("Could not set discoverable timeout: {}", e);
+            let startup_powered = Self::sanitize_hci_adapter(
+                &adapt,
+                &self.config.device,
+                &node_name,
+                true,
+            )
+            .await;
+            if !startup_powered {
+                warn!(
+                    "⚠️ Bluetooth adapter '{}' still not powered after startup sanitize; retrying in 3s...",
+                    self.config.device
+                );
+                sleep(Duration::from_secs(3)).await;
+                continue;
             }
 
             break (sess, adapt);
@@ -967,18 +1320,30 @@ impl BitChatService {
         let adv_uuid = service_uuid;
         let adv_session = _session.clone();
         let running_adv = self.running.clone();
+        let shutdown_adv = self.shutdown_notify.clone();
         let active_subs_adv = self.active_subscribers.clone();
         let self_healing_enabled = self.config.self_healing_enabled;
         let watchdog_interval_secs = self.config.watchdog_interval_secs.max(5);
         let adv_refresh_interval_secs = self.config.adv_refresh_interval_secs;
         let monitored_devices = self.config.resolved_monitored_devices();
         let primary_device = self.config.device.clone();
+        let adv_config = self.config.clone();
+        let adv_refresh_notify = Arc::new(Notify::new());
+        let adv_refresh_notify_loop = adv_refresh_notify.clone();
 
         tokio::spawn(async move {
             info!(
-                "🛡️ BitChat BLE Self-Healing Watchdog initialized [enabled: {}, check_interval: {}s, refresh_interval: {}s, monitored_devices: {:?}]",
-                self_healing_enabled, watchdog_interval_secs, adv_refresh_interval_secs, monitored_devices
+                "🛡️ BitChat BLE Self-Healing Watchdog initialized [enabled: {}, check_interval: {}s, refresh_interval: {}s, idle_interval: {}..{}ms, monitored_devices: {:?}]",
+                self_healing_enabled,
+                watchdog_interval_secs,
+                adv_refresh_interval_secs,
+                adv_config.adv_min_interval_ms,
+                adv_config.adv_max_interval_ms,
+                monitored_devices
             );
+
+            let mut use_default_intervals_fallback = false;
+            let mut consecutive_adv_failures = 0u32;
 
             while running_adv.load(Ordering::Relaxed) {
                 let current_adapter = match adv_session.adapter(&primary_device) {
@@ -998,7 +1363,7 @@ impl BitChatService {
                     if let Ok(mon_adapter) = adv_session.adapter(dev_name) {
                         if !mon_adapter.is_powered().await.unwrap_or(false) {
                             warn!("🔄 [BLE Self-Healing] Monitored adapter '{}' is powered down; restoring power & discoverability...", dev_name);
-                            let _ = mon_adapter.set_powered(true).await;
+                            let _ = BitChatService::ensure_adapter_powered_with_retry(&mon_adapter, dev_name, 6).await;
                         }
                         let _ = mon_adapter.set_discoverable(true).await;
                         let _ = mon_adapter.set_pairable(true).await;
@@ -1007,26 +1372,81 @@ impl BitChatService {
                 }
                 let _ = current_adapter.set_alias(adv_name.clone()).await;
 
-                let le_advertisement = Advertisement {
+                let current_subs = active_subs_adv.load(Ordering::Relaxed);
+                let (min_interval, max_interval) = if use_default_intervals_fallback {
+                    (None, None)
+                } else {
+                    adv_config.adaptive_adv_intervals(current_subs)
+                };
+
+                let build_adv = |min_int: Option<Duration>, max_int: Option<Duration>| Advertisement {
                     advertisement_type: bluer::adv::Type::Peripheral,
                     service_uuids: vec![adv_uuid].into_iter().collect::<BTreeSet<_>>(),
                     local_name: Some(adv_name.clone()),
                     discoverable: Some(true),
+                    min_interval: min_int,
+                    max_interval: max_int,
                     system_includes: vec![bluer::adv::Feature::TxPower].into_iter().collect(),
                     ..Default::default()
                 };
 
-                match current_adapter.advertise(le_advertisement).await {
+                let adv_result = match current_adapter.advertise(build_adv(min_interval, max_interval)).await {
+                    Ok(h) => Ok(h),
+                    Err(e) if min_interval.is_some() || max_interval.is_some() => {
+                        warn!(
+                            "⚠️ [BLE Self-Healing] Controller '{}' rejected custom advertising intervals ({:?}..{:?}): {}. Falling back to controller default intervals...",
+                            primary_device, min_interval, max_interval, e
+                        );
+                        use_default_intervals_fallback = true;
+                        current_adapter.advertise(build_adv(None, None)).await
+                    }
+                    Err(e) => Err(e),
+                };
+
+                match adv_result {
                     Ok(handle) => {
+                        consecutive_adv_failures = 0;
                         info!(
-                            "📡 BitChat BLE peripheral advertising active [Name: '{}', Device: '{}', UUID: {}]",
-                            adv_name, primary_device, adv_uuid
+                            "📡 BitChat BLE peripheral advertising active [Name: '{}', Device: '{}', UUID: {}, Subscribers: {}, Interval: {:?}..{:?}]",
+                            adv_name,
+                            primary_device,
+                            adv_uuid,
+                            current_subs,
+                            if use_default_intervals_fallback { None } else { min_interval },
+                            if use_default_intervals_fallback { None } else { max_interval }
                         );
                         let registered_at = Instant::now();
                         let mut elapsed_since_check = 0u64;
+                        let mut needs_power_cycle = false;
 
                         while running_adv.load(Ordering::Relaxed) {
-                            sleep(Duration::from_secs(1)).await;
+                            tokio::select! {
+                                _ = shutdown_adv.notified() => {
+                                    break;
+                                }
+                                _ = adv_refresh_notify_loop.notified() => {
+                                    let subs_now = active_subs_adv.load(Ordering::Relaxed);
+                                    if subs_now == 0 {
+                                        info!(
+                                            "🔄 [BLE Self-Healing] Last GATT subscriber disconnected (active_subscribers=0); immediately re-registering BLE advertisement on '{}'",
+                                            primary_device
+                                        );
+                                        break;
+                                    } else {
+                                        debug!(
+                                            "🛡️ [BLE Self-Healing] Skipping BLE advertisement re-registration while {} subscriber(s) remain active on '{}'",
+                                            subs_now, primary_device
+                                        );
+                                        continue;
+                                    }
+                                }
+                                _ = sleep(Duration::from_secs(1)) => {}
+                            }
+
+                            if !running_adv.load(Ordering::Relaxed) {
+                                break;
+                            }
+
                             if !self_healing_enabled {
                                 continue;
                             }
@@ -1050,6 +1470,7 @@ impl BitChatService {
                                                     dev_name, sysfs_present, is_powered
                                                 );
                                                 needs_re_advertise = true;
+                                                needs_power_cycle = true;
                                             } else if !is_disc {
                                                 warn!(
                                                     "⚠️ [BLE Self-Healing] Adapter '{}' lost discoverable state! Restoring discoverability...",
@@ -1059,10 +1480,11 @@ impl BitChatService {
                                                 let _ = mon_adapter.set_discoverable_timeout(0).await;
                                             } else if subs == 0 && dev_name == &primary_device && active_inst == 0 {
                                                 warn!(
-                                                    "⚠️ [BLE Self-Healing] Adapter '{}' reports 0 active D-Bus advertising instances while idle! Re-registering...",
+                                                    "⚠️ [BLE Self-Healing] Adapter '{}' reports 0 active D-Bus advertising instances while idle! Re-registering with HCI sanitize...",
                                                     dev_name
                                                 );
                                                 needs_re_advertise = true;
+                                                needs_power_cycle = true;
                                             }
                                         }
                                         Err(e) => {
@@ -1071,17 +1493,20 @@ impl BitChatService {
                                                 dev_name, e
                                             );
                                             needs_re_advertise = true;
+                                            needs_power_cycle = true;
                                         }
                                     }
                                 }
 
+                                // Never tear down and re-register AdvertisementHandle while a GATT central is actively subscribed (`subs > 0`),
+                                // because single-role BLE controllers (e.g. Spreadtrum/Unisoc hci0) disrupt active peripheral GATT notification state.
                                 if !needs_re_advertise
                                     && subs == 0
                                     && adv_refresh_interval_secs > 0
                                     && registered_at.elapsed().as_secs() >= adv_refresh_interval_secs
                                 {
                                     info!(
-                                        "🔄 [BLE Self-Healing] Proactive idle BLE advertisement refresh ({}s elapsed) on '{}' to keep HCI controller state synchronized",
+                                        "🔄 [BLE Self-Healing] Proactive idle BLE advertisement refresh ({}s elapsed, active_subscribers=0) on '{}' to keep HCI controller state synchronized",
                                         adv_refresh_interval_secs, primary_device
                                     );
                                     needs_re_advertise = true;
@@ -1095,15 +1520,40 @@ impl BitChatService {
 
                         drop(handle);
                         if running_adv.load(Ordering::Relaxed) {
-                            sleep(Duration::from_millis(500)).await;
+                            if needs_power_cycle && active_subs_adv.load(Ordering::Relaxed) == 0 {
+                                let _ = BitChatService::sanitize_hci_adapter(
+                                    &current_adapter,
+                                    &primary_device,
+                                    &adv_name,
+                                    true,
+                                )
+                                .await;
+                            } else {
+                                sleep(Duration::from_millis(350)).await;
+                            }
                         }
                     }
                     Err(e) => {
+                        consecutive_adv_failures = consecutive_adv_failures.saturating_add(1);
                         warn!(
-                            "⚠️ [BLE Self-Healing] Failed to register BLE advertisement on '{}': {}. Retrying in 5s...",
-                            primary_device, e
+                            "⚠️ [BLE Self-Healing] Failed to register BLE advertisement on '{}' (attempt {}): {}.",
+                            primary_device, consecutive_adv_failures, e
                         );
-                        sleep(Duration::from_secs(5)).await;
+                        if consecutive_adv_failures >= 2 && active_subs_adv.load(Ordering::Relaxed) == 0 {
+                            warn!(
+                                "🔄 [BLE Self-Healing] Escalating to HCI adapter power-cycle recovery on '{}' after {} consecutive advertisement failures...",
+                                primary_device, consecutive_adv_failures
+                            );
+                            let _ = BitChatService::sanitize_hci_adapter(
+                                &current_adapter,
+                                &primary_device,
+                                &adv_name,
+                                true,
+                            )
+                            .await;
+                        } else {
+                            sleep(Duration::from_secs(3)).await;
+                        }
                     }
                 }
             }
@@ -1120,17 +1570,30 @@ impl BitChatService {
             info!("🔗 Connected BitChat core egress channel to live GATT notification broadcast pipeline");
         }
 
-        // Periodic 30-second mesh announce beacon to ensure continuous visibility in peer tables
+        // Periodic 30-second mesh announce beacon to ensure continuous visibility and bidirectional
+        // `directNeighbors` (TLV 0x04) topology confirmation in BitChat MeshGraphService peer tables.
         let bcast_ann = bcast_tx.clone();
         let name_ann = node_name.clone();
         let sk_ann = Arc::new(signing_key.clone());
         let np_ann = Arc::new(noise_pubkey);
         let running_ann = self.running.clone();
+        let active_subs_ann = self.active_subscribers.clone();
+        let peer_map_ann = self.peers.clone();
+        let my_sid_ann = sender_id;
         tokio::spawn(async move {
             while running_ann.load(Ordering::Relaxed) {
                 sleep(Duration::from_secs(30)).await;
-                let ann_pkt = BitChatService::build_announce_packet(&name_ann, &sk_ann, &np_ann);
-                let _ = bcast_ann.send(ann_pkt);
+                if active_subs_ann.load(Ordering::Relaxed) > 0 {
+                    let neighbors =
+                        BitChatService::collect_direct_neighbors(&peer_map_ann, &my_sid_ann).await;
+                    let ann_pkt = BitChatService::build_announce_packet_with_neighbors(
+                        &name_ann,
+                        &sk_ann,
+                        &np_ann,
+                        &neighbors,
+                    );
+                    let _ = bcast_ann.send(ann_pkt);
+                }
             }
         });
 
@@ -1140,6 +1603,7 @@ impl BitChatService {
         let sender_id_sub = sender_id;
         let bcast_tx_sub = bcast_tx.clone();
         let active_subs_notify = self.active_subscribers.clone();
+        let adv_refresh_notify_gatt = adv_refresh_notify.clone();
 
         let mut noise_hasher = Sha256::new();
         noise_hasher.update(b"bitchat-noise-dh-key-v1-");
@@ -1157,6 +1621,9 @@ impl BitChatService {
         let name_w = node_name.clone();
         let n_priv_w = Arc::new(noise_privkey_bytes);
 
+        let peer_map_r = self.peers.clone();
+        let peer_map_n = self.peers.clone();
+
         let app = Application {
             services: vec![Service {
                 uuid: service_uuid,
@@ -1169,9 +1636,24 @@ impl BitChatService {
                             let n = node_name.clone();
                             let s = sk_sub.clone();
                             let p = np_sub.clone();
+                            let peers_r = peer_map_r.clone();
+                            let sid_r = sender_id;
                             move |_req| {
-                                let pkt = Self::build_announce_packet(&n, &s, &p);
-                                async move { Ok(pkt) }.boxed()
+                                let n = n.clone();
+                                let s = s.clone();
+                                let p = p.clone();
+                                let peers_r = peers_r.clone();
+                                async move {
+                                    let neighbors =
+                                        Self::collect_direct_neighbors(&peers_r, &sid_r).await;
+                                    Ok(Self::build_announce_packet_with_neighbors(
+                                        &n,
+                                        &s,
+                                        &p,
+                                        &neighbors,
+                                    ))
+                                }
+                                .boxed()
                             }
                         }),
                         ..Default::default()
@@ -1195,38 +1677,59 @@ impl BitChatService {
                                 }
                                 let pkt_type = if val.len() > 1 { val[1] } else { 0 };
 
-                                info!(
-                                    "📡 [BitChat GATT] Received mesh packet (Type 0x{:02x}, len: {}) => Hex: {}",
-                                    pkt_type,
-                                    val.len(),
-                                    hex::encode(&val)
-                                );
+                                if matches!(pkt_type, PACKET_TYPE_LEGACY_SYNC | PACKET_TYPE_REQUEST_SYNC) {
+                                    debug!(
+                                        "📡 [BitChat GATT] Received gossip sync packet (Type 0x{:02x}, len: {})",
+                                        pkt_type,
+                                        val.len()
+                                    );
+                                } else {
+                                    info!(
+                                        "📡 [BitChat GATT] Received mesh packet (Type 0x{:02x}, len: {}) => Hex: {}",
+                                        pkt_type,
+                                        val.len(),
+                                        hex::encode(&val)
+                                    );
+                                }
 
                                 let parsed = Self::parse_incoming_packet(&val);
 
-                                if pkt_type == PACKET_TYPE_REQUEST_SYNC {
-                                    let sync_resp = Self::build_sync_response(
-                                        &my_sender_id,
-                                        &val,
-                                    );
-                                    info!(
-                                        "📡 [BitChat GATT] Sending Sync ACK (Type 0x21, {} bytes)",
+                                if let Some(ref p) = parsed {
+                                    if p.sender_id == my_sender_id {
+                                        return Ok(());
+                                    }
+                                    let now = Instant::now();
+                                    let is_direct_hop = p.ttl >= MESSAGE_TTL_HOPS;
+                                    let mut p_guard = peer_map.write().await;
+                                    let entry = p_guard.entry(p.sender_id).or_insert_with(|| BitChatPeerEntry {
+                                        sender_id: p.sender_id,
+                                        nickname: format!("Peer-{}", &hex::encode(p.sender_id)[..4]),
+                                        verified: p.signature_valid,
+                                        last_seen: now,
+                                        last_direct_seen: if is_direct_hop { Some(now) } else { None },
+                                        last_announce_reply_at: None,
+                                        messages_received: 0,
+                                        messages_sent: 0,
+                                    });
+                                    entry.last_seen = now;
+                                    if is_direct_hop {
+                                        entry.last_direct_seen = Some(now);
+                                    }
+                                }
+
+                                if pkt_type == PACKET_TYPE_LEGACY_SYNC {
+                                    let sync_resp = Self::build_sync_response(&my_sender_id, &val);
+                                    debug!(
+                                        "📡 [BitChat GATT] Sending legacy Sync ACK (Type 0x20, {} bytes)",
                                         sync_resp.len()
                                     );
                                     let _ = tx_w.send(sync_resp);
+                                } else if pkt_type == PACKET_TYPE_REQUEST_SYNC {
+                                    // BitChat 0x21 is GossipSyncManager GCS filter sync; do not emit unsigned 0x21 echoes.
                                 } else if pkt_type == PACKET_TYPE_ANNOUNCE {
-                                    let ann_reply = Self::build_announce_packet(
-                                        &name_w,
-                                        &sk_w,
-                                        &np_w,
-                                    );
-                                    info!(
-                                        "📡 [BitChat GATT] Transmitting Announce reply (Type 0x01, {} bytes) to peer",
-                                        ann_reply.len()
-                                    );
-                                    let _ = tx_w.send(ann_reply);
-
+                                    let mut should_reply = true;
                                     if let Some(ref p) = parsed {
+                                        let now = Instant::now();
                                         let mut p_guard = peer_map.write().await;
                                         let nick = if let Some(ref b) = p.payload {
                                             String::from_utf8_lossy(b).to_string()
@@ -1237,20 +1740,58 @@ impl BitChatService {
                                             sender_id: p.sender_id,
                                             nickname: nick.clone(),
                                             verified: p.signature_valid,
-                                            last_seen: Instant::now(),
+                                            last_seen: now,
+                                            last_direct_seen: if p.ttl >= MESSAGE_TTL_HOPS { Some(now) } else { None },
+                                            last_announce_reply_at: None,
                                             messages_received: 0,
                                             messages_sent: 0,
                                         });
                                         entry.nickname = nick;
                                         entry.verified = p.signature_valid;
-                                        entry.last_seen = Instant::now();
+                                        entry.last_seen = now;
+                                        if let Some(prev_reply) = entry.last_announce_reply_at
+                                            && now.saturating_duration_since(prev_reply) < Duration::from_secs(2)
+                                        {
+                                            should_reply = false;
+                                        } else {
+                                            entry.last_announce_reply_at = Some(now);
+                                        }
+                                    }
+
+                                    if should_reply {
+                                        let neighbors =
+                                            Self::collect_direct_neighbors(&peer_map, &my_sender_id).await;
+                                        let ann_reply = Self::build_announce_packet_with_neighbors(
+                                            &name_w,
+                                            &sk_w,
+                                            &np_w,
+                                            &neighbors,
+                                        );
+                                        info!(
+                                            "📡 [BitChat GATT] Transmitting Announce reply (Type 0x01, {} bytes, neighbors={}) to peer",
+                                            ann_reply.len(),
+                                            neighbors.len()
+                                        );
+                                        let _ = tx_w.send(ann_reply);
                                     }
                                 } else if pkt_type == PACKET_TYPE_NOISE_HANDSHAKE || pkt_type == 0x12 {
                                     if let Some(parsed_pkt) = parsed {
+                                        if let Some(rid) = parsed_pkt.recipient_id
+                                            && rid != my_sender_id
+                                            && rid != BITCHAT_BROADCAST_RECIPIENT
+                                        {
+                                            debug!(
+                                                "🛡️ [BitChat Noise] Ignoring mesh handshake from {} addressed to {}",
+                                                hex::encode(parsed_pkt.sender_id),
+                                                hex::encode(rid)
+                                            );
+                                            return Ok(());
+                                        }
+
                                         let from_peer = parsed_pkt.sender_id;
                                         if let Some(payload) = parsed_pkt.payload.filter(|p| !p.is_empty()) {
                                             if payload.len() == 32 {
-                                                // Noise XX Message 1 (-> e, 32 bytes) from initiator
+                                                // Noise XX Message 1 (-> e, 32 bytes) from remote initiator
                                                 info!(
                                                     "🔐 [BitChat Noise XX SHA256] Received Handshake Initiation (Message 1, 32 bytes) from peer {}",
                                                     hex::encode(from_peer)
@@ -1267,7 +1808,7 @@ impl BitChatService {
                                                             let msg2_payload = &msg2_buf[..msg2_len];
                                                             {
                                                                 let mut s = sess_map.write().await;
-                                                                s.insert(from_peer, PeerNoiseSession::Handshaking(Box::new(handshake)));
+                                                                s.insert(from_peer, PeerNoiseSession::HandshakingResponder(Box::new(handshake)));
                                                             }
 
                                                             let kex_resp = Self::build_key_exchange_response(
@@ -1277,7 +1818,7 @@ impl BitChatService {
                                                                 &sk_w,
                                                             );
                                                             info!(
-                                                                "🔐 [BitChat Noise XX SHA256] Transmitting Handshake Response (Type 0x10, {} bytes) to peer {}",
+                                                                "🔐 [BitChat Noise XX SHA256] Transmitting Handshake Response (Message 2, Type 0x10, {} bytes) to peer {}",
                                                                 kex_resp.len(),
                                                                 hex::encode(from_peer)
                                                             );
@@ -1285,19 +1826,75 @@ impl BitChatService {
                                                         }
                                                     }
                                                 }
+                                            } else if payload.len() == 96 {
+                                                // Noise XX Message 2 (<- e, ee, s, es, 96 bytes) from remote responder in reply to our initiation
+                                                info!(
+                                                    "🔐 [BitChat Noise XX SHA256] Received Handshake Response (Message 2, 96 bytes) from peer {}",
+                                                    hex::encode(from_peer)
+                                                );
+                                                let session_opt = {
+                                                    let mut s = sess_map.write().await;
+                                                    if matches!(s.get(&from_peer), Some(PeerNoiseSession::HandshakingInitiator { .. })) {
+                                                        s.remove(&from_peer)
+                                                    } else {
+                                                        None
+                                                    }
+                                                };
+
+                                                if let Some(PeerNoiseSession::HandshakingInitiator { mut state, .. }) = session_opt {
+                                                    let mut read_buf = [0u8; 256];
+                                                    let mut msg3_buf = [0u8; 256];
+                                                    if state.read_message(&payload, &mut read_buf).is_ok()
+                                                        && let Ok(msg3_len) = state.write_message(&[], &mut msg3_buf)
+                                                        && let Ok(transport) = state.into_transport_mode()
+                                                    {
+                                                        {
+                                                            let mut s = sess_map.write().await;
+                                                            s.insert(
+                                                                from_peer,
+                                                                PeerNoiseSession::Established {
+                                                                    transport,
+                                                                    seen_nonces: VecDeque::new(),
+                                                                    seen_msg_ids: VecDeque::new(),
+                                                                },
+                                                            );
+                                                        }
+                                                        let kex_final = Self::build_key_exchange_response(
+                                                            &my_sender_id,
+                                                            &from_peer,
+                                                            &msg3_buf[..msg3_len],
+                                                            &sk_w,
+                                                        );
+                                                        info!(
+                                                            "🔐 [BitChat Noise XX SHA256] Transmitting Handshake Final (Message 3, {} bytes) & session established with peer {}!",
+                                                            kex_final.len(),
+                                                            hex::encode(from_peer)
+                                                        );
+                                                        let _ = tx_w.send(kex_final);
+                                                    } else {
+                                                        warn!(
+                                                            "⚠️ [BitChat Noise XX SHA256] Failed to complete Initiator Message 2/3 transition with peer {}",
+                                                            hex::encode(from_peer)
+                                                        );
+                                                    }
+                                                }
                                             } else if payload.len() >= 48 {
-                                                // Noise XX Message 3 (-> s, se, 64 bytes) from initiator
+                                                // Noise XX Message 3 (-> s, se, 64 bytes) from remote initiator
                                                 info!(
                                                     "🔐 [BitChat Noise XX SHA256] Received Handshake Final (Message 3, {} bytes) from peer {}",
                                                     payload.len(),
                                                     hex::encode(from_peer)
                                                 );
-                                                let mut session_opt = {
+                                                let session_opt = {
                                                     let mut s = sess_map.write().await;
-                                                    s.remove(&from_peer)
+                                                    if matches!(s.get(&from_peer), Some(PeerNoiseSession::HandshakingResponder(_))) {
+                                                        s.remove(&from_peer)
+                                                    } else {
+                                                        None
+                                                    }
                                                 };
 
-                                                if let Some(PeerNoiseSession::Handshaking(mut handshake)) = session_opt.take() {
+                                                if let Some(PeerNoiseSession::HandshakingResponder(mut handshake)) = session_opt {
                                                     let mut read_buf = [0u8; 128];
                                                     match handshake.read_message(&payload, &mut read_buf) {
                                                         Ok(_) => {
@@ -1308,17 +1905,27 @@ impl BitChatService {
                                                                         hex::encode(from_peer)
                                                                     );
                                                                     let mut s = sess_map.write().await;
-                                                                    s.insert(from_peer, PeerNoiseSession::Established(transport));
+                                                                    s.insert(
+                                                                        from_peer,
+                                                                        PeerNoiseSession::Established {
+                                                                            transport,
+                                                                            seen_nonces: VecDeque::new(),
+                                                                            seen_msg_ids: VecDeque::new(),
+                                                                        },
+                                                                    );
                                                                     {
+                                                                        let now = Instant::now();
                                                                         let mut p_guard = peer_map.write().await;
                                                                         p_guard.entry(from_peer).or_insert_with(|| BitChatPeerEntry {
                                                                             sender_id: from_peer,
                                                                             nickname: format!("Peer-{}", &hex::encode(from_peer)[..4]),
                                                                             verified: true,
-                                                                            last_seen: Instant::now(),
+                                                                            last_seen: now,
+                                                                            last_direct_seen: if parsed_pkt.ttl >= MESSAGE_TTL_HOPS { Some(now) } else { None },
+                                                                            last_announce_reply_at: None,
                                                                             messages_received: 0,
                                                                             messages_sent: 0,
-                                                                        }).last_seen = Instant::now();
+                                                                        }).last_seen = now;
                                                                     }
                                                                 }
                                                                 Err(e) => {
@@ -1335,8 +1942,8 @@ impl BitChatService {
                                                         }
                                                     }
                                                 } else {
-                                                    warn!(
-                                                        "⚠️ [BitChat Noise XX SHA256] Received Message 3 without active Handshaking state for peer {}",
+                                                    debug!(
+                                                        "🛡️ [BitChat Noise XX SHA256] Ignoring duplicate/late Message 3 from peer {} (session already established or idle)",
                                                         hex::encode(from_peer)
                                                     );
                                                 }
@@ -1345,10 +1952,29 @@ impl BitChatService {
                                     }
                                 } else if pkt_type == PACKET_TYPE_NOISE_ENCRYPTED {
                                     if let Some(parsed_pkt) = parsed {
+                                        if let Some(rid) = parsed_pkt.recipient_id
+                                            && rid != my_sender_id
+                                            && rid != BITCHAT_BROADCAST_RECIPIENT
+                                        {
+                                            debug!(
+                                                "🛡️ [BitChat E2EE] Ignoring mesh ciphertext from {} addressed to {}",
+                                                hex::encode(parsed_pkt.sender_id),
+                                                hex::encode(rid)
+                                            );
+                                            return Ok(());
+                                        }
+
                                         let from_peer = parsed_pkt.sender_id;
                                         if let Some(ciphertext) = parsed_pkt.payload.filter(|p| !p.is_empty()) {
+                                            let mut needs_session_recovery = false;
                                             let mut s = sess_map.write().await;
-                                            if let Some(PeerNoiseSession::Established(transport)) = s.get_mut(&from_peer) {
+
+                                            if let Some(PeerNoiseSession::Established {
+                                                transport,
+                                                seen_nonces,
+                                                seen_msg_ids,
+                                            }) = s.get_mut(&from_peer)
+                                            {
                                                 // BitChat Android/iOS prefixes Noise transport messages with a 4-byte big-endian nonce
                                                 let (extracted_nonce, actual_cipher) = if ciphertext.len() >= 20 {
                                                     let n = u32::from_be_bytes([ciphertext[0], ciphertext[1], ciphertext[2], ciphertext[3]]) as u64;
@@ -1357,6 +1983,18 @@ impl BitChatService {
                                                     (None, &ciphertext[..])
                                                 };
 
+                                                if let Some(n) = extracted_nonce
+                                                    && seen_nonces.contains(&n)
+                                                {
+                                                    debug!(
+                                                        "🛡️ [BitChat E2EE] Ignoring duplicate mesh-relayed Noise frame (nonce={}) from peer {}",
+                                                        n,
+                                                        hex::encode(from_peer)
+                                                    );
+                                                    return Ok(());
+                                                }
+
+                                                let prev_recv_nonce = transport.receiving_nonce();
                                                 if let Some(n) = extracted_nonce {
                                                     transport.set_receiving_nonce(n);
                                                 }
@@ -1364,12 +2002,17 @@ impl BitChatService {
                                                 let mut plain_buf = vec![0u8; actual_cipher.len() + 64];
                                                 let decrypt_res = transport.read_message(actual_cipher, &mut plain_buf);
 
-                                                // Fallback: if 4-byte nonce-stripped decrypt failed, try raw ciphertext
+                                                // Fallback: if 4-byte nonce-stripped decrypt failed, restore nonce and try raw ciphertext
                                                 let final_res = match decrypt_res {
                                                     Ok(len) => Ok(len),
                                                     Err(e) => {
                                                         if extracted_nonce.is_some() {
-                                                            transport.read_message(&ciphertext, &mut plain_buf)
+                                                            transport.set_receiving_nonce(prev_recv_nonce);
+                                                            let raw_res = transport.read_message(&ciphertext, &mut plain_buf);
+                                                            if raw_res.is_err() {
+                                                                transport.set_receiving_nonce(prev_recv_nonce);
+                                                            }
+                                                            raw_res
                                                         } else {
                                                             Err(e)
                                                         }
@@ -1378,6 +2021,13 @@ impl BitChatService {
 
                                                 match final_res {
                                                     Ok(plain_len) => {
+                                                        if let Some(n) = extracted_nonce {
+                                                            if seen_nonces.len() >= MAX_TRACKED_SESSION_NONCES {
+                                                                seen_nonces.pop_front();
+                                                            }
+                                                            seen_nonces.push_back(n);
+                                                        }
+
                                                         let plain_bytes = &plain_buf[..plain_len];
                                                         info!(
                                                             "🔓 [BitChat E2EE Raw Decrypted] ({} bytes from {}): Hex={}",
@@ -1387,21 +2037,30 @@ impl BitChatService {
                                                         );
 
                                                         if !plain_bytes.is_empty() {
-                                                            // BitChat NoisePayloadType:
-                                                            // 0x01 = privateMessage (TLV: 0x00=messageID, 0x01=content)
-                                                            // 0x02 = readReceipt
-                                                            // 0x03 = delivered
-                                                            // 0x10 = verifyChallenge
-                                                            // 0x11 = verifyResponse
-                                                            // 0x20 / 0x21 = post-handshake identity / sync frame
                                                             let noise_payload_type = plain_bytes[0];
                                                             if matches!(noise_payload_type, 0x02 | 0x03 | 0x10 | 0x11 | 0x20 | 0x21) {
-                                                                info!(
+                                                                debug!(
                                                                     "🔄 [BitChat E2EE Control] Ignoring Noise control/sync payload (type: 0x{:02x}, {} bytes) from peer {}",
                                                                     plain_bytes[0], plain_bytes.len(), hex::encode(from_peer)
                                                                 );
                                                             } else {
-                                                                let plain_text = Self::extract_bitchat_private_message(plain_bytes);
+                                                                let (msg_id_opt, plain_text) =
+                                                                    Self::extract_bitchat_private_message_with_id(plain_bytes);
+                                                                if let Some(ref mid) = msg_id_opt {
+                                                                    if seen_msg_ids.contains(mid) {
+                                                                        debug!(
+                                                                            "🛡️ [BitChat E2EE] Ignoring duplicate private message ID '{}' from peer {}",
+                                                                            mid,
+                                                                            hex::encode(from_peer)
+                                                                        );
+                                                                        return Ok(());
+                                                                    }
+                                                                    if seen_msg_ids.len() >= MAX_TRACKED_SESSION_MSG_IDS {
+                                                                        seen_msg_ids.pop_front();
+                                                                    }
+                                                                    seen_msg_ids.push_back(mid.clone());
+                                                                }
+
                                                                 if !plain_text.is_empty() && plain_text.chars().any(|c| c.is_alphanumeric()) {
                                                                     info!(
                                                                         "💬 [BitChat Private Direct Message Decrypted]: \"{}\" (from {})",
@@ -1432,6 +2091,8 @@ impl BitChatService {
                                                                         );
                                                                         let _ = tx_w.send(enc_reply);
                                                                     }
+                                                                    drop(s);
+
                                                                     let sender_nickname = {
                                                                         let mut p_guard = peer_map.write().await;
                                                                         if let Some(entry) = p_guard.get_mut(&from_peer) {
@@ -1452,8 +2113,18 @@ impl BitChatService {
                                                                             &plain_text,
                                                                             &daemon_node,
                                                                         );
+                                                                        let msg_tag: String = msg_id_opt
+                                                                            .as_deref()
+                                                                            .map(|id| {
+                                                                                id.chars()
+                                                                                    .filter(|c| c.is_ascii_alphanumeric())
+                                                                                    .take(16)
+                                                                                    .collect::<String>()
+                                                                            })
+                                                                            .filter(|tag| !tag.is_empty())
+                                                                            .unwrap_or_else(|| crate::time_sync::now_utc_ms().to_string());
                                                                         let alert = Alert {
-                                                                            alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
+                                                                            alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], msg_tag),
                                                                             severity: AlertSeverity::Critical,
                                                                             summary: formatted_summary.clone(),
                                                                             description: Some(formatted_summary),
@@ -1473,8 +2144,9 @@ impl BitChatService {
                                                                             }
                                                                         });
                                                                     }
+                                                                    return Ok(());
                                                                 } else {
-                                                                    info!(
+                                                                    debug!(
                                                                         "🔄 [BitChat E2EE Control] Ignoring internal/control PrivateMessage payload ({} bytes) from peer {}",
                                                                         plain_bytes.len(), hex::encode(from_peer)
                                                                     );
@@ -1484,23 +2156,54 @@ impl BitChatService {
                                                     }
                                                     Err(e) => {
                                                         warn!(
-                                                            "⚠️ [BitChat E2EE] Failed to decrypt transport message from peer {}: {}",
+                                                            "⚠️ [BitChat E2EE] Failed to decrypt transport message from peer {} ({}); initiating automatic Noise XX session recovery",
                                                             hex::encode(from_peer),
                                                             e
                                                         );
+                                                        s.remove(&from_peer);
+                                                        needs_session_recovery = true;
                                                     }
                                                 }
                                             } else {
-                                                warn!(
-                                                    "⚠️ [BitChat E2EE] Received encrypted message without an active session from peer {}",
-                                                    hex::encode(from_peer)
+                                                let already_initiating = matches!(
+                                                    s.get(&from_peer),
+                                                    Some(PeerNoiseSession::HandshakingInitiator { started_at, .. })
+                                                        if started_at.elapsed() < Duration::from_secs(3)
                                                 );
-                                                let ann_reply = Self::build_announce_packet(
+                                                if !already_initiating {
+                                                    warn!(
+                                                        "⚠️ [BitChat E2EE] Received encrypted message without an active session from peer {}; initiating Noise XX handshake recovery",
+                                                        hex::encode(from_peer)
+                                                    );
+                                                    needs_session_recovery = true;
+                                                }
+                                            }
+
+                                            if needs_session_recovery
+                                                && let Some((init_sess, hs_pkt)) = Self::initiate_noise_handshake(
+                                                    &my_sender_id,
+                                                    &from_peer,
+                                                    &n_priv_w,
+                                                    &sk_w,
+                                                )
+                                            {
+                                                s.insert(from_peer, init_sess);
+                                                drop(s);
+                                                let neighbors =
+                                                    Self::collect_direct_neighbors(&peer_map, &my_sender_id).await;
+                                                let ann_reply = Self::build_announce_packet_with_neighbors(
                                                     &name_w,
                                                     &sk_w,
                                                     &np_w,
+                                                    &neighbors,
                                                 );
                                                 let _ = tx_w.send(ann_reply);
+                                                info!(
+                                                    "🔐 [BitChat Noise XX SHA256] Initiating session recovery Handshake Message 1 ({} bytes) toward peer {}",
+                                                    hs_pkt.len(),
+                                                    hex::encode(from_peer)
+                                                );
+                                                let _ = tx_w.send(hs_pkt);
                                             }
                                         }
                                     }
@@ -1522,117 +2225,36 @@ impl BitChatService {
                                             .unwrap_or_default();
 
                                         if Self::is_bitchat_control_message(&txt) {
-                                            info!(
+                                            debug!(
                                                 "🔄 [BitChat GATT Control] Ignoring internal control/favorite sync message from peer {}: \"{}\"",
                                                 hex::encode(from_peer),
                                                 txt
                                             );
                                         } else if !txt.is_empty() && txt.chars().any(|c| c.is_alphanumeric()) {
                                             if is_direct_to_me {
-                                            info!(
-                                                "💬 [BitChat 1-on-1 Direct Message Received]: \"{}\" (from {})",
-                                                txt,
-                                                hex::encode(from_peer)
-                                            );
-
-                                            let reply_txt = format!(
-                                                "🚀 [OpenAlert Daemon ACK] Received your private message: \"{}\"",
-                                                txt
-                                            );
-                                            let chat_reply = Self::build_chat_message_packet(
-                                                &my_sender_id,
-                                                Some(&from_peer),
-                                                &reply_txt,
-                                                &sk_w,
-                                            );
-                                            info!(
-                                                "💬 [BitChat GATT] Transmitting active chat message reply to peer {}: \"{}\"",
-                                                hex::encode(from_peer),
-                                                reply_txt
-                                            );
-                                            let _ = tx_w.send(chat_reply);
-
-                                            let sender_nickname = {
-                                                let p_guard = peer_map.read().await;
-                                                p_guard
-                                                    .get(&from_peer)
-                                                    .map(|e| e.nickname.clone())
-                                                    .unwrap_or_else(|| format!("Peer-{}", &hex::encode(from_peer)[..4]))
-                                            };
-
-                                            if let Some(ref eng) = eng_opt {
-                                                let daemon_node = eng.config().daemon.name.clone();
-                                                let formatted_summary = crate::ingress::sos::format_sos_alert_text(
-                                                    Some("SOS"),
-                                                    Some(&sender_nickname),
-                                                    &txt,
-                                                    &daemon_node,
-                                                );
-                                                let alert = Alert {
-                                                    alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
-                                                    severity: AlertSeverity::Critical,
-                                                    summary: formatted_summary.clone(),
-                                                    description: Some(formatted_summary),
-                                                    source: AlertSource::BitChat,
-                                                    sender: Some(sender_nickname),
-                                                    node: Some(daemon_node),
-                                                    starts_at: crate::time_sync::now_utc(),
-                                                    destinations: Vec::new(),
-                                                    origin_peer: None,
-                                                    hop: 5,
-                                                };
-                                                let eng_clone = eng.clone();
-                                                tokio::spawn(async move {
-                                                    sleep(Duration::from_millis(250)).await;
-                                                    if let Err(err) = eng_clone.route_alert(alert).await {
-                                                        warn!("Failed to route BitChat direct ingress alert: {}", err);
-                                                    }
-                                                });
-                                            }
-                                        } else {
-                                            let label = if is_broadcast { "Mesh Broadcast" } else { "Mesh Message" };
-                                            info!(
-                                                "💬 [BitChat {} Received]: \"{}\" (from {}, to: {:?})",
-                                                label,
-                                                txt,
-                                                hex::encode(from_peer),
-                                                parsed_pkt.recipient_id.map(hex::encode)
-                                            );
-                                            // When BitChat is configured as an Egress destination on this node,
-                                            // only 1-to-1 private messages (DMs) to the OpenAlert peer are accepted as Ingress
-                                            // (which are then broadcast out to the public mesh via BitChatEgress), preventing public mesh echo loops.
-                                            let bitchat_egress_active = eng_opt.as_ref().is_some_and(|eng| {
-                                                let r = &eng.config().routing;
-                                                r.default_destinations.iter().any(|d| d == "bitchat")
-                                                    || r.failover_destinations.iter().any(|d| d == "bitchat")
-                                            });
-                                            let is_daemon_echo = txt.starts_with("🚀 [OpenAlert Daemon ACK]")
-                                                || txt.starts_with("✅ [OpenAlert ")
-                                                || txt.starts_with("🚨 [");
-
-                                            if bitchat_egress_active {
                                                 info!(
-                                                    "🛡️ [BitChat Split-Horizon] Ignoring public {} as ingress because BitChat Egress is enabled on this node (use 1-to-1 private chat to trigger alerts)",
-                                                    label
+                                                    "💬 [BitChat 1-on-1 Direct Message Received]: \"{}\" (from {})",
+                                                    txt,
+                                                    hex::encode(from_peer)
                                                 );
-                                            } else if !is_daemon_echo {
-                                                if public_mesh_ack {
-                                                    let reply_txt = format!(
-                                                        "🚀 [OpenAlert Daemon ACK] Received mesh alert: \"{}\"",
-                                                        txt
-                                                    );
-                                                    let chat_reply = Self::build_chat_message_packet(
-                                                        &my_sender_id,
-                                                        None,
-                                                        &reply_txt,
-                                                        &sk_w,
-                                                    );
-                                                    info!(
-                                                        "💬 [BitChat GATT] Broadcasting public mesh ACK reply: \"{}\"",
-                                                        reply_txt
-                                                    );
-                                                    let _ = tx_w.send(chat_reply);
-                                                }
+
+                                                let reply_txt = format!(
+                                                    "🚀 [OpenAlert Daemon ACK] Received your private message: \"{}\"",
+                                                    txt
+                                                );
+                                                let chat_reply = Self::build_chat_message_packet(
+                                                    &my_sender_id,
+                                                    Some(&from_peer),
+                                                    &reply_txt,
+                                                    &sk_w,
+                                                );
+                                                info!(
+                                                    "💬 [BitChat GATT] Transmitting active chat message reply to peer {}: \"{}\"",
+                                                    hex::encode(from_peer),
+                                                    reply_txt
+                                                );
+                                                let _ = tx_w.send(chat_reply);
+
                                                 let sender_nickname = {
                                                     let p_guard = peer_map.read().await;
                                                     p_guard
@@ -1640,6 +2262,7 @@ impl BitChatService {
                                                         .map(|e| e.nickname.clone())
                                                         .unwrap_or_else(|| format!("Peer-{}", &hex::encode(from_peer)[..4]))
                                                 };
+
                                                 if let Some(ref eng) = eng_opt {
                                                     let daemon_node = eng.config().daemon.name.clone();
                                                     let formatted_summary = crate::ingress::sos::format_sos_alert_text(
@@ -1649,7 +2272,7 @@ impl BitChatService {
                                                         &daemon_node,
                                                     );
                                                     let alert = Alert {
-                                                        alert_id: format!("bitchat-{}-{}-{}", if is_broadcast { "bcast" } else { "msg" }, &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
+                                                        alert_id: format!("bitchat-dm-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
                                                         severity: AlertSeverity::Critical,
                                                         summary: formatted_summary.clone(),
                                                         description: Some(formatted_summary),
@@ -1665,12 +2288,88 @@ impl BitChatService {
                                                     tokio::spawn(async move {
                                                         sleep(Duration::from_millis(250)).await;
                                                         if let Err(err) = eng_clone.route_alert(alert).await {
-                                                            warn!("Failed to route BitChat ingress alert: {}", err);
+                                                            warn!("Failed to route BitChat direct ingress alert: {}", err);
                                                         }
                                                     });
                                                 }
+                                            } else if is_broadcast {
+                                                let label = "Mesh Broadcast";
+                                                info!(
+                                                    "💬 [BitChat {} Received]: \"{}\" (from {})",
+                                                    label,
+                                                    txt,
+                                                    hex::encode(from_peer)
+                                                );
+                                                let bitchat_egress_active = eng_opt.as_ref().is_some_and(|eng| {
+                                                    let r = &eng.config().routing;
+                                                    r.default_destinations.iter().any(|d| d == "bitchat")
+                                                        || r.failover_destinations.iter().any(|d| d == "bitchat")
+                                                });
+                                                let is_daemon_echo = txt.starts_with("🚀 [OpenAlert Daemon ACK]")
+                                                    || txt.starts_with("✅ [OpenAlert ")
+                                                    || txt.starts_with("🚨 [");
+
+                                                if bitchat_egress_active {
+                                                    info!(
+                                                        "🛡️ [BitChat Split-Horizon] Ignoring public {} as ingress because BitChat Egress is enabled on this node (use 1-to-1 private chat to trigger alerts)",
+                                                        label
+                                                    );
+                                                } else if !is_daemon_echo {
+                                                    if public_mesh_ack {
+                                                        let reply_txt = format!(
+                                                            "🚀 [OpenAlert Daemon ACK] Received mesh alert: \"{}\"",
+                                                            txt
+                                                        );
+                                                        let chat_reply = Self::build_chat_message_packet(
+                                                            &my_sender_id,
+                                                            None,
+                                                            &reply_txt,
+                                                            &sk_w,
+                                                        );
+                                                        info!(
+                                                            "💬 [BitChat GATT] Broadcasting public mesh ACK reply: \"{}\"",
+                                                            reply_txt
+                                                        );
+                                                        let _ = tx_w.send(chat_reply);
+                                                    }
+                                                    let sender_nickname = {
+                                                        let p_guard = peer_map.read().await;
+                                                        p_guard
+                                                            .get(&from_peer)
+                                                            .map(|e| e.nickname.clone())
+                                                            .unwrap_or_else(|| format!("Peer-{}", &hex::encode(from_peer)[..4]))
+                                                    };
+                                                    if let Some(ref eng) = eng_opt {
+                                                        let daemon_node = eng.config().daemon.name.clone();
+                                                        let formatted_summary = crate::ingress::sos::format_sos_alert_text(
+                                                            Some("SOS"),
+                                                            Some(&sender_nickname),
+                                                            &txt,
+                                                            &daemon_node,
+                                                        );
+                                                        let alert = Alert {
+                                                            alert_id: format!("bitchat-bcast-{}-{}", &hex::encode(from_peer)[..8], crate::time_sync::now_utc_ms()),
+                                                            severity: AlertSeverity::Critical,
+                                                            summary: formatted_summary.clone(),
+                                                            description: Some(formatted_summary),
+                                                            source: AlertSource::BitChat,
+                                                            sender: Some(sender_nickname),
+                                                            node: Some(daemon_node),
+                                                            starts_at: crate::time_sync::now_utc(),
+                                                            destinations: Vec::new(),
+                                                            origin_peer: None,
+                                                            hop: 5,
+                                                        };
+                                                        let eng_clone = eng.clone();
+                                                        tokio::spawn(async move {
+                                                            sleep(Duration::from_millis(250)).await;
+                                                            if let Err(err) = eng_clone.route_alert(alert).await {
+                                                                warn!("Failed to route BitChat ingress alert: {}", err);
+                                                            }
+                                                        });
+                                                    }
+                                                }
                                             }
-                                        }
                                         }
                                     }
                                 }
@@ -1691,14 +2390,28 @@ impl BitChatService {
                                 let sid_s = sender_id_sub;
                                 let tx_welcome = bcast_tx_sub.clone();
                                 let subs_counter = active_subs_notify.clone();
+                                let adv_notify = adv_refresh_notify_gatt.clone();
+                                let peers_s = peer_map_n.clone();
                                 async move {
-                                    subs_counter.fetch_add(1, Ordering::Relaxed);
-                                    let initial_ann = Self::build_announce_packet(
-                                        &name_s, &sk_s, &np_s,
+                                    let prev_subs = subs_counter.fetch_add(1, Ordering::Relaxed);
+                                    info!(
+                                        "📡 [BitChat GATT] Peer subscribed to Mesh notifications (active_subscribers: {} -> {}).",
+                                        prev_subs,
+                                        prev_subs + 1
+                                    );
+
+                                    let neighbors =
+                                        Self::collect_direct_neighbors(&peers_s, &sid_s).await;
+                                    let initial_ann = Self::build_announce_packet_with_neighbors(
+                                        &name_s,
+                                        &sk_s,
+                                        &np_s,
+                                        &neighbors,
                                     );
                                     info!(
-                                        "📡 [BitChat GATT] Peer subscribed to Mesh notifications. Sending fresh announce packet ({} bytes)",
-                                        initial_ann.len()
+                                        "📡 [BitChat GATT] Sending fresh announce packet ({} bytes, neighbors={}) to new subscriber",
+                                        initial_ann.len(),
+                                        neighbors.len()
                                     );
                                     let _ = notifier.notify(initial_ann).await;
                                     let welcome_msg = "👋 Hello from OpenAlert Daemon! Connected over BLE Mesh.";
@@ -1718,25 +2431,63 @@ impl BitChatService {
                                         let _ = tx_welcome.send(welcome_pkt);
                                     });
 
-                                    while let Ok(pkt) = rx.recv().await {
-                                        let ptype =
-                                            if pkt.len() > 1 { pkt[1] } else { 0 };
-                                        info!(
-                                            "📡 [BitChat GATT] Transmitting packet (Type 0x{:02x}, len: {}) to peer",
-                                            ptype,
-                                            pkt.len()
-                                        );
-                                        if let Err(err) = notifier.notify(pkt).await
-                                        {
-                                            warn!(
-                                                "[BitChat GATT] Notify stream error: {}",
-                                                err
-                                            );
-                                            break;
+                                    loop {
+                                        tokio::select! {
+                                            _ = notifier.stopped() => {
+                                                info!("🔌 [BitChat GATT] Peer stopped GATT notification subscription");
+                                                break;
+                                            }
+                                            recv_res = rx.recv() => {
+                                                match recv_res {
+                                                    Ok(pkt) => {
+                                                        let ptype = if pkt.len() > 1 { pkt[1] } else { 0 };
+                                                        if matches!(ptype, PACKET_TYPE_LEGACY_SYNC | PACKET_TYPE_REQUEST_SYNC) {
+                                                            debug!(
+                                                                "📡 [BitChat GATT] Transmitting sync packet (Type 0x{:02x}, len: {}) to peer",
+                                                                ptype,
+                                                                pkt.len()
+                                                            );
+                                                        } else {
+                                                            info!(
+                                                                "📡 [BitChat GATT] Transmitting packet (Type 0x{:02x}, len: {}) to peer",
+                                                                ptype,
+                                                                pkt.len()
+                                                            );
+                                                        }
+                                                        if let Err(err) = notifier.notify(pkt).await {
+                                                            warn!(
+                                                                "[BitChat GATT] Notify stream error: {}",
+                                                                err
+                                                            );
+                                                            break;
+                                                        }
+                                                        sleep(Duration::from_millis(100)).await;
+                                                    }
+                                                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                                                        warn!(
+                                                            "⚠️ [BitChat GATT] Notification receiver lagged by {} packet(s); continuing active stream",
+                                                            skipped
+                                                        );
+                                                        continue;
+                                                    }
+                                                    Err(broadcast::error::RecvError::Closed) => {
+                                                        break;
+                                                    }
+                                                }
+                                            }
                                         }
-                                        sleep(Duration::from_millis(150)).await;
                                     }
-                                    subs_counter.fetch_sub(1, Ordering::Relaxed);
+
+                                    let prev_after = subs_counter.fetch_sub(1, Ordering::Relaxed);
+                                    let remaining = prev_after.saturating_sub(1);
+                                    info!(
+                                        "🔄 [BitChat GATT] Peer notification session ended (active_subscribers: {} -> {}).",
+                                        prev_after,
+                                        remaining
+                                    );
+                                    if remaining == 0 {
+                                        adv_notify.notify_one();
+                                    }
                                 }
                                 .boxed()
                             },
@@ -1757,7 +2508,10 @@ impl BitChatService {
                     char_uuid
                 );
                 while self.running.load(Ordering::Relaxed) {
-                    sleep(Duration::from_secs(1)).await;
+                    tokio::select! {
+                        _ = self.shutdown_notify.notified() => break,
+                        _ = sleep(Duration::from_secs(1)) => {}
+                    }
                 }
                 drop(handle);
             }
@@ -2011,9 +2765,11 @@ mod tests {
         );
 
         // Verify BitChatConfig::resolved_monitored_devices avoids hardcoding and falls back to `device`
-        let mut cfg = BitChatConfig::default();
-        cfg.device = "hci2".to_string();
-        cfg.monitored_devices = vec![];
+        let mut cfg = BitChatConfig {
+            device: "hci2".to_string(),
+            monitored_devices: vec![],
+            ..Default::default()
+        };
         assert_eq!(cfg.resolved_monitored_devices(), vec!["hci2".to_string()]);
 
         cfg.monitored_devices = vec!["hci0".to_string(), "hci1".to_string(), "hci0".to_string()];
@@ -2021,5 +2777,208 @@ mod tests {
             cfg.resolved_monitored_devices(),
             vec!["hci0".to_string(), "hci1".to_string()]
         );
+
+        // Verify adaptive low-power advertising intervals (idle vs connected peers)
+        let default_cfg = BitChatConfig::default();
+        assert_eq!(default_cfg.watchdog_interval_secs, 15);
+        assert_eq!(default_cfg.adv_refresh_interval_secs, 90);
+        assert_eq!(
+            default_cfg.adaptive_adv_intervals(0),
+            (
+                Some(Duration::from_millis(250)),
+                Some(Duration::from_millis(500))
+            )
+        );
+        assert_eq!(
+            default_cfg.adaptive_adv_intervals(1),
+            (
+                Some(Duration::from_millis(500)),
+                Some(Duration::from_millis(1000))
+            )
+        );
+
+        let zero_cfg = BitChatConfig {
+            adv_min_interval_ms: 0,
+            ..Default::default()
+        };
+        assert_eq!(zero_cfg.adaptive_adv_intervals(0), (None, None));
+    }
+
+    #[test]
+    fn test_multi_message_sequential_and_duplicate_nonce_transport_and_session_recovery() {
+        let (node_sk, _node_np, node_sid) = BitChatService::derive_keys("OpenAlert-FOG-Node02");
+        let (_peer_sk, _peer_np, peer_sid) = BitChatService::derive_keys("Jorge-Phone");
+
+        let mut node_hasher = Sha256::new();
+        node_hasher.update(b"bitchat-noise-dh-key-v1-OpenAlert-FOG-Node02");
+        let node_priv: [u8; 32] = node_hasher.finalize().into();
+
+        let peer_priv = [0x55u8; 32];
+        let pattern: snow::params::NoiseParams = "Noise_XX_25519_ChaChaPoly_SHA256"
+            .parse()
+            .expect("Noise pattern");
+
+        // 1. Test automatic Noise XX initiator recovery (`initiate_noise_handshake` -> Msg 2 -> Msg 3)
+        let (init_session, hs_pkt) = BitChatService::initiate_noise_handshake(
+            &node_sid, &peer_sid, &node_priv, &node_sk,
+        )
+        .expect("Handshake initiation");
+        let parsed_hs1 = BitChatService::parse_incoming_packet(&hs_pkt).expect("Parse Msg 1");
+        assert_eq!(parsed_hs1.packet_type, PACKET_TYPE_NOISE_HANDSHAKE);
+        assert_eq!(parsed_hs1.recipient_id, Some(peer_sid));
+        let msg1_bytes = parsed_hs1.payload.unwrap();
+        assert_eq!(msg1_bytes.len(), 32);
+
+        let mut peer_resp = snow::Builder::new(pattern)
+            .local_private_key(&peer_priv)
+            .build_responder()
+            .expect("Peer responder");
+        let mut rbuf = [0u8; 256];
+        peer_resp.read_message(&msg1_bytes, &mut rbuf).unwrap();
+        let mut msg2_buf = [0u8; 256];
+        let msg2_len = peer_resp.write_message(&[], &mut msg2_buf).unwrap();
+        assert_eq!(msg2_len, 96);
+
+        let mut node_transport = match init_session {
+            PeerNoiseSession::HandshakingInitiator { mut state, .. } => {
+                state.read_message(&msg2_buf[..msg2_len], &mut rbuf).unwrap();
+                let mut msg3_buf = [0u8; 256];
+                let msg3_len = state.write_message(&[], &mut msg3_buf).unwrap();
+                assert_eq!(msg3_len, 64);
+                peer_resp.read_message(&msg3_buf[..msg3_len], &mut rbuf).unwrap();
+                state.into_transport_mode().unwrap()
+            }
+            _ => panic!("Expected HandshakingInitiator"),
+        };
+        let mut peer_transport = peer_resp.into_transport_mode().unwrap();
+
+        // 2. Send 5 consecutive private messages (including identical text and mesh-relayed duplicate frames)
+        // and verify every single message decrypts & receives a valid encrypted ACK reply.
+        let mut seen_nonces: VecDeque<u64> = VecDeque::new();
+        let mut seen_msg_ids: VecDeque<String> = VecDeque::new();
+
+        for text in ["5", "o", "v", "5", "second help"] {
+            let tlv = BitChatService::encode_bitchat_private_message(text);
+            let p_nonce = peer_transport.sending_nonce() as u32;
+            let mut cbuf = [0u8; 256];
+            let clen = peer_transport.write_message(&tlv, &mut cbuf).unwrap();
+            let mut wire = p_nonce.to_be_bytes().to_vec();
+            wire.extend_from_slice(&cbuf[..clen]);
+
+            // First arrival
+            let n = u32::from_be_bytes([wire[0], wire[1], wire[2], wire[3]]) as u64;
+            assert!(!seen_nonces.contains(&n));
+            node_transport.set_receiving_nonce(n);
+            let mut dbuf = [0u8; 256];
+            let dlen = node_transport.read_message(&wire[4..], &mut dbuf).unwrap();
+            seen_nonces.push_back(n);
+
+            let (mid_opt, extracted) =
+                BitChatService::extract_bitchat_private_message_with_id(&dbuf[..dlen]);
+            assert_eq!(extracted, text);
+            let mid = mid_opt.expect("UUIDv4 msg_id");
+            assert!(!seen_msg_ids.contains(&mid));
+            seen_msg_ids.push_back(mid);
+
+            // Mesh-relayed duplicate copy of the same frame is cleanly suppressed
+            assert!(seen_nonces.contains(&n));
+
+            // Node sends encrypted ACK back to peer
+            let ack_tlv =
+                BitChatService::encode_bitchat_private_message(&format!("ACK: {}", text));
+            let ack_nonce = node_transport.sending_nonce() as u32;
+            let mut ack_cbuf = [0u8; 256];
+            let ack_clen = node_transport.write_message(&ack_tlv, &mut ack_cbuf).unwrap();
+            peer_transport.set_receiving_nonce(ack_nonce as u64);
+            let mut peer_dbuf = [0u8; 256];
+            let peer_dlen = peer_transport
+                .read_message(&ack_cbuf[..ack_clen], &mut peer_dbuf)
+                .unwrap();
+            assert_eq!(
+                BitChatService::extract_bitchat_private_message(&peer_dbuf[..peer_dlen]),
+                format!("ACK: {}", text)
+            );
+        }
+    }
+
+    #[test]
+    fn test_announce_direct_neighbors_and_v2_routed_packet_parsing() {
+        let (signing_key, noise_pubkey, sender_id) =
+            BitChatService::derive_keys("OpenAlert-FOG-Node02");
+        let neighbor_tablet = [0x87, 0xdf, 0xcb, 0x12, 0xe0, 0xe8, 0xbe, 0xcc];
+        let neighbor_phone = [0x2a, 0x7b, 0xc9, 0x9a, 0x8d, 0xbe, 0x97, 0x5f];
+
+        let ann = BitChatService::build_announce_packet_with_neighbors(
+            "OpenAlert-FOG-Node02",
+            &signing_key,
+            &noise_pubkey,
+            &[neighbor_tablet, neighbor_phone],
+        );
+        assert_eq!(ann.len(), 256);
+
+        let parsed = BitChatService::parse_incoming_packet(&ann).expect("Valid announce");
+        assert!(parsed.signature_valid);
+        assert_eq!(parsed.sender_id, sender_id);
+        assert_eq!(parsed.ttl, MESSAGE_TTL_HOPS);
+
+        // Verify TLV 0x04 (`directNeighbors`) contains exact 16 bytes (`neighbor_tablet` || `neighbor_phone`)
+        let payload_len = u16::from_be_bytes([ann[12], ann[13]]) as usize;
+        let raw_payload = &ann[22..22 + payload_len];
+        let mut off = 0;
+        let mut found_neighbors: Option<&[u8]> = None;
+        while off + 2 <= raw_payload.len() {
+            let tag = raw_payload[off];
+            let len = raw_payload[off + 1] as usize;
+            off += 2;
+            if tag == TLV_TAG_ROUTE_PEER_ID {
+                found_neighbors = Some(&raw_payload[off..off + len]);
+                break;
+            }
+            off += len;
+        }
+        let nb = found_neighbors.expect("TLV 0x04 directNeighbors present");
+        assert_eq!(nb.len(), 16);
+        assert_eq!(&nb[0..8], &neighbor_tablet);
+        assert_eq!(&nb[8..16], &neighbor_phone);
+
+        // Verify BitChat v2 (`0x02`) 16-byte header + `FLAG_HAS_ROUTE` (`0x08`) source-routed packet parsing
+        let payload = b"v2-routed-ciphertext-payload";
+        let mut v2_pkt = Vec::new();
+        v2_pkt.push(PACKET_VERSION_V2); // version 2
+        v2_pkt.push(PACKET_TYPE_NOISE_ENCRYPTED);
+        v2_pkt.push(6); // relayed 1 hop (TTL 7 -> 6)
+        v2_pkt.extend_from_slice(&1700000000000u64.to_be_bytes());
+        v2_pkt.push(FLAG_HAS_RECIPIENT | FLAG_HAS_ROUTE);
+        v2_pkt.extend_from_slice(&(payload.len() as u32).to_be_bytes()); // 4-byte u32 payload_len in v2
+        v2_pkt.extend_from_slice(&neighbor_phone); // sender
+        v2_pkt.extend_from_slice(&sender_id); // recipient (node02)
+        v2_pkt.push(1); // 1 intermediate hop (`neighbor_tablet`)
+        v2_pkt.extend_from_slice(&neighbor_tablet);
+        v2_pkt.extend_from_slice(payload);
+
+        let parsed_v2 =
+            BitChatService::parse_incoming_packet(&v2_pkt).expect("Parse BitChat v2 routed packet");
+        assert_eq!(parsed_v2.packet_type, PACKET_TYPE_NOISE_ENCRYPTED);
+        assert_eq!(parsed_v2.ttl, 6);
+        assert_eq!(parsed_v2.sender_id, neighbor_phone);
+        assert_eq!(parsed_v2.recipient_id, Some(sender_id));
+        assert_eq!(parsed_v2.payload.as_deref(), Some(&payload[..]));
+    }
+
+    #[test]
+    fn test_is_retryable_hci_error() {
+        assert!(BitChatService::is_retryable_hci_error(
+            "Set Powered for hci0 failed with status 0x0a (Busy)"
+        ));
+        assert!(BitChatService::is_retryable_hci_error(
+            "org.bluez.Error.InProgress: Operation already in progress"
+        ));
+        assert!(BitChatService::is_retryable_hci_error(
+            "org.bluez.Error.NotReady: Resource Not Ready"
+        ));
+        assert!(!BitChatService::is_retryable_hci_error(
+            "org.freedesktop.DBus.Error.AccessDenied"
+        ));
     }
 }
+

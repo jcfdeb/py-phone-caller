@@ -27,6 +27,7 @@ class ContactCSVRow(BaseModel):
     state: Optional[str] = ""
     country: Optional[str] = ""
     phone_number: str = Field(...)
+    sms_phone_number: Optional[str] = ""
     enabled: Optional[bool] = None
     annotations: Optional[str] = ""
     on_call_availability: Optional[List[Any]] = Field(default_factory=list)
@@ -44,9 +45,22 @@ class ContactCSVRow(BaseModel):
     def validate_phone(cls, v: str) -> str:
         s = (v or "").strip()
         clean = re.sub(r"[\s\-\(\)\.]", "", s)
+        if not re.match(r"^(\+|00)?[0-9]{3,18}$", clean):
+            raise ValueError(
+                f"Invalid phone number format '{s}'. Must be a SIP extension or E.164 number with 3-18 digits."
+            )
+        return clean
+
+    @field_validator("sms_phone_number")
+    @classmethod
+    def validate_sms_phone(cls, v: Optional[str]) -> str:
+        s = (v or "").strip()
+        if not s:
+            return ""
+        clean = re.sub(r"[\s\-\(\)\.]", "", s)
         if not re.match(r"^(\+|00)?[0-9]{5,18}$", clean):
             raise ValueError(
-                f"Invalid phone number format '{s}'. Must be a dialable / E.164 number with 5-18 digits."
+                f"Invalid SMS phone number format '{s}'. Must be an E.164 / mobile number with 5-18 digits."
             )
         return clean
 

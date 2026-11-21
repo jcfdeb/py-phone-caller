@@ -87,7 +87,12 @@
                         <div class="fw-bold text-dark">{{ c.get('name') }} {{ c.get('surname') }}</div>
                         {% if c.get('address') %}<div class="small text-muted"><i class="bi bi-geo-alt me-1"></i>{{ c.get('city') }}, {{ c.get('country') }}</div>{% endif %}
                     </td>
-                    <td><code class="text-primary">{{ c.get('phone_number') }}</code></td>
+                    <td>
+                        <code class="text-primary">{{ c.get('phone_number') }}</code>
+                        {% if c.get('sms_phone_number') %}
+                            <div class="small text-muted mt-1"><i class="bi bi-chat-dots me-1"></i>SMS: <code>{{ c.get('sms_phone_number') }}</code></div>
+                        {% endif %}
+                    </td>
                     <td class="text-center">
                         {% if c.get('enabled') %}
                             <span class="badge bg-success-subtle text-success border border-success-subtle">{{ _('Active') }}</span>
@@ -103,6 +108,7 @@
                                     data-name="{{ c.get('name')|e }}"
                                     data-surname="{{ c.get('surname')|e }}"
                                     data-phone="{{ c.get('phone_number')|e }}"
+                                    data-sms_phone="{{ (c.get('sms_phone_number') or '')|e }}"
                                     data-enabled="{{ 'true' if c.get('enabled') else 'false' }}"
                                     data-address="{{ c.get('address')|e }}"
                                     data-zip_code="{{ c.get('zip_code')|e }}"
@@ -152,11 +158,15 @@
                         <label class="form-label fw-bold small text-secondary">{{ _('Surname') }}</label>
                         <input id="add_surname" class="form-control" placeholder="Doe"/>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">{{ _('Phone Number') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('International format starting with + (e.g. +393349246425)') }}"></i></label>
-                        <input id="add_phone" class="form-control" placeholder="+39..."/>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">{{ _('Phone / SIP Extension') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Voice destination: E.164 number (e.g. +39...) or local SIP extension (e.g. 1000)') }}"></i></label>
+                        <input id="add_phone" class="form-control" placeholder="+39... or 1000"/>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">{{ _('SMS Phone (Optional)') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Optional GSM/mobile E.164 number for SMS when Voice uses a SIP extension') }}"></i></label>
+                        <input id="add_sms_phone" class="form-control" placeholder="+39... (optional)"/>
+                    </div>
+                    <div class="col-md-4">
                         <label class="form-label fw-bold small text-secondary">{{ _('Status') }}</label>
                         <select id="add_enabled" class="form-select">
                             <option value="true">{{ _('Enabled') }}</option>
@@ -273,11 +283,15 @@
                         <label class="form-label fw-bold small text-secondary">{{ _('Surname') }}</label>
                         <input id="edit_surname" class="form-control"/>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold small text-secondary">{{ _('Phone Number') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('International format starting with + (e.g. +393349246425)') }}"></i></label>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">{{ _('Phone / SIP Extension') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Voice destination: E.164 number (e.g. +39...) or local SIP extension (e.g. 1000)') }}"></i></label>
                         <input id="edit_phone" class="form-control"/>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">{{ _('SMS Phone (Optional)') }} <i class="bi bi-question-circle text-muted small" data-bs-toggle="tooltip" title="{{ _('Optional GSM/mobile E.164 number for SMS when Voice uses a SIP extension') }}"></i></label>
+                        <input id="edit_sms_phone" class="form-control" placeholder="+39... (optional)"/>
+                    </div>
+                    <div class="col-md-4">
                         <label class="form-label fw-bold small text-secondary">{{ _('Status') }}</label>
                         <select id="edit_enabled" class="form-select">
                             <option value="true">{{ _('Enabled') }}</option>
@@ -586,6 +600,7 @@ function openEditFromBtn(btn) {
     document.getElementById('edit_name').value = d.name || '';
     document.getElementById('edit_surname').value = d.surname || '';
     document.getElementById('edit_phone').value = d.phone || '';
+    document.getElementById('edit_sms_phone').value = d.sms_phone || '';
     document.getElementById('edit_enabled').value = d.enabled === 'true' ? 'true' : 'false';
     document.getElementById('edit_address').value = d.address || '';
     document.getElementById('edit_zip_code').value = d.zip_code || '';
@@ -608,6 +623,7 @@ async function addContact() {
         country: document.getElementById('add_country').value,
         annotations: document.getElementById('add_annotations').value,
         phone_number: document.getElementById('add_phone').value,
+        sms_phone_number: document.getElementById('add_sms_phone').value,
         enabled: document.getElementById('add_enabled').value === 'true',
         on_call_availability: availabilityWindows
     };
@@ -623,6 +639,7 @@ async function saveEdit() {
         name: document.getElementById('edit_name').value,
         surname: document.getElementById('edit_surname').value,
         phone_number: document.getElementById('edit_phone').value,
+        sms_phone_number: document.getElementById('edit_sms_phone').value,
         enabled: document.getElementById('edit_enabled').value === 'true',
         address: document.getElementById('edit_address').value,
         zip_code: document.getElementById('edit_zip_code').value,

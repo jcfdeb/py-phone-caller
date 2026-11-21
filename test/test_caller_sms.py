@@ -530,3 +530,165 @@ async def test_sms_dispatch_service_isolated():
     assert res.status == "sent"
     mock_twilio.send.assert_awaited_once_with("+123", "Hello")
     mock_db.assert_awaited_once()
+
+
+def test_is_sip_extension():
+    from src.caller_sms import is_sip_extension
+
+    assert is_sip_extension("1000") is True
+    assert is_sip_extension("123456") is True
+    assert is_sip_extension("pjsip:1000") is True
+    assert is_sip_extension("sip:1000@192.168.101.101") is True
+    assert is_sip_extension("123") is False
+    assert is_sip_extension("+393349246425") is False
+    assert is_sip_extension("00393349246425") is False
+    assert is_sip_extension("") is False
+
+
+@pytest.mark.asyncio
+async def test_asterisk_sip_message_carrier_put_request():
+    from unittest.mock import MagicMock
+    from src.caller_sms import AsteriskSipMessageCarrier
+
+    carrier = AsteriskSipMessageCarrier(
+        asterisk_url="http://127.0.0.1:8088",
+        asterisk_user="ariuser",
+        asterisk_pass="aripass",
+        chan_type="PJSIP",
+        caller_id="Py Phone Caller",
+    )
+    assert carrier._resolve_tech_and_resource("1000") == ("PJSIP", "1000")
+    assert carrier._resolve_tech_and_resource("pjsip:1001") == ("PJSIP", "1001")
+    assert carrier._resolve_tech_and_resource("sip:1002@pbx.local") == ("PJSIP", "1002")
+    assert carrier._build_from_uri() == "sip:Py-Phone-Caller@py-phone-caller"
+
+    mock_resp = AsyncMock()
+    mock_resp.status = 204
+    mock_put_ctx = MagicMock()
+    mock_put_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_put_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.put.return_value = mock_put_ctx
+    mock_session_ctx = MagicMock()
+    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("caller_sms.carriers.ClientSession", return_value=mock_session_ctx):
+        await carrier.send("1000", "Air-gapped alert")
+
+    mock_session.put.assert_called_once()
+    call_url = mock_session.put.call_args.args[0]
+    call_kwargs = mock_session.put.call_args.kwargs
+    assert call_url == "http://127.0.0.1:8088/ari/endpoints/PJSIP/1000/sendMessage"
+    assert call_kwargs["params"] == {
+        "from": "sip:Py-Phone-Caller@py-phone-caller",
+        "body": "Air-gapped alert",
+    }
+    assert call_kwargs["headers"]["Authorization"].startswith("Basic ")
+
+
+@pytest.mark.asyncio
+async def test_sms_dispatch_direct_sip_extension_routes_to_sip_message():
+    mock_twilio = AsyncMock()
+    mock_rust = AsyncMock()
+    mock_sip = AsyncMock()
+    mock_db = AsyncMock()
+
+    service = SmsDispatchService(
+        default_carrier="on_premise",
+        saas_fallback=False,
+        twilio_carrier=mock_twilio,
+        on_premise_carrier=mock_rust,
+        sip_message_carrier=mock_sip,
+        sip_message_enabled=True,
+        insert_sms_fn=mock_db,
+    )
+    res = await service.send_sms(SendSmsRequest(phone="1000", message="Local SIP alert"))
+    assert res.status_code == 200
+    assert res.carrier == SmsCarrier.SIP_MESSAGE.value
+    mock_sip.send.assert_awaited_once_with("1000", "Local SIP alert")
+    mock_rust.send.assert_not_called()
+    mock_db.assert_awaited_once_with(
+        phone="1000",
+        message="Local SIP alert",
+        carrier="sip_message",
+        status="sent",
+        error="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_sms_dispatch_oncall_sip_only_routes_to_sip_message():
+    mock_rust = AsyncMock()
+    mock_sip = AsyncMock()
+    mock_db = AsyncMock()
+    mock_resolve = AsyncMock(return_value=("", "1000"))
+
+    service = SmsDispatchService(
+        default_carrier="on_premise",
+        saas_fallback=False,
+        on_premise_carrier=mock_rust,
+        sip_message_carrier=mock_sip,
+        sip_message_enabled=True,
+        resolve_oncall_fn=mock_resolve,
+        insert_sms_fn=mock_db,
+    )
+    res = await service.send_sms(SendSmsRequest(phone="oncall", message="Alert oncall"))
+    assert res.status_code == 200
+    assert res.carrier == SmsCarrier.SIP_MESSAGE.value
+    mock_resolve.assert_awaited_once()
+    mock_sip.send.assert_awaited_once_with("1000", "Alert oncall")
+    mock_rust.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sms_dispatch_oncall_prefers_sms_phone_and_falls_back_to_sip():
+    mock_rust = AsyncMock()
+    mock_rust.send.side_effect = RuntimeError("GSM modem offline")
+    mock_sip = AsyncMock()
+    mock_db = AsyncMock()
+    mock_resolve = AsyncMock(return_value=("+39334111222", "1000"))
+
+    service = SmsDispatchService(
+        default_carrier="on_premise",
+        saas_fallback=False,
+        on_premise_carrier=mock_rust,
+        sip_message_carrier=mock_sip,
+        sip_message_enabled=True,
+        resolve_oncall_fn=mock_resolve,
+        insert_sms_fn=mock_db,
+    )
+    res = await service.send_sms(SendSmsRequest(phone="oncall", message="Dual contact alert"))
+    assert res.status_code == 200
+    assert res.carrier == SmsCarrier.SIP_MESSAGE_FALLBACK.value
+    mock_rust.send.assert_awaited_once_with("+39334111222", "Dual contact alert")
+    mock_sip.send.assert_awaited_once_with("1000", "Dual contact alert")
+    mock_db.assert_awaited_once_with(
+        phone="1000",
+        message="Dual contact alert",
+        carrier="sip_message_fallback",
+        status="sent",
+        error="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_sms_dispatch_oncall_not_found_returns_404():
+    from src.caller_sms.exceptions import SmsDeliveryError
+
+    mock_db = AsyncMock()
+    mock_resolve = AsyncMock(
+        side_effect=SmsDeliveryError("No on-call contact is available in the address book.")
+    )
+
+    service = SmsDispatchService(
+        default_carrier="on_premise",
+        resolve_oncall_fn=mock_resolve,
+        insert_sms_fn=mock_db,
+    )
+    res = await service.send_sms(SendSmsRequest(phone="oncall", message="No one on call"))
+    assert res.status_code == 404
+    assert res.status == SmsStatus.FAILED.value
+    mock_db.assert_awaited_once()
+

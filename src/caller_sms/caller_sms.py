@@ -27,8 +27,19 @@ from py_phone_caller_utils.telemetry import init_telemetry, instrument_aiohttp_a
 import caller_sms.backend.rust_on_premise as rust_on_premise
 import caller_sms.backend.twilio as twilio_backend
 
-from caller_sms.carriers import RustOnPremiseCarrier, TwilioCarrier
+from caller_sms.carriers import (
+    AsteriskSipMessageCarrier,
+    RustOnPremiseCarrier,
+    TwilioCarrier,
+)
 from caller_sms.constants import (
+    ASTERISK_CALLER_ID,
+    ASTERISK_CHAN_TYPE,
+    ASTERISK_PASS,
+    ASTERISK_URL,
+    ASTERISK_USER,
+    CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT,
+    CALLER_ADDRESS_BOOK_URL,
     CALLER_SMS_APP_ROUTE,
     CALLER_SMS_CARRIER,
     CALLER_SMS_ERROR,
@@ -36,6 +47,7 @@ from caller_sms.constants import (
     LOG_FORMATTER,
     LOG_LEVEL,
     SMS_SAAS_FALLBACK,
+    SMS_SIP_MESSAGE_ENABLED,
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
     TWILIO_SMS_FROM,
@@ -66,6 +78,8 @@ from caller_sms.services import (
     InboundSmsService,
     SmsDispatchService,
     SmsQueryService,
+    is_sip_extension,
+    resolve_oncall_sms_targets,
 )
 
 logging.basicConfig(format=LOG_FORMATTER, level=LOG_LEVEL, force=True)
@@ -89,6 +103,9 @@ def _get_active_dispatch_service() -> SmsDispatchService:
 
     carrier = getattr(mod, "CALLER_SMS_CARRIER", CALLER_SMS_CARRIER)
     saas_fallback = bool(getattr(mod, "SMS_SAAS_FALLBACK", SMS_SAAS_FALLBACK))
+    sip_msg_enabled = bool(
+        getattr(mod, "SMS_SIP_MESSAGE_ENABLED", SMS_SIP_MESSAGE_ENABLED)
+    )
     sid = getattr(mod, "TWILIO_ACCOUNT_SID", TWILIO_ACCOUNT_SID)
     token = getattr(mod, "TWILIO_AUTH_TOKEN", TWILIO_AUTH_TOKEN)
     twilio_from = getattr(mod, "TWILIO_SMS_FROM", TWILIO_SMS_FROM)
@@ -99,6 +116,24 @@ def _get_active_dispatch_service() -> SmsDispatchService:
 
     twilio_c = TwilioCarrier(sender_fn=getattr(tb, "sms_sender_async", None))
     rust_c = RustOnPremiseCarrier(sender_fn=getattr(rp, "sms_sender_async", None))
+    sip_c = AsteriskSipMessageCarrier(
+        asterisk_url=getattr(mod, "ASTERISK_URL", ASTERISK_URL),
+        asterisk_user=getattr(mod, "ASTERISK_USER", ASTERISK_USER),
+        asterisk_pass=getattr(mod, "ASTERISK_PASS", ASTERISK_PASS),
+        chan_type=getattr(mod, "ASTERISK_CHAN_TYPE", ASTERISK_CHAN_TYPE),
+        caller_id=getattr(mod, "ASTERISK_CALLER_ID", ASTERISK_CALLER_ID),
+    )
+    ab_url = getattr(mod, "CALLER_ADDRESS_BOOK_URL", CALLER_ADDRESS_BOOK_URL)
+    ab_route = getattr(
+        mod,
+        "CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT",
+        CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT,
+    )
+    resolver = getattr(mod, "resolve_oncall_sms_targets", resolve_oncall_sms_targets)
+
+    async def _resolve_oncall() -> tuple[str, str]:
+        return await resolver(address_book_url=ab_url, oncall_route=ab_route)
+
     inserter = getattr(mod, "insert_sms", insert_sms)
 
     return SmsDispatchService(
@@ -106,6 +141,9 @@ def _get_active_dispatch_service() -> SmsDispatchService:
         saas_fallback=saas_fallback,
         twilio_carrier=twilio_c,
         on_premise_carrier=rust_c,
+        sip_message_carrier=sip_c,
+        sip_message_enabled=sip_msg_enabled,
+        resolve_oncall_fn=_resolve_oncall,
         insert_sms_fn=inserter,
         has_twilio_creds=has_creds,
     )
@@ -176,5 +214,13 @@ async def init_app() -> web.Application:
     return app
 
 
+def main() -> None:
+    """Starts the Caller SMS aiohttp server."""
+    web.run_app(
+        init_app(), host=os.environ.get("PPC_HTTP_BIND_HOST"), port=int(CALLER_SMS_PORT),
+    )
+
+
 if __name__ == "__main__":
-    web.run_app(init_app(), port=int(CALLER_SMS_PORT))
+    main()
+

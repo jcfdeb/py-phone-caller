@@ -1,0 +1,12 @@
+---
+- name: Restore explicitly declared native application snapshots
+  hosts: "{{ stack_hosts | default('stack') }}"
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Run acknowledged maintenance restore
+      ansible.builtin.include_role:
+        name: stack_lifecycle
+      vars:
+        stack_lifecycle_action: restore

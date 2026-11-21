@@ -4,6 +4,9 @@
 //! UCS-2 / GSM7 representations, ensuring multi-byte unicode characters, emojis,
 //! and international diacritics are faithfully transmitted and received.
 
+/// Maximum UTF-16 code units in a single GSM UCS-2 SMS segment.
+pub const MAX_UCS2_UNITS_PER_SMS: usize = 70;
+
 /// Returns true if all characters in the string are safe 7-bit ASCII/GSM basic characters.
 pub fn is_pure_ascii(s: &str) -> bool {
     s.chars()
@@ -13,6 +16,84 @@ pub fn is_pure_ascii(s: &str) -> bool {
 /// Encodes a UTF-8 string into big-endian UTF-16 (UCS-2) hexadecimal format.
 pub fn to_ucs2_hex(s: &str) -> String {
     s.encode_utf16().map(|v| format!("{:04X}", v)).collect()
+}
+
+/// Splits a UTF-8 message into segments that each fit within `max_units` UTF-16
+/// code units (70 for a single UCS-2 SMS), never splitting surrogate pairs and
+/// prefixing multipart messages with `(i/n) `.
+pub fn split_ucs2_chunks(message: &str, max_units: usize) -> Vec<String> {
+    if message.is_empty() || message.encode_utf16().count() <= max_units {
+        return vec![message.to_string()];
+    }
+
+    let split_with_budget = |text: &str, budget: usize| -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut remaining = text;
+        while !remaining.is_empty() {
+            let mut units = 0usize;
+            let mut cut_byte = 0usize;
+            let mut last_space_byte = None;
+
+            for (idx, ch) in remaining.char_indices() {
+                let ch_units = ch.len_utf16();
+                if units + ch_units > budget {
+                    break;
+                }
+                units += ch_units;
+                cut_byte = idx + ch.len_utf8();
+                if ch.is_whitespace() && units >= budget / 2 {
+                    last_space_byte = Some(idx);
+                }
+            }
+
+            if cut_byte == 0 {
+                if let Some(ch) = remaining.chars().next() {
+                    cut_byte = ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+
+            if cut_byte < remaining.len()
+                && let Some(sp) = last_space_byte
+                && sp > 0
+            {
+                let piece = remaining[..sp].trim_end();
+                if !piece.is_empty() {
+                    parts.push(piece.to_string());
+                    remaining = remaining[sp..].trim_start();
+                    continue;
+                }
+            }
+
+            parts.push(remaining[..cut_byte].to_string());
+            remaining = &remaining[cut_byte..];
+            if !remaining.is_empty() {
+                remaining = remaining.trim_start();
+            }
+        }
+        parts
+    };
+
+    let mut prefix_budget = 6usize;
+    let mut raw_parts = split_with_budget(message, max_units.saturating_sub(prefix_budget).max(1));
+    if raw_parts.len() >= 10 {
+        prefix_budget = format!("({}/{}) ", raw_parts.len(), raw_parts.len())
+            .encode_utf16()
+            .count();
+        raw_parts = split_with_budget(message, max_units.saturating_sub(prefix_budget).max(1));
+    }
+
+    let total = raw_parts.len();
+    if total <= 1 {
+        return raw_parts;
+    }
+
+    raw_parts
+        .into_iter()
+        .enumerate()
+        .map(|(i, part)| format!("({}/{}) {}", i + 1, total, part))
+        .collect()
 }
 
 /// Decodes a big-endian UTF-16 (UCS-2) hexadecimal string back into a UTF-8 string.

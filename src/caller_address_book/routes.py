@@ -164,7 +164,11 @@ async def get_contact_on_call(
         contact = await svc.resolve_on_call_contact()
         if not contact:
             return web.json_response({"error": "No on-call contact found"}, status=404)
-        return web.json_response({"phone_number": contact.get("phone_number")})
+        payload = {"phone_number": contact.get("phone_number")}
+        sms_phone = (contact.get("sms_phone_number") or "").strip()
+        if sms_phone:
+            payload["sms_phone_number"] = sms_phone
+        return web.json_response(payload)
     except Exception as e:
         logging.exception("Error getting on-call contact")
         return web.json_response({"error": str(e)}, status=500)

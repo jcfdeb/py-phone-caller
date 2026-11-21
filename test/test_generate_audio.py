@@ -301,37 +301,57 @@ async def test_is_audio_ready_language_scoped(cli):
         assert data_eng["exists"] is False
 
 
-def test_missing_model_fallback_piper():
-    with patch("os.path.exists") as mock_exists, patch("subprocess.run") as mock_run:
-        from src.generate_audio.constants import PIPER_LANGUAGE_CODE
-        def exists_side_effect(path):
-            if "de_DE" in str(path):
-                return False
-            return True
-        mock_exists.side_effect = exists_side_effect
-        mock_run.return_value = MagicMock(stdout="", returncode=0)
+def test_missing_model_fallback_piper(monkeypatch):
+    from src.generate_audio.constants import PIPER_LANGUAGE_CODE
+    from src.generate_audio.generate_audio import text_to_speech_piper_tts
 
-        from src.generate_audio.generate_audio import text_to_speech_piper_tts
+    def exists_side_effect(path):
+        if "de_DE" in str(path):
+            return False
+        return True
+
+    # 1. Default in-process path falls back to configured PIPER_LANGUAGE_CODE
+    monkeypatch.delenv("PPC_TTS_SUBPROCESS", raising=False)
+    with patch("os.path.exists", side_effect=exists_side_effect), patch(
+        "py_phone_caller_utils.py_phone_caller_voices.piper_tts.text_to_speech_piper"
+    ) as mock_inproc:
+        text_to_speech_piper_tts("Hallo Welt", "/tmp/out.wav", language="de_DE")
+        mock_inproc.assert_called_once()
+        assert f"{PIPER_LANGUAGE_CODE}.onnx" in mock_inproc.call_args.kwargs["model_path"]
+
+    # 2. Subprocess fallback path (PPC_TTS_SUBPROCESS=1)
+    monkeypatch.setenv("PPC_TTS_SUBPROCESS", "1")
+    with patch("os.path.exists", side_effect=exists_side_effect), patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
         text_to_speech_piper_tts("Hallo Welt", "/tmp/out.wav", language="de_DE")
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
-        # Should have fallen back to configured default PIPER_LANGUAGE_CODE
         expected_model = f"{PIPER_LANGUAGE_CODE}.onnx"
         assert any(expected_model in arg for arg in cmd)
 
 
-def test_missing_model_fallback_kokoro():
+def test_missing_model_fallback_kokoro(monkeypatch):
+    from src.generate_audio.generate_audio import text_to_speech_kokoro_tts
+
+    # 1. Default in-process path falls back to default KOKORO_LANG ('e')
+    monkeypatch.delenv("PPC_TTS_SUBPROCESS", raising=False)
+    with patch("os.path.exists", return_value=True), patch(
+        "py_phone_caller_utils.py_phone_caller_voices.kokoro_tts.text_to_speech_kokoro"
+    ) as mock_inproc:
+        text_to_speech_kokoro_tts("Testing", "/tmp/out.wav", language="xyz", speed=0.9)
+        mock_inproc.assert_called_once()
+        assert mock_inproc.call_args.kwargs["lang"] == "e"
+        assert mock_inproc.call_args.kwargs["speed"] == 0.9
+
+    # 2. Subprocess fallback path (PPC_TTS_SUBPROCESS=1)
+    monkeypatch.setenv("PPC_TTS_SUBPROCESS", "1")
     with patch("os.path.exists", return_value=True), patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(stdout="", returncode=0)
-
-        from src.generate_audio.generate_audio import text_to_speech_kokoro_tts
-        # Unknown language code 'xyz'
         text_to_speech_kokoro_tts("Testing", "/tmp/out.wav", language="xyz", speed=0.9)
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
         assert "--speed" in cmd
         assert "0.9" in cmd
-        # Lang fell back to default KOKORO_LANG ('e')
         assert "--lang" in cmd
         idx = cmd.index("--lang")
         assert cmd[idx + 1] == "e"
@@ -432,13 +452,31 @@ def test_generate_tts_audio_silero_dispatch():
         )
 
 
-def test_missing_model_fallback_silero():
+def test_missing_model_fallback_silero(monkeypatch):
+    from src.generate_audio.generate_audio import text_to_speech_silero_tts
+    from src.generate_audio.constants import SILERO_LANG
+
+    # 1. Default in-process path falls back to SILERO_LANG and selects 'thorsten' for German
+    monkeypatch.delenv("PPC_TTS_SUBPROCESS", raising=False)
+    with patch("os.path.exists", return_value=True), patch(
+        "py_phone_caller_utils.py_phone_caller_voices.silero_tts.text_to_speech_silero"
+    ) as mock_inproc:
+        text_to_speech_silero_tts("Alert", "/tmp/silero_fb.wav", language="unsupported_xyz", speed=1.0)
+        mock_inproc.assert_called_once()
+        assert mock_inproc.call_args.kwargs["lang"] == SILERO_LANG
+
+    with patch("os.path.exists", return_value=True), patch(
+        "py_phone_caller_utils.py_phone_caller_voices.silero_tts.text_to_speech_silero"
+    ) as mock_de:
+        text_to_speech_silero_tts("Achtung", "/tmp/silero_de.wav", language="de", speed=1.0)
+        mock_de.assert_called_once()
+        assert mock_de.call_args.kwargs["lang"] == "de"
+        assert mock_de.call_args.kwargs["speaker"] == "eva_k"
+
+    # 2. Subprocess fallback path (PPC_TTS_SUBPROCESS=1)
+    monkeypatch.setenv("PPC_TTS_SUBPROCESS", "1")
     with patch("os.path.exists", return_value=True), patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(stdout="", returncode=0)
-        from src.generate_audio.generate_audio import text_to_speech_silero_tts
-        from src.generate_audio.constants import SILERO_LANG
-
-        # Unsupported language 'unsupported_xyz'
         text_to_speech_silero_tts("Alert", "/tmp/silero_fb.wav", language="unsupported_xyz", speed=1.0)
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
@@ -553,3 +591,80 @@ def test_generate_tts_audio_piper_and_polly_dispatch():
     with patch("src.generate_audio.generate_audio.aws_polly_text_to_wave") as mock_polly:
         generate_tts_audio("Testing polly", "/tmp/polly.wav", engine=TTSEngine.AWS_POLLY)
         mock_polly.assert_called_once_with("Testing polly", "/tmp/polly.wav")
+
+
+def test_dutch_language_metadata():
+    from src.generate_audio.languages import LANGUAGE_FLAGS, LANGUAGE_NAMES
+
+    assert LANGUAGE_NAMES["nld"] == "Dutch"
+    assert LANGUAGE_NAMES["nl"] == "Dutch"
+    assert LANGUAGE_FLAGS["nld"] == "🇳🇱"
+    assert LANGUAGE_FLAGS["nl"] == "🇳🇱"
+
+
+@pytest.mark.asyncio
+async def test_make_audio_deduplicates_concurrent_requests(cli):
+    import asyncio
+    import time
+
+    generated = {"ready": False, "calls": 0}
+
+    def fake_exists(_path):
+        return generated["ready"]
+
+    def fake_gen(*_args, **_kwargs):
+        generated["calls"] += 1
+        time.sleep(0.15)
+        generated["ready"] = True
+
+    with patch(
+        "src.generate_audio.generate_audio.wave_file_exists",
+        side_effect=fake_exists,
+    ), patch(
+        "src.generate_audio.generate_audio.generate_tts_audio",
+        side_effect=fake_gen,
+    ):
+        r1, r2 = await asyncio.gather(
+            cli.post(f"/{GENERATE_AUDIO_APP_ROUTE}?message=Concurrent&msg_chk_sum=dedup999&lang=it_IT"),
+            cli.post(f"/{GENERATE_AUDIO_APP_ROUTE}?message=Concurrent&msg_chk_sum=dedup999&lang=it_IT"),
+        )
+        d1 = await r1.json()
+        d2 = await r2.json()
+        assert generated["calls"] == 1
+        assert sorted([d1["cached"], d2["cached"]]) == [False, True]
+
+
+def test_kokoro_cjk_readiness_reflects_installed_deps(tmp_path):
+    from src.generate_audio.discovery import _kokoro_lang_deps_ready
+
+    kokoro_dir = tmp_path / "kokoro_tts"
+    voices_dir = kokoro_dir / "voices"
+    voices_dir.mkdir(parents=True)
+    (kokoro_dir / "config.json").write_text("{}")
+    (kokoro_dir / "kokoro-v1_0.pth").write_text("model_data")
+    (voices_dir / "jf_alpha.pt").write_text("ja")
+    (voices_dir / "zf_xiaobei.pt").write_text("zh")
+    (voices_dir / "pf_dora.pt").write_text("pt")
+
+    # Missing CJK packages -> ja and zh are reported ready=False, pt stays ready=True
+    with patch("src.generate_audio.discovery.importlib.util.find_spec", return_value=None):
+        assert _kokoro_lang_deps_ready("ja") is False
+        assert _kokoro_lang_deps_ready("zh") is False
+        assert _kokoro_lang_deps_ready("pt") is True
+        with patch("src.generate_audio.generate_audio.TTS_ENGINE", TTSEngine.PIPER):
+            res = scan_installed_languages(base_models_dir=str(tmp_path))
+            by_code = {l["code"]: l for l in res["languages"]}
+            assert by_code["ja"]["ready"] is False
+            assert by_code["zh"]["ready"] is False
+            assert by_code["pt"]["ready"] is True
+
+    # Installed CJK packages -> ja and zh report ready=True
+    with patch("src.generate_audio.discovery.importlib.util.find_spec", return_value=object()):
+        assert _kokoro_lang_deps_ready("ja") is True
+        assert _kokoro_lang_deps_ready("zh") is True
+        with patch("src.generate_audio.generate_audio.TTS_ENGINE", TTSEngine.PIPER):
+            res = scan_installed_languages(base_models_dir=str(tmp_path))
+            by_code = {l["code"]: l for l in res["languages"]}
+            assert by_code["ja"]["ready"] is True
+            assert by_code["zh"]["ready"] is True
+

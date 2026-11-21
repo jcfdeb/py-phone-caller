@@ -1,7 +1,9 @@
 ---
-# Distribution packages remain the compatibility default; AllStarLink is opt-in.
+# Distribution packages remain the compatibility default; third-party providers are opt-in.
 asterisk_package_provider: distro
 asterisk_allstarlink_version: "2:22.10.1+asl3-3.10.8-1.deb13"
+asterisk_tucny_version: "22.9.0-1.el10"
+asterisk_tucny_sounds_version: "1.6.1-1.el10"
 
 # --- HTTP Server (ARI Interface) ---
 asterisk_http_enabled: "yes"
@@ -48,6 +50,18 @@ asterisk_core_sounds_sha256: ""
 local_sip: false
 local_sip_exten: 2500
 local_sip_pass: "change_me"
+
+# --- Ready-to-Use Local SIP Extension 1000 (Auto-Generated Password) ---
+# Opt-in convenience toggle that provisions PJSIP extension 1000 ready for
+# immediate softphone registration (e.g. Linphone) with a cryptographically
+# random password persisted in pjsip_py_phone_caller.conf (idempotent across
+# reruns) and reported in the Ansible execution log.
+asterisk_sip_exten_1000_enabled: false
+asterisk_sip_exten_1000: "1000"
+asterisk_sip_exten_1000_password_length: 24
+asterisk_sip_exten_1000_log_password: true
+asterisk_sip_exten_1000_rotate_password: false
+asterisk_sip_exten_1000_qualify_frequency: 0
 
 local_iax: false
 local_iax_exten: 2500

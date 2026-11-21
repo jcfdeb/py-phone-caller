@@ -1,0 +1,23 @@
+---
+- name: Explicit OpenAlert adoption (in-place or relocated)
+  hosts: "{{ stack_hosts | default('stack') }}"
+  become: true
+  gather_facts: true
+  serial: 1
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Require operator adoption intent and maintenance window
+      ansible.builtin.assert:
+        that:
+          - openalert_adopt | default(false) | bool
+          - openalert_maintenance_window | default(false) | bool
+          - openalert_legacy_instances | default({}) | length > 0
+          - >-
+            openalert_adoption_acknowledgement | default('')
+            == ((openalert_legacy_instances.values() | selectattr('relocate', 'defined') | selectattr('relocate') | list | length > 0)
+                | ternary('adopt-openalert-relocate', 'adopt-openalert-in-place'))
+        fail_msg: >-
+          Supply explicit legacy mappings and the matching adoption acknowledgement
+          (adopt-openalert-in-place or adopt-openalert-relocate) in a maintenance window.
+  roles:
+    - openalert

@@ -32,18 +32,52 @@ WorkingDirectory={{ py_phone_caller_install_dir }}
 Environment=PYTHONUNBUFFERED=1
 Environment=CALLER_CONFIG_DIR={{ py_phone_caller_config_dir }}
 Environment=PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
+{% if py_phone_caller_tls_ca_bundle | default('') %}
+# Issuer trust fingerprint: {{ py_phone_caller_tls_ca_stat.stat.checksum | default('') }}
+Environment=REQUESTS_CA_BUNDLE={{ py_phone_caller_tls_ca_bundle }}
+Environment=SSL_CERT_FILE={{ py_phone_caller_tls_ca_bundle }}
+{% endif %}
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+Environment=PPC_HTTP_BIND_HOST=127.0.0.1
+{% endif %}
+{% if py_phone_caller_connectivity | default('online') == 'airgapped' %}
+{% for key, value in py_phone_caller_airgap_runtime_environment.items() %}
+Environment={{ (key ~ '=' ~ value) | to_json }}
+{% endfor %}
+Environment=UV_OFFLINE=1
+Environment=PIP_NO_INDEX=1
+Environment=CARGO_NET_OFFLINE=true
+{% endif %}
 {% if item.name == 'py_phone_caller_ui' %}
 Environment=UI_USER_RESET_PASSWORD={{ (py_phone_caller_ui_reset_password | bool) | ternary('true', 'false') }}
 {% endif %}
 {% if item.type | default('module') == 'gunicorn' %}
-ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn --worker-class {{ item.worker_class | default("gthread") }} --workers {{ item.workers | default(4) }} --threads {{ item.threads | default(16) }} --timeout {{ item.timeout | default(120) }} --bind {{ _ppc_ui_host }}:{{ _ppc_ui_port }} py_phone_caller_ui.app:app
+ExecStart={{ py_phone_caller_venv_dir }}/bin/gunicorn --worker-class {{ item.worker_class | default("gthread") }} --workers {{ item.workers | default(py_phone_caller_ui_workers | default(4)) }} --threads {{ item.threads | default(py_phone_caller_ui_threads | default(16)) }} --timeout {{ item.timeout | default(py_phone_caller_ui_timeout | default(120)) }} --bind {{ _ppc_ui_host }}:{{ _ppc_ui_port }} py_phone_caller_ui.app:app
 {% elif item.type | default('module') == 'celery' %}
-ExecStart={{ py_phone_caller_venv_dir }}/bin/celery --app {{ item.celery_app }} worker --loglevel={{ py_phone_caller_final_config.logs.log_level | default('INFO') | lower }}
+{% set _ppc_celery_concurrency = item.concurrency | default(py_phone_caller_celery_concurrency | default(0)) | int %}
+ExecStart={{ py_phone_caller_venv_dir }}/bin/celery --app {{ item.celery_app }} worker{% if _ppc_celery_concurrency > 0 %} --concurrency={{ _ppc_celery_concurrency }}{% endif %} --loglevel={{ py_phone_caller_final_config.logs.log_level | default('INFO') | lower }}
 {% else %}
 ExecStart={{ py_phone_caller_venv_dir }}/bin/python -m {{ item.module }}
 {% endif %}
 Restart=always
 RestartSec=5
+{% set _ppc_svc_overrides = (py_phone_caller_service_resource_overrides | default({}))[item.name] | default({}) %}
+{% set _ppc_cpu_quota = item.cpu_quota | default(_ppc_svc_overrides.cpu_quota | default(py_phone_caller_service_cpu_quota | default(''))) %}
+{% set _ppc_memory_high = item.memory_high | default(_ppc_svc_overrides.memory_high | default(py_phone_caller_service_memory_high | default(''))) %}
+{% set _ppc_memory_max = item.memory_max | default(_ppc_svc_overrides.memory_max | default(py_phone_caller_service_memory_max | default(''))) %}
+{% set _ppc_tasks_max = item.tasks_max | default(_ppc_svc_overrides.tasks_max | default(py_phone_caller_service_tasks_max | default(''))) %}
+{% if _ppc_cpu_quota | string | length > 0 %}
+CPUQuota={{ _ppc_cpu_quota }}
+{% endif %}
+{% if _ppc_memory_high | string | length > 0 %}
+MemoryHigh={{ _ppc_memory_high }}
+{% endif %}
+{% if _ppc_memory_max | string | length > 0 %}
+MemoryMax={{ _ppc_memory_max }}
+{% endif %}
+{% if _ppc_tasks_max | string | length > 0 %}
+TasksMax={{ _ppc_tasks_max }}
+{% endif %}
 
 # The services are long-lived network daemons owned by an unprivileged
 # account. PrivateTmp is off on purpose: caller_sms and celery_worker share

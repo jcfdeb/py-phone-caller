@@ -4,6 +4,20 @@ Run from `deploy/ansible` in the pinned controller environment described in the
 parent README, with `ANSIBLE_CONFIG="$PWD/ansible.cfg"`. Never use the checked-in
 live inventory for these checks.
 
+## Topology and offline contracts
+
+```bash
+python -m pytest tests/test_topology.py tests/test_topology_ingress.py tests/test_airgap.py tests/test_runtime_isolation.py -q
+```
+
+These use synthetic inventories, files and rendered configuration only. They do
+not install a full offline Python/TTS artifact set or start production gateway
+containers. See [topology prerequisites and runtime gates](../docs/topologies.md)
+for egress-blocked installation/rerun, local login, certificate trust and OIDC
+rehearsals requiring a newly authorized disposable host. `--offline` on a linter
+is unrelated to qualifying an air-gapped installation. ARM64 hardware remains
+paused until device arrival.
+
 ## Offline checks
 
 ```bash
@@ -160,3 +174,24 @@ Ubuntu; legacy combined passed on Debian. The disposable Ubuntu VM/disk were
 deleted afterwards. Gateway provisioning uses isolated API fixtures; actual
 gateway containers, remote dependency transport, model inference and hardware
 are not qualified by these checks.
+
+## Lifecycle fixtures
+
+```bash
+python -m pytest tests/test_stack_snapshot.py tests/test_stack_lifecycle.py tests/test_openalert_lifecycle.py -q
+python tests/run_postgresql_snapshot_fixture.py -v
+ansible-lint --offline -c .ansible-lint roles/stack_lifecycle roles/openalert playbooks/adopt.yml playbooks/backup.yml playbooks/restore.yml playbooks/rollback.yml
+```
+
+The PostgreSQL fixture requires local server/client binaries, runs as the current
+non-root user, uses only a private Unix socket (no TCP listener), and shuts down
+its temporary server in `finally`. All data lives under ignored `tests/.runtime`.
+It exercises an actual custom dump and database restore, not a mocked database.
+It does not run the privileged role or qualify systemd recovery on Debian/Ubuntu.
+The snapshot tests cover committed SQLite WAL content, corrupt/unsafe snapshots,
+mapping and retained pre-restore files. Guards invoke read-only Ansible with
+synthetic facts; they never load a live inventory.
+
+Both earlier cloud VMs were deleted. See [the lifecycle runbook](../docs/lifecycle.md)
+for the separately authorized disposable-host rehearsals still required before
+production adoption or recovery claims.

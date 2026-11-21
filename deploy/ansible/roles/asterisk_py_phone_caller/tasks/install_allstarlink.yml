@@ -19,6 +19,7 @@
     group: root
     mode: "0644"
   register: asterisk_py_phone_caller_repository_key
+  when: py_phone_caller_connectivity | default('online') != 'airgapped'
 
 - name: Configure only the signed production repository for the managed architecture
   ansible.builtin.copy:
@@ -34,6 +35,7 @@
     group: root
     mode: "0644"
   register: asterisk_py_phone_caller_repository_source
+  when: py_phone_caller_connectivity | default('online') != 'airgapped'
 
 - name: Restrict third-party repository to the exact PBX package set
   ansible.builtin.copy:

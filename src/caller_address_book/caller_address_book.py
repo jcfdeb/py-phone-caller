@@ -117,5 +117,14 @@ async def init_app() -> web.Application:
     return app
 
 
+def main() -> None:
+    """Starts the Caller Address Book aiohttp server."""
+    web.run_app(
+        init_app(), host=os.environ.get("PPC_HTTP_BIND_HOST"),
+        port=int(CALLER_ADDRESS_BOOK_PORT),
+    )
+
+
 if __name__ == "__main__":
-    web.run_app(init_app(), port=int(CALLER_ADDRESS_BOOK_PORT))
+    main()
+

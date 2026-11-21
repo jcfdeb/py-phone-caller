@@ -1,0 +1,12 @@
+.git
+.venv
+.idea
+.pytest_cache
+.ruff_cache
+dist
+**/__pycache__
+**/*.pyc
+**/target
+src/config/.secrets.toml
+**/.secrets.toml
+**/.vault_pass*

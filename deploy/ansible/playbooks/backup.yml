@@ -1,0 +1,12 @@
+---
+- name: Back up explicitly declared native application state
+  hosts: "{{ stack_hosts | default('stack') }}"
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Run acknowledged maintenance backup
+      ansible.builtin.include_role:
+        name: stack_lifecycle
+      vars:
+        stack_lifecycle_action: backup

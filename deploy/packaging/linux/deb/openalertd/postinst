@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+if ! getent group openalert >/dev/null 2>&1; then
+    groupadd -r openalert
+fi
+
+if ! getent passwd openalert >/dev/null 2>&1; then
+    useradd -r -g openalert -d /var/lib/openalertd -s /usr/sbin/nologin \
+        -c "OpenAlert Daemon account" openalert
+fi
+
+mkdir -p /var/lib/openalertd /var/log/openalertd
+chown -R openalert:openalert /var/lib/openalertd /var/log/openalertd /etc/openalertd || true
+chmod 0750 /var/lib/openalertd /etc/openalertd || true
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+exit 0

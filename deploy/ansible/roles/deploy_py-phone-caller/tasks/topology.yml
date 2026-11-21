@@ -1,0 +1,77 @@
+---
+- name: Validate topology and connectivity selectors without changing legacy deployments
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_topology in ['legacy', 'standard', 'enterprise']
+      - py_phone_caller_ingress in ['legacy', 'caddy', 'external']
+      - py_phone_caller_connectivity in ['online', 'airgapped']
+      - py_phone_caller_tls_mode in ['legacy', 'acme', 'internal', 'provided', 'external']
+      - py_phone_caller_connectivity != 'airgapped' or py_phone_caller_topology != 'legacy'
+    fail_msg: Select a supported topology, ingress, TLS and connectivity policy; air-gapped installation requires an explicit profile.
+
+- name: Validate explicit topology ownership and external URL
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_ingress in ['caddy', 'external']
+      - py_phone_caller_manage_gateway is boolean
+      - py_phone_caller_manage_reverse_proxy is boolean
+      - py_phone_caller_manage_gateway == (py_phone_caller_topology == 'enterprise')
+      - py_phone_caller_manage_reverse_proxy == (py_phone_caller_ingress == 'caddy')
+      - not py_phone_caller_caddy_force
+      - py_phone_caller_public_url is match('^https://[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?$')
+      - py_phone_caller_public_url | urlsplit('port') | default(443, true) | int <= 65535
+      - py_phone_caller_public_url | urlsplit('port') is none or py_phone_caller_public_url | urlsplit('port') | int > 0
+      - >-
+        (py_phone_caller_ingress == 'external' and py_phone_caller_tls_mode == 'external') or
+        (py_phone_caller_ingress == 'caddy' and py_phone_caller_tls_mode in ['acme', 'internal', 'provided'])
+      - py_phone_caller_connectivity != 'airgapped' or py_phone_caller_tls_mode != 'acme'
+    fail_msg: Explicit profiles require consistent ownership, an HTTPS origin and a declared certificate owner; no automatic ingress takeover is permitted.
+  when: py_phone_caller_topology != 'legacy'
+
+- name: Validate managed edge certificate inputs
+  ansible.builtin.assert:
+    that:
+      - caddy_domain_name == py_phone_caller_public_url | urlsplit('netloc')
+      - py_phone_caller_tls_mode != 'acme' or caddy_email | length > 0
+      - py_phone_caller_tls_mode != 'provided' or py_phone_caller_tls_certificate is match('^/[A-Za-z0-9_./-]+$')
+      - py_phone_caller_tls_mode != 'provided' or py_phone_caller_tls_private_key is match('^/[A-Za-z0-9_./-]+$')
+    fail_msg: Match Caddy to the public origin and supply the required ACME contact or pre-staged certificate paths.
+  when:
+    - py_phone_caller_topology != 'legacy'
+    - py_phone_caller_ingress == 'caddy'
+
+- name: Merge application inputs for read-only topology validation
+  ansible.builtin.set_fact:
+    py_phone_caller_topology_config: >-
+      {{ py_phone_caller_config_defaults
+         | combine(py_phone_caller_config, recursive=True)
+         | combine(py_phone_caller_config_secrets, recursive=True)
+         | combine(py_phone_caller_config_overrides, recursive=True) }}
+  no_log: true
+  when: py_phone_caller_topology != 'legacy'
+
+- name: Refuse gateway authentication accidentally inherited by a standard deployment
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_topology_config.auth.provider == 'local'
+      - not py_phone_caller_topology_config.auth.oauth2.enabled
+      - not py_phone_caller_topology_config.gateway.behind_gateway
+    fail_msg: Standard deployments use local authentication; remove inherited gateway and OAuth settings explicitly.
+  no_log: true
+  when: py_phone_caller_topology == 'standard'
+
+- name: Keep application ingress private for explicit profiles
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_topology_config.py_phone_caller_ui.ui_listen_on_host in ['127.0.0.1', '::1']
+      - py_phone_caller_firewall_ports | difference([80, 443]) | length == 0
+      - py_phone_caller_firewall_extra_ports | length == 0
+    fail_msg: Explicit profiles use private application ingress; extra exposed ports need a separately reviewed network policy.
+  no_log: true
+  when: py_phone_caller_topology != 'legacy'
+
+- name: Check air-gapped installation inputs before any selected component changes
+  ansible.builtin.include_role:
+    name: stack_airgap
+    public: true
+  when: py_phone_caller_connectivity == 'airgapped'

@@ -7,14 +7,33 @@ name = "caller-register"
 version = "1.0.0"
 description = "Caller Register service for py-phone-caller"
 readme = "README.md"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "py-phone-caller contributors" }]
 requires-python = ">=3.14, <3.15"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Telephony",
+]
 dependencies = [
     "py_phone_caller_utils",
     "aiohttp>=3.9.0",
 ]
 
+[project.scripts]
+ppc-caller-register = "caller_register.caller_register:main"
+
+[tool.setuptools]
+packages = ["caller_register"]
+
 [tool.setuptools.package-dir]
 caller_register = "."
 
 [tool.setuptools.package-data]
-caller_register = ["*"]
+caller_register = ["*.py", "README.md"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["Dockerfile*", "pyproject.toml"]
+

@@ -123,7 +123,7 @@
   become_user: postgres
   no_log: true
   diff: false
-  when: py_phone_caller_manage_gateway | bool
+  when: py_phone_caller_manage_gateway | bool and py_phone_caller_topology | default('legacy') == 'legacy'
 
 - name: Create the Keycloak database
   community.postgresql.postgresql_db:
@@ -139,7 +139,7 @@
   become_user: postgres
   no_log: true
   diff: false
-  when: py_phone_caller_manage_gateway | bool
+  when: py_phone_caller_manage_gateway | bool and py_phone_caller_topology | default('legacy') == 'legacy'
 
 - name: Grant Keycloak role full rights on schema public
   community.postgresql.postgresql_privs:
@@ -157,7 +157,7 @@
   become_user: postgres
   no_log: true
   diff: false
-  when: py_phone_caller_manage_gateway | bool
+  when: py_phone_caller_manage_gateway | bool and py_phone_caller_topology | default('legacy') == 'legacy'
 
 - name: Enable required Keycloak database extensions
   community.postgresql.postgresql_ext:
@@ -175,4 +175,4 @@
   become_user: postgres
   no_log: true
   diff: false
-  when: py_phone_caller_manage_gateway | bool
+  when: py_phone_caller_manage_gateway | bool and py_phone_caller_topology | default('legacy') == 'legacy'

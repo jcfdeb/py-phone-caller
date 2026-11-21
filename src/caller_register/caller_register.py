@@ -211,7 +211,10 @@ def main() -> None:
             logging.info("Database connection pool closed")
 
     app.on_cleanup.append(cleanup_db)
-    web.run_app(app, port=int(CALL_REGISTER_PORT), loop=loop)
+    web.run_app(
+        app, host=os.environ.get("PPC_HTTP_BIND_HOST"),
+        port=int(CALL_REGISTER_PORT), loop=loop,
+    )
 
 
 if __name__ == "__main__":

@@ -92,6 +92,7 @@ class AddressBook(Table):
     state = Varchar(length=64, default="")
     country = Varchar(length=64, default="")
     phone_number = Varchar(length=64, default="")
+    sms_phone_number = Varchar(length=64, default="")
     on_call_availability = JSONB(default="{}")
     created_time = Timestamp(default=TimestampNow())
     enabled = Boolean(default=False)

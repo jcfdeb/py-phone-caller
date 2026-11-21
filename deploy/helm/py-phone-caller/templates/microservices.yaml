@@ -1,0 +1,138 @@
+{{- $registry := .Values.global.imageRegistry -}}
+{{- $tag := .Values.global.imageTag -}}
+{{- $pullPolicy := .Values.global.imagePullPolicy -}}
+{{- $secretName := include "py-phone-caller.secretName" . -}}
+{{- $tz := .Values.global.timezone -}}
+
+{{- if .Values.services.generateAudio.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: generate-audio-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.tts.storage | quote }}
+---
+{{- end }}
+
+{{- $svcList := list
+  (dict "key" "callerRegister" "name" "caller-register" "port" .Values.services.callerRegister.port)
+  (dict "key" "generateAudio" "name" "generate-audio" "port" .Values.services.generateAudio.port "pvc" "generate-audio-data-pvc")
+  (dict "key" "callerAddressBook" "name" "caller-address-book" "port" .Values.services.callerAddressBook.port)
+  (dict "key" "asteriskCaller" "name" "asterisk-caller" "port" .Values.services.asteriskCaller.port)
+  (dict "key" "asteriskWsMonitor" "name" "asterisk-ws-monitor")
+  (dict "key" "asteriskRecaller" "name" "asterisk-recaller")
+  (dict "key" "callerSms" "name" "caller-sms" "port" .Values.services.callerSms.port)
+  (dict "key" "callerPrometheusWebhook" "name" "caller-prometheus-webhook" "port" .Values.services.callerPrometheusWebhook.port)
+  (dict "key" "callerScheduler" "name" "caller-scheduler" "port" .Values.services.callerScheduler.port)
+  (dict "key" "pyPhoneCallerUi" "name" "py-phone-caller-ui" "port" .Values.services.pyPhoneCallerUi.port)
+  (dict "key" "celeryWorker" "name" "celery-worker")
+-}}
+
+{{- range $item := $svcList }}
+{{- $cfg := index $.Values.services $item.key }}
+{{- if $cfg.enabled }}
+{{- if $item.port }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $item.name }}-service
+  labels:
+    app: {{ $item.name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ $item.port }}
+      name: http-{{ $item.port }}
+      targetPort: {{ $item.port }}
+      protocol: TCP
+  selector:
+    app: {{ $item.name }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $item.name }}-deployment
+  labels:
+    app: {{ $item.name }}
+spec:
+  {{- if $item.pvc }}
+  strategy:
+    type: Recreate
+  {{- end }}
+  replicas: {{ $cfg.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: {{ $item.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $item.name }}
+    spec:
+      containers:
+        - name: {{ $item.name }}
+          image: "{{ $registry }}/{{ $cfg.imageName }}:{{ $tag }}"
+          imagePullPolicy: {{ $pullPolicy }}
+          {{- if $item.port }}
+          ports:
+            - containerPort: {{ $item.port }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ $item.port }}
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ $item.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          {{- end }}
+          env:
+            - name: TZ
+              value: {{ $tz | quote }}
+            - name: PICCOLO_CONF
+              value: "py_phone_caller_utils.py_phone_caller_db.piccolo_conf"
+            - name: DYNACONF_COMMONS__ASTERISK_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: DYNACONF_COMMONS__ASTERISK_PASS
+            - name: DYNACONF_DATABASE__DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: DYNACONF_DATABASE__DB_PASSWORD
+          volumeMounts:
+            - name: caller-config
+              mountPath: /app/py-phone-caller/config/settings.toml
+              subPath: settings.toml
+            - name: caller-secrets
+              mountPath: /app/py-phone-caller/config/.secrets.toml
+              subPath: .secrets.toml
+            {{- if $item.pvc }}
+            - name: audio-storage
+              mountPath: /app/audio
+            {{- end }}
+      volumes:
+        - name: caller-config
+          configMap:
+            name: py-phone-caller-config
+        - name: caller-secrets
+          secret:
+            secretName: {{ $secretName }}
+        {{- if $item.pvc }}
+        - name: audio-storage
+          persistentVolumeClaim:
+            claimName: {{ $item.pvc }}
+        {{- end }}
+---
+{{- end }}
+{{- end }}

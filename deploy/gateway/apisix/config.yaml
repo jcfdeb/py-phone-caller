@@ -1,0 +1,34 @@
+# =============================================================================
+# Apache APISIX Engine Configuration for py-phone-caller Compose Gateway
+# =============================================================================
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_listen:
+      ip: 0.0.0.0
+      port: 9180
+    allow_admin:
+      - 127.0.0.1/32
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+    admin_key:
+      - name: admin
+        key: edd1c9f034335f136f87ad84b625c8f1
+        role: admin
+  etcd:
+    host:
+      - "http://apisix-etcd:2379"
+    prefix: "/apisix"
+    timeout: 30
+
+apisix:
+  node_listen:
+    - port: 9080
+  enable_control: true
+  ssl:
+    enable: true
+    listen:
+      - port: 9443
+#END

@@ -165,26 +165,38 @@ class AlertNotificationService:
         if any(isinstance(r, Exception) or r is False for r in results):
             logging.info(f"Unable to start a call for '{receiver}' with message '{message}'")
 
-    async def do_sms_only(self, receiver: str, message: str) -> None:
+    async def do_sms_only(self, receiver: str, message: str) -> bool:
         """
         Dispatches an SMS message.
 
         Args:
             receiver: Phone destination.
             message: SMS body text.
+
+        Returns:
+            True if SMS/SIP text delivery succeeded, False otherwise.
         """
-        await self.sms_client.send_sms(receiver, message)
+        return bool(await self.sms_client.send_sms(receiver, message))
 
     async def _schedule_sms_before_call(self, receiver: str, message: str) -> None:
         """
         Internal worker that sends SMS, waits for interval, then triggers call.
 
+        If SMS/SIP text delivery fails, bypasses the wait interval and places the
+        voice call immediately so alerting is never stalled.
+
         Args:
             receiver: Phone destination.
             message: Notification content.
         """
-        await self.do_sms_only(receiver, message)
-        await asyncio.sleep(self.sms_wait_seconds)
+        sms_ok = await self.do_sms_only(receiver, message)
+        if sms_ok:
+            await asyncio.sleep(self.sms_wait_seconds)
+        else:
+            logging.info(
+                f"SMS/SIP text delivery failed for '{receiver}'; "
+                f"bypassing {self.sms_wait_seconds}s wait and placing voice call immediately."
+            )
         await self.do_call_only(receiver, message)
 
     async def do_sms_before_call(self, receiver: str, message: str) -> None:

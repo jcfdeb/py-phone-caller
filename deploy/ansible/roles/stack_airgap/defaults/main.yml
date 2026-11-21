@@ -1,0 +1,24 @@
+---
+# Immutable, target-local inputs. No bundle producer or download fallback is supplied.
+# Manifest JSON: {version: 1, files: {relative_path: sha256_hex}, symlinks: {relative_path: target}}.
+# The target manifest also requires architecture, python_version and uv_version.
+# The source root pyproject.toml must pin tool.uv.build-constraint-dependencies;
+# bundle build-constraints.txt must contain the same exact name==version pins.
+py_phone_caller_airgap_bundle_dir: ""
+py_phone_caller_airgap_manifest_path: ""
+py_phone_caller_airgap_manifest_checksum: ""
+py_phone_caller_airgap_source_manifest_path: ""
+py_phone_caller_airgap_source_manifest_checksum: ""
+py_phone_caller_airgap_rust_toolchain: ""
+
+# These paths are deliberately fixed within the reviewed bundle.
+py_phone_caller_airgap_runtime_environment:
+  PPC_OFFLINE: "1"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  HF_DATASETS_OFFLINE: "1"
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+  HF_HOME: "{{ py_phone_caller_airgap_bundle_dir }}/models/huggingface"
+  TORCH_HOME: "{{ py_phone_caller_airgap_bundle_dir }}/models/torch"
+  XDG_CACHE_HOME: "{{ py_phone_caller_airgap_bundle_dir }}/models/cache"

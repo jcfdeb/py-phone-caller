@@ -1,0 +1,59 @@
+---
+- name: Stop declared application units before any replacement
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+  loop: "{{ stack_lifecycle_units }}"
+
+- name: Restore verified matched paths while retaining replaced files
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - "{{ stack_lifecycle_helper }}"
+      - restore
+      - --snapshot
+      - "{{ stack_lifecycle_snapshot }}"
+      - --plan
+      - "{{ stack_lifecycle_storage_dir }}/requested-plan.json"
+  changed_when: true
+  no_log: true
+
+- name: Restore declared databases with database-aware single-transaction recovery
+  ansible.builtin.shell:
+    cmd: >-
+      /usr/sbin/runuser -u postgres -- /usr/bin/pg_restore
+      --clean --if-exists --exit-on-error --single-transaction --no-password
+      --host=/var/run/postgresql --port=5432 --username=postgres
+      --dbname={{ item | quote }} < {{ (stack_lifecycle_database_dir ~ '/' ~ item ~ '.dump') | quote }}
+  loop: "{{ stack_lifecycle_postgresql_databases }}"
+  changed_when: true
+  no_log: true
+
+- name: Reload restored unit definitions without enabling services
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: stack_lifecycle_units | length > 0
+
+- name: Start restored services only when explicitly requested
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop: "{{ stack_lifecycle_units }}"
+  when: stack_lifecycle_start_after_restore
+
+- name: Check explicitly requested health endpoints without dispatch
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    status_code: 200
+    return_content: false
+    follow_redirects: none
+    use_proxy: false
+    timeout: 5
+  loop: "{{ stack_lifecycle_health_urls }}"
+  register: stack_lifecycle_health
+  until: stack_lifecycle_health.status | default(0) == 200
+  retries: 12
+  delay: 2
+  no_log: true
+  when: stack_lifecycle_start_after_restore

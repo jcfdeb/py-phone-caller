@@ -3,17 +3,8 @@
 # Apache APISIX & Keycloak IAM Gateway Deployment
 # ===========================================================================
 
-- name: Require reviewed gateway image digests
-  ansible.builtin.assert:
-    that:
-      - item is match('^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$')
-    fail_msg: Managed gateway images must use inventory-reviewed registry/name@sha256 digests.
-    quiet: true
-  loop:
-    - "{{ py_phone_caller_etcd_image }}"
-    - "{{ py_phone_caller_apisix_image }}"
-    - "{{ py_phone_caller_apisix_dashboard_image }}"
-    - "{{ py_phone_caller_keycloak_image }}"
+- name: Check gateway prerequisites before changing the host
+  ansible.builtin.import_tasks: preflight.yml
 
 - name: Require a private APISIX admin token
   ansible.builtin.assert:
@@ -30,6 +21,14 @@
       - openssl
     state: present
 
+- name: Keep the shared credential parent private without permission churn
+  ansible.builtin.file:
+    path: /etc/py-phone-caller
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Ensure gateway directories exist
   ansible.builtin.file:
     path: "{{ item }}"
@@ -38,7 +37,6 @@
     group: root
     mode: "0750"
   loop:
-    - "/etc/py-phone-caller"
     - "/etc/py-phone-caller/certs"
     - "/etc/py-phone-caller/apisix"
     - "/var/lib/py-phone-caller/etcd"
@@ -65,6 +63,7 @@
   ansible.builtin.stat:
     path: /etc/py-phone-caller/certs/gateway.crt
   register: _ppc_gateway_cert_stat
+  when: py_phone_caller_topology | default('legacy') == 'legacy'
 
 - name: Generate self-signed TLS certificate for Gateway & Keycloak
   ansible.builtin.command:
@@ -74,7 +73,9 @@
       -out /etc/py-phone-caller/certs/gateway.crt
       -subj "/CN={{ ansible_host | default(inventory_hostname) }}"
       -addext "subjectAltName = DNS:localhost,DNS:{{ ansible_host | default(inventory_hostname) }},DNS:py-phone-caller.link,IP:127.0.0.1"
-  when: not _ppc_gateway_cert_stat.stat.exists
+  when:
+    - py_phone_caller_topology | default('legacy') == 'legacy'
+    - not _ppc_gateway_cert_stat.stat.exists
   changed_when: true
   register: _ppc_gateway_tls
   no_log: true
@@ -85,6 +86,7 @@
     owner: root
     group: root
     mode: "0640"
+  when: py_phone_caller_topology | default('legacy') == 'legacy'
 
 - name: Render APISIX configuration
   ansible.builtin.template:

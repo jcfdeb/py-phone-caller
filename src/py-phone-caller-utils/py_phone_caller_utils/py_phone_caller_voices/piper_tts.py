@@ -1,5 +1,7 @@
 import argparse
 import logging
+import os
+import threading
 import wave
 from pathlib import Path
 
@@ -18,6 +20,22 @@ Warning:
 logging.basicConfig()
 logger = logging.getLogger("piper")
 logger.setLevel(logging.INFO)
+
+_VOICE_CACHE: dict[tuple[str, str], PiperVoice] = {}
+_VOICE_CACHE_LOCK = threading.Lock()
+
+
+def load_piper_voice(model_path: str | Path, config_path: str | Path) -> PiperVoice:
+    """Load and cache a PiperVoice instance in memory for low-latency reuse."""
+    key = (os.path.abspath(str(model_path)), os.path.abspath(str(config_path)))
+    with _VOICE_CACHE_LOCK:
+        voice = _VOICE_CACHE.get(key)
+        if voice is None:
+            logger.info(f"Loading Piper voice from: {key[0]}")
+            voice = PiperVoice.load(key[0], config_path=key[1])
+            _VOICE_CACHE[key] = voice
+            logger.info("Piper voice loaded and cached in memory.")
+        return voice
 
 
 def resample_audio(audio_bytes, orig_sr, target_sr=8000):
@@ -43,8 +61,63 @@ def resample_audio(audio_bytes, orig_sr, target_sr=8000):
     number_of_samples = round(len(audio_float) * target_sr / orig_sr)
     audio_resampled = signal.resample(audio_float, number_of_samples)
 
-    audio_int16 = (audio_resampled * 32768.0).astype(np.int16)
+    audio_int16 = np.clip(audio_resampled * 32768.0, -32768, 32767).astype(np.int16)
     return audio_int16.tobytes()
+
+
+def text_to_speech_piper(
+    text: str,
+    model_path: str | Path,
+    config_path: str | Path,
+    output_path: str | Path,
+    speed: float = 1.0,
+    target_sample_rate: int = 8000,
+) -> None:
+    """Synthesize speech in-process using a cached PiperVoice and write an atomic 8 kHz PCM WAV."""
+    model_p = Path(model_path)
+    config_p = Path(config_path)
+    out_p = Path(output_path)
+
+    if not model_p.exists():
+        raise FileNotFoundError(f"Model file not found at: {model_p}")
+    if not config_p.exists():
+        raise FileNotFoundError(f"Config file not found at: {config_p}")
+
+    voice = load_piper_voice(model_p, config_p)
+
+    logger.info(f"Synthesizing text: '{text}'")
+    # length_scale is inverse of speed: lower length_scale -> faster speech, higher -> slower
+    length_scale = 1.0 / max(0.2, min(5.0, speed)) if speed > 0 else 1.0
+    from piper.config import SynthesisConfig
+
+    syn_config = SynthesisConfig(length_scale=length_scale)
+    audio_bytes = b"".join(
+        chunk.audio_int16_bytes for chunk in voice.synthesize(text, syn_config=syn_config)
+    )
+
+    logger.info(f"Synthesized {len(audio_bytes)} bytes of audio.")
+
+    sample_rate = voice.config.sample_rate
+    sample_width = 2
+    channels = 1
+
+    audio_resampled = resample_audio(audio_bytes, sample_rate, target_sample_rate)
+
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    tmp_p = out_p.with_name(f".{out_p.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        with wave.open(str(tmp_p), "wb") as wav_file:
+            wav_file.setnchannels(channels)
+            wav_file.setsampwidth(sample_width)
+            wav_file.setframerate(target_sample_rate)
+            wav_file.writeframes(audio_resampled)
+        os.replace(tmp_p, out_p)
+    except Exception:
+        if tmp_p.exists():
+            tmp_p.unlink(missing_ok=True)
+        raise
+
+    logger.info(f"Audio saved successfully to: {out_p}")
 
 
 MODEL_PATH = None
@@ -96,56 +169,16 @@ def main() -> None:
     """
     args = parse_arguments()
 
-    if not args.model.exists():
-        logger.critical(f"Model file not found at: {args.model}")
-        return
-    if not args.config.exists():
-        logger.critical(f"Config file not found at: {args.config}")
-        return
-
-    logger.info(f"Loading voice from: {args.model}")
-
     try:
-        voice = PiperVoice.load(args.model, config_path=args.config)
-        logger.info("Voice loaded successfully.")
+        text_to_speech_piper(
+            text=args.text,
+            model_path=args.model,
+            config_path=args.config,
+            output_path=args.output,
+            speed=args.speed,
+        )
     except Exception as e:
-        logger.critical(f"Error loading voice: {e}")
-        return
-
-    logger.info(f"Synthesizing text: '{args.text}'")
-    # length_scale is inverse of speed: lower length_scale -> faster speech, higher -> slower
-    length_scale = 1.0 / max(0.2, min(5.0, args.speed)) if args.speed > 0 else 1.0
-    from piper.config import SynthesisConfig
-    syn_config = SynthesisConfig(length_scale=length_scale)
-    audio_bytes = b"".join(
-        chunk.audio_int16_bytes for chunk in voice.synthesize(args.text, syn_config=syn_config)
-    )
-
-    logger.info(f"Synthesized {len(audio_bytes)} bytes of audio.")
-
-    sample_rate = voice.config.sample_rate
-    sample_width = 2
-    channels = 1
-
-    logger.info(f"Saving audio to: {args.output}")
-    logger.info(
-        f"Audio Parameters: Rate={sample_rate}, Width={sample_width}, Channels={channels}"
-    )
-
-    target_sample_rate = 8000
-    audio_resampled = resample_audio(
-        audio_bytes, voice.config.sample_rate, target_sample_rate
-    )
-
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-
-    with wave.open(str(args.output), "wb") as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(sample_width)
-        wav_file.setframerate(target_sample_rate)
-        wav_file.writeframes(audio_resampled)
-
-    logger.info("Audio saved successfully.")
+        logger.critical(f"Error generating Piper audio: {e}")
 
 
 if __name__ == "__main__":

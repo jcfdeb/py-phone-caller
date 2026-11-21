@@ -4,6 +4,14 @@ deployment:
   role_traditional:
     config_provider: etcd
   admin:
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+    admin_listen:
+      ip: 127.0.0.1
+      port: 9180
+    allow_admin:
+      - 127.0.0.1/32
+      - ::1/128
+{% endif %}
     admin_key:
       - name: admin
         key: "{{ py_phone_caller_apisix_admin_token }}"
@@ -17,7 +25,27 @@ deployment:
 apisix:
   node_listen:
     - port: {{ py_phone_caller_gateway_http_port }}
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+      ip: 127.0.0.1
+  enable_control: false
+  trusted_addresses:
+    - 127.0.0.1/32
+    - ::1/128
+  ssl:
+    enable: false
+{% if py_phone_caller_tls_ca_bundle | default('') %}
+    ssl_trusted_certificate: /opt/issuer-ca.pem
+{% endif %}
+nginx_config:
+  http:
+    real_ip_header: X-Forwarded-For
+    real_ip_recursive: "on"
+    real_ip_from:
+      - 127.0.0.1
+      - ::1
+{% else %}
   ssl:
     listen:
       - port: {{ py_phone_caller_gateway_https_port }}
     ssl_trusted_certificate: "/opt/certs/gateway.crt"
+{% endif %}

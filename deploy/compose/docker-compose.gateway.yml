@@ -1,15 +1,13 @@
 # =============================================================================
-# Development & Testing Compose Overlay for APISIX & Keycloak Integration
+# Enterprise Gateway Compose Overlay for APISIX & Keycloak OIDC Integration
 # =============================================================================
-# Usage:
-#   podman-compose -f docker-compose.yml -f deploy/compose/docker-compose.gateway.yml up -d
+# Usage (from deploy/compose):
+#   docker compose -f docker-compose.yml -f docker-compose.gateway.yml up -d
 #   OR:
-#   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.gateway.yml up -d
+#   podman compose -f docker-compose.yml -f docker-compose.gateway.yml up -d
 #
-# Connects to the existing postgres container from the base stack without duplication.
+# Connects to the `db` (PostgreSQL) container from the base stack.
 # =============================================================================
-
-version: "3.8"
 
 services:
   # ---------------------------------------------------------------------------
@@ -25,23 +23,29 @@ services:
       - --advertise-client-urls=http://apisix-etcd:2379
     volumes:
       - pyphonecaller_etcd_data:/etcd-data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: always
 
   # ---------------------------------------------------------------------------
   # Apache APISIX Gateway Engine
   # ---------------------------------------------------------------------------
   apisix:
-    image: docker.io/apache/apisix:latest
+    image: docker.io/apache/apisix:${APISIX_VERSION:-3.9.1-debian}
     container_name: pyphonecaller-gateway
     restart: always
     volumes:
       - ../gateway/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ../gateway/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     depends_on:
-      - apisix-etcd
+      apisix-etcd:
+        condition: service_healthy
     ports:
-      - "9080:9080"
-      - "9443:9443"
+      - "${APISIX_HTTP_PORT:-9080}:9080"
+      - "${APISIX_HTTPS_PORT:-9443}:9443"
     extra_hosts:
       - "host.containers.internal:host-gateway"
 
@@ -53,31 +57,34 @@ services:
     container_name: pyphonecaller-dashboard
     restart: always
     depends_on:
-      - apisix-etcd
+      apisix-etcd:
+        condition: service_healthy
     ports:
-      - "9000:9000"
+      - "${APISIX_DASHBOARD_PORT:-9000}:9000"
 
   # ---------------------------------------------------------------------------
-  # Keycloak IAM Service (Wired to the existing PostgreSQL database instance)
+  # Keycloak IAM Service (Wired to the `db` PostgreSQL instance)
   # ---------------------------------------------------------------------------
   keycloak:
-    image: quay.io/keycloak/keycloak:latest
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-25.0.2}
     container_name: pyphonecaller-keycloak
     command: start-dev --import-realm
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_URL: jdbc:postgresql://db:5432/${KEYCLOAK_DB_NAME:-py_phone_caller}
       KC_DB_USERNAME: ${POSTGRES_USER:-py_phone_caller}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-py_phone_caller}
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin_secure_password
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-py_phone_caller_password}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-change_me}
     ports:
-      - "8080:8080"
-      - "8443:8443"
+      - "${KEYCLOAK_HTTP_PORT:-8080}:8080"
+      - "${KEYCLOAK_HTTPS_PORT:-8443}:8443"
     depends_on:
-      - postgres
+      db:
+        condition: service_healthy
     extra_hosts:
       - "host.containers.internal:host-gateway"
+    restart: always
 
 volumes:
   pyphonecaller_etcd_data:

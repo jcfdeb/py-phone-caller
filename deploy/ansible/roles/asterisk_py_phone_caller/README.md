@@ -9,15 +9,25 @@ or other roles. All four templates render from PBX variables alone.
 
 Use the shared `deploy/ansible/site.yml` with explicit `stack_deploy_asterisk: true`,
 `stack_deploy_py_phone_caller: false`, and `stack_deploy_openalert: false` for a PBX-only
-deployment. The shared site's standard platform contract is Debian 13 or Ubuntu
-26.04. The legacy wrapper opts into `stack_legacy_platform: true` and retains the
-RedHat package path. Platform policy belongs to the shared preflight; direct role
-use does not enforce the shared site's exact distribution versions.
+deployment. The shared site's standard platform contract includes Debian 13,
+Ubuntu 26.04 and Rocky 10 AMD64; runtime qualification is separate. The legacy
+wrapper opts into `stack_legacy_platform: true` and retains the RedHat package
+path. Platform policy belongs to the shared preflight; opt-in providers also
+enforce their own narrower distribution/version/architecture contracts.
 
 The optional [AllStarLink provider](../../docs/asterisk-provider.md) supplies pinned
 Asterisk packages for Debian 13, with AMD64 installation/API/rerun evidence and
 ARM64 execution still unqualified. Set `asterisk_package_provider: allstarlink`
 explicitly; there is no automatic provider fallback or replacement.
+
+The explicit `tucny` provider requires online Rocky 10 AMD64 even when used
+directly. It uses reviewed exact-version Asterisk 22 RPMs, enabled narrow DNF
+repositories, a vendored fingerprint-pinned key, packaged WAV sounds, and the
+non-radio module allowlist. It never enters the legacy COPR/compiler-dependency
+or sound-archive path. See the [provider guide](../../docs/asterisk-provider.md)
+for the same-host TOFU identity caveat, unsigned metadata, upgrade procedure and
+offline-only validation status. Use the strict shared platform entry point;
+do not bypass its checks with a distribution override.
 
 The default `distro` route uses `apt`; RedHat-family systems retain `dnf`, EPEL,
 CRB/PowerTools, and the existing Enterprise Linux 10+ COPR selection. This role
@@ -39,8 +49,10 @@ Existing names are retained for inventory compatibility.
 
 | Variable | Role default / purpose |
 | --- | --- |
-| `asterisk_package_provider` | `distro`; opt-in `allstarlink` for Debian 13 |
+| `asterisk_package_provider` | `distro`; opt-in `allstarlink` for Debian 13 or `tucny` for online Rocky 10 AMD64 |
 | `asterisk_allstarlink_version` | `2:22.10.1+asl3-3.10.8-1.deb13`; exact three-package pin |
+| `asterisk_tucny_version` | `22.9.0-1.el10`; exact core, PJSIP, CURL and selected/previously managed IAX2 RPM version-release |
+| `asterisk_tucny_sounds_version` | `1.6.1-1.el10`; exact English core metadata and WAV RPM version-release |
 | `asterisk_sip_trunk_enabled` | `true` for compatibility; set `false` to prevent trunk registration during isolated tests |
 | `asterisk_http_enabled` | `"yes"` |
 | `asterisk_http_bindaddr`, `asterisk_http_bindport` | `0.0.0.0`, `8088` |
@@ -54,6 +66,12 @@ Existing names are retained for inventory compatibility.
 | `local_sip`, `local_iax` | Both `false` in the role; legacy wrapper enables both |
 | `local_sip_exten`, `local_iax_exten` | Both `2500` in the role; legacy wrapper uses IAX `2600` |
 | `local_sip_pass`, `local_iax_pass` | `change_me`; supply Vault-protected values when enabled |
+| `asterisk_sip_exten_1000_enabled` | `false`; set `true` to provision ready-to-use local SIP extension `1000` with an auto-generated random password logged during execution |
+| `asterisk_sip_exten_1000` | `"1000"`; numeric extension identifier (must not collide with `asterisk_extension`, `local_sip_exten`, or `local_iax_exten`) |
+| `asterisk_sip_exten_1000_password_length` | `24` (valid range `16`–`128`); alphanumeric random password persisted in `pjsip_py_phone_caller.conf` for `changed=0` idempotency |
+| `asterisk_sip_exten_1000_log_password` | `true`; prints username/password and transport details in Ansible output (set `false` to suppress) |
+| `asterisk_sip_exten_1000_rotate_password` | `false`; set `true` to force-generate a new random password |
+| `asterisk_sip_exten_1000_qualify_frequency` | `0`; disables SIP `OPTIONS` qualification pings that can mark mobile/VPN softphones `Unavail` |
 | `asterisk_iax_bindaddr`, `asterisk_iax_bindport` | `127.0.0.1`, `4569`; canonical loopback/RFC1918 IPv4 only, UDP port 1–65535 |
 | `custom_audio_files` | `greeting-message.wav`, `press-4-for-acknowledgement.wav` |
 | `asterisk_core_sounds_version` | `1.6.1`, RedHat missing-sounds fallback only |
@@ -74,9 +92,17 @@ IAX requires call tokens and disables peer qualification. Its module is explicit
 selected, and runtime verification only inspects its loaded peer, module and UDP
 listener; it never registers a device or dispatches a call.
 
+When `asterisk_sip_exten_1000_enabled: true` is selected, the role generates a
+cryptographically random alphanumeric password (24 characters by default),
+persists it in `pjsip_py_phone_caller.conf` so unchanged reruns remain `changed=0`
+(use `asterisk_sip_exten_1000_rotate_password: true` to rotate it), verifies that
+Asterisk loaded the PJSIP endpoint in `asterisk_context` without sending calls,
+and prints the ready-to-use SIP username, password, and UDP transport details in
+the Ansible execution log (unless `asterisk_sip_exten_1000_log_password: false`).
+
 ## Sound download contract
 
-Before packages, users, directories, or configuration are changed, RedHat
+Before packages, users, directories, or configuration are changed, legacy RedHat `distro`
 preflight checks for `{{ asterisk_sounds_dir }}/beep.wav`. If it is absent, supply
 a fixed numeric release version and a **trusted 64-hex-character SHA-256**.
 No digest is fabricated, no mutable `current` URL is used, and download or
@@ -91,12 +117,16 @@ cache. Existing core sounds are not automatically replaced; Debian uses its
 packaged core sounds. Custom audio remains local under `files/sounds/` and
 retains the legacy warning-and-skip behavior for missing files.
 
+Tucny instead installs both signed `asterisk-sounds-core-en` and
+`asterisk-sounds-core-en-wav` RPMs and verifies `/usr/share/asterisk/sounds/beep.wav`.
+It uses `/usr/share/asterisk/sounds` for custom prompts, with no tarball fallback.
+
 ## Configuration and operational safety
 
 The role manages `extensions_py_phone_caller.conf`, `pjsip_py_phone_caller.conf`,
 `ari_py_phone_caller.conf`, and `iax_py_phone_caller.conf`, then inserts `#include`
 lines into the corresponding base files without replacing unrelated content in
-the `distro` route. AllStarLink fresh installations instead use role-owned base
+the `distro` route. AllStarLink and Tucny fresh installations instead use role-owned base
 include roots and a non-radio module allowlist; see its provider guide.
 Templates and base configuration edits suppress both logs and diffs, including
 pre-existing base-file secrets. Managed configuration uses mode `0640`;
@@ -127,6 +157,10 @@ Ubuntu/provider and credential preflight, missing APT candidates, legacy/invento
 variable loading, and enabled/disabled IAX rerun idempotence on temporary files.
 Only temporary fixture configuration is edited; no PBX probes, downloads, calls,
 messages, package installation, or service changes are performed.
+
+`deploy/ansible/tests/test_tucny_provider.py` adds RPM ownership/version guard,
+fingerprint/hash, exact-package and repository policy contracts plus real offline
+Ansible preflight and idempotent repository/private-configuration rendering.
 
 `vars_plugins/pbx_legacy_vars.py` is enabled only by the legacy `ansible.cfg` to
 preserve playbook-adjacent variable lookup across `import_playbook`. It delegates

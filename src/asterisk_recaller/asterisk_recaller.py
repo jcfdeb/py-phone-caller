@@ -155,7 +155,8 @@ def receive_signal(signal_number: int, frame: Any) -> None:
             sys.exit(0)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Starts the Asterisk recaller background event loop."""
     try:
         signal.signal(signal.SIGTERM, receive_signal)
         signal.signal(signal.SIGINT, receive_signal)
@@ -171,3 +172,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt as err:
         logging.exception(f"Process terminated due Interrupt -> {err}")
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+

@@ -1,0 +1,5 @@
+---
+- name: Apply planned OpenAlert transactions
+  ansible.builtin.debug:
+    msg: "Queued {{ openalert_pending_activation | map(attribute='name') | list | length }} changed OpenAlert instance(s) for transactional activation."
+  changed_when: false

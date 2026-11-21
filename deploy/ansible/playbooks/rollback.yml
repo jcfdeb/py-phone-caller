@@ -1,0 +1,12 @@
+---
+- name: Roll back matched application assets without rolling back databases
+  hosts: "{{ stack_hosts | default('stack') }}"
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Run explicitly compatible asset rollback
+      ansible.builtin.include_role:
+        name: stack_lifecycle
+      vars:
+        stack_lifecycle_action: rollback

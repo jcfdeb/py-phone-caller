@@ -7,6 +7,13 @@ effective configuration. Entrypoints own inventory loading and platform prefligh
 the new native path targets Debian 13 / Ubuntu 26.04; legacy RedHat package,
 PostgreSQL initialization, Valkey, COPR, and firewalld branches remain available.
 
+`py_phone_caller_topology` defaults to `legacy`, preserving the switches below.
+Explicit `standard`/`enterprise` profiles add consistent authentication, ingress
+and TLS policy; `py_phone_caller_connectivity: airgapped` requires a complete
+offline artifact set. See [the topology contract](../../docs/topologies.md).
+New profiles are not yet runtime-qualified; no existing ingress is adopted or
+disabled automatically.
+
 | Management selector | Default / compatibility |
 | --- | --- |
 | `py_phone_caller_manage_postgresql` | Legacy `manage_database` AND `manage_local_postgres`; true for local defaults |

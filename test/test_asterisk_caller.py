@@ -378,3 +378,89 @@ async def test_endpoint_asterisk_play_success(aiohttp_client):
         assert resp.status == 200
         assert await resp.json() == {"status": 201}
         mock_cont.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_endpoint_place_call_ari_500_returns_json(aiohttp_client, monkeypatch):
+    """Genuine ARI 5xx errors must return application/json with detail, not raw text/plain 500."""
+    from src.asterisk_caller.asterisk_caller import init_app, ari_circuit_breaker
+
+    ari_circuit_breaker.close()
+
+    ari_app = web.Application()
+
+    async def ari_internal_error(request):
+        return web.json_response({"message": "Internal PBX failure"}, status=500)
+
+    ari_app.router.add_route("POST", "/ari/channels", ari_internal_error)
+    mock_ari_server = await aiohttp_client(ari_app)
+
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_URL",
+        str(mock_ari_server.make_url("")).rstrip("/"),
+    )
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_ARI_CHANNELS",
+        "ari/channels",
+    )
+
+    caller_app = await init_app()
+    caller_client = await aiohttp_client(caller_app)
+
+    resp = await caller_client.post(
+        "/place_call",
+        json={"phone": "1000", "message": "Diagnostic test"},
+    )
+    assert resp.status == 500
+    assert resp.content_type == "application/json"
+    data = await resp.json()
+    assert data["status"] == 500
+    assert "Internal PBX failure" in data["error"]
+
+    ari_circuit_breaker.close()
+
+
+@pytest.mark.asyncio
+async def test_allocation_failed_does_not_trip_circuit_breaker(aiohttp_client, monkeypatch):
+    """Per-endpoint ARI 'Allocation failed' responses must not open the global PBX circuit breaker."""
+    from aiobreaker.state import CircuitBreakerState
+    from src.asterisk_caller.asterisk_caller import init_app, ari_circuit_breaker
+
+    ari_circuit_breaker.close()
+
+    ari_app = web.Application()
+
+    async def ari_alloc_failed(request):
+        return web.json_response({"message": "Allocation failed"}, status=500)
+
+    ari_app.router.add_route("POST", "/ari/channels", ari_alloc_failed)
+    mock_ari_server = await aiohttp_client(ari_app)
+
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_URL",
+        str(mock_ari_server.make_url("")).rstrip("/"),
+    )
+    monkeypatch.setattr(
+        "src.asterisk_caller.asterisk_caller.ASTERISK_ARI_CHANNELS",
+        "ari/channels",
+    )
+
+    caller_app = await init_app()
+    caller_client = await aiohttp_client(caller_app)
+
+    # Exceed fail_max (3) with 5 consecutive allocation failures — breaker must remain CLOSED
+    for _ in range(5):
+        resp = await caller_client.post(
+            "/place_call",
+            json={"phone": "999999", "message": "Unregistered endpoint"},
+        )
+        assert resp.status == 502
+        assert resp.content_type == "application/json"
+        data = await resp.json()
+        assert data["status"] == 502
+        assert "Allocation failed" in data["error"]
+
+    assert ari_circuit_breaker.current_state == CircuitBreakerState.CLOSED
+    assert ari_circuit_breaker.fail_counter == 0
+
+

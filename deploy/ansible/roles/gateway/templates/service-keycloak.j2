@@ -3,7 +3,7 @@ Description=Keycloak IAM Service for py-phone-caller
 Documentation=https://www.keycloak.org/
 After=network-online.target
 Wants=network-online.target
-{% if py_phone_caller_manage_postgresql | bool and py_phone_caller_manage_local_postgres | bool and py_phone_caller_final_config.database.db_host in py_phone_caller_local_db_hosts %}
+{% if py_phone_caller_topology | default('legacy') == 'legacy' and py_phone_caller_manage_postgresql | bool and py_phone_caller_manage_local_postgres | bool and py_phone_caller_final_config.database.db_host in py_phone_caller_local_db_hosts %}
 After={{ py_phone_caller_postgres_service }}.service
 Requires={{ py_phone_caller_postgres_service }}.service
 {% endif %}
@@ -15,6 +15,15 @@ RestartSec=10s
 ExecStartPre=-/usr/bin/podman stop keycloak
 ExecStartPre=-/usr/bin/podman rm keycloak
 ExecStart=/usr/bin/podman run --name keycloak --net=host --group-add 0 \
+{% if py_phone_caller_connectivity | default('online') == 'airgapped' %}
+  --pull=never \
+{% endif %}
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+  --label io.py-phone-caller.managed=gateway \
+  --env-file /etc/py-phone-caller/keycloak.env \
+  -v /var/lib/py-phone-caller/keycloak:/opt/keycloak/data:Z \
+  {{ py_phone_caller_keycloak_image }} start
+{% else %}
   --env-file /etc/py-phone-caller/keycloak.env \
   -v /etc/py-phone-caller/certs:/opt/keycloak/certs:ro,z \
   -v /var/lib/py-phone-caller/keycloak:/opt/keycloak/data:Z \
@@ -34,6 +43,7 @@ ExecStart=/usr/bin/podman run --name keycloak --net=host --group-add 0 \
   -e KC_HOSTNAME_STRICT=true \
 {% endif %}
   {{ py_phone_caller_keycloak_image }} start-dev --http-management-port=9009
+{% endif %}
 ExecStop=/usr/bin/podman stop -t 10 keycloak
 
 [Install]

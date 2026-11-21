@@ -1,0 +1,188 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: apisix-etcd-service
+  labels:
+    app: apisix-etcd
+spec:
+  type: ClusterIP
+  ports:
+    - port: 2379
+      name: etcd-client
+      targetPort: 2379
+  selector:
+    app: apisix-etcd
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: apisix-etcd-deployment
+  labels:
+    app: apisix-etcd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apisix-etcd
+  template:
+    metadata:
+      labels:
+        app: apisix-etcd
+    spec:
+      containers:
+        - name: etcd
+          image: quay.io/coreos/etcd:v3.5.11
+          command:
+            - /usr/local/bin/etcd
+            - --data-dir=/etcd-data
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://apisix-etcd-service:2379
+          ports:
+            - containerPort: 2379
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: py-phone-caller
+  name: apisix-config
+data:
+  config.yaml: |
+    deployment:
+      role: traditional
+      role_traditional:
+        config_provider: etcd
+      admin:
+        admin_listen:
+          ip: 0.0.0.0
+          port: 9180
+        allow_admin:
+          - 0.0.0.0/0
+        admin_key:
+          - name: admin
+            key: edd1c9f034335f136f87ad84b625c8f1
+            role: admin
+      etcd:
+        host:
+          - "http://apisix-etcd-service:2379"
+        prefix: "/apisix"
+        timeout: 30
+    apisix:
+      node_listen:
+        - port: 9080
+      enable_control: true
+      ssl:
+        enable: true
+        listen:
+          - port: 9443
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: apisix-gateway-service
+  labels:
+    app: apisix-gateway
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9080
+      name: http-gateway
+      targetPort: 9080
+    - port: 9443
+      name: https-gateway
+      targetPort: 9443
+  selector:
+    app: apisix-gateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: apisix-gateway-deployment
+  labels:
+    app: apisix-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apisix-gateway
+  template:
+    metadata:
+      labels:
+        app: apisix-gateway
+    spec:
+      containers:
+        - name: apisix
+          image: docker.io/apache/apisix:3.9.1-debian
+          ports:
+            - containerPort: 9080
+            - containerPort: 9443
+          volumeMounts:
+            - name: apisix-config
+              mountPath: /usr/local/apisix/conf/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: apisix-config
+          configMap:
+            name: apisix-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: py-phone-caller
+  name: keycloak-service
+  labels:
+    app: keycloak
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      name: http-keycloak
+      targetPort: 8080
+  selector:
+    app: keycloak
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: py-phone-caller
+  name: keycloak-deployment
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:25.0.2
+          args: ["start-dev"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: KC_DB
+              value: "postgres"
+            - name: KC_DB_URL
+              value: "jdbc:postgresql://postgresql-service:5432/py_phone_caller"
+            - name: KC_DB_USERNAME
+              value: "py_phone_caller"
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: py-phone-caller-secrets
+                  key: DYNACONF_DATABASE__DB_PASSWORD
+            - name: KEYCLOAK_ADMIN
+              value: "admin"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: py-phone-caller-secrets
+                  key: KEYCLOAK_ADMIN_PASSWORD

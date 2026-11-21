@@ -66,7 +66,10 @@ from asterisk_caller.ari_client import (
     raw_post_ari_call as _raw_post_ari_call,
     send_ari_continue,
 )
-from asterisk_caller.exceptions import OnCallPhoneUnavailable  # noqa: F401
+from asterisk_caller.exceptions import (
+    AriEndpointUnavailableError,
+    OnCallPhoneUnavailable,  # noqa: F401
+)
 from asterisk_caller.routes import (
     asterisk_play,
     call_to_queue,
@@ -87,6 +90,7 @@ init_telemetry("asterisk_caller")
 ari_circuit_breaker = CircuitBreaker(
     fail_max=3,
     timeout_duration=timedelta(seconds=30),
+    exclude=[AriEndpointUnavailableError],
     name="asterisk_ari_circuit_breaker",
 )
 
@@ -193,7 +197,8 @@ async def init_app() -> web.Application:
     return app
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Starts the Asterisk caller queue worker thread and aiohttp server."""
     queue_thread = None
 
     try:
@@ -208,7 +213,10 @@ if __name__ == "__main__":
         asyncio.set_event_loop(loop)
 
         web_app = loop.run_until_complete(init_app())
-        web.run_app(web_app, port=int(ASTERISK_CALL_PORT), loop=loop)
+        web.run_app(
+            web_app, host=os.environ.get("PPC_HTTP_BIND_HOST"),
+            port=int(ASTERISK_CALL_PORT), loop=loop,
+        )
 
     except KeyboardInterrupt:
         logging.info("Asterisk caller interrupted. Shutting down.")
@@ -221,3 +229,8 @@ if __name__ == "__main__":
 
         if queue_thread is not None and queue_thread.is_alive():
             queue_thread.join(timeout=10)
+
+
+if __name__ == "__main__":
+    main()
+

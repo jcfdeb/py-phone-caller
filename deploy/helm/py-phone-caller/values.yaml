@@ -1,0 +1,125 @@
+global:
+  imageRegistry: "quay.io/py-phone-caller"
+  imageTag: "1.0.0"
+  imagePullPolicy: IfNotPresent
+  timezone: "Europe/Rome"
+
+asterisk:
+  externalIp: "192.0.2.10"
+  webPort: 8088
+  user: "py-phone-caller"
+  context: "py-phone-caller"
+  extension: "3216"
+  chanType: "SIP/sip-provider"
+  callerId: "Py-Phone-Caller"
+  stasisApp: "py-phone-caller"
+
+secrets:
+  existingSecret: ""
+  asteriskPass: "CHANGE_ME_ASTERISK_ARI_PASSWORD"
+  dbPassword: "CHANGE_ME_POSTGRES_PASSWORD"
+  twilioAccountSid: ""
+  twilioAuthToken: ""
+  uiSecretKey: "CHANGE_ME_UI_SECRET_KEY_FOR_SESSIONS"
+  uiAdminPassword: "CHANGE_ME_UI_ADMIN_PASSWORD_12345"
+  keycloakAdminPassword: "CHANGE_ME_KEYCLOAK_ADMIN_PASSWORD"
+
+postgresql:
+  enabled: true
+  image: "docker.io/library/postgres:17-alpine"
+  database: "py_phone_caller"
+  username: "py_phone_caller"
+  storage: "5Gi"
+
+redis:
+  enabled: true
+  image: "docker.io/library/redis:7-alpine"
+
+tts:
+  engine: "piper_tts"
+  languageCode: "en"
+  storage: "5Gi"
+
+sms:
+  carrier: "twilio"
+  twilioFrom: "+1123456789"
+  waitSecondsBeforeCall: 120
+
+ui:
+  adminUser: "admin@py-phone-caller.link"
+  resetPassword: false
+
+services:
+  callerRegister:
+    enabled: true
+    imageName: "caller_register"
+    port: 8083
+    replicas: 1
+  generateAudio:
+    enabled: true
+    imageName: "generate_audio"
+    port: 8082
+    replicas: 1
+  callerAddressBook:
+    enabled: true
+    imageName: "caller_address_book"
+    port: 8087
+    replicas: 1
+  asteriskCaller:
+    enabled: true
+    imageName: "asterisk_caller"
+    port: 8081
+    replicas: 1
+  asteriskWsMonitor:
+    enabled: true
+    imageName: "asterisk_ws_monitor"
+    replicas: 1
+  asteriskRecaller:
+    enabled: true
+    imageName: "asterisk_recaller"
+    replicas: 1
+  callerSms:
+    enabled: true
+    imageName: "caller_sms"
+    port: 8085
+    replicas: 1
+  callerPrometheusWebhook:
+    enabled: true
+    imageName: "caller_prometheus_webhook"
+    port: 8084
+    replicas: 1
+  callerScheduler:
+    enabled: true
+    imageName: "caller_scheduler"
+    port: 8086
+    replicas: 1
+  pyPhoneCallerUi:
+    enabled: true
+    imageName: "py_phone_caller_ui"
+    port: 5000
+    replicas: 1
+  celeryWorker:
+    enabled: true
+    imageName: "celery_worker"
+    replicas: 1
+
+openalertd:
+  enabled: true
+  imageName: "openalertd"
+  nodeName: "openalertd-k8s-hub"
+  httpPort: 8090
+  relayPort: 8088
+  peeringPort: 19876
+  storage: "2Gi"
+
+gateway:
+  enabled: false
+  apisixImage: "docker.io/apache/apisix:3.9.1-debian"
+  etcdImage: "quay.io/coreos/etcd:v3.5.11"
+  keycloakImage: "quay.io/keycloak/keycloak:25.0.2"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  uiHost: "ui.py-phone-caller.local"
+  tlsSecretName: "py-phone-caller-tls"

@@ -1,0 +1,16 @@
+---
+- name: Create lifecycle helper directory
+  ansible.builtin.file:
+    path: "{{ stack_lifecycle_helper | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install protected snapshot helper
+  ansible.builtin.copy:
+    src: stack_snapshot.py
+    dest: "{{ stack_lifecycle_helper }}"
+    owner: root
+    group: root
+    mode: "0755"

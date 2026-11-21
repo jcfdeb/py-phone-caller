@@ -1,0 +1,143 @@
+---
+- name: Validate lifecycle request before mutations
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Acquire exclusive host lifecycle lock without stealing stale locks
+  ansible.builtin.command:
+    argv: [mkdir, /run/lock/py-phone-caller-lifecycle]
+  changed_when: true
+
+- name: Run maintenance under the exclusive lifecycle lock
+  block:
+    - name: Prepare snapshot helper
+      ansible.builtin.import_tasks: prepare.yml
+
+    - name: Resolve protected snapshot paths and expected metadata
+      ansible.builtin.set_fact:
+        stack_lifecycle_snapshot: "{{ stack_lifecycle_storage_dir }}/snapshots/{{ stack_lifecycle_snapshot_id }}"
+        stack_lifecycle_database_dir: "{{ stack_lifecycle_storage_dir }}/database/{{ stack_lifecycle_snapshot_id }}"
+        stack_lifecycle_metadata:
+          kind: "{{ stack_lifecycle_kind }}"
+          schema_id: "{{ stack_lifecycle_snapshot_schema_id }}"
+          release_id: "{{ stack_lifecycle_release_id }}"
+          units: "{{ stack_lifecycle_units }}"
+          postgresql: "{{ stack_lifecycle_postgresql_databases }}"
+
+    - name: Create private lifecycle storage
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - "{{ stack_lifecycle_storage_dir }}"
+        - "{{ stack_lifecycle_storage_dir }}/snapshots"
+        - "{{ stack_lifecycle_storage_dir }}/database"
+
+    - name: Inspect requested snapshot without replacing an existing backup
+      ansible.builtin.stat:
+        path: "{{ stack_lifecycle_snapshot }}"
+      register: stack_lifecycle_snapshot_stat
+
+    - name: Require a new backup identifier or an existing recovery snapshot
+      ansible.builtin.assert:
+        that: (stack_lifecycle_action == 'backup') != stack_lifecycle_snapshot_stat.stat.exists
+        fail_msg: Backups require a new snapshot identifier; recovery requires an existing snapshot.
+
+    - name: Create private database dump staging directory
+      ansible.builtin.file:
+        path: "{{ stack_lifecycle_database_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      when: stack_lifecycle_action == 'backup'
+
+    - name: Write independent expected snapshot plan without displaying secrets
+      ansible.builtin.copy:
+        content: "{{ {'paths': stack_lifecycle_paths + [stack_lifecycle_database_dir], 'metadata': stack_lifecycle_metadata} | to_json }}\n"
+        dest: "{{ stack_lifecycle_storage_dir }}/requested-plan.json"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      diff: false
+
+    - name: Validate all backup sources before stopping services
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts['python']['executable'] }}"
+          - "{{ stack_lifecycle_helper }}"
+          - check-plan
+          - --plan
+          - "{{ stack_lifecycle_storage_dir }}/requested-plan.json"
+      changed_when: false
+      no_log: true
+      when: stack_lifecycle_action == 'backup'
+
+    - name: Verify every recovery artifact before stopping services or writing active paths
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts['python']['executable'] }}"
+          - "{{ stack_lifecycle_helper }}"
+          - verify
+          - --snapshot
+          - "{{ stack_lifecycle_snapshot }}"
+          - --plan
+          - "{{ stack_lifecycle_storage_dir }}/requested-plan.json"
+      changed_when: false
+      register: stack_lifecycle_verified
+      no_log: true
+      when: stack_lifecycle_action != 'backup'
+
+    - name: Match recovery metadata to the independently supplied inventory
+      ansible.builtin.assert:
+        that: (stack_lifecycle_verified.stdout | from_json).metadata == stack_lifecycle_metadata
+        fail_msg: Snapshot schema, release, database or unit selection does not match the reviewed recovery request.
+      no_log: true
+      when: stack_lifecycle_action != 'backup'
+
+    - name: Inspect declared unit registrations
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", --property=LoadState, --value]
+      loop: "{{ stack_lifecycle_units }}"
+      register: stack_lifecycle_unit_loads
+      changed_when: false
+
+    - name: Require each explicitly declared unit to be loaded
+      ansible.builtin.assert:
+        that: item.stdout | trim == 'loaded'
+        fail_msg: A declared unit is absent, masked or invalid; review the maintenance scope before continuing.
+      loop: "{{ stack_lifecycle_unit_loads.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Record exactly the declared service states
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", --property=ActiveState, --value]
+      loop: "{{ stack_lifecycle_units }}"
+      register: stack_lifecycle_unit_states
+      changed_when: false
+
+    - name: Reject transient unit states before maintenance
+      ansible.builtin.assert:
+        that: item.stdout | trim in ['active', 'inactive', 'failed']
+        fail_msg: Wait for declared services to reach a stable state before maintenance.
+      loop: "{{ stack_lifecycle_unit_states.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Back up with bounded service quiescence
+      ansible.builtin.include_tasks: backup.yml
+      when: stack_lifecycle_action == 'backup'
+
+    - name: Restore with services stopped on failure
+      ansible.builtin.include_tasks: restore.yml
+      when: stack_lifecycle_action in ['restore', 'rollback']
+
+  always:
+    - name: Release only the lifecycle lock acquired by this run
+      ansible.builtin.command:
+        argv: [rmdir, /run/lock/py-phone-caller-lifecycle]
+      changed_when: true

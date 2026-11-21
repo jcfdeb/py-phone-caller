@@ -1,0 +1,59 @@
+---
+- name: Validate optional private issuer CA path
+  ansible.builtin.assert:
+    that: py_phone_caller_tls_ca_bundle is match('^/[A-Za-z0-9_./-]+$')
+  when: py_phone_caller_tls_ca_bundle | length > 0
+
+- name: Inspect explicitly supplied public CA bundle
+  ansible.builtin.stat:
+    path: "{{ py_phone_caller_tls_ca_bundle }}"
+    checksum_algorithm: sha256
+  register: py_phone_caller_tls_ca_stat
+  when: py_phone_caller_tls_ca_bundle | length > 0
+
+- name: Require readable nonempty issuer trust material before installation
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_tls_ca_stat.stat.isreg | default(false)
+      - py_phone_caller_tls_ca_stat.stat.size | default(0) > 0
+      - py_phone_caller_tls_ca_stat.stat.roth | default(false)
+    fail_msg: Supply a readable public CA bundle, never a private key, for application and gateway TLS verification.
+  when: py_phone_caller_tls_ca_bundle | length > 0
+
+- name: Validate the supplied leaf and CA with strict server certificate verification
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - verify
+      - -x509_strict
+      - -purpose
+      - sslserver
+      - -verify_hostname
+      - "{{ py_phone_caller_public_url | urlsplit('hostname') }}"
+      - -CAfile
+      - "{{ py_phone_caller_tls_ca_bundle }}"
+      - "{{ py_phone_caller_tls_certificate }}"
+  changed_when: false
+  no_log: true
+  when:
+    - py_phone_caller_tls_ca_bundle | length > 0
+    - py_phone_caller_tls_mode == 'provided'
+
+- name: Validate enterprise host and database prerequisites before mutations
+  ansible.builtin.include_role:
+    name: gateway
+    tasks_from: preflight
+    apply:
+      no_log: true
+      diff: false
+  when: py_phone_caller_topology == 'enterprise'
+
+- name: Validate explicit ingress ownership and certificate files before mutations
+  ansible.builtin.include_role:
+    name: reverse_proxy
+    tasks_from: preflight
+  vars:
+    py_phone_caller_final_config: "{{ py_phone_caller_topology_config }}"
+  when:
+    - py_phone_caller_topology != 'legacy'
+    - py_phone_caller_ingress == 'caddy'

@@ -402,6 +402,8 @@ async fn main() -> Result<()> {
     let rest_server = RestServer::new(config.rest.clone(), engine.clone());
     let bitchat_teardown = bitchat_service.clone();
 
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+
     tokio::select! {
         res = rest_server.run() => {
             if let Err(e) = res {
@@ -411,11 +413,13 @@ async fn main() -> Result<()> {
         _ = tokio::signal::ctrl_c() => {
             info!("🛑 Received shutdown signal (SIGINT/Ctrl+C). Initiating clean teardown...");
         }
+        _ = sigterm.recv() => {
+            info!("🛑 Received shutdown signal (SIGTERM). Initiating clean teardown...");
+        }
     }
 
     info!("Unregistering BitChat BLE GATT applications...");
-    bitchat_teardown.stop();
-    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    bitchat_teardown.shutdown().await;
     info!("OpenAlert Daemon terminated cleanly.");
 
     Ok(())

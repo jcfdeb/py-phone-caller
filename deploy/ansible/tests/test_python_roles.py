@@ -17,6 +17,7 @@ import tomllib
 import unittest
 
 from ansible.plugins.filter.core import FilterModule
+from ansible.plugins.test.core import TestModule
 from jinja2 import Environment, StrictUndefined
 from jinja2.nativetypes import NativeEnvironment
 import yaml
@@ -37,6 +38,7 @@ def environment(native=False):
     env.filters.update(FilterModule().filters())
     env.filters["default"] = default_filter
     env.filters["to_json"] = json.dumps
+    env.tests.update(TestModule().tests())
     return env
 
 
@@ -240,9 +242,48 @@ class PythonRoleTests(unittest.TestCase):
             download = task("install.yml", name)
             self.assertIn("checksum", download["ansible.builtin.get_url"])
         model = task("install.yml", "Download the reviewed spaCy English model for Kokoro")
-        self.assertEqual(model["when"], "py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'")
+        self.assertEqual(
+            model["when"],
+            "py_phone_caller_connectivity | default('online') == 'online' and "
+            "(py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts' "
+            "or (py_phone_caller_install_spacy_model | default(false) | bool))",
+        )
+        for connectivity, engine, opt_in, expected in (
+            ("online", "kokoro_tts", False, True),
+            ("online", "piper_tts", False, False),
+            ("online", "piper_tts", True, True),
+            ("airgapped", "kokoro_tts", True, False),
+        ):
+            with self.subTest(connectivity=connectivity, engine=engine, opt_in=opt_in):
+                self.assertEqual(evaluate("{{ " + model["when"] + " }}", {
+                    "py_phone_caller_connectivity": connectivity,
+                    "py_phone_caller_install_spacy_model": opt_in,
+                    "py_phone_caller_final_config": {"generate_audio": {"tts_engine": engine}},
+                }), expected)
         self.assertEqual(self.defaults["py_phone_caller_uv_installer_checksum"], "")
         self.assertEqual(self.defaults["py_phone_caller_spacy_model_checksum"], "")
+        self.assertFalse(self.defaults["py_phone_caller_install_spacy_model"])
+        self.assertFalse(self.defaults["py_phone_caller_install_kokoro_cjk"])
+        cjk_pkgs = self.defaults["py_phone_caller_kokoro_cjk_packages"]
+        for expected_pkg in ("pyopenjtalk==", "fugashi==", "unidic-lite==", "pypinyin==", "jieba==", "cn2an==", "ordered-set=="):
+            self.assertTrue(any(p.startswith(expected_pkg) for p in cjk_pkgs), f"Missing {expected_pkg} in {cjk_pkgs}")
+        cjk_task = task("install.yml", "Ensure Kokoro Japanese and Chinese G2P packages are installed")
+        cjk_when = cjk_task["when"] if isinstance(cjk_task["when"], list) else [cjk_task["when"]]
+        for connectivity, engine, opt_in, expected in (
+            ("online", "kokoro_tts", False, True),
+            ("online", "piper_tts", False, False),
+            ("online", "piper_tts", True, True),
+            ("airgapped", "kokoro_tts", True, False),
+        ):
+            with self.subTest(cjk=True, connectivity=connectivity, engine=engine, opt_in=opt_in):
+                ctx = {
+                    "py_phone_caller_connectivity": connectivity,
+                    "py_phone_caller_install_kokoro_cjk": opt_in,
+                    "py_phone_caller_kokoro_cjk_packages": cjk_pkgs,
+                    "py_phone_caller_final_config": {"generate_audio": {"tts_engine": engine}},
+                }
+                self.assertEqual(all(evaluate("{{ " + cond + " }}", ctx) for cond in cjk_when), expected)
+        self.assertIn("/models/", self.defaults["py_phone_caller_sync_protected"])
 
     def test_secrets_are_private_and_output_is_suppressed(self):
         secret = task("config.yml", "Render .secrets.toml")
@@ -263,6 +304,20 @@ class PythonRoleTests(unittest.TestCase):
         self.assertIn("item.item.name", restart["ansible.builtin.systemd_service"]["name"])
         self.assertIn("item.stat.exists | default(false)", restart["when"])
         self.assertIn("item.item.name in (_ppc_changed_services | default([]))", restart["when"])
+
+    def test_failed_airgap_install_blocks_forced_handlers(self):
+        handlers = load(ROLE / "handlers/main.yml")
+        for handler in handlers:
+            with self.subTest(handler=handler["name"]):
+                conditions = handler["when"]
+                if isinstance(conditions, str):
+                    conditions = [conditions]
+                gate = next(condition for condition in conditions if "_ppc_airgap_install_ready" in condition)
+                for ready in (False, True):
+                    self.assertEqual(evaluate("{{ " + gate + " }}", {
+                        "py_phone_caller_connectivity": "airgapped", "_ppc_airgap_install_ready": ready,
+                    }), ready)
+                self.assertTrue(evaluate("{{ " + gate + " }}", {"py_phone_caller_connectivity": "online"}))
 
     def test_debian_packages_do_not_require_removed_contrib_metapackage(self):
         packages = load(ROLE / "vars/Debian.yml")["py_phone_caller_postgres_packages"]
@@ -552,6 +607,122 @@ class PythonRoleTests(unittest.TestCase):
             self.assertEqual(private["auth"]["oauth2"]["client_secret"], "")
             self.assertNotIn("SYNTHETIC", (base / "settings.toml").read_text())
             self.assertEqual((base / ".secrets.toml").stat().st_mode & 0o777, 0o600)
+
+    def test_appliance_profile_renders_worker_and_systemd_resource_limits(self):
+        inventory = load(ANSIBLE / "inventories/examples/appliance-orangepi5plus/hosts.yml")
+        stack = inventory["all"]["children"]["stack"]
+        self.assertIn("orangepi5plus-appliance", stack["hosts"])
+        appliance_vars = stack["vars"]
+        self.assertTrue(appliance_vars["stack_deploy_py_phone_caller"])
+        self.assertTrue(appliance_vars["stack_deploy_asterisk"])
+        self.assertFalse(appliance_vars["stack_deploy_openalert"])
+        self.assertEqual(appliance_vars["py_phone_caller_topology"], "standard")
+        self.assertEqual(appliance_vars["py_phone_caller_ingress"], "caddy")
+        self.assertEqual(appliance_vars["py_phone_caller_tls_mode"], "internal")
+        self.assertFalse(appliance_vars["py_phone_caller_manage_gateway"])
+        self.assertEqual(appliance_vars["asterisk_http_bindaddr"], "127.0.0.1")
+        self.assertEqual(appliance_vars["asterisk_sip_bindaddr"], "127.0.0.1:5060")
+        modems = appliance_vars["py_phone_caller_config"]["caller_sms"]["modems"]
+        self.assertTrue(modems)
+        for modem in modems:
+            self.assertTrue(modem["port"].startswith("/dev/serial/by-id/"))
+
+        merged_config = FilterModule().filters()["combine"](
+            self.config, appliance_vars["py_phone_caller_config"], recursive=True
+        )
+        render_vars = (
+            self.defaults
+            | load(ROLE / "vars/Debian.yml")
+            | appliance_vars
+            | {
+                "py_phone_caller_final_config": merged_config,
+                "py_phone_caller_manage_local_postgres": True,
+                "py_phone_caller_service_ip_address_allow": ["localhost"],
+                "py_phone_caller_service_ip_address_deny": ["any"],
+                "_ppc_ui_host": "127.0.0.1",
+                "_ppc_ui_port": 5000,
+            }
+        )
+        services = evaluate("{{ py_phone_caller_services | to_json }}", render_vars)
+        services = json.loads(services)
+        by_name = {service["name"]: service for service in services}
+
+        ui_unit = environment().from_string((ROLE / "templates/service.j2").read_text()).render(
+            render_vars | {"item": by_name["py_phone_caller_ui"]}
+        )
+        self.assertIn("--workers 2 --threads 8 --timeout 120", ui_unit)
+        self.assertIn("MemoryHigh=512M", ui_unit)
+        self.assertIn("MemoryMax=1G", ui_unit)
+        self.assertIn("TasksMax=256", ui_unit)
+        self.assertNotIn("CPUQuota=", ui_unit)
+
+        celery_unit = environment().from_string((ROLE / "templates/service.j2").read_text()).render(
+            render_vars | {"item": by_name["celery_worker"]}
+        )
+        self.assertIn("worker --concurrency=2 --loglevel=info", celery_unit)
+        self.assertIn("CPUQuota=200%", celery_unit)
+        self.assertIn("MemoryHigh=1G", celery_unit)
+        self.assertIn("MemoryMax=2G", celery_unit)
+        self.assertIn("TasksMax=512", celery_unit)
+
+        audio_unit = environment().from_string((ROLE / "templates/service.j2").read_text()).render(
+            render_vars | {"item": by_name["generate_audio"]}
+        )
+        self.assertEqual(merged_config["generate_audio"]["num_of_cpus"], 4)
+        self.assertIn("CPUQuota=400%", audio_unit)
+        self.assertIn("MemoryHigh=2G", audio_unit)
+        self.assertIn("MemoryMax=4G", audio_unit)
+        self.assertIn("TasksMax=512", audio_unit)
+
+    def test_validate_tasks_enforce_worker_and_resource_limit_formats(self):
+        global_assert = task(
+            "validate.yml",
+            "Assert that worker concurrency and optional systemd resource limits are well formed",
+        )["ansible.builtin.assert"]["that"]
+        override_assert = task(
+            "validate.yml",
+            "Assert that per-service systemd resource overrides are well formed",
+        )["ansible.builtin.assert"]["that"]
+        base_values = self.defaults | {
+            "py_phone_caller_final_config": self.config,
+        }
+        self.assertTrue(all(evaluate("{{ " + expr + " }}", base_values) for expr in global_values_exprs(global_assert)))
+
+        invalid_globals = (
+            {"py_phone_caller_ui_workers": 0},
+            {"py_phone_caller_ui_threads": "zero"},
+            {"py_phone_caller_celery_concurrency": -1},
+            {"py_phone_caller_service_cpu_quota": "200"},
+            {"py_phone_caller_service_memory_max": "4GB"},
+            {"py_phone_caller_service_tasks_max": 0},
+        )
+        for bad in invalid_globals:
+            with self.subTest(bad=bad):
+                self.assertFalse(
+                    all(evaluate("{{ " + expr + " }}", base_values | bad) for expr in global_values_exprs(global_assert))
+                )
+
+        valid_item = {
+            "key": "generate_audio",
+            "value": {"cpu_quota": "200%", "memory_high": "2G", "memory_max": "4G", "tasks_max": 512},
+        }
+        self.assertTrue(
+            all(evaluate("{{ " + expr + " }}", base_values | {"item": valid_item}) for expr in override_assert)
+        )
+        for bad_item in (
+            {"key": "unknown_service", "value": {"memory_max": "1G"}},
+            {"key": "generate_audio", "value": {"cpu_quota": "invalid"}},
+            {"key": "generate_audio", "value": {"memory_max": "1024MB"}},
+            {"key": "generate_audio", "value": {"tasks_max": 0}},
+        ):
+            with self.subTest(bad_item=bad_item):
+                self.assertFalse(
+                    all(evaluate("{{ " + expr + " }}", base_values | {"item": bad_item}) for expr in override_assert)
+                )
+
+
+def global_values_exprs(expressions):
+    return expressions
 
 
 if __name__ == "__main__":

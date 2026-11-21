@@ -7,11 +7,14 @@ cyclomatic complexity with early exits, phone normalization, and typed payloads.
 
 import asyncio
 import logging
+import os
 import sys
 import time
 from typing import Any
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, client_exceptions, web
 from aiobreaker import CircuitBreaker, CircuitBreakerError
+
+from py_phone_caller_utils.checksums import gen_msg_chk_sum
 
 from asterisk_caller.ari_client import (
     AriClient,
@@ -32,12 +35,14 @@ from asterisk_caller.constants import (
     CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT,
     CALLER_ADDRESS_BOOK_URL,
     CLIENT_TIMEOUT_TOTAL,
+    GENERATE_AUDIO_APP_ROUTE,
     GENERATE_AUDIO_URL,
     SERVING_AUDIO_FOLDER,
     WAIT_FOR_CALL_CYCLE,
 )
 from asterisk_caller.exceptions import (
     AriConnectionError,
+    AriEndpointUnavailableError,
     CircuitBreakerOpenError,
     OnCallPhoneUnavailable,
 )
@@ -164,7 +169,9 @@ class AsteriskCallerService:
         self.call_register_route = call_register_route
         self.audio_service_url = audio_service_url
         self.audio_folder = audio_folder
+        self.audio_app_route = GENERATE_AUDIO_APP_ROUTE
         self.timeout_total = timeout_total
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
     @property
     def current_asterisk_url(self) -> str:
@@ -185,6 +192,45 @@ class AsteriskCallerService:
     def current_call_register_route(self) -> str:
         mod = sys.modules.get("src.asterisk_caller.asterisk_caller") or sys.modules.get("asterisk_caller.asterisk_caller")
         return getattr(mod, "CALL_REGISTER_APP_ROUTE_REGISTER_CALL", self.call_register_route) if mod else self.call_register_route
+
+    @property
+    def current_audio_service_url(self) -> str:
+        mod = sys.modules.get("src.asterisk_caller.asterisk_caller") or sys.modules.get("asterisk_caller.asterisk_caller")
+        return getattr(mod, "GENERATE_AUDIO_URL", self.audio_service_url) if mod else self.audio_service_url
+
+    async def _prewarm_audio(self, message: str, lang: str | None = None) -> None:
+        """Fire-and-forget request to synthesize alert audio while the call is ringing."""
+        if not message or os.environ.get("PPC_PREWARM_AUDIO", "1").strip().lower() in ("0", "false", "no"):
+            return
+        try:
+            msg_chk_sum = await gen_msg_chk_sum(message)
+            params: dict[str, str] = {"message": message, "msg_chk_sum": msg_chk_sum}
+            if lang:
+                params["lang"] = lang
+            url = f"{self.current_audio_service_url}/{self.audio_app_route}"
+            async with ClientSession(
+                timeout=ClientTimeout(connect=2.0, total=max(60.0, float(self.timeout_total)))
+            ) as session:
+                async with session.post(url=url, params=params) as resp:
+                    logging.info(
+                        f"Audio pre-warm completed for msg_chk_sum={msg_chk_sum} "
+                        f"(lang={lang or 'default'}, status={resp.status})"
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            logging.debug(f"Non-fatal audio pre-warm skipped/failed: {err}")
+
+    def _schedule_audio_prewarm(self, message: str, lang: str | None = None) -> None:
+        """Schedules audio pre-warming on the active event loop without blocking call origination."""
+        if not message or os.environ.get("PPC_PREWARM_AUDIO", "1").strip().lower() in ("0", "false", "no"):
+            return
+        try:
+            task = asyncio.create_task(self._prewarm_audio(message, lang=lang))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+        except RuntimeError:
+            pass
 
     async def initiate_asterisk_call(
         self,
@@ -260,6 +306,7 @@ class AsteriskCallerService:
                     data=None,
                     headers=headers,
                 )
+            self._schedule_audio_prewarm(message, lang=lang)
             return call_resp
 
         except client_exceptions.ClientConnectorError as err:
@@ -412,6 +459,11 @@ def manage_call_queue(
             logging.warning(
                 f"Call queue item skipped because the on-call phone is unavailable: "
                 f"phone='{phone}', message='{message}', reason='{err}'"
+            )
+        except AriEndpointUnavailableError as err:
+            logging.warning(
+                f"Call queue item skipped because the target Asterisk endpoint is unavailable: "
+                f"phone='{phone}', reason='{err}'"
             )
         except CircuitBreakerError as err:
             logging.warning(f"Call queue item skipped because Asterisk ARI circuit breaker is open: {err}")

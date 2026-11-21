@@ -1,0 +1,171 @@
+---
+- name: Validate direct role use before mutations
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Install only OpenAlert runtime prerequisites
+  ansible.builtin.apt:
+    name: "{{ openalert_runtime_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Install only OpenAlert runtime prerequisites (RedHat)
+  ansible.builtin.dnf:
+    name: "{{ openalert_runtime_packages_redhat }}"
+    state: present
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Create root-owned shared release and staging directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ openalert_root }}"
+    - "{{ openalert_root }}/downloads"
+    - "{{ openalert_root }}/releases"
+    - "{{ openalert_management_dir }}"
+    - "{{ openalert_management_dir }}/owners"
+    - "{{ openalert_management_dir }}/candidates"
+    - "{{ openalert_management_dir }}/active"
+    - "{{ openalert_helper | dirname }}"
+    - "{{ openalert_lifecycle_helper | dirname }}"
+    - /etc/openalert
+    - /var/lib/openalert
+
+- name: Install validation helper
+  ansible.builtin.copy:
+    src: openalert_contract.py
+    dest: "{{ openalert_helper }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install lifecycle guard without changing services
+  ansible.builtin.copy:
+    src: openalert_lifecycle.py
+    dest: "{{ openalert_lifecycle_helper }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Transfer controller-local release
+  ansible.builtin.copy:
+    src: "{{ openalert_release.source }}"
+    dest: "{{ openalert_root }}/downloads/{{ openalert_release.sha256 }}.tar.gz"
+    owner: root
+    group: root
+    mode: "0644"
+  when: openalert_release.source.startswith('/')
+
+- name: Download HTTPS release using inventory-pinned checksum
+  ansible.builtin.get_url:
+    url: "{{ openalert_release.source }}"
+    dest: "{{ openalert_root }}/downloads/{{ openalert_release.sha256 }}.tar.gz"
+    checksum: "sha256:{{ openalert_release.sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate_certs: true
+    timeout: 60
+    unredirected_headers: [Authorization]
+  when: openalert_release.source.startswith('https://')
+  no_log: true
+
+- name: Verify archive and runtime before safe release extraction
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - "{{ openalert_helper }}"
+      - archive
+      - --archive
+      - "{{ openalert_root }}/downloads/{{ openalert_release.sha256 }}.tar.gz"
+      - --sha256
+      - "{{ openalert_release.sha256 }}"
+      - --architecture
+      - "{{ openalert_architecture }}"
+      - --destination
+      - "{{ openalert_root }}/releases/{{ openalert_release.sha256 }}"
+  register: openalert_archive_result
+  changed_when: (openalert_archive_result.stdout | from_json).changed
+
+- name: Record immutable release location
+  ansible.builtin.set_fact:
+    openalert_release_dir: "{{ (openalert_archive_result.stdout | from_json).release_dir }}"
+    openalert_candidate_listeners: []
+
+- name: Prepare and validate every instance before activating any
+  ansible.builtin.include_tasks: stage.yml
+  loop: "{{ openalert_resolved_instances }}"
+  loop_control:
+    loop_var: openalert_instance
+    label: "{{ openalert_instance.name }}"
+
+- name: Store declared listeners for cross-instance validation
+  ansible.builtin.copy:
+    content: "{{ openalert_candidate_listeners | to_json }}\n"
+    dest: "{{ openalert_management_dir }}/listeners.json"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Reject conflicting listeners before activation
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - "{{ openalert_helper }}"
+      - listeners
+      - --input
+      - "{{ openalert_management_dir }}/listeners.json"
+  changed_when: false
+  no_log: true
+
+- name: Install generic snapshot helper and defaults only
+  ansible.builtin.include_role:
+    name: stack_lifecycle
+    tasks_from: prepare.yml
+  vars:
+    stack_lifecycle_helper: "{{ openalert_snapshot_helper }}"
+
+- name: Initialize validated activation plans
+  ansible.builtin.set_fact:
+    openalert_activation_plans: {}
+
+- name: Inspect all activation plans before stopping any instance
+  ansible.builtin.include_tasks: plan.yml
+  loop: "{{ openalert_resolved_instances }}"
+  loop_control:
+    loop_var: openalert_instance
+    label: "{{ openalert_instance.name }}"
+
+- name: Queue only validated changed instances for transactional activation
+  ansible.builtin.set_fact:
+    openalert_pending_activation: >-
+      {{ openalert_resolved_instances | selectattr('name', 'in',
+         openalert_activation_plans | dict2items | selectattr('value.changed') | map(attribute='key') | list) | list }}
+  changed_when: openalert_pending_activation | length > 0
+  notify: Apply planned OpenAlert transactions
+  no_log: true
+
+- name: Complete notified transactions before health verification and releasing the lock
+  ansible.builtin.meta: flush_handlers
+
+- name: Apply planned OpenAlert transactions with block-level matched-assets recovery
+  ansible.builtin.include_tasks: activate.yml
+  loop: "{{ openalert_pending_activation }}"
+  loop_control:
+    loop_var: openalert_instance
+    label: "{{ openalert_instance.name }}"
+
+- name: Verify unchanged instances without stopping restarting or checkpointing them
+  ansible.builtin.include_tasks: health.yml
+  loop: "{{ openalert_resolved_instances }}"
+  loop_control:
+    loop_var: openalert_instance
+    label: "{{ openalert_instance.name }}"
+  when: not openalert_activation_plans[openalert_instance.name].changed

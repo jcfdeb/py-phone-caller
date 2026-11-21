@@ -41,7 +41,8 @@
         immediate: true
         state: enabled
       loop: >-
-        {{ py_phone_caller_firewall_ports + py_phone_caller_firewall_extra_ports
+        {{ [80, 443] if py_phone_caller_topology | default('legacy') != 'legacy' else
+           py_phone_caller_firewall_ports + py_phone_caller_firewall_extra_ports
            + (py_phone_caller_gateway_firewall_ports if (py_phone_caller_manage_gateway | bool) else []) }}
 
 - name: Configure UFW (Debian/Ubuntu)
@@ -71,7 +72,8 @@
         port: "{{ item }}"
         proto: tcp
       loop: >-
-        {{ py_phone_caller_firewall_ports + py_phone_caller_firewall_extra_ports
+        {{ [80, 443] if py_phone_caller_topology | default('legacy') != 'legacy' else
+           py_phone_caller_firewall_ports + py_phone_caller_firewall_extra_ports
            + (py_phone_caller_gateway_firewall_ports if (py_phone_caller_manage_gateway | bool) else []) }}
 
     - name: Deny unsolicited incoming connections

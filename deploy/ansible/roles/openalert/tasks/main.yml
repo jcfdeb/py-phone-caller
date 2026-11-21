@@ -1,121 +1,37 @@
 ---
-- name: Validate direct role use before mutations
-  ansible.builtin.import_tasks: preflight.yml
-
 - name: Require an actual run for staged binary validation
   ansible.builtin.assert:
     that: not ansible_check_mode
     fail_msg: Use tests/render.yml for offline rendering; check mode cannot validate new releases or service-account permissions.
 
-- name: Install only OpenAlert runtime prerequisites
-  ansible.builtin.apt:
-    name: "{{ openalert_runtime_packages }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
+- name: Require the supported native platform even for direct adoption
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['service_mgr'] == 'systemd'
+      - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+      - >-
+        (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] == '13')
+        or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '26.04')
+        or (ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] == '10'
+            and ansible_facts['architecture'] == 'x86_64')
+    fail_msg: OpenAlert lifecycle operations require a supported native Debian 13, Ubuntu 26.04, or Rocky Linux 10 AMD64 systemd host.
 
-- name: Create root-owned shared release and staging directories
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  loop:
-    - "{{ openalert_root }}"
-    - "{{ openalert_root }}/downloads"
-    - "{{ openalert_root }}/releases"
-    - "{{ openalert_management_dir }}"
-    - "{{ openalert_management_dir }}/owners"
-    - "{{ openalert_management_dir }}/candidates"
-    - "{{ openalert_helper | dirname }}"
-    - /etc/openalert
-    - /var/lib/openalert
-
-- name: Install validation helper
-  ansible.builtin.copy:
-    src: openalert_contract.py
-    dest: "{{ openalert_helper }}"
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Transfer controller-local release
-  ansible.builtin.copy:
-    src: "{{ openalert_release.source }}"
-    dest: "{{ openalert_root }}/downloads/{{ openalert_release.sha256 }}.tar.gz"
-    owner: root
-    group: root
-    mode: "0644"
-  when: openalert_release.source.startswith('/')
-
-- name: Download HTTPS release using inventory-pinned checksum
-  ansible.builtin.get_url:
-    url: "{{ openalert_release.source }}"
-    dest: "{{ openalert_root }}/downloads/{{ openalert_release.sha256 }}.tar.gz"
-    checksum: "sha256:{{ openalert_release.sha256 }}"
-    owner: root
-    group: root
-    mode: "0644"
-    validate_certs: true
-    timeout: 60
-    unredirected_headers: [Authorization]
-  when: openalert_release.source.startswith('https://')
-  no_log: true
-
-- name: Verify archive and runtime before safe release extraction
+- name: Acquire shared host lifecycle lock and refuse stale or concurrent writers
   ansible.builtin.command:
     argv:
-      - "{{ ansible_facts['python']['executable'] }}"
-      - "{{ openalert_helper }}"
-      - archive
-      - --archive
-      - "{{ openalert_root }}/downloads/{{ openalert_release.sha256 }}.tar.gz"
-      - --sha256
-      - "{{ openalert_release.sha256 }}"
-      - --architecture
-      - "{{ openalert_architecture }}"
-      - --destination
-      - "{{ openalert_root }}/releases/{{ openalert_release.sha256 }}"
-  register: openalert_archive_result
-  changed_when: (openalert_archive_result.stdout | from_json).changed
-
-- name: Record immutable release location
-  ansible.builtin.set_fact:
-    openalert_release_dir: "{{ (openalert_archive_result.stdout | from_json).release_dir }}"
-    openalert_candidate_listeners: []
-
-- name: Prepare and validate every instance before activating any
-  ansible.builtin.include_tasks: stage.yml
-  loop: "{{ openalert_resolved_instances }}"
-  loop_control:
-    loop_var: openalert_instance
-    label: "{{ openalert_instance.name }}"
-
-- name: Store declared listeners for cross-instance validation
-  ansible.builtin.copy:
-    content: "{{ openalert_candidate_listeners | to_json }}\n"
-    dest: "{{ openalert_management_dir }}/listeners.json"
-    owner: root
-    group: root
-    mode: "0600"
-  no_log: true
-  diff: false
-
-- name: Reject conflicting listeners before activation
-  ansible.builtin.command:
-    argv:
-      - "{{ ansible_facts['python']['executable'] }}"
-      - "{{ openalert_helper }}"
-      - listeners
-      - --input
-      - "{{ openalert_management_dir }}/listeners.json"
+      - mkdir
+      - --mode=0700
+      - --
+      - /run/lock/py-phone-caller-lifecycle
   changed_when: false
-  no_log: true
 
-- name: Activate validated instances without pruning omitted ones
-  ansible.builtin.include_tasks: activate.yml
-  loop: "{{ openalert_resolved_instances }}"
-  loop_control:
-    loop_var: openalert_instance
-    label: "{{ openalert_instance.name }}"
+- name: Run OpenAlert under the shared lifecycle lock
+  block:
+    - name: Validate stage and activate without concurrent lifecycle writers
+      ansible.builtin.import_tasks: run.yml
+  always:
+    - name: Release only the lock acquired by this run
+      ansible.builtin.file:
+        path: /run/lock/py-phone-caller-lifecycle
+        state: absent
+      changed_when: false

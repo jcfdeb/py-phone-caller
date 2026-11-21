@@ -36,7 +36,7 @@ FROM rockylinux:9-minimal
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
+    PYTHONPATH=/app/py-phone-caller:/app/py-phone-caller/py-phone-caller-utils \
     PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
 
 RUN microdnf install -y shadow-utils ca-certificates libsndfile && \
@@ -47,8 +47,9 @@ WORKDIR /app
 
 COPY --from=builder /opt/uv-python /opt/uv-python
 COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /app/src/caller_sms /app/src/caller_sms
-COPY --from=builder /app/src/py-phone-caller-utils /app/src/py-phone-caller-utils
+COPY --from=builder /app/src/caller_sms /app/py-phone-caller/caller_sms
+COPY --from=builder /app/src/py-phone-caller-utils /app/py-phone-caller/py-phone-caller-utils
+COPY --from=builder /app/src/config/settings.toml /app/py-phone-caller/config/settings.toml
 
 RUN chown -R appuser:appuser /app
 

@@ -1,0 +1,18 @@
+---
+stack_lifecycle_action: ""
+stack_lifecycle_acknowledged: false
+stack_lifecycle_maintenance_window: ""
+stack_lifecycle_storage_dir: /var/backups/py-phone-caller
+stack_lifecycle_helper: /usr/local/libexec/stack-snapshot.py
+stack_lifecycle_snapshot_id: ""
+stack_lifecycle_paths: []
+stack_lifecycle_units: []
+stack_lifecycle_quiesced: false
+stack_lifecycle_kind: full
+stack_lifecycle_schema_id: ""
+stack_lifecycle_snapshot_schema_id: "{{ stack_lifecycle_schema_id }}"
+stack_lifecycle_release_id: ""
+stack_lifecycle_postgresql_databases: []
+stack_lifecycle_database_restore_acknowledged: false
+stack_lifecycle_start_after_restore: false
+stack_lifecycle_health_urls: []

@@ -1,0 +1,5 @@
+---
+# Operator-provisioned, persistent PostgreSQL; never inferred from the app DB.
+gateway_keycloak_postgresql_url: ""
+gateway_keycloak_postgresql_username: ""
+gateway_keycloak_postgresql_password: ""

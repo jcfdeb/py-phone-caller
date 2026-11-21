@@ -75,7 +75,7 @@ def _handle_facebook_mms(
     target_lang = language or FACEBOOK_MMS_LANGUAGE_CODE
     mms_alias = {
         "es": "spa", "e": "spa", "en": "eng", "a": "eng",
-        "it": "ita", "i": "ita", "fr": "fra", "f": "fra", "de": "deu",
+        "it": "ita", "i": "ita", "fr": "fra", "f": "fra", "de": "deu", "nl": "nld",
     }
     target_lang = mms_alias.get(target_lang, target_lang)
 

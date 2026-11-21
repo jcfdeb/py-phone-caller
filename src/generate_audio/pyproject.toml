@@ -7,7 +7,16 @@ name = "generate-audio"
 version = "1.0.0"
 description = "TTS Audio Generation service for py-phone-caller"
 readme = "README.md"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "py-phone-caller contributors" }]
 requires-python = ">=3.14, <3.15"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = [
     "py_phone_caller_utils",
     "aiohttp>=3.9.0",
@@ -28,8 +37,18 @@ dependencies = [
     "piper-tts>=1.2.0",
 ]
 
+[project.scripts]
+ppc-generate-audio = "generate_audio.generate_audio:main"
+
+[tool.setuptools]
+packages = ["generate_audio"]
+
 [tool.setuptools.package-dir]
 generate_audio = "."
 
 [tool.setuptools.package-data]
-generate_audio = ["*"]
+generate_audio = ["*.py", "README.md"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["Dockerfile*", "pyproject.toml", "pre_trained_models*", "pre_trained_models/**/*", "audio*", "audio/**/*"]
+

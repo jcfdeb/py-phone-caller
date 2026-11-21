@@ -77,6 +77,14 @@ async def init_app() -> web.Application:
     return app
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Starts the Caller Scheduler aiohttp server."""
     app = init_app()
-    web.run_app(app, port=SCHEDULED_CALLS_PORT)
+    web.run_app(
+        app, host=os.environ.get("PPC_HTTP_BIND_HOST"), port=SCHEDULED_CALLS_PORT,
+    )
+
+
+if __name__ == "__main__":
+    main()
+

@@ -1,0 +1,15 @@
+---
+- name: Probe instance health without dispatching events
+  ansible.builtin.uri:
+    url: "{{ openalert_instance.health_url }}"
+    method: GET
+    status_code: 200
+    return_content: true
+    follow_redirects: none
+    use_proxy: false
+    timeout: 5
+  register: openalert_health
+  until: openalert_health.status | default(0) == 200 and openalert_health.json.status | default('') == 'ok'
+  retries: 12
+  delay: 2
+  no_log: true

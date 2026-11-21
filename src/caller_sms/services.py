@@ -4,17 +4,27 @@ Core business logic and services for the caller_sms service.
 
 from __future__ import annotations
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable, Sequence
+
+from aiohttp import ClientSession, ClientTimeout
 
 from py_phone_caller_utils.py_phone_caller_db.db_sms import insert_sms, select_sms
 from py_phone_caller_utils.py_phone_caller_db.py_phone_caller_piccolo_app.tables import Calls
 from py_phone_caller_utils.redis_lock import call_mutex
 
-from caller_sms.carriers import RustOnPremiseCarrier, TwilioCarrier
+from caller_sms.carriers import (
+    AsteriskSipMessageCarrier,
+    RustOnPremiseCarrier,
+    TwilioCarrier,
+)
 from caller_sms.constants import (
+    CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT,
+    CALLER_ADDRESS_BOOK_URL,
     CALLER_SMS_CARRIER,
     SMS_SAAS_FALLBACK,
+    SMS_SIP_MESSAGE_ENABLED,
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
     TWILIO_SMS_FROM,
@@ -30,13 +40,72 @@ from caller_sms.schemas import (
     SmsStatus,
 )
 
+_SIP_EXTENSION_RE = re.compile(r"^[0-9]{4,6}$")
+
+
+def is_sip_extension(target: str) -> bool:
+    """Returns True when a target is an explicit SIP URI or a 4-6 digit local SIP extension."""
+    cleaned = (target or "").strip()
+    if not cleaned:
+        return False
+    lower = cleaned.lower()
+    if lower.startswith(("sip:", "pjsip:")):
+        return True
+    if cleaned.startswith(("+", "00")):
+        return False
+    return bool(_SIP_EXTENSION_RE.fullmatch(cleaned))
+
+
+async def resolve_oncall_sms_targets(
+    address_book_url: str = CALLER_ADDRESS_BOOK_URL,
+    oncall_route: str = CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT,
+    timeout_total: float = 5.0,
+) -> tuple[str, str]:
+    """Resolves the active on-call contact into (sms_phone_number, voice_phone_number).
+
+    Raises:
+        SmsDeliveryError: If no on-call contact is available or the address book is unreachable.
+    """
+    url = f"{address_book_url.rstrip('/')}/{oncall_route.lstrip('/')}"
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=timeout_total)) as session:
+            async with session.get(url) as resp:
+                if resp.status == 404:
+                    raise SmsDeliveryError(
+                        "No on-call contact is available in the address book."
+                    )
+                if resp.status != 200:
+                    detail = (await resp.text()).strip()
+                    raise SmsDeliveryError(
+                        f"Unable to resolve on-call contact (HTTP {resp.status})"
+                        + (f": {detail}" if detail else "")
+                    )
+                data = await resp.json()
+                voice_phone = str(data.get("phone_number") or "").strip()
+                sms_phone = str(data.get("sms_phone_number") or "").strip()
+                if not sms_phone and not voice_phone:
+                    raise SmsDeliveryError(
+                        "Active on-call contact has no phone_number or sms_phone_number."
+                    )
+                return sms_phone, voice_phone
+    except SmsDeliveryError:
+        raise
+    except Exception as err:
+        raise SmsDeliveryError(
+            f"Unable to reach caller_address_book at {url}: {err}"
+        ) from err
+
 
 class SmsDispatchService:
     """
-    Orchestration service for outbound SMS notifications.
+    Orchestration service for outbound SMS and SIP MESSAGE notifications.
 
-    Dispatches messages to the configured carrier (Twilio or On-Premise) and executes
-    SaaS fallback when sovereign on-premise hardware fails.
+    Supports:
+    - 'oncall' alias resolution against caller_address_book (preferring dedicated
+      sms_phone_number for cellular SMS while falling back to SIP MESSAGE on local
+      SIP extensions when no GSM number is configured or GSM delivery fails).
+    - Direct RFC 3428 SIP MESSAGE delivery via Asterisk ARI for local SIP extensions.
+    - Sovereign on-premise GSM modem dispatch with optional Twilio SaaS fallback.
     """
 
     def __init__(
@@ -45,24 +114,19 @@ class SmsDispatchService:
         saas_fallback: bool = SMS_SAAS_FALLBACK,
         twilio_carrier: TwilioCarrier | None = None,
         on_premise_carrier: RustOnPremiseCarrier | None = None,
+        sip_message_carrier: AsteriskSipMessageCarrier | None = None,
+        sip_message_enabled: bool = SMS_SIP_MESSAGE_ENABLED,
+        resolve_oncall_fn: Callable[[], Awaitable[tuple[str, str]]] | None = None,
         insert_sms_fn: Callable[..., Awaitable[Any]] | None = None,
         has_twilio_creds: bool | None = None,
     ) -> None:
-        """
-        Initializes the SmsDispatchService.
-
-        Args:
-            default_carrier: Default carrier name.
-            saas_fallback: Whether SaaS fallback to Twilio is enabled.
-            twilio_carrier: Twilio carrier dispatch wrapper.
-            on_premise_carrier: On-premise GSM modem dispatch wrapper.
-            insert_sms_fn: Database insertion callback.
-            has_twilio_creds: Override for Twilio credential availability.
-        """
         self.default_carrier = default_carrier
         self.saas_fallback = saas_fallback
         self.twilio_carrier = twilio_carrier or TwilioCarrier()
         self.on_premise_carrier = on_premise_carrier or RustOnPremiseCarrier()
+        self.sip_message_carrier = sip_message_carrier or AsteriskSipMessageCarrier()
+        self.sip_message_enabled = sip_message_enabled
+        self.resolve_oncall_fn = resolve_oncall_fn or resolve_oncall_sms_targets
         self.insert_sms_fn = insert_sms_fn or insert_sms
         self._has_twilio_creds = (
             has_twilio_creds
@@ -103,11 +167,38 @@ class SmsDispatchService:
         except Exception as db_err:
             logging.error(f"Error recording SMS in database: {db_err}")
 
+    async def _try_sip_fallback(
+        self, sip_target: str, message: str, primary_err: str
+    ) -> tuple[int, str, str, str, str]:
+        """Attempts RFC 3428 SIP MESSAGE fallback after cellular SMS delivery failure."""
+        logging.info(
+            f"Cellular SMS failed; attempting Asterisk SIP MESSAGE fallback to '{sip_target}'..."
+        )
+        try:
+            await self.sip_message_carrier.send(sip_target, message)
+            return (
+                200,
+                SmsStatus.SENT.value,
+                SmsCarrier.SIP_MESSAGE_FALLBACK.value,
+                sip_target,
+                "",
+            )
+        except (SmsDeliveryError, Exception) as sip_err:
+            combined = f"{primary_err}; SIP MESSAGE fallback error: {sip_err}"
+            logging.warning(combined)
+            return (
+                500,
+                SmsStatus.FAILED.value,
+                SmsCarrier.SIP_MESSAGE_FALLBACK.value,
+                sip_target,
+                combined,
+            )
+
     async def send_sms(
         self, request: SendSmsRequest, carrier_override: str | None = None
     ) -> SendSmsResult:
         """
-        Dispatches an SMS through the appropriate carrier backend.
+        Dispatches an SMS or SIP MESSAGE through the appropriate carrier backend.
 
         Args:
             request: Validated SendSmsRequest.
@@ -119,10 +210,56 @@ class SmsDispatchService:
         carrier = carrier_override or self.default_carrier
         phone = request.phone
         message = request.message
+        sip_fallback_target: str | None = None
 
-        if carrier == SmsCarrier.TWILIO.value:
+        if phone.lower() == "oncall":
             try:
-                await self.twilio_carrier.send(phone, message)
+                sms_phone, voice_phone = await self.resolve_oncall_fn()
+            except (SmsDeliveryError, Exception) as err:
+                error_msg = str(err)
+                logging.warning(f"Unable to resolve on-call SMS destination: {error_msg}")
+                await self._record_sms_safe(
+                    phone=phone,
+                    message=message,
+                    carrier=carrier,
+                    status=SmsStatus.FAILED.value,
+                    error_msg=error_msg,
+                )
+                await self._publish_event_safe(
+                    phone, carrier, SmsStatus.FAILED.value, error_msg
+                )
+                return SendSmsResult(
+                    status_code=404 if "no on-call contact" in error_msg.lower() else 500,
+                    status=SmsStatus.FAILED.value,
+                    carrier=carrier,
+                    error_msg=error_msg,
+                )
+
+            if sms_phone:
+                phone = sms_phone
+                if voice_phone and is_sip_extension(voice_phone):
+                    sip_fallback_target = voice_phone
+            else:
+                phone = voice_phone
+
+        known_carriers = {
+            SmsCarrier.TWILIO.value,
+            SmsCarrier.ON_PREMISE.value,
+            SmsCarrier.SIP_MESSAGE.value,
+        }
+
+        if (
+            carrier == SmsCarrier.SIP_MESSAGE.value
+            or (
+                carrier_override is None
+                and carrier in known_carriers
+                and self.sip_message_enabled
+                and is_sip_extension(phone)
+            )
+        ):
+            carrier = SmsCarrier.SIP_MESSAGE.value
+            try:
+                await self.sip_message_carrier.send(phone, message)
                 status_code = 200
                 status = SmsStatus.SENT.value
                 error_msg = ""
@@ -130,7 +267,30 @@ class SmsDispatchService:
                 status_code = 500
                 status = SmsStatus.FAILED.value
                 error_msg = str(err)
-                logging.exception(f"Unable to send SMS via Twilio: '{err}'")
+                logging.warning(f"Unable to send SIP MESSAGE to '{phone}': '{err}'")
+
+        elif carrier == SmsCarrier.TWILIO.value:
+            try:
+                await self.twilio_carrier.send(phone, message)
+                status_code = 200
+                status = SmsStatus.SENT.value
+                error_msg = ""
+            except (SmsDeliveryError, Exception) as err:
+                if sip_fallback_target and self.sip_message_enabled:
+                    (
+                        status_code,
+                        status,
+                        carrier,
+                        phone,
+                        error_msg,
+                    ) = await self._try_sip_fallback(
+                        sip_fallback_target, message, f"Twilio error: {err}"
+                    )
+                else:
+                    status_code = 500
+                    status = SmsStatus.FAILED.value
+                    error_msg = str(err)
+                    logging.exception(f"Unable to send SMS via Twilio: '{err}'")
 
         elif carrier == SmsCarrier.ON_PREMISE.value:
             try:
@@ -150,10 +310,32 @@ class SmsDispatchService:
                         status = SmsStatus.SENT.value
                         error_msg = ""
                     except (SmsDeliveryError, Exception) as fallback_err:
-                        status_code = 500
-                        status = SmsStatus.FAILED.value
-                        error_msg = f"On-premise error: {on_prem_err}; Twilio fallback error: {fallback_err}"
-                        logging.exception(error_msg)
+                        combined_err = f"On-premise error: {on_prem_err}; Twilio fallback error: {fallback_err}"
+                        if sip_fallback_target and self.sip_message_enabled:
+                            (
+                                status_code,
+                                status,
+                                carrier,
+                                phone,
+                                error_msg,
+                            ) = await self._try_sip_fallback(
+                                sip_fallback_target, message, combined_err
+                            )
+                        else:
+                            status_code = 500
+                            status = SmsStatus.FAILED.value
+                            error_msg = combined_err
+                            logging.exception(error_msg)
+                elif sip_fallback_target and self.sip_message_enabled:
+                    (
+                        status_code,
+                        status,
+                        carrier,
+                        phone,
+                        error_msg,
+                    ) = await self._try_sip_fallback(
+                        sip_fallback_target, message, f"On-premise error: {on_prem_err}"
+                    )
                 else:
                     if self.saas_fallback and not self._has_twilio_creds:
                         logging.warning(

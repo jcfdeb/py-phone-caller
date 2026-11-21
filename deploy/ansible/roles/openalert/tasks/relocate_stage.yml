@@ -1,0 +1,46 @@
+---
+- name: Create dedicated target group for relocated adoption
+  ansible.builtin.group:
+    name: "{{ openalert_instance.group }}"
+    system: true
+
+- name: Create dedicated non-login target account for relocated adoption
+  ansible.builtin.user:
+    name: "{{ openalert_instance.user }}"
+    group: "{{ openalert_instance.group }}"
+    groups: "{{ openalert_instance.supplementary_groups }}"
+    append: false
+    home: "{{ openalert_instance.state_dir }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+    system: true
+    password_lock: true
+
+- name: Create disjoint target state directory for relocated adoption
+  ansible.builtin.file:
+    path: "{{ openalert_instance.state_dir }}"
+    state: directory
+    owner: "{{ openalert_instance.user }}"
+    group: "{{ openalert_instance.group }}"
+    mode: "0750"
+
+- name: Create disjoint target configuration directory for relocated adoption
+  ansible.builtin.file:
+    path: "{{ openalert_instance.config_path | dirname }}"
+    state: directory
+    owner: root
+    group: "{{ openalert_instance.group }}"
+    mode: "0750"
+
+- name: Stage relocated custom templates into target path before candidate validation
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - "{{ openalert_lifecycle_helper }}"
+      - stage-templates
+      - --instance
+      - "{{ openalert_instance | to_json }}"
+      - --legacy
+      - "{{ openalert_legacy_instances[openalert_instance.name] | to_json }}"
+  changed_when: false
+  no_log: true

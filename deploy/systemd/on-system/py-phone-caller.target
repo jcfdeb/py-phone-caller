@@ -1,0 +1,8 @@
+[Unit]
+Description=Py Phone Caller - Full Alerting Microservices Suite Target
+Documentation=https://github.com/jcfdeb/py-phone-caller
+After=network-online.target postgresql.service redis.service
+Wants=caller-register.service generate-audio.service caller-address-book.service asterisk-caller.service asterisk-ws-monitor.service asterisk-recaller.service caller-sms.service caller-scheduler.service celery-worker.service caller-prometheus-webhook.service py-phone-caller-ui.service
+
+[Install]
+WantedBy=multi-user.target

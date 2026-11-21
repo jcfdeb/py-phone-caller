@@ -1,4 +1,10 @@
 ---
+- name: Revalidate every APT source before prerequisite mutations
+  ansible.builtin.include_role:
+    name: stack_airgap
+    tasks_from: apt
+  when: py_phone_caller_connectivity | default('online') == 'airgapped'
+
 - name: Configure service host aliases in /etc/hosts
   ansible.builtin.blockinfile:
     path: /etc/hosts
@@ -71,17 +77,19 @@
   ansible.builtin.package:
     name: "{{ py_phone_caller_rust_packages }}"
     state: present
-  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
 
 # ffmpeg is only needed by the TTS engines that post-process audio with pydub,
-# and on RHEL it is not always reachable without RPM Fusion. Do not let a
-# missing codec package abort the whole deployment.
+# and on RHEL it is not always reachable without RPM Fusion. Only legacy online
+# deployments retain best-effort behavior; explicit profiles must fail closed.
 - name: Install ffmpeg
   ansible.builtin.package:
     name: "{{ py_phone_caller_ffmpeg_packages }}"
     state: present
   register: _ppc_ffmpeg
-  ignore_errors: true
+  ignore_errors: "{{ py_phone_caller_connectivity | default('online') == 'online' and py_phone_caller_topology | default('legacy') == 'legacy' }}"
 
 - name: Report a missing ffmpeg
   ansible.builtin.debug:

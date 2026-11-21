@@ -52,6 +52,8 @@ def main():
     instances = {
         name: {"service_name": unit, "health_url": f"http://127.0.0.1:{port}/health", "rest_port": port,
                "synthetic_secret_sentinel": SENTINEL,
+               # These scenarios reuse one binary; they do not exercise a schema migration.
+               "openalert_schema": {"current": "disposable-fixture-v1", "target": "disposable-fixture-v1"},
                "config_template": str(ROOT / "inventories/examples/templates/private.toml.j2")}
         for name, unit, port in (("hub", "openalertd.service", 8090), ("public", "openalertd-public.service", 8092))
     }

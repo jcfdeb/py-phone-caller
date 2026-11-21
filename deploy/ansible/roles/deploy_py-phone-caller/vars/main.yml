@@ -33,7 +33,7 @@ _ppc_sms_wheel_dir: "{{ py_phone_caller_install_dir }}/.uv/sms-wheels"
 # Syntax check for the rendered TOML, run by the template module before the
 # file is moved into place. "%s" is substituted with the staged file.
 _ppc_toml_validate: >-
-  {{ py_phone_caller_venv_dir }}/bin/python -c
+  {{ py_phone_caller_venv_dir }}/bin/python -B -c
   'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' %s
 
 # Connection settings for the PostgreSQL provisioning tasks. Empty strings are

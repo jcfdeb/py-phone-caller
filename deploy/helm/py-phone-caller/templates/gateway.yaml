@@ -1,0 +1,166 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: apisix-etcd-service
+spec:
+  ports:
+    - port: 2379
+      targetPort: 2379
+  selector:
+    app: apisix-etcd
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apisix-etcd-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apisix-etcd
+  template:
+    metadata:
+      labels:
+        app: apisix-etcd
+    spec:
+      containers:
+        - name: etcd
+          image: {{ .Values.gateway.etcdImage }}
+          command:
+            - /usr/local/bin/etcd
+            - --data-dir=/etcd-data
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://apisix-etcd-service:2379
+          ports:
+            - containerPort: 2379
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix-config
+data:
+  config.yaml: |
+    deployment:
+      role: traditional
+      role_traditional:
+        config_provider: etcd
+      admin:
+        admin_listen:
+          ip: 0.0.0.0
+          port: 9180
+        allow_admin:
+          - 0.0.0.0/0
+        admin_key:
+          - name: admin
+            key: edd1c9f034335f136f87ad84b625c8f1
+            role: admin
+      etcd:
+        host:
+          - "http://apisix-etcd-service:2379"
+        prefix: "/apisix"
+        timeout: 30
+    apisix:
+      node_listen:
+        - port: 9080
+      enable_control: true
+      ssl:
+        enable: true
+        listen:
+          - port: 9443
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apisix-gateway-service
+spec:
+  ports:
+    - port: 9080
+      name: http
+      targetPort: 9080
+    - port: 9443
+      name: https
+      targetPort: 9443
+  selector:
+    app: apisix-gateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apisix-gateway-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apisix-gateway
+  template:
+    metadata:
+      labels:
+        app: apisix-gateway
+    spec:
+      containers:
+        - name: apisix
+          image: {{ .Values.gateway.apisixImage }}
+          ports:
+            - containerPort: 9080
+            - containerPort: 9443
+          volumeMounts:
+            - name: apisix-config
+              mountPath: /usr/local/apisix/conf/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: apisix-config
+          configMap:
+            name: apisix-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-service
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: keycloak
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: {{ .Values.gateway.keycloakImage }}
+          args: ["start-dev"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: KC_DB
+              value: "postgres"
+            - name: KC_DB_URL
+              value: "jdbc:postgresql://postgresql-service:5432/{{ .Values.postgresql.database }}"
+            - name: KC_DB_USERNAME
+              value: {{ .Values.postgresql.username | quote }}
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "py-phone-caller.secretName" . }}
+                  key: DYNACONF_DATABASE__DB_PASSWORD
+            - name: KEYCLOAK_ADMIN
+              value: "admin"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "py-phone-caller.secretName" . }}
+                  key: KEYCLOAK_ADMIN_PASSWORD
+{{- end }}

@@ -5,6 +5,15 @@
   loop: "{{ stack_openalert_vars_files | default([]) }}"
   no_log: true
 
+- name: Require a controller-local release for air-gapped installation
+  ansible.builtin.assert:
+    that:
+      - openalert_release is mapping
+      - openalert_release.source is match('^/')
+    fail_msg: Air-gapped OpenAlert installation requires a trusted controller-local bundle, not a public download.
+  when: py_phone_caller_connectivity | default('online') == 'airgapped'
+  no_log: true
+
 - name: Validate OpenAlert inputs without mutations
   ansible.builtin.include_role:
     name: openalert

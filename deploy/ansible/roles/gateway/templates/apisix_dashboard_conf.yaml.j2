@@ -1,6 +1,9 @@
 # Managed by Ansible (role: deploy_py-phone-caller)
 conf:
   listen:
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+    host: 127.0.0.1
+{% endif %}
     port: {{ py_phone_caller_gateway_dashboard_port }}
   allow_list:
     - 127.0.0.1

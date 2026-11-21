@@ -1,4 +1,4 @@
-# OpenAlert role: Phase 2 contract
+# OpenAlert role and lifecycle contract
 
 Use [`../site.yml`](../site.yml) with the [explicit-inventory quickstart](../README.md).
 This is a description of the current implementation, not a production-readiness
@@ -95,9 +95,10 @@ path = "{{ openalert_instance.state_dir }}/openalert.db"
 recover_pending_on_startup = false
 ```
 
-The helper requires that template directory to resolve to the selected release's
-bundled `templates` directory; an arbitrary external template tree is not part
-of this contract. It checks readable assets and supported static template
+By default that directory resolves to the selected release's bundled `templates`
+directory. An explicitly declared instance `openalert_templates_dir` supports
+preserving existing custom templates during in-place adoption; see the
+[lifecycle restrictions](lifecycle.md). The helper checks readable assets and supported static template
 references. Writable databases/identity data must remain within instance state;
 relative paths are interpreted from the state directory. External/shared state,
 escaping links and database URIs are not migration mechanisms. Review all enabled
@@ -182,16 +183,20 @@ The current sequence is:
 3. Stage the packaged unit and instance drop-in, run `systemd-analyze verify`,
    and check declared listeners across all candidates. All supplied instances
    are staged before any is activated.
-4. Copy validated configuration/unit assets into place, reload systemd when unit
-   assets change, enable/start each instance, and restart only an instance whose
-   active configuration or unit assets changed.
+4. Inspect all activation plans and require declared current/target schema IDs
+   for changed existing instances. Stop and create verified full/asset checkpoints
+   before installing changed configuration/unit assets, then load/start them.
 5. Probe only the instance's loopback health URL with `GET`, expecting HTTP 200
    and JSON `status: ok`. No redirects or proxy use; no event submission.
 
 These are implementation boundaries, not an atomic transaction: staging can
 create packages, accounts, ownership records and directories; activation can
-partially complete and health can fail after startup. There is no automatic
-rollback guarantee. An unchanged instance may still be started if it was stopped.
+partially complete and health can fail after startup. Failed changed activation
+attempts matched-assets recovery only when declared schemas match, without
+rolling back database contents; incompatible or failed recovery leaves the unit
+stopped. This has fixture coverage, not disposable-host runtime qualification.
+An unchanged instance is health-checked only; an already-stopped instance is not
+silently started. See [candidate recovery and in-place adoption](lifecycle.md).
 Service-account validation runs outside the final systemd sandbox and does not
 prove that every runtime operation will succeed within it.
 The probe does not exercise radio, calls or SMS; custom daemon configurations
@@ -206,8 +211,11 @@ Do not forge ownership records or delete existing data to force a fresh run.
 
 Instances omitted from inventory are **untouched**: no pruning, disabling or
 removal. Keep a complete reviewed listener inventory when planning coexistence.
-Removal, adoption, state migration and lifecycle/rollback workflows are not
-implemented until Phase 4. A deployment rerun is not a supported live migration.
+Phase 4 provides explicit in-place adoption (`adopt-openalert-in-place`) and
+account/path relocation (`relocate: true` with `adopt-openalert-relocate` for
+root-run VPS and home-directory field-node layouts) and recovery workflows,
+still awaiting systemd-host rehearsal; automatic instance removal is not
+implemented. A deployment rerun is not authorization for a live migration.
 
 The real role explicitly rejects `--check`; use `tests/render.yml` for offline
 synthetic rendering, not as a substitute for disposable-host qualification.

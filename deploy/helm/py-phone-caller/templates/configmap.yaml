@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: py-phone-caller-config
+  labels:
+    app.kubernetes.io/name: {{ include "py-phone-caller.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  settings.toml: |-
+    [commons]
+    asterisk_user = {{ .Values.asterisk.user | quote }}
+    asterisk_host = "asterisk-service"
+    asterisk_web_port = {{ .Values.asterisk.webPort | quote }}
+    asterisk_http_scheme = "http"
+    sms_db_path = "sqlite:///tmp/sms.db"
+
+    [asterisk_call]
+    asterisk_ari_channels = "ari/channels"
+    asterisk_ari_play = "play?media=sound"
+    asterisk_context = {{ .Values.asterisk.context | quote }}
+    asterisk_extension = {{ .Values.asterisk.extension | quote }}
+    asterisk_chan_type = {{ .Values.asterisk.chanType | quote }}
+    asterisk_caller_id = {{ .Values.asterisk.callerId | quote }}
+    asterisk_call_http_scheme = "http"
+    asterisk_call_host = "asterisk-caller-service"
+    asterisk_call_port = {{ .Values.services.asteriskCaller.port | quote }}
+    asterisk_call_app_route_place_call = "place_call"
+    asterisk_call_app_route_call_to_queue = "call_to_queue"
+    asterisk_call_app_route_play = "play"
+    seconds_to_forget = 300
+    client_timeout_total = 5
+
+    [call_register]
+    call_register_http_scheme = "http"
+    call_register_host = "caller-register-service"
+    call_register_port = {{ .Values.services.callerRegister.port | quote }}
+    call_register_app_route_register_call = "register_call"
+    call_register_app_route_voice_message = "msg"
+    call_register_app_route_acknowledge = "ack"
+    call_register_app_route_heard = "heard"
+    call_register_scheduled_call_app_route = "scheduled_call"
+
+    [asterisk_ws_monitor]
+    asterisk_stasis_app = {{ .Values.asterisk.stasisApp | quote }}
+
+    [asterisk_recaller]
+    times_to_dial = 3
+    call_backup_callee_after_seconds = 60
+    call_backup_callee_max_times = 3
+
+    [generate_audio]
+    generate_audio_http_scheme = "http"
+    generate_audio_host = "generate-audio-service"
+    generate_audio_port = {{ .Values.services.generateAudio.port | quote }}
+    generate_audio_app_route = "make_audio"
+    tts_engine = {{ .Values.tts.engine | quote }}
+    gcloud_tts_language_code = {{ .Values.tts.languageCode | quote }}
+    aws_polly_region_name = "eu-north-1"
+    aws_polly_voice = "Enrique"
+    pre_trained_models_folder = "pre_trained_models"
+    facebook_mms_models_folder = "facebook"
+    facebook_mms_language_code = "spa"
+    facebook_mms_num2words_language_code = "es"
+    piper_models_folder = "piper_tts"
+    piper_language_code = "it_IT"
+    piper_language_default_code = "EN_us"
+    piper_python_interpreter = "python3"
+    piper_voices_url = "https://huggingface.co/rhasspy/piper-voices/tree/main"
+    kokoro_models_folder = "kokoro_tts"
+    kokoro_lang = "e"
+    kokoro_python_interpreter = "python3"
+    kokoro_model_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/e9d173129d407bf1378c402aba163de4dde2615e/kokoro-v0_19.onnx"
+    kokoro_voices_base_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices"
+    kokoro_repo_id = "hexgrad/Kokoro-82M"
+    kokoro_model_filename = "kokoro-v1_0.pth"
+    silero_models_folder = "silero_tts"
+    silero_lang = "en"
+    silero_speaker = "en_0"
+    silero_sample_rate = 8000
+    silero_python_interpreter = "python3"
+    serving_audio_folder = "audio"
+    is_audio_ready_endpoint = "is_audio_ready"
+    num_of_cpus = 4
+
+    [caller_prometheus_webhook]
+    prometheus_webhook_port = {{ .Values.services.callerPrometheusWebhook.port | quote }}
+    prometheus_webhook_app_route_call_only = "call_only"
+    prometheus_webhook_app_route_sms_only = "sms_only"
+    prometheus_webhook_app_route_sms_before_call = "sms_before_call"
+    prometheus_webhook_app_route_call_and_sms = "call_and_sms"
+    prometheus_webhook_receivers = []
+
+    [caller_sms]
+    caller_sms_http_scheme = "http"
+    caller_sms_host = "caller-sms-service"
+    caller_sms_port = {{ .Values.services.callerSms.port | quote }}
+    caller_sms_app_route = "send_sms"
+    sms_before_call_wait_seconds = {{ .Values.sms.waitSecondsBeforeCall }}
+    caller_sms_carrier = {{ .Values.sms.carrier | quote }}
+    twilio_sms_from = {{ .Values.sms.twilioFrom | quote }}
+
+    [caller_address_book]
+    caller_address_book_http_scheme = "http"
+    caller_address_book_host = "caller-address-book-service"
+    caller_address_book_port = {{ .Values.services.callerAddressBook.port | quote }}
+    caller_address_book_route_add_contact = "contact_add"
+    caller_address_book_route_modify_contact = "contact_modify"
+    caller_address_book_route_delete_contact = "contact_delete"
+    caller_address_book_route_on_call_contact = "contact_on_call"
+    caller_address_book_service_export = "contacts_export_csv"
+    caller_address_book_service_import = "contacts_import_csv"
+
+    [scheduled_calls]
+    scheduled_calls_http_scheme = "http"
+    scheduled_calls_host = "caller-scheduler-service"
+    scheduled_calls_port = {{ .Values.services.callerScheduler.port | quote }}
+    scheduled_call_app_route = "schedule_call"
+    local_timezone = {{ .Values.global.timezone | quote }}
+
+    [queue]
+    queue_scheme = "redis"
+    queue_host = "redis-service"
+    queue_port = 6379
+    queue_url = "redis://redis-service:6379/7"
+
+    [database]
+    db_host = "postgresql-service"
+    db_port = 5432
+    db_name = {{ .Values.postgresql.database | quote }}
+    db_user = {{ .Values.postgresql.username | quote }}
+    db_max_size = 50
+    db_max_inactive_connection_lifetime = 30.0
+
+    [py_phone_caller_ui]
+    ui_session_protection = "strong"
+    ui_listen_on_host = "0.0.0.0"
+    ui_listen_on_port = {{ .Values.services.pyPhoneCallerUi.port }}
+    ui_admin_user = {{ .Values.ui.adminUser | quote }}
+    min_password_length = 17
+
+    [logs]
+    log_formatter = "%(asctime)s %(message)s"
+    log_level = "INFO"
+    acknowledge_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/ack?asterisk_chan=[The Asterisk Channel ID]"
+    heard_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/heard?asterisk_chan=[The Asterisk Channel ID]"
+    register_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&message=[Alert Message Text]&asterisk_chan=[The Asterisk Channel ID]"
+    voice_message_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/msg?asterisk_chan=[The Asterisk Channel ID]"
+    asterisk_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/asterisk?phone=[Destination Phone Number]&message=[Alert Message Text]"
+    asterisk_play_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/play?asterisk_chan=[The Asterisk Channel ID]&msg_chk_sum=[The message checksum]"
+    generate_audio_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/make_audio?message=[Alert Message Text]&msg_chk_sum=[The message checksum]"
+    caller_sms_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&message=[Alert Message Text]"
+    scheduled_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/schedule_call?phone=[Destination Phone Number]&message=[Alert Message Text]&scheduled_at=[Date and Time YYYY-MM-DD HH:MM]"
+    lost_directory_error = "The folder to serve the audio files was not found."

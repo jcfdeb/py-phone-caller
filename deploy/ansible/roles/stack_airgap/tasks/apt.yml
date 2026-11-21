@@ -1,0 +1,4 @@
+---
+- name: Check the signed local APT backend without changing its configuration
+  stack_airgap_check:
+    operation: apt

@@ -2,6 +2,10 @@
 - name: "Load OS-specific variables for {{ ansible_facts['os_family'] }}"
   ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
 
+- name: Check RPM provider ownership before legacy sound preflight
+  ansible.builtin.import_tasks: provider_guard.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+
 - name: Validate PBX inputs before changing the host
   ansible.builtin.include_tasks: preflight.yml
 
@@ -25,14 +29,24 @@
 - name: "Configure Asterisk and Deploy Audio"
   ansible.builtin.include_tasks: configure.yml
 
-- name: Verify the selected AllStarLink PBX without dispatch
+- name: Apply pending Asterisk configuration reloads immediately
+  ansible.builtin.meta: flush_handlers
+  when: not ansible_check_mode
+
+- name: Verify the selected third-party PBX without dispatch
   ansible.builtin.include_tasks: verify_allstarlink.yml
   when:
-    - asterisk_package_provider == 'allstarlink'
+    - asterisk_package_provider in ['allstarlink', 'tucny']
     - not ansible_check_mode
 
 - name: Verify explicitly selected IAX2 without dispatch
   ansible.builtin.include_tasks: verify_iax.yml
   when:
     - local_iax
+    - not ansible_check_mode
+
+- name: Verify ready-to-use local SIP extension 1000 without dispatch
+  ansible.builtin.include_tasks: verify_local_sip_exten_1000.yml
+  when:
+    - asterisk_sip_exten_1000_enabled
     - not ansible_check_mode

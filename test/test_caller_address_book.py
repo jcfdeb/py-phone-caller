@@ -176,3 +176,41 @@ Bad Phone,Tester,invalid_phone,true
         error_rows = [e["row"] for e in data["errors"]]
         assert 3 in error_rows  # Row 3 (index 3: empty name)
         assert 4 in error_rows  # Row 4 (index 4: invalid phone)
+
+
+@pytest.mark.asyncio
+async def test_get_on_call_contact_with_sms_phone_number(cli):
+    with patch(
+        "src.caller_address_book.caller_address_book.get_on_call_contact"
+    ) as mock_get:
+        mock_get.return_value = {
+            "phone_number": "1000",
+            "sms_phone_number": "+39334111222",
+        }
+        resp = await cli.get(f"/{CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT}")
+        assert resp.status == 200
+        data = await resp.json()
+        assert data == {
+            "phone_number": "1000",
+            "sms_phone_number": "+39334111222",
+        }
+
+
+def test_contact_csv_row_accepts_sip_extension_and_optional_sms_phone():
+    row = ContactCSVRow(
+        name="OnCall Operator",
+        phone_number="1000",
+        sms_phone_number="+39334111222",
+        enabled=True,
+    )
+    assert row.phone_number == "1000"
+    assert row.sms_phone_number == "+39334111222"
+
+    sip_only = ContactCSVRow(name="SIP Operator", phone_number="1001")
+    assert sip_only.phone_number == "1001"
+    assert sip_only.sms_phone_number == ""
+
+    with pytest.raises(Exception) as exc_info:
+        ContactCSVRow(name="Bad SMS", phone_number="1000", sms_phone_number="not-a-phone")
+    assert "sms phone number" in str(exc_info.value).lower()
+

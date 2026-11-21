@@ -1,0 +1,47 @@
+---
+- name: Create private retained checkpoint directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ openalert_management_dir }}/checkpoints"
+    - "{{ openalert_management_dir }}/checkpoints/{{ openalert_instance.name }}"
+
+- name: Write private activation request without secrets in output
+  ansible.builtin.copy:
+    content: "{{ openalert_activation_request | to_json }}\n"
+    dest: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/activation.json"
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    openalert_activation_request:
+      instance: "{{ openalert_instance }}"
+      candidate_dir: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}"
+      checkpoint_dir: "{{ openalert_management_dir }}/checkpoints/{{ openalert_instance.name }}"
+      active_record: "{{ openalert_management_dir }}/active/{{ openalert_instance.name }}.json"
+      owner_record: "{{ openalert_management_dir }}/owners/{{ openalert_instance.name }}.json"
+      templates_dir: "{{ openalert_instance.openalert_templates_dir | default(openalert_release_dir ~ '/templates') }}"
+      release: "{{ openalert_release.sha256 }}"
+      legacy: "{{ openalert_legacy_instances[openalert_instance.name] if openalert_instance.name in openalert_approved_adoptions else {} }}"
+  no_log: true
+  diff: false
+
+- name: Detect changed assets and require schema compatibility inventory
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - "{{ openalert_lifecycle_helper }}"
+      - inspect
+      - --request
+      - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/activation.json"
+  register: openalert_activation_inspection
+  changed_when: false
+  no_log: true
+
+- name: Retain validated per-instance activation decision
+  ansible.builtin.set_fact:
+    openalert_activation_plans: "{{ openalert_activation_plans | combine({openalert_instance.name: openalert_activation_inspection.stdout | from_json}) }}"

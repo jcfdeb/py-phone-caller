@@ -149,14 +149,19 @@ The native Rust engine automatically communicates over the AT command interface 
 - **Nagios Core / XI**: Event handler script (`assets/scripts/nagios/nagios_event_handler_call.sh`) configured in commands.
 - **Zabbix Server / Proxy**: Alert script (`assets/scripts/zabbix/zabbix_alert_call.sh`) configured in Media Types.
 
-## Deployment Options
+## Deployment Options (`deploy/docs/`)
 
-- **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**: Production-grade setup with Apache APISIX, Keycloak OIDC authentication, 3-tier RBAC (`alert-admin`, `alert-operator`, `alert-viewer`), and Ansible Vault credential hardening. Includes step-by-step manual and automated paths.
-- **[Modular native Ansible installer](deploy/ansible/README.md)**: independently select OpenAlert, Python and Asterisk on AMD64/ARM64; consult the recorded qualification matrix.
-- **Ansible all-in-one compatibility wrapper**: `deploy/ansible/deploy_all/README.md`
-- **Ansible roles**: `deploy/ansible/asterisk_py-phone-caller/README.md` and `deploy/ansible/on-vm_py-phone-caller/README.md`
-- **Docker Compose stack (Asterisk external)**: `deploy/compose/README.md`
-- **OpenAlert Turnkey Docker Compose & Hardware Overlay (`v1.0.0`)**: Root [`docker-compose.yml`](docker-compose.yml) and [`docker-compose.hardware.yml`](docker-compose.hardware.yml) (plus multi-stage [`Dockerfile`](src/openalert/Dockerfile) and fast ARM64 cross-compiling [`Dockerfile.arm64`](src/openalert/Dockerfile.arm64))
+All deployment guides are centralized under **[`deploy/docs/README.md`](deploy/docs/README.md)** with verified, step-by-step installation and health-check instructions for every environment:
+
+- **[Deployment Documentation Hub (`deploy/docs/README.md`)](deploy/docs/README.md)**: Master comparison matrix and quick navigation across all deployment pillars.
+- **[01. Architecture, Prerequisites & Configuration Reference](deploy/docs/01-architecture-and-prerequisites.md)**: Service port map (`:8081`–`:8087`, `:5000`, `:8090`), Asterisk ARI dialplan setup, `settings.toml`, `.secrets.toml`, TTS models, and USB GSM modems.
+- **[02. Native Ansible Deployment Guide](deploy/docs/02-ansible-deployment.md)** ([`deploy/ansible/`](deploy/ansible/README.md)): Independently select OpenAlert, Python, and Asterisk (`standard` / `enterprise`, `online` / `airgapped`, plus `adopt.yml`, `backup.yml`, `restore.yml`, `rollback.yml`).
+- **[03. Docker & Docker Compose Deployment Guide](deploy/docs/03-docker-compose-deployment.md)** ([`deploy/compose/`](deploy/compose/README.md)): Full 15-container stack, USB GSM/LoRa/BLE hardware passthrough (`docker-compose.hardware.yml`), and APISIX/Keycloak gateway overlay (`docker-compose.gateway.yml`).
+- **[04. Kubernetes & Helm v3 Deployment Guide](deploy/docs/04-kubernetes-and-helm-deployment.md)** ([`deploy/helm/py-phone-caller/`](deploy/helm/py-phone-caller/README.md) & [`deploy/k8s/`](deploy/k8s/README.md)): Parameterized Helm v3 chart (`py-phone-caller-1.0.0.tgz`) and 43-resource Kustomize manifests.
+- **[05. Native Linux Packages (`.deb` & `.rpm`) Guide](deploy/docs/05-linux-deb-rpm-deployment.md)** ([`deploy/packaging/linux/`](deploy/packaging/linux/README.md)): Native `apt` (`.deb`) and `dnf` (`.rpm`) installation for Debian/Ubuntu and RHEL/Rocky/AlmaLinux.
+- **[06. Python Wheels (`PyPI`) & Systemd Deployment Guide](deploy/docs/06-pypi-and-systemd-deployment.md)** ([`deploy/packaging/pypi/`](deploy/packaging/pypi/README.md) & `deploy/systemd/`): Installing `py-phone-caller[all]==1.0.0` into a custom virtual environment with `systemd` units.
+- **[07. Enterprise Gateway (`APISIX` + `Keycloak`) & Observability](deploy/docs/07-enterprise-gateway-and-observability.md)** ([`docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md`](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md) & [`deploy/dashboards/`](deploy/dashboards/README.md)): Zero-Trust OIDC SSO, 3-tier RBAC, Prometheus scraping, and turnkey Grafana dashboard.
+- **[08. Release Packaging & Verification Guide](deploy/docs/08-release-packaging.md)** ([`deploy/packaging/`](deploy/packaging/README.md)): Reproducibly building all 33 release artifacts in `dist/` via `deploy/packaging/build_all_releases.py`.
 - **OpenAlert Nostr Alert Specification (`NIP-ALERT`)**: [`docs/openalert/NIP-ALERT.md`](docs/openalert/NIP-ALERT.md)
 
 ## Quick Start
@@ -247,17 +252,18 @@ authorize calls, SMS, radio transmissions or migration of an existing host.
 
 ## Documentation
 
+- **[Centralized Deployment Documentation Hub (`deploy/docs/`)](deploy/docs/README.md)** - Complete modular step-by-step installation guides across Ansible, Docker Compose, Kubernetes/Helm, DEB/RPM, and PyPI/systemd.
 - **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** - Step-by-step manual and automated guide for Apache APISIX & Keycloak OIDC.
-- **[Master Documentation Library](doc/README.md)** - Comprehensive documentation map, architectural guides, and operational manuals.
+- **[Master Documentation Library](docs/README.md)** - Comprehensive documentation map, architectural guides, and operational manuals.
 - **[Release 1.0.1 Notes & Enhancement Report](docs/1.0.1-release.md)** - Detailed release summary for v1.0.1 enhancements.
-- **[Operator Installation Guide (A to Z)](doc/OPERATOR_INSTALLATION_GUIDE.md)** - Step-by-step production installation for Ansible, Docker/Podman Compose, and Native Systemd.
-- **[Architecture & Call Flows Guide](doc/architecture-and-call-flows.md)** - End-to-end call lifecycle, DTMF acknowledgment ('4' key), retry loops, and SMS flows.
-- **[Services & Endpoints Reference](doc/services-and-endpoints.md)** - Complete REST API specification for all 11 microservices and health probes.
-- **[FreePBX & Asterisk Setup Guide](doc/freepbx-asterisk-setup-guide.md)** - Visual configuration guide for Trunks, Extensions, Stasis Dialplan, and ARI users.
-- **[Web UI Operator Tour](doc/web-ui-tour/README.md)** - Visual walkthrough of the Web Management UI, calls table, SMS dashboard, and on-call calendars.
-- **[OpenTelemetry & Observability Guide](doc/opentelemetry-guide.md)** - Metrics scraping (`/metrics`), health checks (`/health`), and distributed tracing.
-- **[UV Workspace & Migration Guide](doc/uv-migration-and-workspace-guide.md)** - Python 3.14 UV workspace, dependency management, and container builds.
-- **[VirtualBox Local Lab Setup Guide](doc/virtualbox-setup.md)** - Local virtualization lab environment configuration.
+- **[Operator Installation Guide (A to Z)](docs/OPERATOR_INSTALLATION_GUIDE.md)** - Step-by-step production installation for Ansible, Docker/Podman Compose, and Native Systemd.
+- **[Architecture & Call Flows Guide](docs/architecture-and-call-flows.md)** - End-to-end call lifecycle, DTMF acknowledgment ('4' key), retry loops, and SMS flows.
+- **[Services & Endpoints Reference](docs/services-and-endpoints.md)** - Complete REST API specification for all 11 microservices and health probes.
+- **[FreePBX & Asterisk Setup Guide](docs/freepbx-asterisk-setup-guide.md)** - Visual configuration guide for Trunks, Extensions, Stasis Dialplan, and ARI users.
+- **[Web UI Operator Tour](docs/web-ui-tour/README.md)** - Visual walkthrough of the Web Management UI, calls table, SMS dashboard, and on-call calendars.
+- **[OpenTelemetry & Observability Guide](docs/opentelemetry-guide.md)** - Metrics scraping (`/metrics`), health checks (`/health`), and distributed tracing.
+- **[UV Workspace & Migration Guide](docs/uv-migration-and-workspace-guide.md)** - Python 3.14 UV workspace, dependency management, and container builds.
+- **[VirtualBox Local Lab Setup Guide](docs/virtualbox-setup.md)** - Local virtualization lab environment configuration.
 - `LICENSE` - BSD 3-Clause license.
 
 ## Further Readings

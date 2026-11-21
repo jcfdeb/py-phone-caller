@@ -29,6 +29,13 @@ exten => {{ local_sip_exten }},1,NoOp(Calling Local SIP Extension {{ local_sip_e
  same => n,Hangup()
 {% endif %}
 
+{% if asterisk_sip_exten_1000_enabled %}
+; Call Ready-to-Use Local SIP Extension {{ asterisk_sip_exten_1000 }}
+exten => {{ asterisk_sip_exten_1000 }},1,NoOp(Calling Local SIP Extension {{ asterisk_sip_exten_1000 }})
+ same => n,Dial(PJSIP/{{ asterisk_sip_exten_1000 }},30)
+ same => n,Hangup()
+{% endif %}
+
 {% if local_iax %}
 ; Call Local IAX Extension
 exten => {{ local_iax_exten }},1,NoOp(Calling Local IAX Extension {{ local_iax_exten }})
@@ -36,11 +43,11 @@ exten => {{ local_iax_exten }},1,NoOp(Calling Local IAX Extension {{ local_iax_e
  same => n,Hangup()
 {% endif %}
 
-{% if local_sip or local_iax %}
+{% if local_sip or asterisk_sip_exten_1000_enabled or local_iax %}
 ; Generic Local Extension Dialing (4 digits)
 ; Attempts to dial PJSIP or IAX2 endpoints if they exist
 exten => _XXXX,1,NoOp(Generic Dialing for ${EXTEN})
-{% if local_sip %}
+{% if local_sip or asterisk_sip_exten_1000_enabled %}
  same => n,ExecIf($[ "${DEVICE_STATE(PJSIP/${EXTEN})}" != "INVALID" ]?Dial(PJSIP/${EXTEN},30))
 {% endif %}
 {% if local_iax %}

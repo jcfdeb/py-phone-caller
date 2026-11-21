@@ -1,0 +1,37 @@
+---
+- name: Apply pending handlers before inspecting local SIP extension 1000
+  ansible.builtin.meta: flush_handlers
+
+- name: Inspect ready-to-use local SIP extension without sending traffic
+  ansible.builtin.command:
+    argv: [/usr/sbin/asterisk, -rx, "pjsip show endpoint {{ asterisk_sip_exten_1000 }}"]
+  register: asterisk_py_phone_caller_exten_1000_endpoint
+  changed_when: false
+  until:
+    - asterisk_py_phone_caller_exten_1000_endpoint.rc == 0
+    - >-
+      asterisk_py_phone_caller_exten_1000_endpoint.stdout is search(
+      'Endpoint:\s+' ~ (asterisk_sip_exten_1000 | string | regex_escape) ~ '(?:\s|/)')
+  retries: 5
+  delay: 2
+  no_log: true
+
+- name: Require loaded PJSIP endpoint, context, auth, and AOR for local SIP extension 1000
+  ansible.builtin.assert:
+    that:
+      - >-
+        asterisk_py_phone_caller_exten_1000_endpoint.stdout is search(
+        'Endpoint:\s+' ~ (asterisk_sip_exten_1000 | string | regex_escape) ~ '(?:\s|/)')
+      - >-
+        asterisk_py_phone_caller_exten_1000_endpoint.stdout is search(
+        'context\s*:\s*' ~ (asterisk_context | regex_escape) ~ '\s')
+      - >-
+        asterisk_py_phone_caller_exten_1000_endpoint.stdout is search(
+        'auth\s*:\s*' ~ (asterisk_sip_exten_1000 | string | regex_escape) ~ '\s')
+      - >-
+        asterisk_py_phone_caller_exten_1000_endpoint.stdout is search(
+        'aors\s*:\s*' ~ (asterisk_sip_exten_1000 | string | regex_escape) ~ '\s')
+    fail_msg: >-
+      Asterisk did not load ready-to-use local SIP extension {{ asterisk_sip_exten_1000 }}
+      in context {{ asterisk_context }}; inspect Asterisk PJSIP logs.
+  no_log: true

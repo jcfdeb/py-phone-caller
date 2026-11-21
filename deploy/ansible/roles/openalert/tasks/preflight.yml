@@ -10,16 +10,37 @@
       - openalert_root is match('^/[A-Za-z0-9_/-]+$')
       - openalert_management_dir is match('^/[A-Za-z0-9_/-]+$')
       - openalert_helper is match('^/[A-Za-z0-9_/-]+\.py$')
+      - openalert_lifecycle_helper is match('^/[A-Za-z0-9_/-]+\.py$')
+      - openalert_snapshot_helper is match('^/[A-Za-z0-9_/-]+\.py$')
       - openalert_root not in ['/', '/opt', '/usr', '/var', '/var/lib']
       - openalert_management_dir not in ['/', '/opt', '/usr', '/var', '/var/lib']
       - ansible_facts['python']['version']['major'] == 3
       - ansible_facts['python']['version']['minor'] >= 11
     fail_msg: Supply a local absolute path or HTTPS URL, a trusted SHA-256 and named instances; target Python 3.11+ is required.
 
+- name: Require explicit adoption mapping and maintenance acknowledgement
+  ansible.builtin.assert:
+    that:
+      - openalert_adopt is boolean
+      - openalert_legacy_instances is mapping
+      - openalert_legacy_instances.keys() | difference(openalert_instances.keys()) | length == 0
+      - not openalert_adopt or openalert_legacy_instances | length > 0
+      - openalert_adopt or openalert_legacy_instances | length == 0
+      - not openalert_adopt or openalert_maintenance_window | bool
+      - >-
+        not openalert_adopt or openalert_adoption_acknowledgement
+        == ((openalert_legacy_instances.values() | selectattr('relocate', 'defined') | selectattr('relocate') | list | length > 0)
+            | ternary('adopt-openalert-relocate', 'adopt-openalert-in-place'))
+    fail_msg: >-
+      Adoption requires explicit legacy mappings, a maintenance window and the matching acknowledgement
+      (adopt-openalert-in-place or adopt-openalert-relocate).
+
 - name: Resolve architecture from managed-host facts
   ansible.builtin.set_fact:
     openalert_architecture: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
     openalert_resolved_instances: []
+    openalert_approved_adoptions: []
+    openalert_existing_instances: []
 
 - name: Normalize per-instance defaults
   ansible.builtin.set_fact:

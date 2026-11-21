@@ -7,6 +7,7 @@ Modular architecture exposing schemas, carriers, services, routes, and entrypoin
 from __future__ import annotations
 
 from caller_sms.carriers import (
+    AsteriskSipMessageCarrier,
     CarrierSenderProtocol,
     RustOnPremiseCarrier,
     TwilioCarrier,
@@ -37,10 +38,13 @@ from caller_sms.services import (
     InboundSmsService,
     SmsDispatchService,
     SmsQueryService,
+    is_sip_extension,
+    resolve_oncall_sms_targets,
 )
 from caller_sms.caller_sms import init_app
 
 __all__ = [
+    "AsteriskSipMessageCarrier",
     "CallerSmsError",
     "CarrierSenderProtocol",
     "InboundSmsParseError",
@@ -61,7 +65,9 @@ __all__ = [
     "UnsupportedCarrierError",
     "get_sms_records",
     "init_app",
+    "is_sip_extension",
     "receive_inbound_sms",
+    "resolve_oncall_sms_targets",
     "send_the_sms",
     "setup_routes",
 ]

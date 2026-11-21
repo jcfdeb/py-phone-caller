@@ -3,6 +3,19 @@
 # Managed by Ansible (deploy_py-phone-caller)
 # =============================================================================
 
+{% macro forwarded_origin() %}
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+        host: {{ py_phone_caller_public_url | urlsplit('netloc') | to_json }}
+        headers:
+          set:
+            X-Forwarded-Proto: https
+            X-Forwarded-Host: {{ py_phone_caller_public_url | urlsplit('netloc') | to_json }}
+            X-Forwarded-Port: {{ (py_phone_caller_public_url | urlsplit('port') | default(443, true) | string) | to_json }}
+          remove: [Forwarded]
+{% else %}
+        use_real_request_uri_unsafe: true
+{% endif %}
+{% endmacro %}
 routes:
   - id: route-keycloak-realms
     uri: /realms/*
@@ -14,7 +27,7 @@ routes:
         "{{ py_phone_caller_service_host }}:{{ py_phone_caller_keycloak_http_port }}": 1
     plugins:
       proxy-rewrite:
-        use_real_request_uri_unsafe: true
+{{ forwarded_origin() }}
 
   - id: route-keycloak-resources
     uri: /resources/*
@@ -26,9 +39,12 @@ routes:
         "{{ py_phone_caller_service_host }}:{{ py_phone_caller_keycloak_http_port }}": 1
     plugins:
       proxy-rewrite:
-        use_real_request_uri_unsafe: true
+{{ forwarded_origin() }}
 
   - id: route-keycloak-admin
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+    status: 0
+{% endif %}
     uri: /admin/*
     name: "Keycloak Admin Console"
     priority: 20
@@ -38,7 +54,7 @@ routes:
         "{{ py_phone_caller_service_host }}:{{ py_phone_caller_keycloak_http_port }}": 1
     plugins:
       proxy-rewrite:
-        use_real_request_uri_unsafe: true
+{{ forwarded_origin() }}
   - id: route-ui-root
     uri: /*
     name: "Web UI Dashboard & Static"
@@ -49,7 +65,7 @@ routes:
         "{{ py_phone_caller_service_host }}:5000": 1
     plugins:
       proxy-rewrite:
-        use_real_request_uri_unsafe: true
+{{ forwarded_origin() }}
 
   - id: route-telephony
     uri: /api/v1/telephony/*
@@ -58,6 +74,9 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/telephony/(.*)", "/$1"]
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+{{ forwarded_origin() }}
+{% endif %}
       limit-req:
         rate: 20
         burst: 30
@@ -76,6 +95,9 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/audio/(.*)", "/$1"]
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+{{ forwarded_origin() }}
+{% endif %}
     upstream:
       type: roundrobin
       nodes:
@@ -88,6 +110,9 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/registry/(.*)", "/$1"]
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+{{ forwarded_origin() }}
+{% endif %}
     upstream:
       type: roundrobin
       nodes:
@@ -100,6 +125,9 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/alerts/(.*)", "/$1"]
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+{{ forwarded_origin() }}
+{% endif %}
       limit-req:
         rate: 30
         burst: 50
@@ -118,6 +146,9 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/sms/(.*)", "/$1"]
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+{{ forwarded_origin() }}
+{% endif %}
     upstream:
       type: roundrobin
       nodes:
@@ -130,6 +161,9 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/scheduler/(.*)", "/$1"]
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+{{ forwarded_origin() }}
+{% endif %}
     upstream:
       type: roundrobin
       nodes:
@@ -142,6 +176,9 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/contacts/(.*)", "/$1"]
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+{{ forwarded_origin() }}
+{% endif %}
     upstream:
       type: roundrobin
       nodes:

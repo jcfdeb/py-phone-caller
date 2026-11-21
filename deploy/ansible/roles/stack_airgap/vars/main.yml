@@ -1,0 +1,38 @@
+---
+_ppc_airgap_state_dir: "{{ py_phone_caller_install_dir }}/.uv/airgap"
+_ppc_airgap_build_environment:
+  PATH: "{{ _ppc_airgap_state_dir }}/cargo/bin:/usr/bin:/bin"
+  UV_OFFLINE: "1"
+  UV_NO_CONFIG: "1"
+  UV_PYTHON_DOWNLOADS: never
+  UV_PYTHON: "{{ py_phone_caller_airgap_bundle_dir }}/python/bin/python3.14"
+  UV_PROJECT_ENVIRONMENT: "{{ py_phone_caller_venv_dir }}"
+  UV_CACHE_DIR: "{{ py_phone_caller_uv_cache_dir }}"
+  UV_TOOL_DIR: "{{ _ppc_airgap_state_dir }}/tools"
+  UV_TOOL_BIN_DIR: "{{ _ppc_airgap_state_dir }}/bin"
+  UV_BUILD_CONSTRAINT: "{{ py_phone_caller_airgap_bundle_dir }}/build-constraints.txt"
+  UV_NO_PROGRESS: "1"
+  PIP_NO_INDEX: "1"
+  PIP_CONFIG_FILE: /dev/null
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_BUILD_CONSTRAINT: "{{ py_phone_caller_airgap_bundle_dir }}/build-constraints.txt"
+  PYTHONNOUSERSITE: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  CARGO_NET_OFFLINE: "true"
+  CARGO_HOME: "{{ _ppc_airgap_state_dir }}/cargo"
+  RUSTUP_HOME: "{{ _ppc_airgap_state_dir }}/rustup"
+  RUSTUP_TOOLCHAIN: "{{ py_phone_caller_airgap_rust_toolchain }}"
+  RUSTUP_AUTO_INSTALL: "0"
+  RUSTUP_NO_UPDATE_CHECK: "1"
+  GIT_CONFIG_NOSYSTEM: "1"
+  GIT_CONFIG_GLOBAL: /dev/null
+  GIT_TERMINAL_PROMPT: "0"
+  PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+
+# env -i prevents inherited proxy/index/config injection; the network namespace
+# also contains arbitrary PEP517/Cargo build scripts, not just uv's downloader.
+_ppc_airgap_command_prefix: >-
+  {{ ['/usr/bin/unshare', '--net', '--', '/usr/sbin/runuser', '-u', py_phone_caller_user,
+      '--', '/usr/bin/env', '-i']
+     + (py_phone_caller_airgap_runtime_environment | combine(_ppc_airgap_build_environment)
+        | dictsort | map('join', '=') | list) }}

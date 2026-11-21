@@ -5,11 +5,30 @@
 }
 {% endif %}
 
-{{ caddy_domain_name | default(':80', true) }} {
+{{ py_phone_caller_public_url if py_phone_caller_topology | default('legacy') != 'legacy' else caddy_domain_name | default(':80', true) }} {
 	encode zstd gzip
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+	reverse_proxy {{ _ppc_ingress_upstream }} {
+		header_up Host {{ py_phone_caller_public_url | urlsplit('netloc') }}
+		header_up X-Forwarded-Host {{ py_phone_caller_public_url | urlsplit('netloc') }}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Port {{ py_phone_caller_public_url | urlsplit('port') | default(443, true) }}
+		header_up -Forwarded
+	}
+{% if py_phone_caller_tls_mode == 'internal' %}
+	tls internal
+{% elif py_phone_caller_tls_mode == 'acme' %}
+	tls {
+		issuer acme
+	}
+{% elif py_phone_caller_tls_mode == 'provided' %}
+	tls {{ py_phone_caller_tls_certificate | to_json }} {{ py_phone_caller_tls_private_key | to_json }}
+{% endif %}
+{% else %}
 	reverse_proxy {{ _ppc_ingress_upstream }}
-{% if caddy_domain_name is search('\.(lan|local|internal|test)$') %}
+{% if caddy_domain_name is search('\\.(lan|local|internal|test)$') %}
 	# Non-public suffix: ACME cannot issue for it, so use Caddy's local CA.
 	tls internal
+{% endif %}
 {% endif %}
 }

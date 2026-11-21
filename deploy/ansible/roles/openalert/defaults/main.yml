@@ -2,10 +2,21 @@
 openalert_root: /opt/openalert
 openalert_management_dir: /var/lib/openalert-installer
 openalert_helper: /usr/local/libexec/openalert-contract.py
+openalert_lifecycle_helper: /usr/local/libexec/openalert-lifecycle.py
+openalert_snapshot_helper: /usr/local/libexec/stack-snapshot.py
+openalert_adopt: false
+openalert_legacy_instances: {}
+openalert_adoption_acknowledgement: ""
+openalert_maintenance_window: false
 openalert_runtime_packages:
   - dbus
   - libdbus-1-3
   - libgcc-s1
+  - acl
+openalert_runtime_packages_redhat:
+  - dbus-daemon
+  - dbus-libs
+  - libgcc
   - acl
 openalert_release: {}
 openalert_instances: {}

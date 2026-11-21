@@ -16,6 +16,8 @@ class SmsCarrier(StrEnum):
     TWILIO = "twilio"
     ON_PREMISE = "on_premise"
     TWILIO_FALLBACK = "twilio_fallback"
+    SIP_MESSAGE = "sip_message"
+    SIP_MESSAGE_FALLBACK = "sip_message_fallback"
     INBOUND = "inbound"
 
 

@@ -257,7 +257,16 @@ async def init_app() -> web.Application:
     return app
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Starts the Caller Prometheus Webhook aiohttp server."""
     loop = asyncio.new_event_loop()
     app = loop.run_until_complete(init_app())
-    web.run_app(app, port=int(PROMETHEUS_WEBHOOK_PORT))
+    web.run_app(
+        app, host=os.environ.get("PPC_HTTP_BIND_HOST"),
+        port=int(PROMETHEUS_WEBHOOK_PORT),
+    )
+
+
+if __name__ == "__main__":
+    main()
+

@@ -1,0 +1,177 @@
+---
+- name: Validate installed versions before repository or package changes
+  ansible.builtin.include_tasks: tucny_version_guard.yml
+
+- name: Bootstrap EPEL and DNF tooling only from standard Rocky repositories
+  ansible.builtin.dnf:
+    name:
+      - epel-release
+      - dnf-plugins-core
+      - gnupg2
+      - policycoreutils-python-utils
+      - python3-libselinux
+    state: present
+    disablerepo: ["*"]
+    enablerepo: [baseos, appstream, extras]
+    disable_gpg_check: false
+    sslverify: true
+    install_weak_deps: false
+    allowerasing: false
+
+- name: Enable the standard Rocky CRB dependency repository persistently
+  community.general.dnf_config_manager:
+    name: crb
+    state: enabled
+
+- name: Copy the reviewed Tucny signing key from the role
+  ansible.builtin.copy:
+    src: RPM-GPG-KEY-tucnyastrepo
+    dest: /etc/pki/rpm-gpg/RPM-GPG-KEY-py-phone-caller-tucny
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Verify and import only the reviewed Tucny RPM signing key
+  when: not ansible_check_mode
+  block:
+    - name: Read only the vendored Tucny public key
+      ansible.builtin.command:
+        argv: [gpg, --batch, --with-colons, --show-keys, /etc/pki/rpm-gpg/RPM-GPG-KEY-py-phone-caller-tucny]
+      register: asterisk_py_phone_caller_tucny_key_file
+      changed_when: false
+
+    - name: Require exactly one vendored primary key with the reviewed full fingerprint
+      ansible.builtin.assert:
+        that:
+          - asterisk_py_phone_caller_tucny_key_file.stdout | regex_findall('(?m)^pub:') | length == 1
+          - >-
+            asterisk_py_phone_caller_tucny_key_file.stdout |
+            regex_findall('(?m)^pub:[^\n]*\nfpr:::::::::([0-9A-F]+):') ==
+            ['F323210FB8EAC82E8F2C5262EFE47D937C0C1849']
+        fail_msg: The vendored Tucny key must contain only the reviewed primary fingerprint.
+
+    - name: Query only the installed Tucny key candidate without enumerating unrelated V6 keys
+      ansible.builtin.command:
+        argv: [rpm, -q, gpg-pubkey-7c0c1849, --qf, "%{DESCRIPTION}\n"]
+      environment:
+        LC_ALL: C
+      register: asterisk_py_phone_caller_tucny_key_candidate
+      changed_when: false
+      failed_when: >-
+        asterisk_py_phone_caller_tucny_key_candidate.rc != 0 and
+        (asterisk_py_phone_caller_tucny_key_candidate.rc != 1 or
+         asterisk_py_phone_caller_tucny_key_candidate.stdout != 'package gpg-pubkey-7c0c1849 is not installed' or
+         asterisk_py_phone_caller_tucny_key_candidate.stderr | length > 0)
+
+    - name: Read the installed candidate primary fingerprint rather than trusting its short ID
+      ansible.builtin.command:
+        argv: [gpg, --batch, --with-colons, --show-keys, "-"]
+        stdin: "{{ asterisk_py_phone_caller_tucny_key_candidate.stdout }}"
+      register: asterisk_py_phone_caller_tucny_key_installed
+      changed_when: false
+      when: asterisk_py_phone_caller_tucny_key_candidate.rc == 0
+
+    - name: Reject malformed or colliding installed Tucny key candidates
+      ansible.builtin.assert:
+        that:
+          - asterisk_py_phone_caller_tucny_key_installed.stdout | regex_findall('(?m)^pub:') | length == 1
+          - >-
+            asterisk_py_phone_caller_tucny_key_installed.stdout |
+            regex_findall('(?m)^pub:[^\n]*\nfpr:::::::::([0-9A-F]+):') ==
+            ['F323210FB8EAC82E8F2C5262EFE47D937C0C1849']
+        fail_msg: The installed Tucny key candidate does not match the single reviewed full fingerprint.
+      when: asterisk_py_phone_caller_tucny_key_candidate.rc == 0
+
+    - name: Import the verified Tucny key only when its RPM candidate is absent
+      ansible.builtin.command:
+        argv: [rpmkeys, --import, /etc/pki/rpm-gpg/RPM-GPG-KEY-py-phone-caller-tucny]
+      changed_when: true
+      when: asterisk_py_phone_caller_tucny_key_candidate.rc == 1
+
+    - name: Query the Tucny key candidate after the import decision
+      ansible.builtin.command:
+        argv: [rpm, -q, gpg-pubkey-7c0c1849, --qf, "%{DESCRIPTION}\n"]
+      register: asterisk_py_phone_caller_tucny_key_postimport
+      changed_when: false
+
+    - name: Read the resulting installed Tucny public key fingerprint
+      ansible.builtin.command:
+        argv: [gpg, --batch, --with-colons, --show-keys, "-"]
+        stdin: "{{ asterisk_py_phone_caller_tucny_key_postimport.stdout }}"
+      register: asterisk_py_phone_caller_tucny_key_verified
+      changed_when: false
+
+    - name: Require the installed reviewed full fingerprint before enabling Tucny DNF transactions
+      ansible.builtin.assert:
+        that:
+          - asterisk_py_phone_caller_tucny_key_verified.stdout | regex_findall('(?m)^pub:') | length == 1
+          - >-
+            asterisk_py_phone_caller_tucny_key_verified.stdout |
+            regex_findall('(?m)^pub:[^\n]*\nfpr:::::::::([0-9A-F]+):') ==
+            ['F323210FB8EAC82E8F2C5262EFE47D937C0C1849']
+        fail_msg: The reviewed Tucny signing key was not verified in the RPM database.
+
+- name: Enable narrow Tucny repositories for authenticated standard DNF updates
+  ansible.builtin.yum_repository:
+    name: "{{ item.name }}"
+    file: py-phone-caller-tucny
+    description: "Reviewed Tucny {{ item.directory }} EL10 AMD64 PBX packages"
+    baseurl: "https://ast.tucny.com/repo/{{ item.directory }}/el10/x86_64/"
+    enabled: true
+    gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-py-phone-caller-tucny
+    gpgcheck: true
+    repo_gpgcheck: false
+    sslverify: true
+    skip_if_unavailable: false
+    includepkgs: "{{ item.packages }}"
+    state: present
+  loop:
+    - name: py-phone-caller-tucny-22
+      directory: asterisk-22
+      packages: [asterisk, asterisk-pjsip, asterisk-curl, asterisk-iax2]
+    - name: py-phone-caller-tucny-common
+      directory: asterisk-common
+      packages: [asterisk-sounds-core-en, asterisk-sounds-core-en-wav]
+
+- name: Create the provider ownership directory
+  ansible.builtin.file:
+    path: /var/lib/py-phone-caller-pbx
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Record explicit fresh-install ownership before the Tucny package transaction
+  ansible.builtin.copy:
+    dest: /var/lib/py-phone-caller-pbx/provider
+    content: "tucny\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install exact Tucny RPMs without compilation or automatic package removal
+  ansible.builtin.dnf:
+    name: >-
+      {{ ['asterisk-' ~ asterisk_tucny_version ~ '.x86_64',
+          'asterisk-pjsip-' ~ asterisk_tucny_version ~ '.x86_64',
+          'asterisk-curl-' ~ asterisk_tucny_version ~ '.x86_64',
+          'asterisk-sounds-core-en-' ~ asterisk_tucny_sounds_version ~ '.noarch',
+          'asterisk-sounds-core-en-wav-' ~ asterisk_tucny_sounds_version ~ '.noarch'] +
+         (['asterisk-iax2-' ~ asterisk_tucny_version ~ '.x86_64']
+          if local_iax or 'asterisk-iax2' in ansible_facts.packages else []) }}
+    state: present
+    disablerepo: ["*"]
+    enablerepo: [baseos, appstream, extras, crb, epel, py-phone-caller-tucny-22, py-phone-caller-tucny-common]
+    disable_gpg_check: false
+    sslverify: true
+    allow_downgrade: false
+    allowerasing: false
+    install_weak_deps: false
+    skip_broken: false
+    update_cache: true
+  when: not ansible_check_mode
+  notify: restart asterisk
+
+- name: Configure owned private PBX roots without AllStarLink account changes
+  ansible.builtin.include_tasks: configure_tucny.yml
+  when: not ansible_check_mode

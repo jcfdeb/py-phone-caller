@@ -1,0 +1,92 @@
+---
+- name: Require explicit maintenance authorization and supported target
+  ansible.builtin.assert:
+    that:
+      - stack_lifecycle_action in ['backup', 'restore', 'rollback']
+      - stack_lifecycle_acknowledged is boolean and stack_lifecycle_acknowledged
+      - stack_lifecycle_maintenance_window is string and stack_lifecycle_maintenance_window | trim | length > 0
+      - not ansible_check_mode
+      - ansible_facts['service_mgr'] == 'systemd'
+      - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+      - >-
+        (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] == '13')
+        or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '26.04')
+      - ansible_facts['python']['version']['major'] == 3 and ansible_facts['python']['version']['minor'] >= 11
+      - stack_lifecycle_snapshot_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$')
+      - stack_lifecycle_storage_dir is match('^/var/backups/[A-Za-z0-9_-]+$')
+      - stack_lifecycle_helper is match('^/usr/local/libexec/[A-Za-z0-9_-]+\.py$')
+      - stack_lifecycle_kind in ['full', 'assets']
+      - stack_lifecycle_schema_id is string and stack_lifecycle_schema_id | length > 0
+      - stack_lifecycle_snapshot_schema_id is string and stack_lifecycle_snapshot_schema_id | length > 0
+      - stack_lifecycle_release_id is string and stack_lifecycle_release_id | length > 0
+      - stack_lifecycle_start_after_restore is boolean
+      - stack_lifecycle_database_restore_acknowledged is boolean
+      - stack_lifecycle_quiesced is boolean
+      - stack_lifecycle_action != 'backup' or stack_lifecycle_schema_id == stack_lifecycle_snapshot_schema_id
+    fail_msg: Lifecycle operations require explicit authorization, a maintenance window and reviewed release/schema identities.
+
+- name: Require explicit path and unit ownership without wildcard selection
+  ansible.builtin.assert:
+    that:
+      - stack_lifecycle_paths is sequence and stack_lifecycle_paths is not string
+      - stack_lifecycle_paths | length > 0
+      - stack_lifecycle_paths | unique | length == stack_lifecycle_paths | length
+      - stack_lifecycle_units is sequence and stack_lifecycle_units is not string
+      - stack_lifecycle_units | unique | length == stack_lifecycle_units | length
+      - stack_lifecycle_units | select('match', '^[A-Za-z0-9_-]+\.service$') | list | length == stack_lifecycle_units | length
+      - stack_lifecycle_units | length > 0 or stack_lifecycle_quiesced
+      - stack_lifecycle_postgresql_databases is sequence and stack_lifecycle_postgresql_databases is not string
+      - >-
+        stack_lifecycle_postgresql_databases | select('match', '^[A-Za-z_][A-Za-z0-9_]{0,62}$') | list | length
+        == stack_lifecycle_postgresql_databases | length
+      - stack_lifecycle_postgresql_databases | unique | length == stack_lifecycle_postgresql_databases | length
+      - stack_lifecycle_kind == 'full' or stack_lifecycle_postgresql_databases | length == 0
+      - stack_lifecycle_health_urls is sequence and stack_lifecycle_health_urls is not string
+      - >-
+        stack_lifecycle_health_urls | select('match', '^https?://(127\.0\.0\.1|\[::1\]):[0-9]+/health$') | list | length
+        == stack_lifecycle_health_urls | length
+    fail_msg: Declare exact owned paths, units and local PostgreSQL database names; no discovery or external database takeover is performed.
+
+- name: Reject broad paths and raw database storage
+  ansible.builtin.assert:
+    that:
+      - item is string and item is match('^/(etc|opt|var/lib|home|root|usr/share)/[A-Za-z0-9_./-]+$')
+      - "'..' not in item.split('/') and '//' not in item and not item.endswith('/')"
+      - item not in ['/etc/systemd', '/etc/systemd/system', '/home', '/opt', '/root', '/usr/share', '/var/lib', '/var/lib/postgresql']
+      - not item.startswith('/root/.')
+      - not item.startswith('/var/lib/postgresql/')
+      - not item.startswith(stack_lifecycle_storage_dir ~ '/')
+    fail_msg: Back up application-specific paths only; PostgreSQL data directories require database-aware dumps.
+  loop: "{{ stack_lifecycle_paths }}"
+  no_log: true
+
+- name: Keep writable state out of asset-only rollback snapshots
+  ansible.builtin.assert:
+    that: item is match('^/etc/.+|^/opt/[A-Za-z0-9_-]+/releases/.+')
+    fail_msg: Asset snapshots may contain configuration and immutable versioned releases only, never writable application state.
+  loop: "{{ stack_lifecycle_paths }}"
+  when: stack_lifecycle_kind == 'assets'
+  no_log: true
+
+- name: Refuse incompatible automatic binary rollback
+  ansible.builtin.assert:
+    that:
+      - stack_lifecycle_kind == 'assets'
+      - stack_lifecycle_schema_id == stack_lifecycle_snapshot_schema_id
+      - stack_lifecycle_postgresql_databases | length == 0
+    fail_msg: Binary rollback is not database rollback. Use the reviewed full restore procedure for incompatible schema changes.
+  when: stack_lifecycle_action == 'rollback'
+
+- name: Require separate destructive database restore authorization
+  ansible.builtin.assert:
+    that: stack_lifecycle_database_restore_acknowledged
+    fail_msg: Database restore replaces declared database contents and requires separate acknowledgement.
+  when:
+    - stack_lifecycle_action == 'restore'
+    - stack_lifecycle_postgresql_databases | length > 0
+
+- name: Do not stop the PostgreSQL server needed for logical dumps
+  ansible.builtin.assert:
+    that: "'postgresql.service' not in stack_lifecycle_units"
+    fail_msg: Quiesce application writers, not PostgreSQL itself; local peer-authenticated pg_dump/pg_restore needs the server running.
+  when: stack_lifecycle_postgresql_databases | length > 0

@@ -11,6 +11,12 @@ RestartSec=10s
 ExecStartPre=-/usr/bin/podman stop etcd
 ExecStartPre=-/usr/bin/podman rm etcd
 ExecStart=/usr/bin/podman run --name etcd --net=host \
+{% if py_phone_caller_connectivity | default('online') == 'airgapped' %}
+  --pull=never \
+{% endif %}
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+  --label io.py-phone-caller.managed=gateway \
+{% endif %}
   -v /var/lib/py-phone-caller/etcd:/etcd-data:Z \
   {{ py_phone_caller_etcd_image }} \
   /usr/local/bin/etcd --name etcd --data-dir /etcd-data \

@@ -1,0 +1,49 @@
+name: "py-phone-caller"
+arch: "all"
+platform: "linux"
+version: "${VERSION:-1.0.0}"
+release: "1"
+section: "net"
+priority: "optional"
+maintainer: "py-phone-caller contributors <admin@py-phone-caller.link>"
+description: |
+  Automated phone call and SMS alerting platform for Asterisk-based environments.
+  Includes all 11 Python microservices, pre-built wheels, configuration templates,
+  and systemd service units.
+vendor: "py-phone-caller"
+homepage: "https://github.com/jcfdeb/py-phone-caller"
+license: "BSD-3-Clause"
+
+depends:
+  - bash
+  - shadow-utils | passwd
+  - systemd
+
+recommends:
+  - ffmpeg
+  - libsndfile1 | libsndfile
+  - postgresql-client | postgresql
+  - redis-tools | redis | valkey
+
+contents:
+  - src: ./staging/py-phone-caller/opt/py-phone-caller
+    dst: /opt/py-phone-caller
+    type: tree
+  - src: ./staging/py-phone-caller/etc/py-phone-caller/settings.toml
+    dst: /etc/py-phone-caller/settings.toml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+  - src: ./staging/py-phone-caller/etc/py-phone-caller/.secrets.toml.example
+    dst: /etc/py-phone-caller/.secrets.toml.example
+    type: config|noreplace
+    file_info:
+      mode: 0600
+  - src: ./staging/py-phone-caller/lib/systemd/system/
+    dst: /lib/systemd/system/
+    type: tree
+
+scripts:
+  postinstall: ./deploy/packaging/linux/deb/py-phone-caller/postinst
+  preremove: ./deploy/packaging/linux/deb/py-phone-caller/prerm
+  postremove: ./deploy/packaging/linux/deb/py-phone-caller/postrm

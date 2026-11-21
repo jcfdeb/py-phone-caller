@@ -1,5 +1,9 @@
 """
-CLI subprocess runners for offline TTS engines (Piper, Kokoro, Silero).
+Runners for offline TTS engines (Piper, Kokoro, Silero).
+
+Executes synthesis in-process by default so ONNX/PyTorch models stay warm in RAM
+across requests, while preserving transparent subprocess fallback when a distinct
+Python interpreter is configured or ``PPC_TTS_SUBPROCESS=1`` is set.
 """
 
 import importlib.util
@@ -7,12 +11,14 @@ import logging
 import os
 import site
 import subprocess
+import sys
 
 try:
     from .constants import (
         KOKORO_LANG,
         KOKORO_MODELS_FOLDER,
         KOKORO_PYTHON_INTERPRETER,
+        NUM_OF_CPUS,
         PIPER_LANGUAGE_CODE,
         PIPER_MODELS_FOLDER,
         PIPER_PYTHON_INTERPRETER,
@@ -28,6 +34,7 @@ except ImportError:
         KOKORO_LANG,
         KOKORO_MODELS_FOLDER,
         KOKORO_PYTHON_INTERPRETER,
+        NUM_OF_CPUS,
         PIPER_LANGUAGE_CODE,
         PIPER_MODELS_FOLDER,
         PIPER_PYTHON_INTERPRETER,
@@ -38,6 +45,47 @@ except ImportError:
         SILERO_SAMPLE_RATE,
         SILERO_SPEAKER,
     )
+
+_TORCH_THREADS_CONFIGURED = False
+
+_SILERO_DEFAULT_SPEAKERS = {
+    "en": "en_0",
+    "ru": "kseniya",
+    "de": "eva_k",
+    "es": "es_0",
+    "fr": "fr_0",
+    "indic": "hindi_female",
+}
+
+
+def _configure_torch_threads() -> None:
+    """Applies configured NUM_OF_CPUS to PyTorch intra-op thread pool once per process."""
+    global _TORCH_THREADS_CONFIGURED
+    if _TORCH_THREADS_CONFIGURED:
+        return
+    try:
+        num_cpus = int(NUM_OF_CPUS)
+        if num_cpus > 0:
+            import torch
+
+            torch.set_num_threads(num_cpus)
+            logging.info(f"Configured PyTorch intra-op threads to {num_cpus}")
+    except Exception as exc:
+        logging.debug(f"Skipping PyTorch thread tuning: {exc}")
+    finally:
+        _TORCH_THREADS_CONFIGURED = True
+
+
+def _use_in_process(interpreter: str) -> bool:
+    """Returns True when the engine can run in-process with cached weights."""
+    if os.environ.get("PPC_TTS_SUBPROCESS", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    if not interpreter:
+        return True
+    try:
+        return os.path.realpath(interpreter) == os.path.realpath(sys.executable)
+    except OSError:
+        return interpreter == sys.executable
 
 
 def file_not_found_error(error_text: str, file_location: str) -> None:
@@ -84,10 +132,16 @@ def _find_voice_script(script_filename: str) -> str:
 def text_to_speech_piper_tts(
     message: str, output_path: str, language: str = None, speed: float = 1.0
 ):
-    piper_script = _find_voice_script("piper_tts.py")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     target_lang = language or PIPER_LANGUAGE_CODE
-    piper_alias = {"it": "it_IT", "en": "en_US"}
+    piper_alias = {
+        "it": "it_IT",
+        "en": "en_US",
+        "es": "es_ES",
+        "fr": "fr_FR",
+        "de": "de_DE",
+        "nl": "nl_NL",
+    }
     target_lang = piper_alias.get(target_lang, target_lang)
 
     model_dir = os.path.join(
@@ -112,6 +166,28 @@ def text_to_speech_piper_tts(
     if not os.path.exists(config_path):
         file_not_found_error("Piper config file not found at: ", config_path)
 
+    if _use_in_process(PIPER_PYTHON_INTERPRETER):
+        try:
+            from py_phone_caller_utils.py_phone_caller_voices.piper_tts import (
+                text_to_speech_piper,
+            )
+
+            logging.info(f"Running Piper TTS in-process for lang={target_lang} -> {output_path}")
+            text_to_speech_piper(
+                text=message,
+                model_path=model_path,
+                config_path=config_path,
+                output_path=output_path,
+                speed=speed,
+            )
+            logging.info(f"Piper TTS completed successfully for output: {output_path}")
+            return
+        except Exception as e:
+            error_msg = f"Error running Piper TTS in-process: {str(e)}"
+            logging.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    piper_script = _find_voice_script("piper_tts.py")
     cmd = [
         PIPER_PYTHON_INTERPRETER,
         piper_script,
@@ -145,7 +221,6 @@ def text_to_speech_piper_tts(
 def text_to_speech_kokoro_tts(
     message: str, output_path: str, language: str = None, speed: float = 1.0
 ):
-    kokoro_script = _find_voice_script("kokoro_tts.py")
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
 
     voice_name_map = {
@@ -174,6 +249,32 @@ def text_to_speech_kokoro_tts(
     }
     kokoro_cli_lang = kokoro_lang_reverse.get(target_lang, target_lang)
 
+    if _use_in_process(KOKORO_PYTHON_INTERPRETER):
+        try:
+            _configure_torch_threads()
+            from py_phone_caller_utils.py_phone_caller_voices.kokoro_tts import (
+                text_to_speech_kokoro,
+            )
+
+            logging.info(
+                f"Running Kokoro TTS in-process for lang={kokoro_cli_lang}, voice={voice_name} -> {output_path}"
+            )
+            text_to_speech_kokoro(
+                text=message,
+                output_path=output_path,
+                voice_name=voice_name,
+                lang=kokoro_cli_lang,
+                speed=speed,
+                model_path=local_model_dir if os.path.exists(local_model_dir) else None,
+            )
+            logging.info(f"Kokoro TTS completed successfully for output: {output_path}")
+            return
+        except Exception as e:
+            error_msg = f"Error running Kokoro TTS in-process: {str(e)}"
+            logging.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    kokoro_script = _find_voice_script("kokoro_tts.py")
     cmd = [
         KOKORO_PYTHON_INTERPRETER,
         kokoro_script,
@@ -209,7 +310,6 @@ def text_to_speech_kokoro_tts(
 def text_to_speech_silero_tts(
     message: str, output_path: str, language: str = None, speed: float = 1.0
 ):
-    silero_script = _find_voice_script("silero_tts.py")
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
 
     raw_lang = language or SILERO_LANG
@@ -231,8 +331,35 @@ def text_to_speech_silero_tts(
 
     speaker = SILERO_SPEAKER
     if target_lang != "en" and speaker.startswith("en_"):
-        speaker = f"{target_lang}_0"
+        speaker = _SILERO_DEFAULT_SPEAKERS.get(target_lang, f"{target_lang}_0")
 
+    if _use_in_process(SILERO_PYTHON_INTERPRETER):
+        try:
+            _configure_torch_threads()
+            from py_phone_caller_utils.py_phone_caller_voices.silero_tts import (
+                text_to_speech_silero,
+            )
+
+            logging.info(
+                f"Running Silero TTS in-process for lang={target_lang}, speaker={speaker} -> {output_path}"
+            )
+            text_to_speech_silero(
+                message=message,
+                output_path=output_path,
+                lang=target_lang,
+                speaker=speaker,
+                sample_rate=SILERO_SAMPLE_RATE,
+                speed=speed,
+                model_path=local_models_base if os.path.exists(local_models_base) else None,
+            )
+            logging.info(f"Silero TTS completed successfully for output: {output_path}")
+            return
+        except Exception as e:
+            error_msg = f"Error running Silero TTS in-process: {str(e)}"
+            logging.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    silero_script = _find_voice_script("silero_tts.py")
     cmd = [
         SILERO_PYTHON_INTERPRETER,
         silero_script,

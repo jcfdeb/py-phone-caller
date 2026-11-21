@@ -11,6 +11,12 @@ RestartSec=10s
 ExecStartPre=-/usr/bin/podman stop apisix-dashboard
 ExecStartPre=-/usr/bin/podman rm apisix-dashboard
 ExecStart=/usr/bin/podman run --name apisix-dashboard --net=host --group-add 0 \
+{% if py_phone_caller_connectivity | default('online') == 'airgapped' %}
+  --pull=never \
+{% endif %}
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+  --label io.py-phone-caller.managed=gateway \
+{% endif %}
   -v /etc/py-phone-caller/apisix/dashboard_conf.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro,Z \
   {{ py_phone_caller_apisix_dashboard_image }}
 ExecStop=/usr/bin/podman stop -t 10 apisix-dashboard

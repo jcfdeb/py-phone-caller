@@ -87,3 +87,32 @@ type=aor
 max_contacts=1
 remove_existing=yes
 {% endif %}
+
+{% if asterisk_sip_exten_1000_enabled %}
+; --- Ready-to-Use Local SIP Extension {{ asterisk_sip_exten_1000 }} ---
+[{{ asterisk_sip_exten_1000 }}]
+type=endpoint
+context={{ asterisk_context }}
+disallow=all
+allow=ulaw,alaw,gsm,g722
+auth={{ asterisk_sip_exten_1000 }}
+aors={{ asterisk_sip_exten_1000 }}
+transport=transport-udp
+rewrite_contact=yes
+rtp_symmetric=yes
+force_rport=yes
+direct_media=no
+dtmf_mode=auto
+
+[{{ asterisk_sip_exten_1000 }}]
+type=auth
+auth_type=userpass
+password={{ _asterisk_sip_exten_1000_password }}
+username={{ asterisk_sip_exten_1000 }}
+
+[{{ asterisk_sip_exten_1000 }}]
+type=aor
+max_contacts=1
+remove_existing=yes
+qualify_frequency={{ asterisk_sip_exten_1000_qualify_frequency }}
+{% endif %}

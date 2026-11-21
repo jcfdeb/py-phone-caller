@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import os
 import sys
+import threading
 from pathlib import Path
 import numpy as np
 import soundfile as sf
@@ -20,7 +21,7 @@ logger = logging.getLogger("silero_tts")
 DEFAULT_SPEAKERS = {
     "en": "en_0",
     "ru": "kseniya",
-    "de": "thorsten",
+    "de": "eva_k",
     "es": "es_0",
     "fr": "fr_0",
     "indic": "hindi_female",
@@ -36,6 +37,7 @@ MODEL_FILENAMES = {
 }
 
 _MODEL_CACHE = {}
+_MODEL_CACHE_LOCK = threading.Lock()
 
 
 def resolve_device(requested_device: str = "auto") -> str:
@@ -113,14 +115,16 @@ def resolve_silero_model_path(lang: str = "en", model_path: str = None) -> str:
 
     # 3. Candidates relative to current working directory
     cwd = os.getcwd()
+    candidates.append(os.path.join(cwd, "py-phone-caller", "generate_audio", "pre_trained_models", "silero_tts", clean_lang, expected_filename))
+    candidates.append(os.path.join(cwd, "py-phone-caller", "generate_audio", "pre_trained_models", "silero_tts", expected_filename))
     candidates.append(os.path.join(cwd, "src", "generate_audio", "pre_trained_models", "silero_tts", clean_lang, expected_filename))
     candidates.append(os.path.join(cwd, "src", "generate_audio", "pre_trained_models", "silero_tts", expected_filename))
     candidates.append(os.path.join(cwd, "pre_trained_models", "silero_tts", clean_lang, expected_filename))
     candidates.append(os.path.join(cwd, "pre_trained_models", "silero_tts", expected_filename))
 
     # 4. Standard container paths
-    candidates.append(f"/app/src/generate_audio/pre_trained_models/silero_tts/{clean_lang}/{expected_filename}")
-    candidates.append(f"/app/src/generate_audio/pre_trained_models/silero_tts/{expected_filename}")
+    candidates.append(f"/app/py-phone-caller/generate_audio/pre_trained_models/silero_tts/{clean_lang}/{expected_filename}")
+    candidates.append(f"/app/py-phone-caller/generate_audio/pre_trained_models/silero_tts/{expected_filename}")
     candidates.append(f"/app/pre_trained_models/silero_tts/{clean_lang}/{expected_filename}")
     candidates.append(f"/app/pre_trained_models/silero_tts/{expected_filename}")
 
@@ -139,25 +143,26 @@ def load_silero_model(model_path: str, device: str = "auto"):
     """
     actual_device = resolve_device(device)
     cache_key = f"{model_path}:{actual_device}"
-    if cache_key in _MODEL_CACHE:
-        return _MODEL_CACHE[cache_key]
+    with _MODEL_CACHE_LOCK:
+        if cache_key in _MODEL_CACHE:
+            return _MODEL_CACHE[cache_key]
 
-    logger.info(f"Loading Silero model from {model_path} onto {actual_device}...")
-    torch_device = torch.device(actual_device)
+        logger.info(f"Loading Silero model from {model_path} onto {actual_device}...")
+        torch_device = torch.device(actual_device)
 
-    try:
-        importer = torch.package.PackageImporter(model_path)
-        model = importer.load_pickle("tts_models", "model")
-    except Exception as pkg_err:
-        logger.debug(f"PackageImporter failed ({pkg_err}), attempting torch.jit.load...")
-        model = torch.jit.load(model_path, map_location=torch_device)
+        try:
+            importer = torch.package.PackageImporter(model_path)
+            model = importer.load_pickle("tts_models", "model")
+        except Exception as pkg_err:
+            logger.debug(f"PackageImporter failed ({pkg_err}), attempting torch.jit.load...")
+            model = torch.jit.load(model_path, map_location=torch_device)
 
-    if hasattr(model, "to"):
-        model.to(torch_device)
+        if hasattr(model, "to"):
+            model.to(torch_device)
 
-    _MODEL_CACHE[cache_key] = model
-    logger.info(f"Silero model loaded successfully on {actual_device}.")
-    return model
+        _MODEL_CACHE[cache_key] = model
+        logger.info(f"Silero model loaded successfully on {actual_device}.")
+        return model
 
 
 def resample_audio(audio_data: np.ndarray, original_rate: int, target_rate: int = 8000) -> np.ndarray:
@@ -205,6 +210,20 @@ def text_to_speech_silero(
     actual_device = resolve_device(device)
     model = load_silero_model(resolved_path, device=actual_device)
 
+    available_speakers = getattr(model, "speakers", None)
+    if (
+        isinstance(available_speakers, (list, tuple))
+        and available_speakers
+        and target_speaker not in available_speakers
+    ):
+        non_random = [s for s in available_speakers if s != "random"]
+        fallback_speaker = non_random[0] if non_random else available_speakers[0]
+        logger.warning(
+            f"Silero speaker '{target_speaker}' not in {available_speakers}; "
+            f"falling back to '{fallback_speaker}'"
+        )
+        target_speaker = fallback_speaker
+
     # Silero native sample rates are 8000, 24000, 48000.
     native_sr = sample_rate if sample_rate in (8000, 24000, 48000) else 8000
 
@@ -244,8 +263,15 @@ def text_to_speech_silero(
     out_file = Path(output_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Write 16-bit mono PCM WAV for Asterisk ARI compatibility
-    sf.write(str(out_file), audio_np, sample_rate, subtype="PCM_16")
+    # Write 16-bit mono PCM WAV atomically for Asterisk ARI compatibility
+    tmp_file = out_file.with_name(f".{out_file.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        sf.write(str(tmp_file), audio_np, sample_rate, subtype="PCM_16", format="WAV")
+        os.replace(tmp_file, out_file)
+    except Exception:
+        if tmp_file.exists():
+            tmp_file.unlink(missing_ok=True)
+        raise
     logger.info(f"Audio saved successfully to {out_file} ({sample_rate}Hz, 16-bit PCM)")
 
 

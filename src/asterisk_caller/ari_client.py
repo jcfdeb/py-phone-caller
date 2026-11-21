@@ -12,7 +12,11 @@ from aiohttp import ClientResponse, ClientSession, ClientTimeout, client_excepti
 from aiobreaker import CircuitBreaker, CircuitBreakerError
 
 from asterisk_caller.constants import CLIENT_TIMEOUT_TOTAL
-from asterisk_caller.exceptions import AriConnectionError, CircuitBreakerOpenError
+from asterisk_caller.exceptions import (
+    AriConnectionError,
+    AriEndpointUnavailableError,
+    CircuitBreakerOpenError,
+)
 
 
 def gen_headers_sync(auth_string: str) -> dict[str, str]:
@@ -84,11 +88,38 @@ async def raw_post_ari_call(
     async with ClientSession(timeout=ClientTimeout(total=timeout_total)) as session:
         resp = await session.post(url=asterisk_call_init, data=None, headers=headers)
         if resp.status >= 500:
+            detail = ""
+            try:
+                raw_text = (await resp.text()).strip()
+                if raw_text:
+                    import json as _json
+                    try:
+                        parsed = _json.loads(raw_text)
+                        if isinstance(parsed, dict):
+                            detail = str(parsed.get("message") or parsed.get("error") or raw_text).strip()
+                        else:
+                            detail = raw_text
+                    except (ValueError, TypeError):
+                        detail = raw_text
+            except Exception:
+                detail = ""
+            detail_lower = detail.lower()
+            if resp.status == 500 and (
+                "allocation failed" in detail_lower
+                or "endpoint not found" in detail_lower
+            ):
+                raise AriEndpointUnavailableError(
+                    f"Target endpoint unavailable: Asterisk ARI 500 ({detail})",
+                    status=502,
+                )
+            msg = f"Asterisk ARI server error: {resp.status}"
+            if detail:
+                msg = f"{msg} ({detail})"
             raise client_exceptions.ClientResponseError(
                 request_info=resp.request_info,
                 history=resp.history,
                 status=resp.status,
-                message=f"Asterisk ARI server error: {resp.status}",
+                message=msg,
             )
         return resp
 

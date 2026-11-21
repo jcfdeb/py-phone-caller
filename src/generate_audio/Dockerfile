@@ -23,53 +23,47 @@ COPY pyproject.toml uv.lock ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --package generate-audio
 
-RUN DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
-    DYNACONF_LOGS__LOG_LEVEL=INFO \
-    DYNACONF_GENERATE_AUDIO__FACEBOOK_MMS_LANGUAGE_CODE=spa \
-    DYNACONF_GENERATE_AUDIO__FACEBOOK_MMS_MODELS_FOLDER=facebook \
-    DYNACONF_GENERATE_AUDIO__PIPER_VOICES_URL=https://huggingface.co/rhasspy/piper-voices/tree/main \
-    DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
-    DYNACONF_GENERATE_AUDIO__PIPER_MODELS_FOLDER=piper_tts \
-    DYNACONF_GENERATE_AUDIO__PIPER_LANGUAGE_CODE=it_IT \
-    DYNACONF_GENERATE_AUDIO__KOKORO_MODELS_FOLDER=kokoro_tts \
-    DYNACONF_GENERATE_AUDIO__KOKORO_REPO_ID=hexgrad/Kokoro-82M \
-    DYNACONF_GENERATE_AUDIO__KOKORO_MODEL_FILENAME=kokoro-v1_0.pth \
-    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
-    /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_fb_mms_language_model && \
+ARG PRELOAD_ALL_MODELS=false
+
+RUN mkdir -p /app/pre_trained_models && \
     DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
     DYNACONF_LOGS__LOG_LEVEL=INFO \
-    DYNACONF_GENERATE_AUDIO__FACEBOOK_MMS_LANGUAGE_CODE=spa \
-    DYNACONF_GENERATE_AUDIO__FACEBOOK_MMS_MODELS_FOLDER=facebook \
     DYNACONF_GENERATE_AUDIO__PIPER_VOICES_URL=https://huggingface.co/rhasspy/piper-voices/tree/main \
     DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
     DYNACONF_GENERATE_AUDIO__PIPER_MODELS_FOLDER=piper_tts \
     DYNACONF_GENERATE_AUDIO__PIPER_LANGUAGE_CODE=it_IT \
-    DYNACONF_GENERATE_AUDIO__KOKORO_MODELS_FOLDER=kokoro_tts \
-    DYNACONF_GENERATE_AUDIO__KOKORO_REPO_ID=hexgrad/Kokoro-82M \
-    DYNACONF_GENERATE_AUDIO__KOKORO_MODEL_FILENAME=kokoro-v1_0.pth \
     PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
     /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_pipper_tts_language_model && \
-    DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
-    DYNACONF_LOGS__LOG_LEVEL=INFO \
-    DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
-    DYNACONF_GENERATE_AUDIO__KOKORO_MODELS_FOLDER=kokoro_tts \
-    DYNACONF_GENERATE_AUDIO__KOKORO_REPO_ID=hexgrad/Kokoro-82M \
-    DYNACONF_GENERATE_AUDIO__KOKORO_MODEL_FILENAME=kokoro-v1_0.pth \
-    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
-    /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model && \
-    DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
-    DYNACONF_LOGS__LOG_LEVEL=INFO \
-    DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
-    DYNACONF_GENERATE_AUDIO__SILERO_MODELS_FOLDER=silero_tts \
-    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
-    /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model --language en
+    if [ "$PRELOAD_ALL_MODELS" = "true" ]; then \
+      DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
+      DYNACONF_LOGS__LOG_LEVEL=INFO \
+      DYNACONF_GENERATE_AUDIO__FACEBOOK_MMS_LANGUAGE_CODE=spa \
+      DYNACONF_GENERATE_AUDIO__FACEBOOK_MMS_MODELS_FOLDER=facebook \
+      DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
+      PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
+      /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_fb_mms_language_model && \
+      DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
+      DYNACONF_LOGS__LOG_LEVEL=INFO \
+      DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
+      DYNACONF_GENERATE_AUDIO__KOKORO_MODELS_FOLDER=kokoro_tts \
+      DYNACONF_GENERATE_AUDIO__KOKORO_REPO_ID=hexgrad/Kokoro-82M \
+      DYNACONF_GENERATE_AUDIO__KOKORO_MODEL_FILENAME=kokoro-v1_0.pth \
+      PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
+      /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_kokoro_tts_model && \
+      DYNACONF_LOGS__LOG_FORMATTER="%(asctime)s %(message)s" \
+      DYNACONF_LOGS__LOG_LEVEL=INFO \
+      DYNACONF_GENERATE_AUDIO__PRE_TRAINED_MODELS_FOLDER=pre_trained_models \
+      DYNACONF_GENERATE_AUDIO__SILERO_MODELS_FOLDER=silero_tts \
+      PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
+      /opt/venv/bin/python -m py_phone_caller_utils.py_phone_caller_voices.get_silero_tts_model --language en; \
+    fi
 
 FROM rockylinux:9-minimal
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils \
+    PYTHONPATH=/app/py-phone-caller:/app/py-phone-caller/py-phone-caller-utils \
     NNPACK_VERBOSE=0 \
     TORCH_CPP_LOG_LEVEL=ERROR
 
@@ -85,9 +79,10 @@ WORKDIR /app
 COPY --from=builder /opt/uv-python /opt/uv-python
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/pre_trained_models /app/pre_trained_models
-COPY --from=builder /app/pre_trained_models /app/src/generate_audio/pre_trained_models
-COPY --from=builder /app/src/generate_audio /app/src/generate_audio
-COPY --from=builder /app/src/py-phone-caller-utils /app/src/py-phone-caller-utils
+COPY --from=builder /app/pre_trained_models /app/py-phone-caller/generate_audio/pre_trained_models
+COPY --from=builder /app/src/generate_audio /app/py-phone-caller/generate_audio
+COPY --from=builder /app/src/py-phone-caller-utils /app/py-phone-caller/py-phone-caller-utils
+COPY --from=builder /app/src/config/settings.toml /app/py-phone-caller/config/settings.toml
 
 RUN mkdir -p /app/audio /home/appuser/.cache && \
     chown -R appuser:appuser /app /home/appuser

@@ -140,4 +140,14 @@ credentials/
 /data/openalert_station_beta.db-wal
 /skills/system/run-workflow/SKILL.md
 /deploy/ansible/.collections
-/deploy/ansible/tests
+/deploy/ansible/tests/*
+# Keep new lifecycle regression sources, never private runtime inventories/logs.
+!/deploy/ansible/tests/test_stack_snapshot.py
+!/deploy/ansible/tests/test_stack_lifecycle.py
+!/deploy/ansible/tests/test_openalert_lifecycle.py
+!/deploy/ansible/tests/run_postgresql_snapshot_fixture.py
+!/deploy/ansible/tests/run_disposable.py
+!/deploy/ansible/tests/README.md
+!/deploy/ansible/tests/test_rocky_platform.py
+!/deploy/ansible/tests/test_tucny_provider.py
+!/deploy/ansible/tests/test_ansible_bundle.py

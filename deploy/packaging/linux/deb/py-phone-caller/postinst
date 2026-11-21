@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+if ! getent group py-phone-caller >/dev/null 2>&1; then
+    groupadd -r py-phone-caller
+fi
+
+if ! getent passwd py-phone-caller >/dev/null 2>&1; then
+    useradd -r -g py-phone-caller -d /opt/py-phone-caller -s /usr/sbin/nologin \
+        -c "py-phone-caller service account" py-phone-caller
+fi
+
+chown -R py-phone-caller:py-phone-caller /opt/py-phone-caller /etc/py-phone-caller || true
+chmod 0750 /etc/py-phone-caller || true
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+exit 0

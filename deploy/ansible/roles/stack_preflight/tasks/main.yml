@@ -7,6 +7,12 @@
       - stack_deploy_openalert is defined and stack_deploy_openalert is boolean
     fail_msg: Set all three stack_deploy selectors explicitly to true or false.
 
+- name: Require application profile validation for air-gapped stack operations
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_connectivity | default('online') != 'airgapped' or stack_deploy_py_phone_caller
+    fail_msg: The air-gapped entry point requires an explicit Python application profile and its host-wide offline preflight.
+
 - name: Validate native platform and selected components
   ansible.builtin.assert:
     that:
@@ -15,10 +21,14 @@
       - >-
         (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] == '13') or
         (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '26.04') or
+        (ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] == '10'
+         and ansible_facts['architecture'] == 'x86_64') or
         ((stack_legacy_platform | default(false) | bool) and not stack_deploy_openalert
          and ansible_facts['os_family'] in ['Debian', 'RedHat'])
       - ansible_facts['service_mgr'] == 'systemd'
-    fail_msg: The new native entry point targets Debian 13 or Ubuntu 26.04 on AMD64/ARM64 with systemd; hardware remains separately qualified.
+    fail_msg: >-
+      The native entry point accepts Debian 13 or Ubuntu 26.04 AMD64/ARM64 and Rocky 10 AMD64
+      with systemd; runtime and hardware qualification are separate.
 
 - name: Load component configuration only when selected
   ansible.builtin.include_tasks: python.yml

@@ -1,0 +1,102 @@
+---
+- name: Refuse unsupported air-gapped platforms and remote source delivery
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_connectivity == 'airgapped'
+      - >-
+        (ansible_facts.distribution == 'Debian' and ansible_facts.distribution_major_version == '13') or
+        (ansible_facts.distribution == 'Ubuntu' and ansible_facts.distribution_version == '26.04')
+      - ansible_facts.architecture in ['x86_64', 'aarch64']
+      - py_phone_caller_git_repo | length == 0
+      - py_phone_caller_local_src_path | length > 0
+      - py_phone_caller_uv_extra_index_url | length == 0
+      - py_phone_caller_uv_insecure_host | length == 0
+      - py_phone_caller_maturin_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+    fail_msg: >-
+      Air-gapped installation supports Debian 13 / Ubuntu 26.04 with signed file: APT mirrors,
+      an explicit controller-local source tree and fully staged target inputs only.
+      Remove Git delivery and extra/insecure indexes; no online fallback is available.
+
+- name: Keep pending service handlers disabled until the complete offline install succeeds
+  ansible.builtin.set_fact:
+    _ppc_airgap_install_ready: false
+
+- name: Refuse runtime environment overrides that reenable public model downloads
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_airgap_runtime_environment.PPC_OFFLINE == '1'
+      - py_phone_caller_airgap_runtime_environment.HF_HUB_OFFLINE == '1'
+      - py_phone_caller_airgap_runtime_environment.TRANSFORMERS_OFFLINE == '1'
+      - py_phone_caller_airgap_runtime_environment.HF_DATASETS_OFFLINE == '1'
+      - py_phone_caller_airgap_runtime_environment.HF_HUB_DISABLE_TELEMETRY == '1'
+      - py_phone_caller_airgap_runtime_environment.HF_HOME == py_phone_caller_airgap_bundle_dir ~ '/models/huggingface'
+      - py_phone_caller_airgap_runtime_environment.TORCH_HOME == py_phone_caller_airgap_bundle_dir ~ '/models/torch'
+      - py_phone_caller_airgap_runtime_environment.XDG_CACHE_HOME == py_phone_caller_airgap_bundle_dir ~ '/models/cache'
+    fail_msg: Air-gapped runtime flags and model caches must retain the reviewed local-only policy.
+
+- name: Validate non-removable private-only service network isolation
+  stack_airgap_check:
+    operation: policy
+    networks: "{{ py_phone_caller_airgap_networks }}"
+    deny: "{{ py_phone_caller_service_ip_address_deny }}"
+    allow: "{{ py_phone_caller_service_ip_address_allow }}"
+
+- name: Validate all active APT sources and effective configuration before mutations
+  ansible.builtin.import_tasks: apt.yml
+
+- name: Verify the complete controller-local source manifest
+  stack_airgap_check:
+    operation: source
+    root: "{{ py_phone_caller_local_src_path }}"
+    manifest_path: "{{ py_phone_caller_airgap_source_manifest_path }}"
+    checksum: "{{ py_phone_caller_airgap_source_manifest_checksum }}"
+  delegate_to: localhost
+  become: false
+  register: _ppc_airgap_source
+
+- name: Verify the complete target bundle before executing any staged binary
+  ansible.builtin.import_tasks: bundle.yml
+
+- name: Require kernel network namespaces before any installation
+  ansible.builtin.command:
+    argv: [/usr/bin/unshare, --net, --, /usr/bin/true]
+  changed_when: false
+  check_mode: false
+
+- name: Check the verified staged Python version without network access
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/unshare
+      - --net
+      - --
+      - /usr/bin/env
+      - -i
+      - "{{ py_phone_caller_airgap_bundle_dir }}/python/bin/python3.14"
+      - -I
+      - -B
+      - -c
+      - "import platform; print(platform.python_version()); print(platform.machine())"
+  register: _ppc_airgap_python_version
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _ppc_airgap_python_version.rc != 0 or
+    _ppc_airgap_python_version.stdout_lines != [py_phone_caller_python_version, ansible_facts.architecture]
+
+- name: Check the verified staged uv version without network access
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/unshare
+      - --net
+      - --
+      - /usr/bin/env
+      - -i
+      - "{{ py_phone_caller_airgap_bundle_dir }}/bin/uv"
+      - --version
+  register: _ppc_airgap_uv_version
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _ppc_airgap_uv_version.rc != 0 or
+    not _ppc_airgap_uv_version.stdout.startswith('uv ' ~ py_phone_caller_uv_version ~ ' ')
+    and _ppc_airgap_uv_version.stdout != 'uv ' ~ py_phone_caller_uv_version

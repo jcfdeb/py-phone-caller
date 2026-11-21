@@ -1,0 +1,31 @@
+---
+- name: Read effective legacy service definition without changing it
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ openalert_instance.service_name }}"
+      - --property=FragmentPath,DropInPaths,User,Group,WorkingDirectory,ExecStart,Environment,EnvironmentFiles,RootDirectory,RootImage,DynamicUser,ExecStartPre,ExecStartPost,ExecStop,ExecStopPost,ExecCondition,BindPaths,BindReadOnlyPaths
+  register: openalert_legacy_properties
+  changed_when: false
+  no_log: true
+
+- name: Prove exact legacy topology before permitting unmanaged conflicts
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/openalert_lifecycle.py') }}"
+      - adoption
+      - --instance
+      - "{{ openalert_instance | to_json }}"
+      - --legacy
+      - "{{ openalert_legacy_instances[openalert_instance.name] | to_json }}"
+      - --properties
+      - "{{ openalert_legacy_properties.stdout }}"
+  changed_when: false
+  no_log: true
+
+- name: Record only successfully validated adoption exceptions
+  ansible.builtin.set_fact:
+    openalert_approved_adoptions: "{{ openalert_approved_adoptions + [openalert_instance.name] }}"

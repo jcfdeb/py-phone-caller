@@ -153,6 +153,7 @@ def convert_numbers_in_string(text, lang="es"):
         "eng": "en",
         "fra": "fr",
         "deu": "de",
+        "nld": "nl",
         "por": "pt",
         "rus": "ru",
     }
@@ -172,6 +173,27 @@ def convert_numbers_in_string(text, lang="es"):
 
     pattern = r"\b\d+(\.\d+)?\b"
     return re.sub(pattern, replace_number, text)
+
+
+import threading
+
+_MMS_CACHE_LOCK = threading.Lock()
+_MMS_MODEL_CACHE: dict[str, tuple[VitsModel, AutoTokenizer, torch.device]] = {}
+
+
+def _load_mms_model(model_path: str):
+    """Load and cache Facebook MMS VitsModel and tokenizer in memory."""
+    with _MMS_CACHE_LOCK:
+        cached = _MMS_MODEL_CACHE.get(model_path)
+        if cached is not None:
+            return cached
+        model = VitsModel.from_pretrained(model_path, low_cpu_mem_usage=False)
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
+        model.eval()
+        _MMS_MODEL_CACHE[model_path] = (model, tokenizer, device)
+        return model, tokenizer, device
 
 
 def text_to_speech_facebook_mms(text, lang_code=None, output_path=None, model_path=None, speed=1.0):
@@ -194,7 +216,7 @@ def text_to_speech_facebook_mms(text, lang_code=None, output_path=None, model_pa
         RuntimeError: If audio generation fails.
     """
     effective_lang = lang_code or FACEBOOK_MMS_LANGUAGE_CODE
-    num2words_lang = FACEBOOK_MMS_NUM2WORDS_LANGUAGE_CODE or effective_lang
+    num2words_lang = effective_lang or FACEBOOK_MMS_NUM2WORDS_LANGUAGE_CODE
 
     resolved_path = resolve_mms_model_path(effective_lang, model_path)
     logging.info(f"MMS: loading model for language '{effective_lang}' from {resolved_path}...")
@@ -215,7 +237,7 @@ def text_to_speech_facebook_mms(text, lang_code=None, output_path=None, model_pa
 
 
 def create_audio_through_facebook_mms(model_path, text, output_path, speed=1.0):
-    """Generates speech audio from text using a Facebook MMS model.
+    """Generates speech audio from text using a cached Facebook MMS model.
 
     Loads a pre-trained Facebook MMS model, tokenizes the input text,
     generates the corresponding waveform, and saves it as a WAV file
@@ -230,11 +252,7 @@ def create_audio_through_facebook_mms(model_path, text, output_path, speed=1.0):
     Returns:
         None
     """
-    model = VitsModel.from_pretrained(model_path, low_cpu_mem_usage=False)
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
+    model, tokenizer, device = _load_mms_model(model_path)
 
     logging.info("MMS: tokenizing input...")
     inputs = tokenizer(text, return_tensors="pt").to(device)
@@ -267,7 +285,14 @@ def create_audio_through_facebook_mms(model_path, text, output_path, speed=1.0):
     logging.info(
         f"MMS: Saving audio to {output_path} as 16-bit PCM at {target_sampling_rate}Hz..."
     )
-    if os.path.dirname(output_path):
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    scipy.io.wavfile.write(output_path, rate=target_sampling_rate, data=waveform_pcm)
+    out_p = Path(output_path)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    tmp_p = out_p.with_name(f".{out_p.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        scipy.io.wavfile.write(str(tmp_p), rate=target_sampling_rate, data=waveform_pcm)
+        os.replace(tmp_p, out_p)
+    except Exception:
+        if tmp_p.exists():
+            tmp_p.unlink(missing_ok=True)
+        raise
     logging.info("MMS: audio generation done.")

@@ -7,7 +7,7 @@ payload parameters, and returns standardized JSON responses.
 
 import logging
 import sys
-from aiohttp import web
+from aiohttp import client_exceptions, web
 from py_phone_caller_utils.web import (
     create_service_catalog,
     extract_params,
@@ -30,7 +30,10 @@ from asterisk_caller.constants import (
     ASTERISK_URL,
     ASTERISK_USER,
 )
-from asterisk_caller.exceptions import OnCallPhoneUnavailable
+from asterisk_caller.exceptions import (
+    AriEndpointUnavailableError,
+    OnCallPhoneUnavailable,
+)
 from asterisk_caller.schemas import (
     PlaceCallPayload,
     PlayAudioPayload,
@@ -122,10 +125,38 @@ async def place_call(
     except OnCallPhoneUnavailable as err:
         logging.warning(f"Unable to place call: {err}")
         return web.json_response({"status": 400, "error": str(err)}, status=400)
+    except AriEndpointUnavailableError as err:
+        logging.warning(f"Asterisk endpoint unavailable while placing call: {err}")
+        return web.json_response(
+            {"status": err.status, "error": str(err)},
+            status=err.status,
+        )
     except web.HTTPServiceUnavailable:
         return web.json_response(
             {"status": 503, "error": "Asterisk PBX circuit breaker open"},
             status=503,
+        )
+    except web.HTTPBadRequest as err:
+        return web.json_response(
+            {"status": 400, "error": err.reason or str(err)},
+            status=400,
+        )
+    except client_exceptions.ClientResponseError as err:
+        err_status = err.status if err.status and err.status >= 400 else 500
+        err_msg = err.message or f"Asterisk ARI server error: {err_status}"
+        logging.error(f"Asterisk ARI failed while placing call: {err_msg}")
+        return web.json_response(
+            {"status": err_status, "error": err_msg},
+            status=err_status,
+        )
+
+    if call_resp.status != 200:
+        return web.json_response(
+            {
+                "status": call_resp.status,
+                "error": f"Asterisk ARI rejected call with HTTP {call_resp.status}",
+            },
+            status=call_resp.status,
         )
 
     return web.json_response({"status": call_resp.status})

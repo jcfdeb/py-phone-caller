@@ -1060,7 +1060,7 @@ impl NostrSubscriber {
                 unwrapped.content.trim()
             );
 
-            let response_text = amatch self.execute_c2_command(&unwrapped.content, Some(&unwrapped.tags)).await {
+            let response_text = match self.execute_c2_command(&unwrapped.content, Some(&unwrapped.tags)).await {
                 Ok(resp) => resp,
                 Err(err) => format!("❌ Command Error: {}", err),
             };

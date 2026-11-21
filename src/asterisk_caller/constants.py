@@ -20,6 +20,7 @@ CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT = (
 ASTERISK_ARI_CHANNELS = settings.asterisk_call.asterisk_ari_channels
 ASTERISK_PLAY_ERROR = settings.logs.asterisk_play_error
 GENERATE_AUDIO_URL = f"{settings.generate_audio.generate_audio_http_scheme}://{settings.generate_audio.generate_audio_host}:{settings.generate_audio.generate_audio_port}"
+GENERATE_AUDIO_APP_ROUTE = settings.generate_audio.generate_audio_app_route
 SERVING_AUDIO_FOLDER = settings.generate_audio.serving_audio_folder
 ASTERISK_ARI_PLAY = settings.asterisk_call.asterisk_ari_play
 ASTERISK_CALL_APP_ROUTE_PLACE_CALL = (

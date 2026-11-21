@@ -4,14 +4,13 @@
 #   ansible-playbook -i /path/to/private/hosts.yml verify.yml
 
 - name: Verify the py-phone-caller deployment
-  hosts: "{{ stack_hosts | default('app_servers') }}"
+  hosts: "{{ stack_hosts | default('stack') }}"
   gather_facts: true
-
-  vars_files:
-    - roles/deploy_py-phone-caller/defaults/main.yml
 
   vars:
     py_phone_caller_verify_settle_seconds: 20
+    _verify_service_prefix: "{{ py_phone_caller_service_prefix | default('py-phone-caller-') }}"
+    _verify_services: "{{ py_phone_caller_services | default([{'name': 'caller_register'}, {'name': 'asterisk_caller'}, {'name': 'asterisk_recaller'}, {'name': 'asterisk_ws_monitor'}, {'name': 'caller_address_book'}, {'name': 'caller_prometheus_webhook'}, {'name': 'caller_scheduler'}, {'name': 'caller_sms'}, {'name': 'generate_audio'}, {'name': 'py_phone_caller_ui'}, {'name': 'celery_worker'}]) }}"
     # aiohttp services expose /health from py_phone_caller_utils.telemetry.
     py_phone_caller_verify_endpoints:
       - { name: asterisk_caller, port: 8081 }
@@ -32,9 +31,9 @@
       ansible.builtin.set_fact:
         _units:
           files: >-
-            {{ _units.files + [{'path': '/etc/systemd/system/' ~ py_phone_caller_service_prefix
+            {{ _units.files + [{'path': '/etc/systemd/system/' ~ _verify_service_prefix
               ~ (item.name | replace('_', '-')) ~ '.service'}] }}
-      loop: "{{ py_phone_caller_services }}"
+      loop: "{{ _verify_services }}"
       loop_control:
         label: "{{ item.name }}"
 
@@ -94,7 +93,7 @@
 
     - name: Probe the web UI directly
       ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ py_phone_caller_config.py_phone_caller_ui.ui_listen_on_port | default(5000) }}/"
+        url: "http://127.0.0.1:{{ ((py_phone_caller_config | default({})).get('py_phone_caller_ui', {})).get('ui_listen_on_port', 5000) }}/"
         status_code: [200, 302, 401]
         timeout: 10
       register: _ui_direct

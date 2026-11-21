@@ -7,7 +7,16 @@ name = "asterisk-caller"
 version = "1.0.0"
 description = "Asterisk Caller service for py-phone-caller"
 readme = "README.md"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "py-phone-caller contributors" }]
 requires-python = ">=3.14, <3.15"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Telephony",
+]
 dependencies = [
     "py_phone_caller_utils",
     "aiohttp>=3.9.0",
@@ -15,8 +24,18 @@ dependencies = [
     "aiobreaker>=1.2.0",
 ]
 
+[project.scripts]
+ppc-asterisk-caller = "asterisk_caller.asterisk_caller:main"
+
+[tool.setuptools]
+packages = ["asterisk_caller"]
+
 [tool.setuptools.package-dir]
 asterisk_caller = "."
 
 [tool.setuptools.package-data]
-asterisk_caller = ["*"]
+asterisk_caller = ["*.py", "README.md"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["Dockerfile*", "pyproject.toml"]
+

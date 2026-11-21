@@ -1,0 +1,139 @@
+---
+# May also be included by the parent before any host mutations.
+- name: Validate optional private-CA and hostname mapping inputs
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_gateway_extra_hosts | default({}) is mapping
+      - py_phone_caller_tls_ca_bundle | default('') == '' or py_phone_caller_tls_ca_bundle is match('^/[A-Za-z0-9_./-]+$')
+    fail_msg: Private issuer trust requires an absolute CA bundle path and explicit hostname mappings.
+
+- name: Validate safe gateway hostname arguments
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^[A-Za-z0-9][A-Za-z0-9.-]+$')
+      - item.value is match('^[0-9a-fA-F:.]+$')
+    fail_msg: Gateway hostname mappings must contain plain hostnames and IP addresses only.
+  loop: "{{ py_phone_caller_gateway_extra_hosts | default({}) | dict2items }}"
+
+- name: Require operator-provisioned Keycloak PostgreSQL
+  ansible.builtin.assert:
+    that:
+      - gateway_keycloak_postgresql_url | default('') is match('^jdbc:postgresql://[a-zA-Z0-9.\[\]:_-]+/[a-zA-Z0-9_-]+([?][a-zA-Z0-9_=&.%-]+)?$')
+      - gateway_keycloak_postgresql_username | default('') is match('^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$')
+      - gateway_keycloak_postgresql_password | default('') | length > 0
+      - gateway_keycloak_postgresql_password | default('') is not search('[\r\n\x00]')
+    fail_msg: >-
+      Supply gateway_keycloak_postgresql_url, gateway_keycloak_postgresql_username
+      and gateway_keycloak_postgresql_password for an existing dedicated PostgreSQL database.
+    quiet: true
+  no_log: true
+  when: py_phone_caller_topology | default('legacy') != 'legacy'
+
+- name: Require reviewed gateway image digests
+  ansible.builtin.assert:
+    that:
+      - item is match('^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$')
+    fail_msg: Managed gateway images must use inventory-reviewed registry/name@sha256 digests.
+    quiet: true
+  loop:
+    - "{{ py_phone_caller_etcd_image }}"
+    - "{{ py_phone_caller_apisix_image }}"
+    - "{{ py_phone_caller_apisix_dashboard_image }}"
+    - "{{ py_phone_caller_keycloak_image }}"
+
+- name: Inspect preloaded offline gateway images
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/podman
+      - image
+      - inspect
+      - "{{ item }}"
+  loop:
+    - "{{ py_phone_caller_etcd_image }}"
+    - "{{ py_phone_caller_apisix_image }}"
+    - "{{ py_phone_caller_apisix_dashboard_image }}"
+    - "{{ py_phone_caller_keycloak_image }}"
+  register: gateway_offline_images
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: py_phone_caller_connectivity | default('online') == 'airgapped'
+
+- name: Require locally available reviewed image digests
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - item.item in ((item.stdout | from_json | first).RepoDigests | default([]))
+    fail_msg: Preload each reviewed digest in rootful Podman before deployment; offline pulls are forbidden.
+    quiet: true
+  loop: "{{ gateway_offline_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: py_phone_caller_connectivity | default('online') == 'airgapped'
+
+- name: Inspect existing gateway listeners
+  ansible.builtin.command:
+    cmd: ss -H -ltnp
+  register: gateway_existing_listeners
+  changed_when: false
+  check_mode: false
+  when: py_phone_caller_topology | default('legacy') != 'legacy'
+
+- name: Inspect existing named gateway containers
+  ansible.builtin.command:
+    argv: [/usr/bin/podman, container, inspect, "{{ item }}"]
+  loop: [etcd, apisix, apisix-dashboard, keycloak]
+  register: gateway_existing_containers
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: py_phone_caller_topology | default('legacy') != 'legacy'
+
+- name: Refuse foreign named gateway containers
+  ansible.builtin.assert:
+    that:
+      - (item.stdout | from_json | first).Config.Labels.get('io.py-phone-caller.managed', '') == 'gateway'
+    fail_msg: A gateway container name is already in use without the deployment ownership label; resolve manually.
+    quiet: true
+  no_log: true
+  loop: "{{ gateway_existing_containers.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - py_phone_caller_topology | default('legacy') != 'legacy'
+    - item.rc == 0
+
+- name: Read host PIDs of owned gateway containers
+  ansible.builtin.command:
+    argv: [/usr/bin/podman, top, "{{ item.item }}", hpid]
+  loop: "{{ gateway_existing_containers.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: gateway_owned_processes
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when:
+    - py_phone_caller_topology | default('legacy') != 'legacy'
+    - item.rc == 0
+    - (item.stdout | from_json | first).State.Running
+
+- name: Refuse foreign gateway listener ownership
+  ansible.builtin.assert:
+    that:
+      - item | regex_findall('pid=([0-9]+)') | length > 0
+      - item | regex_findall('pid=([0-9]+)') | difference(gateway_listener_pids) | length == 0
+      - item is search('^\\S+\\s+\\d+\\s+\\d+\\s+(127[.]0[.]0[.]1|\\[::1\\]|\\[::ffff:127[.]0[.]0[.]1\\]):[0-9]+\\s')
+    fail_msg: A gateway port has a foreign or non-loopback listener; resolve ownership manually before deployment.
+    quiet: true
+  vars:
+    gateway_listener_pids: >-
+      {{ gateway_owned_processes.results | selectattr('stdout_lines', 'defined')
+         | map(attribute='stdout_lines') | flatten | map('trim') | list }}
+    gateway_listener_ports: >-
+      {{ [py_phone_caller_gateway_http_port, py_phone_caller_gateway_https_port,
+          py_phone_caller_gateway_dashboard_port, py_phone_caller_keycloak_http_port,
+          py_phone_caller_keycloak_https_port, 9180, 9091, 9009, 2379, 2380] | map('string') | join('|') }}
+  loop: "{{ gateway_existing_listeners.stdout_lines | default([]) | select('search', ':(' ~ gateway_listener_ports ~ ')[ ]') | list }}"
+  when: py_phone_caller_topology | default('legacy') != 'legacy'

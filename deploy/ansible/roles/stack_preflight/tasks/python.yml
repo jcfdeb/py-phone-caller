@@ -12,3 +12,14 @@
       - py_phone_caller_config | length > 0
     fail_msg: Supply Python configuration and Vault variables explicitly; the live inventory is never loaded automatically.
   no_log: true
+
+- name: Validate application topology before any component mutates the host
+  ansible.builtin.include_role:
+    name: deploy_py-phone-caller
+    tasks_from: topology
+    public: true
+
+- name: Inspect selected topology host prerequisites before component installation
+  ansible.builtin.include_role:
+    name: deploy_py-phone-caller
+    tasks_from: topology_host

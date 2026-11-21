@@ -1,0 +1,24 @@
+---
+- name: Refuse Tucny downgrades or unexpected installed RPM identities before mutations
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.packages[item] | length == 1
+      - ansible_facts.packages[item][0].epoch | default(0, true) | int == 0
+      - ansible_facts.packages[item][0].arch == ('noarch' if item.startswith('asterisk-sounds-') else 'x86_64')
+      - >-
+        (ansible_facts.packages[item][0].version ~ '-' ~ ansible_facts.packages[item][0].release)
+        is match('^[0-9]+[.][0-9]+[.][0-9]+-[0-9]+[.]el10$')
+      - >-
+        (ansible_facts.packages[item][0].version ~ '-' ~ ansible_facts.packages[item][0].release)
+        is version(asterisk_tucny_sounds_version if item.startswith('asterisk-sounds-') else asterisk_tucny_version, '<=')
+    fail_msg: >-
+      Installed Tucny RPM is newer than inventory or has an unexpected identity.
+      Review and advance the exact inventory pin; automatic downgrades are forbidden.
+  loop:
+    - asterisk
+    - asterisk-pjsip
+    - asterisk-curl
+    - asterisk-iax2
+    - asterisk-sounds-core-en
+    - asterisk-sounds-core-en-wav
+  when: item in ansible_facts.packages

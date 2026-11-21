@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl stop openalertd.service >/dev/null 2>&1 || true
+    systemctl disable openalertd.service >/dev/null 2>&1 || true
+fi
+
+exit 0

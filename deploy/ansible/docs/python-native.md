@@ -59,7 +59,13 @@ production inventories must supply their own approved checksum.
 
 The role retains `uv sync --frozen --all-packages --no-dev`. Selecting another
 TTS engine does not omit the other locked dependencies. CPU/model inference,
-modem hardware and capacity tests are separate from service startup.
+modem hardware and capacity tests are separate from service startup. For single-board
+and resource-bounded hosts, `py_phone_caller_ui_workers`,
+`py_phone_caller_ui_threads`, `py_phone_caller_celery_concurrency`,
+`py_phone_caller_service_{cpu_quota,memory_high,memory_max,tasks_max}` and
+`py_phone_caller_service_resource_overrides` tune Gunicorn, Celery and per-unit
+`systemd` cgroup limits without modifying role templates; see the
+[ARM64 appliance profile](appliance-arm64.md).
 
 ## Ownership and compatibility
 

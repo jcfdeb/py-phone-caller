@@ -7,6 +7,7 @@
   listen: Restart audio service
   notify: Restart affected Python services
   changed_when: true
+  when: py_phone_caller_connectivity | default('online') != 'airgapped' or _ppc_airgap_install_ready | default(false)
 
 - name: Record SMS dependency changes
   ansible.builtin.set_fact:
@@ -14,11 +15,13 @@
   listen: Restart SMS services
   notify: Restart affected Python services
   changed_when: true
+  when: py_phone_caller_connectivity | default('online') != 'airgapped' or _ppc_airgap_install_ready | default(false)
 
 - name: Record shared Python dependency changes
   ansible.builtin.set_fact:
     _ppc_changed_services: "{{ py_phone_caller_services | map(attribute='name') | list }}"
   listen: Restart py-phone-caller services
+  when: py_phone_caller_connectivity | default('online') != 'airgapped' or _ppc_airgap_install_ready | default(false)
 
 - name: Inspect explicitly owned Python units
   ansible.builtin.stat:
@@ -26,7 +29,9 @@
   loop: "{{ py_phone_caller_services }}"
   register: _ppc_units_to_restart
   listen: [Restart py-phone-caller services, Restart affected Python services]
-  when: py_phone_caller_manage_services | bool
+  when:
+    - py_phone_caller_manage_services | bool
+    - py_phone_caller_connectivity | default('online') != 'airgapped' or _ppc_airgap_install_ready | default(false)
 
 - name: Restart affected installed Python units
   ansible.builtin.systemd_service:
@@ -38,6 +43,7 @@
     label: "{{ item.item.name }}"
   when:
     - py_phone_caller_manage_services | bool
+    - py_phone_caller_connectivity | default('online') != 'airgapped' or _ppc_airgap_install_ready | default(false)
     - item.stat.exists | default(false)
     - item.item.name in (_ppc_changed_services | default([]))
   listen: [Restart py-phone-caller services, Restart affected Python services]

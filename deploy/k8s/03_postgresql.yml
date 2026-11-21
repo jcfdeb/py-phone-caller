@@ -60,7 +60,10 @@ spec:
             - name: POSTGRES_USER
               value: "py_phone_caller"
             - name: POSTGRES_PASSWORD
-              value: "use-a-secure-password"
+              valueFrom:
+                secretKeyRef:
+                  name: py-phone-caller-secrets
+                  key: POSTGRES_PASSWORD
           volumeMounts:
             - name: storage
               mountPath: /var/lib/postgresql/data

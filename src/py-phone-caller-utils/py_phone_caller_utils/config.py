@@ -29,6 +29,10 @@ def get_config_dir():
 
     current_file = Path(__file__).resolve()
 
+    p_prod_config = current_file.parent.parent.parent.parent / "py-phone-caller" / "config"
+    if p_prod_config.is_dir():
+        return p_prod_config
+
     p_src_config = current_file.parent.parent.parent.parent / "src" / "config"
     if p_src_config.is_dir():
         return p_src_config
@@ -37,6 +41,10 @@ def get_config_dir():
     if p_alt_config.is_dir():
         return p_alt_config
 
+    p_cwd_prod_config = Path.cwd() / "py-phone-caller" / "config"
+    if p_cwd_prod_config.is_dir():
+        return p_cwd_prod_config
+
     p_cwd_src_config = Path.cwd() / "src" / "config"
     if p_cwd_src_config.is_dir():
         return p_cwd_src_config
@@ -44,6 +52,10 @@ def get_config_dir():
     p_cwd_config = Path.cwd() / "config"
     if p_cwd_config.is_dir():
         return p_cwd_config
+
+    p_etc_config = Path("/etc/py-phone-caller")
+    if p_etc_config.is_dir():
+        return p_etc_config
 
     return p_src_config
 

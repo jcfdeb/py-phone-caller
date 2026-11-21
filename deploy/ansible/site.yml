@@ -7,6 +7,11 @@
     - name: Validate stack inputs before host changes
       ansible.builtin.include_role:
         name: stack_preflight
+        apply:
+          tags:
+            - always
+      tags:
+        - always
 
     - name: Deploy independently managed OpenAlert instances
       ansible.builtin.include_role:
@@ -34,3 +39,5 @@
       ansible.builtin.include_role:
         name: deploy_py-phone-caller
       when: stack_deploy_py_phone_caller
+      tags:
+        - always

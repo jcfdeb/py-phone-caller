@@ -14,39 +14,45 @@ FROM docker.io/library/rust:1-slim-bookworm AS builder
 
 ARG OPENALERT_DIR=.
 
-# Install minimal native C headers required for BlueZ D-Bus (bluer), libudev (tokio-serial), and bundled SQLite
+# Install minimal native C headers and toolchain required for BlueZ D-Bus (bluer), libudev (tokio-serial), oqs-sys (bitchat-qudag), and bundled SQLite
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libdbus-1-dev \
     libudev-dev \
+    libssl-dev \
     build-essential \
+    cmake \
+    ninja-build \
+    clang \
+    libclang-dev \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+ENV CMAKE_BUILD_PARALLEL_LEVEL=4 \
+    CMAKE_GENERATOR=Ninja
 WORKDIR /usr/src/openalertd
 
 # 1. Dependency caching layer: compile external crates once before copying application source
 COPY ${OPENALERT_DIR}/Cargo.toml ${OPENALERT_DIR}/Cargo.lock ./
-RUN mkdir -p src && \
-    echo "pub fn placeholder() {}" > src/lib.rs && \
-    echo "fn main() {}" > src/main.rs && \
-    cargo build --release --locked && \
-    rm -rf src
-
-# 2. Copy actual OpenAlert Rust sources, templates, and default configuration
 COPY ${OPENALERT_DIR}/src ./src
 COPY ${OPENALERT_DIR}/templates ./templates
 COPY ${OPENALERT_DIR}/config ./config
 
-# 3. Compile final release binary and strip debug symbols for optimal image size
-RUN touch src/lib.rs src/main.rs && \
-    cargo build --release --locked && \
-    strip /usr/src/openalertd/target/release/openalertd
+# 2. Compile final release binary (or use pre-compiled Linux ELF binary if present at ./openalertd-prebuilt)
+COPY ${OPENALERT_DIR}/openalertd-prebuilt* ./
+RUN if [ -f ./openalertd-prebuilt ] && head -c 4 ./openalertd-prebuilt | grep -q "ELF"; then \
+      echo "Using prebuilt openalertd Linux ELF binary..."; \
+      mkdir -p /usr/src/openalertd/target/release && \
+      cp ./openalertd-prebuilt /usr/src/openalertd/target/release/openalertd; \
+    else \
+      cargo build --release --locked && \
+      strip /usr/src/openalertd/target/release/openalertd; \
+    fi
 
 # ------------------------------------------------------------------------------
-# Stage 2: Minimal Hardened Production Runtime (Debian Bookworm Slim)
+# Stage 2: Minimal Hardened Production Runtime (Debian Trixie Slim)
 # ------------------------------------------------------------------------------
-FROM docker.io/library/debian:bookworm-slim AS runtime
+FROM docker.io/library/debian:trixie-slim AS runtime
 
 LABEL org.opencontainers.image.title="OpenAlert Daemon (openalertd)" \
       org.opencontainers.image.version="1.0.0" \

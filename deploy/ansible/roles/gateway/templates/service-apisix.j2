@@ -12,8 +12,23 @@ RestartSec=10s
 ExecStartPre=-/usr/bin/podman stop apisix
 ExecStartPre=-/usr/bin/podman rm apisix
 ExecStart=/usr/bin/podman run --name apisix --net=host --group-add 0 \
+{% if py_phone_caller_connectivity | default('online') == 'airgapped' %}
+  --pull=never \
+{% endif %}
+{% if py_phone_caller_topology | default('legacy') != 'legacy' %}
+  --label io.py-phone-caller.managed=gateway \
+{% endif %}
   -v /etc/py-phone-caller/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro,Z \
+{% if py_phone_caller_tls_ca_bundle | default('') %}
+  --label io.py-phone-caller.issuer-ca={{ py_phone_caller_tls_ca_stat.stat.checksum | default('unrecorded') }} \
+  -v {{ py_phone_caller_tls_ca_bundle }}:/opt/issuer-ca.pem:ro,z \
+{% endif %}
+{% for hostname, address in (py_phone_caller_gateway_extra_hosts | default({})).items() %}
+  --add-host={{ hostname }}:{{ address }} \
+{% endfor %}
+{% if py_phone_caller_topology | default('legacy') == 'legacy' %}
   -v /etc/py-phone-caller/certs:/opt/certs:ro,z \
+{% endif %}
   {{ py_phone_caller_apisix_image }}
 ExecStop=/usr/bin/podman stop -t 10 apisix
 

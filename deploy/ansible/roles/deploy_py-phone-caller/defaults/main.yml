@@ -32,6 +32,28 @@ py_phone_caller_uv_installer_checksum: ""
 py_phone_caller_maturin_version: "1.9.6"
 py_phone_caller_spacy_model_url: "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
 py_phone_caller_spacy_model_checksum: ""
+# Set true to install en_core_web_sm even when kokoro_tts is not the default
+# tts_engine (required when Kokoro English voices are selected per-call at runtime).
+py_phone_caller_install_spacy_model: false
+# Set true to install Kokoro Japanese (ja) and Chinese (zh) G2P tokenizers even
+# when kokoro_tts is not the default tts_engine. Installed automatically whenever
+# tts_engine == 'kokoro_tts'. Uses unidic-lite (self-contained) instead of unidic
+# so Japanese G2P requires zero runtime dictionary downloads.
+py_phone_caller_install_kokoro_cjk: false
+py_phone_caller_kokoro_cjk_packages:
+  # Chinese (misaki[zh])
+  - cn2an==0.5.24
+  - jieba==0.42.1
+  - ordered-set==4.1.0
+  - proces==0.1.7
+  - pypinyin==0.55.0
+  - pypinyin-dict==0.9.0
+  # Japanese (misaki[ja], offline dictionary via unidic-lite)
+  - fugashi==1.5.2
+  - jaconv==0.5.0
+  - mojimoji==0.0.13
+  - pyopenjtalk==0.4.1
+  - unidic-lite==1.0.8
 py_phone_caller_uv_python_install_dir: "{{ py_phone_caller_install_dir }}/.uv/python"
 py_phone_caller_uv_cache_dir: "{{ py_phone_caller_install_dir }}/.uv/cache"
 # Set for air-gapped sites that mirror PyPI. Left empty, uv talks to PyPI.
@@ -102,6 +124,7 @@ py_phone_caller_sync_excludes:
 # Anything listed here is neither uploaded nor removed.
 py_phone_caller_sync_protected:
   - "/data/"
+  - "/models/"
   - "/.source/"
   - "/venv/"
   - "/bin/"
@@ -130,11 +153,24 @@ py_phone_caller_sync_protected:
 # ---------------------------------------------------------------------------
 # Feature switches
 # ---------------------------------------------------------------------------
+py_phone_caller_topology: legacy
+py_phone_caller_ingress: legacy
+py_phone_caller_connectivity: online
+py_phone_caller_tls_mode: legacy
+py_phone_caller_tls_certificate: ""
+py_phone_caller_tls_private_key: ""
+py_phone_caller_tls_ca_bundle: ""
+py_phone_caller_gateway_extra_hosts: {}
+# Air-gapped hosts must enforce isolation outside this role as well (including
+# browsers and containers). These allow only declared internal runtime peers.
+py_phone_caller_airgap_networks: []
 py_phone_caller_manage_queue: "{{ py_phone_caller_final_config.queue.queue_host in py_phone_caller_local_db_hosts }}"
 py_phone_caller_manage_database: true
 py_phone_caller_manage_postgresql: "{{ (py_phone_caller_manage_database | bool) and (py_phone_caller_manage_local_postgres | bool) }}"
 py_phone_caller_manage_caddy: true
-py_phone_caller_manage_reverse_proxy: "{{ py_phone_caller_manage_caddy | bool }}"
+py_phone_caller_manage_reverse_proxy: >-
+  {{ (py_phone_caller_manage_caddy | bool) if py_phone_caller_topology == 'legacy'
+     else py_phone_caller_ingress == 'caddy' }}
 # Install Caddy even when another proxy already owns :80/:443. Off by default:
 # a NAT REDIRECT from another proxy silently swallows every request, and the
 # only symptom is a TLS handshake failure.
@@ -144,10 +180,10 @@ py_phone_caller_manage_services: true
 # Optional systemd cgroup network filters, applied to every Python unit.
 # The runtime smoke fixture allows only localhost; production may need remote
 # PBX, database, queue and cloud API addresses. These do not change bind hosts.
-py_phone_caller_service_ip_address_allow: []
-py_phone_caller_service_ip_address_deny: []
+py_phone_caller_service_ip_address_allow: "{{ ['localhost'] + py_phone_caller_airgap_networks if py_phone_caller_connectivity == 'airgapped' else [] }}"
+py_phone_caller_service_ip_address_deny: "{{ ['any'] if py_phone_caller_connectivity == 'airgapped' else [] }}"
 # Deploys Apache APISIX and Keycloak IAM in front of py-phone-caller (opt-in)
-py_phone_caller_manage_gateway: false
+py_phone_caller_manage_gateway: "{{ py_phone_caller_topology == 'enterprise' }}"
 # Uninstall compilers once the venv is built. Off by default: it makes the next
 # run unable to rebuild native wheels and "apt/dnf autoremove" can cascade.
 py_phone_caller_remove_build_deps: false
@@ -432,6 +468,23 @@ py_phone_caller_secret_paths:
   - auth.oauth2.client_secret
 
 # ---------------------------------------------------------------------------
+# Appliance / resource-limit controls (used by Orange Pi 5 Plus / SBC profiles)
+# ---------------------------------------------------------------------------
+py_phone_caller_ui_workers: 4
+py_phone_caller_ui_threads: 16
+py_phone_caller_ui_timeout: 120
+# Optional integer (>0) passed as --concurrency to Celery worker when set.
+py_phone_caller_celery_concurrency: 0
+# Optional systemd resource directives applied to all Python units unless
+# overridden per-item in py_phone_caller_services or py_phone_caller_service_resource_overrides.
+py_phone_caller_service_cpu_quota: ""
+py_phone_caller_service_memory_high: ""
+py_phone_caller_service_memory_max: ""
+py_phone_caller_service_tasks_max: ""
+# Optional mapping keyed by service name (e.g. generate_audio: {cpu_quota: "200%", memory_max: "4G"})
+py_phone_caller_service_resource_overrides: {}
+
+# ---------------------------------------------------------------------------
 # systemd units. "module" runs "python -m <module>"; "gunicorn" and "celery"
 # use the matching console script from the venv.
 #
@@ -470,10 +523,7 @@ py_phone_caller_services:
   - name: py_phone_caller_ui
     description: "py-phone-caller: web dashboard"
     type: gunicorn
-    workers: 4
-    threads: 16
     worker_class: gthread
-    timeout: 120
   - name: celery_worker
     description: "py-phone-caller: Celery background worker"
     type: celery

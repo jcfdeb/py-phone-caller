@@ -1,4 +1,4 @@
-"""Opt-in PJSIP/IAX2 checks on one authorized disposable Debian or Ubuntu VM."""
+"""Opt-in PJSIP/IAX2 checks on one authorized disposable Debian, Ubuntu or Rocky VM."""
 
 import argparse
 import json
@@ -17,7 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--host", required=True)
-    parser.add_argument("--provider", choices=("allstarlink", "distro"), default="allstarlink")
+    parser.add_argument("--provider", choices=("allstarlink", "distro", "tucny"), default="allstarlink")
     parser.add_argument("--allow-disposable-changes", action="store_true", required=True)
     args = parser.parse_args()
     if not args.inventory.is_file() or not re.fullmatch(r"[A-Za-z0-9_-]+", args.host):
@@ -89,7 +89,9 @@ def main():
         raise AssertionError("Unchanged rerun altered service starts, modules or versions")
     print("PASS unchanged rerun: zero changes and identical service timestamps", flush=True)
     output = run("provider-conflict", {
-        "asterisk_package_provider": "distro" if args.provider == "allstarlink" else "allstarlink",
+        "asterisk_package_provider": {
+            "allstarlink": "distro", "distro": "allstarlink", "tucny": "distro",
+        }[args.provider],
     }, fails=True)
     if not any(message in output for message in (
         "Existing PBX provider conflicts", "AllStarLink requires Debian 13",

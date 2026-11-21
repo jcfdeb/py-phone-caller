@@ -61,6 +61,39 @@ class EntrypointTests(unittest.TestCase):
         self.assertNotIn("ansible.builtin.debug", content)
         self.assertNotIn("_ppc_keycloak", content)
 
+    def test_consolidation_removes_obsolete_duplicate_units_and_syncs_gateway_reference_copies(self):
+        repo_root = ANSIBLE.parents[1]
+        systemd_on_system = repo_root / "deploy/systemd/on-system"
+        for removed in (
+            "asterisk-call.service",
+            "call-register.service",
+            "caller_prometheus_webhook.service",
+            "caller_sms.service",
+        ):
+            self.assertFalse((systemd_on_system / removed).exists(), removed)
+        for canonical in (
+            "asterisk-caller.service",
+            "caller-register.service",
+            "caller-prometheus-webhook.service",
+            "caller-sms.service",
+        ):
+            self.assertTrue((systemd_on_system / canonical).is_file(), canonical)
+        self.assertEqual(
+            (systemd_on_system / "openalertd.service").read_bytes(),
+            (repo_root / "src/openalert/packaging/systemd/openalertd.service").read_bytes(),
+        )
+        self.assertEqual(
+            (repo_root / "deploy/gateway/keycloak/setup_keycloak.py").read_bytes(),
+            (ANSIBLE / "roles/gateway/files/setup_keycloak.py").read_bytes(),
+        )
+        self.assertEqual(
+            (repo_root / "deploy/gateway/apisix/setup_apisix_routes.py").read_bytes(),
+            (ANSIBLE / "roles/gateway/files/setup_apisix_routes.py").read_bytes(),
+        )
+        self.assertTrue((ANSIBLE / "docs/consolidation.md").is_file())
+        self.assertTrue((ANSIBLE / "rh/README.md").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
+

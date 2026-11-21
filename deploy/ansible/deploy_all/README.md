@@ -6,6 +6,12 @@ Python and Asterisk, and leaves OpenAlert off. Both implementations now live in
 [`../roles/`](../roles/). Start new deployments with the
 [canonical installer guide](../README.md), not the checked-in live-site inventory.
 
+For **standard Caddy/local login**, **enterprise APISIX/Keycloak**, external
+Apache TLS ownership and **fully air-gapped installation**, use the explicit
+[topology profiles](../docs/topologies.md). Legacy booleans remain compatible;
+an internal PyPI mirror alone does not make the historical installer air-gapped.
+ARM64 hardware qualification remains paused until the devices arrive.
+
 The existing `pbx_*` trunk/handset aliases and Python configuration namespaces
 remain supported. ARI/Stasis/dialplan values remain shared for combined installs;
 PBX-only installs do not need Python configuration. Requirements reference the
@@ -757,8 +763,8 @@ Expected: `address_book`, `asterisk_ws_events`, `calls`, `migration`,
 **Asterisk ARI, using the credentials the services actually use:**
 
 ```bash
-U=$(python3 -c 'import tomllib;print(tomllib.load(open("/opt/py-phone-caller/src/config/settings.toml","rb"))["commons"]["asterisk_user"])')
-P=$(python3 -c 'import tomllib;print(tomllib.load(open("/opt/py-phone-caller/src/config/.secrets.toml","rb"))["commons"]["asterisk_pass"])')
+U=$(python3 -c 'import tomllib;print(tomllib.load(open("/opt/py-phone-caller/app/config/settings.toml","rb"))["commons"]["asterisk_user"])')
+P=$(python3 -c 'import tomllib;print(tomllib.load(open("/opt/py-phone-caller/app/config/.secrets.toml","rb"))["commons"]["asterisk_pass"])')
 curl -sS -u "$U:$P" http://127.0.0.1:8088/ari/asterisk/info | head -20
 ```
 
@@ -944,7 +950,7 @@ journalctl -u py-phone-caller-caller-register -f          # DB records
 
 The first call with a local TTS engine is slow: the model downloads from
 Hugging Face into
-`/opt/py-phone-caller/src/generate_audio/pre_trained_models/`. Later calls
+`/opt/py-phone-caller/app/generate_audio/pre_trained_models/`. Later calls
 reuse it.
 
 Confirm it was recorded:
@@ -1032,7 +1038,7 @@ journalctl -u 'py-phone-caller-*' -f --no-pager
 
 ```bash
 sudo -u postgres pg_dump py_phone_caller | gzip > ppc-$(date +%F).sql.gz
-tar -czf ppc-config-$(date +%F).tar.gz /opt/py-phone-caller/src/config /etc/asterisk
+tar -czf ppc-config-$(date +%F).tar.gz /opt/py-phone-caller/app/config /etc/asterisk
 ```
 
 ---
@@ -1135,7 +1141,7 @@ sudo -u py-phone-caller /opt/py-phone-caller/venv/bin/python -c \
   'from py_phone_caller_utils.config import settings; print(settings.database.db_host, settings.queue.queue_url)'
 ```
 
-Each unit gets `CALLER_CONFIG_DIR=/opt/py-phone-caller/src/config`, so
+Each unit gets `CALLER_CONFIG_DIR=/opt/py-phone-caller/app/config`, so
 Dynaconf reads exactly those two TOML files.
 
 ### `Rust SMS engine not found` in the caller_sms log

@@ -34,7 +34,7 @@ metadata:
     app: generate-audio
 spec:
   strategy:
-    type: RollingUpdate
+    type: Recreate
   replicas: 1
   selector:
     matchLabels:
@@ -57,7 +57,7 @@ spec:
             httpGet:
               path: /health
               port: 8082
-            initialDelaySeconds: 10
+            initialDelaySeconds: 45
             periodSeconds: 15
             timeoutSeconds: 5
           readinessProbe:
@@ -69,14 +69,20 @@ spec:
             timeoutSeconds: 5
           volumeMounts:
             - name: caller-config
-              mountPath: /app/src/config/settings.toml
+              mountPath: /app/py-phone-caller/config/settings.toml
               subPath: settings.toml
+            - name: caller-secrets
+              mountPath: /app/py-phone-caller/config/.secrets.toml
+              subPath: .secrets.toml
             - name: audio-storage
               mountPath: /app/audio
       volumes:
         - name: caller-config
           configMap:
             name: py-phone-caller-config
+        - name: caller-secrets
+          secret:
+            secretName: py-phone-caller-secrets
         - name: audio-storage
           persistentVolumeClaim:
             claimName: audio-pvc

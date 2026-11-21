@@ -6,7 +6,7 @@ After=generate-audio.service
 After=caller-address-book.service
 
 [Service]
-EnvironmentFile=-/opt/py-phone-caller/src/config/py-phone-caller.env
+EnvironmentFile=-/opt/py-phone-caller/py-phone-caller/config/py-phone-caller.env
 Type=simple
 User=py-phone-caller
 Group=py-phone-caller

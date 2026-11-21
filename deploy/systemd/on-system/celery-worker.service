@@ -8,7 +8,7 @@ After=asterisk-caller.service
 After=caller-scheduler.service
 
 [Service]
-EnvironmentFile=-/opt/py-phone-caller/src/config/py-phone-caller.env
+EnvironmentFile=-/opt/py-phone-caller/py-phone-caller/config/py-phone-caller.env
 Environment=PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
 Type=simple
 User=py-phone-caller

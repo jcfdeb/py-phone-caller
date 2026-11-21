@@ -291,6 +291,46 @@ class PbxRoleTests(unittest.TestCase):
             if "community.general.seport" in task:
                 self.assertNotIn("notify", task)
 
+    def test_exten_1000_template_and_verify_contracts(self):
+        self.assertFalse(self.defaults["asterisk_sip_exten_1000_enabled"])
+        self.assertEqual(self.defaults["asterisk_sip_exten_1000"], "1000")
+        self.assertEqual(self.defaults["asterisk_sip_exten_1000_password_length"], 24)
+        self.assertTrue(self.defaults["asterisk_sip_exten_1000_log_password"])
+        self.assertFalse(self.defaults["asterisk_sip_exten_1000_rotate_password"])
+        self.assertEqual(self.defaults["asterisk_sip_exten_1000_qualify_frequency"], 0)
+
+        variables = self.defaults | {
+            "asterisk_sip_trunk_enabled": False,
+            "asterisk_sip_exten_1000_enabled": True,
+            "_asterisk_sip_exten_1000_password": "AbCdEfGh12345678IjKlMnOp",
+        }
+        pjsip = self.environment.get_template("pjsip.conf.j2").render(variables)
+        self.assertIn("[1000]", pjsip)
+        self.assertIn("context=py-phone-caller", pjsip)
+        self.assertIn("allow=ulaw,alaw,gsm,g722", pjsip)
+        self.assertIn("force_rport=yes", pjsip)
+        self.assertIn("dtmf_mode=auto", pjsip)
+        self.assertIn("password=AbCdEfGh12345678IjKlMnOp", pjsip)
+        self.assertIn("username=1000", pjsip)
+        self.assertIn("max_contacts=1", pjsip)
+        self.assertIn("remove_existing=yes", pjsip)
+        self.assertIn("qualify_frequency=0", pjsip)
+
+        dialplan = self.environment.get_template("extensions.conf.j2").render(variables)
+        self.assertIn("exten => 1000,1", dialplan)
+        self.assertIn("Dial(PJSIP/1000,30)", dialplan)
+        self.assertIn("exten => _XXXX,1", dialplan)
+
+        verification = tasks("verify_local_sip_exten_1000.yml")
+        self.assertIn("pjsip show endpoint", str(verification))
+        for task in verification:
+            if "ansible.builtin.command" in task:
+                self.assertFalse(task["changed_when"])
+                self.assertTrue(task["no_log"])
+                self.assertNotIn("originate", str(task["ansible.builtin.command"]))
+            if "ansible.builtin.assert" in task:
+                self.assertTrue(task["no_log"])
+
 
 class PbxDisposableAssertionTests(unittest.TestCase):
     def setUp(self):
@@ -650,6 +690,160 @@ class PbxOfflineAnsibleTests(unittest.TestCase):
         log = (self.root / "ansible.log").read_text()
         for sentinel in ("synthetic-pbx-ari-sentinel", "synthetic-pbx-sip-sentinel", "synthetic-local-sip-sentinel"):
             self.assertNotIn(sentinel, log)
+
+    def test_exten_1000_preflight_validation(self):
+        defaults = load_yaml(ROLE / "defaults/main.yml")
+        base = defaults | {
+            "ansible_facts": {"os_family": "Debian", "distribution": "Ubuntu",
+                              "distribution_version": "26.04", "distribution_major_version": "26",
+                              "architecture": "x86_64"},
+            "asterisk_sip_trunk_enabled": False,
+            "asterisk_sip_exten_1000_enabled": True,
+        }
+        cases = [
+            ("default-1000", {}, True),
+            ("custom-numeric-exten", {"asterisk_sip_exten_1000": "1001", "asterisk_sip_exten_1000_password_length": 32}, True),
+            ("coexists-with-local-sip-2500", {
+                "local_sip": True, "local_sip_exten": 2500, "local_sip_pass": "SYNTHETIC_SIP_SECRET_1234",
+            }, True),
+            ("collides-with-local-sip", {
+                "local_sip": True, "local_sip_exten": 1000, "local_sip_pass": "SYNTHETIC_SIP_SECRET_1234",
+            }, False),
+            ("collides-with-local-iax", {
+                "local_iax": True, "local_iax_exten": 1000, "local_iax_pass": "SYNTHETIC_IAX_SECRET_1234",
+            }, False),
+            ("collides-with-asterisk-extension", {"asterisk_sip_exten_1000": "3216"}, False),
+            ("non-numeric-exten", {"asterisk_sip_exten_1000": "ext1000"}, False),
+            ("non-boolean-enabled", {"asterisk_sip_exten_1000_enabled": "true"}, False),
+            ("short-password-length", {"asterisk_sip_exten_1000_password_length": 15}, False),
+            ("long-password-length", {"asterisk_sip_exten_1000_password_length": 129}, False),
+            ("negative-qualify", {"asterisk_sip_exten_1000_qualify_frequency": -1}, False),
+        ]
+        for name, overrides, succeeds in cases:
+            with self.subTest(case=name):
+                playbook = self.root / f"exten-1000-preflight-{name}.yml"
+                playbook.write_text(yaml.safe_dump([{
+                    "name": "Validate exten 1000 preflight",
+                    "hosts": "all", "gather_facts": False, "vars": base | overrides,
+                    "tasks": [{"ansible.builtin.import_tasks": str(ROLE / "tasks/preflight.yml")}],
+                }]))
+                result = self.run_playbook(playbook, "--check", "--diff")
+                output = result.stdout + result.stderr
+                self.assertEqual(result.returncode == 0, succeeds, output)
+                self.assertRegex(output, r"changed=0\s")
+
+    def test_exten_1000_random_password_logging_idempotency_and_rotation(self):
+        import re
+
+        defaults = load_yaml(ROLE / "defaults/main.yml")
+        configuration = self.root / "asterisk-exten-1000"
+        configuration.mkdir()
+        for name in ("extensions", "pjsip", "ari", "iax"):
+            (configuration / f"{name}.conf").write_text(
+                "[general]\n; preserve admin comment\n[unrelated]\nsecret=SYNTHETIC_EXISTING_SECRET\n"
+            )
+        selected_names = {
+            "Check existing PJSIP partial configuration for local extension 1000",
+            "Read existing PJSIP partial configuration to preserve extension 1000 password",
+            "Resolve or generate random password for local SIP extension 1000",
+            "Deploy Py-Phone-Caller partial configurations",
+            "Inject Includes into main configuration files",
+            "Report ready-to-use local SIP extension credentials",
+        }
+        selected = []
+        for task in tasks("configure.yml"):
+            if task["name"] in selected_names:
+                cleaned = {key: value for key, value in task.items() if key != "notify"}
+                if "ansible.builtin.template" in cleaned:
+                    cleaned["ansible.builtin.template"] = dict(cleaned["ansible.builtin.template"])
+                    cleaned["ansible.builtin.template"]["src"] = str(ROLE / "templates") + "/{{ item.src }}"
+                selected.append(cleaned)
+        self.assertEqual(len(selected), len(selected_names))
+
+        # Wrap tasks in a synthetic role included with apply: {no_log: True, diff: False}
+        # to verify the explicit no_log: false on credential reporting works under combined_pbx.yml.
+        mini_role = self.root / "roles" / "exten1000_test" / "tasks"
+        mini_role.mkdir(parents=True)
+        (mini_role / "main.yml").write_text(yaml.safe_dump(selected))
+        self.config.write_text(
+            self.config.read_text().replace(
+                f"roles_path = {ANSIBLE / 'roles'}",
+                f"roles_path = {self.root / 'roles'}:{ANSIBLE / 'roles'}",
+            )
+        )
+
+        playbook = self.root / "configure-exten-1000.yml"
+        playbook.write_text(yaml.safe_dump([{
+            "name": "Configure exten 1000 under combined_pbx apply no_log",
+            "hosts": "all", "gather_facts": False,
+            "vars": defaults | {
+                "asterisk_sip_trunk_enabled": False,
+                "asterisk_sip_bindaddr": "0.0.0.0:5060",
+                "local_sip": True,
+                "local_sip_exten": 2500,
+                "local_sip_pass": "SYNTHETIC_SIP_SECRET_1234",
+                "asterisk_sip_exten_1000_enabled": True,
+                "asterisk_conf_dir": str(configuration),
+                "asterisk_user": str(os.getuid()),
+                "asterisk_group": str(os.getgid()),
+            },
+            "tasks": [{
+                "name": "Include exten 1000 tasks with combined_pbx apply no_log",
+                "ansible.builtin.include_role": {
+                    "name": "exten1000_test",
+                    "apply": {"no_log": True, "diff": False},
+                },
+            }],
+        }]))
+
+        # Run 1: fresh generation + log reporting
+        first = self.run_playbook(playbook)
+        first_out = first.stdout + first.stderr
+        self.assertEqual(first.returncode, 0, first_out)
+        match = re.search(r"SIP password: ([A-Za-z0-9]{24})", first_out)
+        self.assertIsNotNone(match, first_out)
+        generated_pw = match.group(1)
+        self.assertIn("Local SIP extension ready: 1000", first_out)
+        self.assertIn("SIP password source: generated (new random password)", first_out)
+        # Other secrets must remain redacted
+        self.assertNotIn("SYNTHETIC_SIP_SECRET_1234", first_out)
+        self.assertNotIn("SYNTHETIC_EXISTING_SECRET", first_out)
+
+        pjsip_text = (configuration / "pjsip_py_phone_caller.conf").read_text()
+        self.assertIn(f"password={generated_pw}", pjsip_text)
+        self.assertIn("qualify_frequency=0", pjsip_text)
+        self.assertIn("dtmf_mode=auto", pjsip_text)
+        self.assertIn("force_rport=yes", pjsip_text)
+        self.assertEqual((configuration / "pjsip_py_phone_caller.conf").stat().st_mode & 0o777, 0o640)
+        exten_text = (configuration / "extensions_py_phone_caller.conf").read_text()
+        self.assertIn("exten => 1000,1", exten_text)
+
+        # Run 2: idempotent rerun preserves exact password and changed=0
+        second = self.run_playbook(playbook)
+        second_out = second.stdout + second.stderr
+        self.assertEqual(second.returncode, 0, second_out)
+        self.assertRegex(second_out, r"changed=0\s")
+        self.assertIn(f"SIP password: {generated_pw}", second_out)
+        self.assertIn("SIP password source: existing (preserved from pjsip_py_phone_caller.conf)", second_out)
+        self.assertIn(f"password={generated_pw}", (configuration / "pjsip_py_phone_caller.conf").read_text())
+
+        # Run 3: explicit password rotation generates a distinct password
+        rotated = self.run_playbook(playbook, "-e", '{"asterisk_sip_exten_1000_rotate_password": true}')
+        rotated_out = rotated.stdout + rotated.stderr
+        self.assertEqual(rotated.returncode, 0, rotated_out)
+        rotated_match = re.search(r"SIP password: ([A-Za-z0-9]{24})", rotated_out)
+        self.assertIsNotNone(rotated_match, rotated_out)
+        rotated_pw = rotated_match.group(1)
+        self.assertNotEqual(rotated_pw, generated_pw)
+        self.assertIn("SIP password source: rotated (new random password)", rotated_out)
+        self.assertIn(f"password={rotated_pw}", (configuration / "pjsip_py_phone_caller.conf").read_text())
+
+        # Run 4: disabling log reporting suppresses password from output while staying changed=0
+        silent = self.run_playbook(playbook, "-e", '{"asterisk_sip_exten_1000_log_password": false}')
+        silent_out = silent.stdout + silent.stderr
+        self.assertEqual(silent.returncode, 0, silent_out)
+        self.assertRegex(silent_out, r"changed=0\s")
+        self.assertNotIn(rotated_pw, silent_out)
 
 
 if __name__ == "__main__":

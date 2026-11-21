@@ -1,0 +1,4 @@
+prune pre_trained_models
+prune audio
+exclude Dockerfile*
+global-exclude __pycache__ *.py[cod]

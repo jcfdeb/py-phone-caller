@@ -58,7 +58,7 @@
   ansible.builtin.assert:
     that:
       - py_phone_caller_uv_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
-      - py_phone_caller_uv_installer_checksum is match('^sha256:[0-9a-f]{64}$')
+      - py_phone_caller_connectivity | default('online') == 'airgapped' or py_phone_caller_uv_installer_checksum is match('^sha256:[0-9a-f]{64}$')
       - py_phone_caller_python_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
       - py_phone_caller_maturin_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
       - py_phone_caller_git_repo | length == 0 or py_phone_caller_git_version is match('^[0-9a-f]{40}$')
@@ -73,7 +73,11 @@
       - py_phone_caller_spacy_model_checksum is match('^sha256:[0-9a-f]{64}$')
     fail_msg: Supply py_phone_caller_spacy_model_checksum for the pinned spaCy wheel.
     quiet: true
-  when: py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - >-
+      py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'
+      or (py_phone_caller_install_spacy_model | default(false) | bool)
 
 - name: Assert that the app layout does not overlap protected directories
   ansible.builtin.assert:
@@ -109,7 +113,9 @@
       caller_sms_carrier is 'on_premise' but caller_sms.modems is empty or has
       entries without a 'port'.
     quiet: true
-  when: py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+  when:
+    - py_phone_caller_final_config.caller_sms.caller_sms_carrier | default('') == 'on_premise'
+    - not (topology_test_parent_joined | default(false) | bool)
 
 - name: Assert that /etc/hosts entries are well formed
   ansible.builtin.assert:
@@ -131,3 +137,40 @@
       Set either py_phone_caller_git_repo or py_phone_caller_local_src_path so the
       role knows where to take the application code from.
     quiet: true
+
+- name: Assert that worker concurrency and optional systemd resource limits are well formed
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_ui_workers | string is match('^[1-9][0-9]*$')
+      - py_phone_caller_ui_threads | string is match('^[1-9][0-9]*$')
+      - py_phone_caller_ui_timeout | string is match('^[1-9][0-9]*$')
+      - py_phone_caller_celery_concurrency | string is match('^[0-9]+$')
+      - py_phone_caller_final_config.generate_audio.num_of_cpus | string is match('^[1-9][0-9]*$')
+      - py_phone_caller_service_cpu_quota | string == '' or py_phone_caller_service_cpu_quota | string is match('^[1-9][0-9]*%$')
+      - py_phone_caller_service_memory_high | string == '' or py_phone_caller_service_memory_high | string is match('^[1-9][0-9]*[KMG]?$')
+      - py_phone_caller_service_memory_max | string == '' or py_phone_caller_service_memory_max | string is match('^[1-9][0-9]*[KMG]?$')
+      - py_phone_caller_service_tasks_max | string == '' or py_phone_caller_service_tasks_max | string is match('^[1-9][0-9]*$')
+      - py_phone_caller_service_resource_overrides is mapping
+    fail_msg: >-
+      Worker counts, TTS num_of_cpus, and optional systemd resource limits
+      (cpu_quota, memory_high, memory_max, tasks_max) must use valid systemd-safe formats.
+    quiet: true
+
+- name: Assert that per-service systemd resource overrides are well formed
+  ansible.builtin.assert:
+    that:
+      - item.key in (py_phone_caller_services | map(attribute='name') | list)
+      - item.value is mapping
+      - item.value.cpu_quota | default('') | string == '' or item.value.cpu_quota | string is match('^[1-9][0-9]*%$')
+      - item.value.memory_high | default('') | string == '' or item.value.memory_high | string is match('^[1-9][0-9]*[KMG]?$')
+      - item.value.memory_max | default('') | string == '' or item.value.memory_max | string is match('^[1-9][0-9]*[KMG]?$')
+      - item.value.tasks_max | default('') | string == '' or item.value.tasks_max | string is match('^[1-9][0-9]*$')
+    fail_msg: >-
+      Per-service resource override for '{{ item.key }}' must target a declared
+      py_phone_caller_services entry and use valid cpu_quota, memory_high,
+      memory_max, or tasks_max values.
+    quiet: true
+  loop: "{{ py_phone_caller_service_resource_overrides | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: py_phone_caller_service_resource_overrides is mapping

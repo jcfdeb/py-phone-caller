@@ -1,0 +1,13 @@
+---
+- name: Validate hashes, architecture, native build inputs and selected local models
+  stack_airgap_check:
+    operation: target
+    root: "{{ py_phone_caller_airgap_bundle_dir }}"
+    manifest_path: "{{ py_phone_caller_airgap_manifest_path }}"
+    checksum: "{{ py_phone_caller_airgap_manifest_checksum }}"
+    architecture: "{{ ansible_facts.architecture }}"
+    python_version: "{{ py_phone_caller_python_version }}"
+    uv_version: "{{ py_phone_caller_uv_version }}"
+    toolchain: "{{ py_phone_caller_airgap_rust_toolchain }}"
+    build_constraints: "{{ _ppc_airgap_source.build_constraints }}"
+    config: "{{ py_phone_caller_topology_config }}"

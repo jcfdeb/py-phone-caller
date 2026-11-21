@@ -7,15 +7,34 @@ name = "caller-sms"
 version = "1.0.0"
 description = "Caller SMS service for py-phone-caller"
 readme = "README.md"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "py-phone-caller contributors" }]
 requires-python = ">=3.14, <3.15"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Telephony",
+]
 dependencies = [
     "py_phone_caller_utils",
     "aiohttp>=3.9.0",
     "twilio>=9.0.0",
 ]
 
+[project.scripts]
+ppc-caller-sms = "caller_sms.caller_sms:main"
+
+[tool.setuptools]
+packages = ["caller_sms", "caller_sms.backend"]
+
 [tool.setuptools.package-dir]
 caller_sms = "."
 
 [tool.setuptools.package-data]
-caller_sms = ["*"]
+caller_sms = ["*.py", "backend/*.py", "README.md"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["Dockerfile*", "pyproject.toml"]
+

@@ -1,13 +1,49 @@
 """
 OpenAPI 3.0 / Swagger documentation generator and standalone Swagger UI provider.
-Enables offline-ready, air-gapped, zero-dependency interactive API documentation
-at `/docs` and raw OpenAPI specification at `/docs/swagger.json` across both
-aiohttp microservices and Flask applications.
+Provides interactive API documentation at `/docs` and raw OpenAPI specification
+at `/docs/swagger.json` across aiohttp microservices and Flask applications.
+With PPC_OFFLINE=1, documentation is static with same-origin JSON links instead
+of interactive Swagger UI, which normally loads external assets.
 """
 
+from html import escape
 import json
+import os
 from typing import Any, Dict, List, Optional
 from aiohttp import web
+
+
+def _generate_offline_docs_html(title: str, services: List[Dict[str, str]]) -> str:
+    escaped_title = escape(title)
+    items = []
+    for service in services:
+        name = escape(service["name"])
+        url = service["url"]
+        escaped_url = escape(url)
+        # Only root-relative paths are provably same-origin without request context.
+        if (
+            url.startswith("/")
+            and not url.startswith("//")
+            and "\\" not in url
+            and all(ord(char) > 32 and ord(char) != 127 for char in url)
+        ):
+            items.append(f'<li><a href="{escaped_url}">{name} — OpenAPI JSON</a></li>')
+        else:
+            items.append(f"<li>{name}: <code>{escaped_url}</code> (not linked offline)</li>")
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{escaped_title}</title>
+</head>
+<body>
+    <h1>{escaped_title}</h1>
+    <p>Interactive Swagger UI is unavailable in offline mode (PPC_OFFLINE=1).
+    No external documentation assets are loaded. JSON APIs remain available.</p>
+    <p>Only same-origin OpenAPI JSON paths are linked; other URLs are shown as text.</p>
+    <ul>{''.join(items)}</ul>
+</body>
+</html>"""
 
 
 def generate_swagger_ui_html(
@@ -18,8 +54,12 @@ def generate_swagger_ui_html(
 ) -> str:
     """
     Renders standalone Swagger UI HTML page pointing to openapi_url.
-    Can be served directly by aiohttp or Flask without external dependencies.
+    PPC_OFFLINE=1 returns static documentation without external assets.
     """
+    if os.environ.get("PPC_OFFLINE") == "1":
+        return _generate_offline_docs_html(
+            f"{title} - API Documentation", [{"name": title, "url": openapi_url}],
+        )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,6 +106,7 @@ def generate_unified_swagger_portal_html(
     """
     Generates a unified Swagger UI 5 Developer Portal aggregating all py-phone-caller
     microservice OpenAPI 3.0 endpoints with multi-spec selector and Keycloak Bearer Auth support.
+    PPC_OFFLINE=1 returns static documentation without external assets.
     """
     if services is None:
         services = [
@@ -78,6 +119,9 @@ def generate_unified_swagger_portal_html(
             {"name": "Audio Synthesis & TTS Engine (:8082)", "url": "/api/v1/audio/docs/swagger.json"},
             {"name": "Call Registry & DTMF Acknowledgment (:8083)", "url": "/api/v1/registry/docs/swagger.json"},
         ]
+
+    if os.environ.get("PPC_OFFLINE") == "1":
+        return _generate_offline_docs_html(title, services)
 
     services_json = json.dumps(services)
     return f"""<!DOCTYPE html>

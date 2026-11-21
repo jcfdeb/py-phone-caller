@@ -26,7 +26,7 @@ FROM rockylinux:9-minimal
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH=/app/src:/app/src/py-phone-caller-utils
+    PYTHONPATH=/app/py-phone-caller:/app/py-phone-caller/py-phone-caller-utils
 
 RUN microdnf install -y shadow-utils ca-certificates libsndfile && \
     useradd -r -s /sbin/nologin appuser && \
@@ -36,8 +36,9 @@ WORKDIR /app
 
 COPY --from=builder /opt/uv-python /opt/uv-python
 COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /app/src/caller_prometheus_webhook /app/src/caller_prometheus_webhook
-COPY --from=builder /app/src/py-phone-caller-utils /app/src/py-phone-caller-utils
+COPY --from=builder /app/src/caller_prometheus_webhook /app/py-phone-caller/caller_prometheus_webhook
+COPY --from=builder /app/src/py-phone-caller-utils /app/py-phone-caller/py-phone-caller-utils
+COPY --from=builder /app/src/config/settings.toml /app/py-phone-caller/config/settings.toml
 
 RUN chown -R appuser:appuser /app
 

@@ -1,27 +1,39 @@
 # Native Ansible deployment
 
+> **Centralized Step-by-Step Guide**: See **[`deploy/docs/02-ansible-deployment.md`](../docs/02-ansible-deployment.md)** (and the **[Deployment Documentation Hub](../docs/README.md)**) for the unified step-by-step operator walkthrough across all deployment pillars.
+
 `site.yml` is the canonical entry point for explicitly selected OpenAlert,
-Python application and Asterisk components. **Component-only and combined native
-startup/rerun checks passed on Debian 13 and Ubuntu 26.04 LTS AMD64 VMs, not physical ARM64 hardware.** Start on a disposable, explicitly authorized host. This
-documentation does not authorize changing or migrating a live installation.
+Python application and Asterisk components. **Component-only, combined, `standard`
+`airgapped`, `enterprise`, and OpenAlert lifecycle/relocation checks are qualified
+on Debian 13 AMD64, Ubuntu 26.04 LTS AMD64, and Rocky Linux 10.2 AMD64 VMs; physical
+Orange Pi 5 Plus ARM64 hardware qualification is paused pending board arrival.**
+Start on a disposable, explicitly authorized host. This documentation does not
+authorize changing or migrating a live installation.
 
 - [OpenAlert contract and variable reference](docs/openalert.md)
 - [Python inputs and compatibility/ownership mapping](docs/python-native.md)
-- [Asterisk: official Ubuntu packages, opt-in Debian AllStarLink, PJSIP/IAX2](docs/asterisk-provider.md)
+- [Standard/enterprise topologies and fully offline installation](docs/topologies.md)
+- [ARM64 appliance profile (Orange Pi 5 Plus pre-hardware contract)](docs/appliance-arm64.md)
+- [Asterisk: Ubuntu, AllStarLink and Tucny (`22.9.0-1.el10`) providers, PJSIP/IAX2](docs/asterisk-provider.md)
+- [Deployment consolidation and asset classification](docs/consolidation.md)
 - [Support matrix and qualification evidence](docs/support-matrix.md)
+- [Ansible release bundle packaging](packaging/README.md)
 - [Native release packaging](../../src/openalert/packaging/README.md)
 
 ## Scope and prerequisites
 
-The new entry point accepts Debian 13 or Ubuntu 26.04, with `systemd`, on AMD64
-(`x86_64`) or ARM64 (`aarch64`). OpenAlert requires managed-host Python 3.11+,
+The new entry point accepts Debian 13 or Ubuntu 26.04 on AMD64 (`x86_64`) or
+ARM64 (`aarch64`), and Rocky 10 on AMD64 (online with `asterisk_package_provider: tucny`
+pinned to `22.9.0-1.el10`), with `systemd`. OpenAlert requires managed-host Python 3.11+,
 SSH access with privilege escalation, and a compatible trusted release bundle.
 An accepted platform is not a qualified deployment; see the support matrix.
-No Rust compilation takes place on the managed host.
+OpenAlert uses prebuilt releases; its Rust binary is not compiled on the managed
+host. The Python stack's native SMS extension has separate build requirements.
 
 Python and PBX implementations now live under the shared `roles/` tree.
 Runtime consolidation checks pass; full lint still has recorded naming findings,
-and adoption has not been implemented. Their additional dependencies
+which were explicitly deferred on 2026-11-01 to allow lifecycle work to proceed.
+Their additional dependencies
 and configuration requirements still apply; OpenAlert-only selection does not
 require their configuration or install those components.
 
@@ -143,20 +155,36 @@ Their reported results and broader platform claims do not qualify this new
 entry point. Legacy inventory examples contain site-specific choices; do not
 use them unchanged as a quickstart.
 
+Explicit `standard` and `enterprise` application profiles separate gateway
+selection from ingress ownership and connectivity. An externally managed
+Apache TLS terminator in front of APISIX is supported as an ownership boundary,
+not something the installer replaces. `legacy` remains the default for existing
+inventories. Read [the topology/offline contract](docs/topologies.md) before
+selecting `airgapped`: disconnected operation after an online install is not
+equivalent to fully offline provisioning. These new profiles have separate
+qualification requirements from the earlier VM results above.
+
 ## Operational boundary and evidence
 
 Fresh conflicting installations fail rather than being silently adopted.
 Omitted OpenAlert instances are left untouched, not disabled or removed.
-Removal, adoption, migration and lifecycle/rollback workflows are deferred to
-Phase 4; there is no live migration authorization here.
+Phase 4 lifecycle implementation and disposable `systemd` rehearsals on Debian 13
+and Ubuntu 26.04 LTS AMD64 are complete: see the
+[maintenance and recovery runbook](docs/lifecycle.md) for explicit in-place and
+relocated (`relocate: true`) adoption, backup, restore and compatible asset-rollback
+operations. There is no live migration authorization here.
 
 The [support matrix](docs/support-matrix.md) separates build/static evidence from
-runtime qualification: **110 deployment/converter tests and 709 subtests passed**. VM
-scenarios cover OpenAlert isolation/safety, Python-only and combined startup,
-PJSIP/IAX2, zero-change reruns, external-service ownership, legacy entry points
-and pinned Git/local delivery. Whole-tree lint is not clean because 77 role-prefix
-naming findings remain; those findings were not suppressed. ARM64 hardware,
-real dispatch, upgrades and recovery remain separate gates. The rootless Podman
-limitation was not worked around by weakening the production service.
+runtime qualification: **335 automated tests and 1,247 subtests pass** across the
+Ansible, OpenAlert, air-gap, and multi-pillar packaging suites. VM scenarios cover
+OpenAlert isolation/safety, Python-only and combined startup, PJSIP/IAX2 (AllStarLink
+on Debian 13, official `distro` on Ubuntu 26.04, and Tucny `22.9.0-1.el10` on Rocky
+10.2), `standard` `airgapped` provisioning with offline Piper TTS synthesis and UI
+login, connected `enterprise` provisioning with live Keycloak OIDC login, OpenAlert
+in-place and relocated adoption/recovery, zero-change reruns, external-service
+ownership, legacy entry points and pinned Git/local delivery. Whole-tree lint is not
+clean because role-prefix naming findings remain explicitly deferred as tracked debt
+(not suppressed). Physical Orange Pi 5 Plus ARM64 hardware execution and real
+telephony/radio dispatch remain separate gates pending hardware arrival.
 
-See [tests/README.md](tests/README.md) for reproduction and the remaining checks.
+See [tests/README.md](tests/README.md) for reproduction and test runner details.

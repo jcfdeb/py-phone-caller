@@ -199,6 +199,20 @@ async def is_audio_ready(request):
     return web.json_response({"exists": exists})
 
 
+_GENERATION_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _get_generation_lock(output_path: str) -> asyncio.Lock:
+    if len(_GENERATION_LOCKS) > 1024:
+        for key in [k for k, lk in _GENERATION_LOCKS.items() if not lk.locked()]:
+            _GENERATION_LOCKS.pop(key, None)
+    lock = _GENERATION_LOCKS.get(output_path)
+    if lock is None:
+        lock = asyncio.Lock()
+        _GENERATION_LOCKS[output_path] = lock
+    return lock
+
+
 async def create_audio(request):
     params = await extract_params(request)
     message = params.get("message")
@@ -244,21 +258,29 @@ async def create_audio(request):
         )
         return web.json_response({"status": 200, "cached": True})
 
-    try:
-        await asyncio.to_thread(
-            generate_tts_audio,
-            message,
-            output_path,
-            engine=selected_engine,
-            language=lang,
-            speed=speed,
-        )
-        status_code = 200
-    except Exception as err:
-        status_code = 500
-        logging.exception(
-            f"Unable to generate the audio file using {selected_engine.value}: '{err}'"
-        )
+    async with _get_generation_lock(output_path):
+        exists = await asyncio.to_thread(wave_file_exists, output_path)
+        if exists:
+            logging.info(
+                f"Audio file became available while awaiting generation for {filename}"
+            )
+            return web.json_response({"status": 200, "cached": True})
+
+        try:
+            await asyncio.to_thread(
+                generate_tts_audio,
+                message,
+                output_path,
+                engine=selected_engine,
+                language=lang,
+                speed=speed,
+            )
+            status_code = 200
+        except Exception as err:
+            status_code = 500
+            logging.exception(
+                f"Unable to generate the audio file using {selected_engine.value}: '{err}'"
+            )
 
     return web.json_response({"status": status_code, "cached": False})
 
@@ -330,6 +352,14 @@ async def init_app():
     return app
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Starts the Generate Audio TTS aiohttp server."""
     app = init_app()
-    web.run_app(app, port=GENERATE_AUDIO_PORT)
+    web.run_app(
+        app, host=os.environ.get("PPC_HTTP_BIND_HOST"), port=GENERATE_AUDIO_PORT,
+    )
+
+
+if __name__ == "__main__":
+    main()
+

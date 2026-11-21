@@ -32,6 +32,7 @@
     mode: "0755"
   when:
     - ansible_facts['os_family'] == 'RedHat'
+    - asterisk_package_provider == 'distro'
     - not standard_sounds_check.stat.exists
 
 - name: Download verified Asterisk Core Sounds (RedHat)
@@ -44,6 +45,7 @@
     mode: "0644"
   when:
     - ansible_facts['os_family'] == 'RedHat'
+    - asterisk_package_provider == 'distro'
     - not standard_sounds_check.stat.exists
 
 - name: Install verified Asterisk Core Sounds (RedHat)
@@ -56,6 +58,7 @@
     group: "{{ asterisk_group }}"
   when:
     - ansible_facts['os_family'] == 'RedHat'
+    - asterisk_package_provider == 'distro'
     - not standard_sounds_check.stat.exists
     - not ansible_check_mode
 
@@ -82,6 +85,57 @@
     msg: "WARNING: Audio file {{ item.item }} not found in {{ role_path }}/files/sounds/. Skipping."
   loop: "{{ audio_files_stat.results }}"
   when: not item.stat.exists
+
+# --- 2b. Resolve Ready-to-Use Local SIP Extension 1000 Password ---
+- name: Check existing PJSIP partial configuration for local extension 1000
+  ansible.builtin.stat:
+    path: "{{ asterisk_conf_dir }}/pjsip_py_phone_caller.conf"
+    get_checksum: false
+  register: _asterisk_pjsip_partial_stat
+  when:
+    - asterisk_sip_exten_1000_enabled
+    - not asterisk_sip_exten_1000_rotate_password
+
+- name: Read existing PJSIP partial configuration to preserve extension 1000 password
+  ansible.builtin.slurp:
+    src: "{{ asterisk_conf_dir }}/pjsip_py_phone_caller.conf"
+  register: _asterisk_pjsip_partial_slurp
+  when:
+    - asterisk_sip_exten_1000_enabled
+    - not asterisk_sip_exten_1000_rotate_password
+    - _asterisk_pjsip_partial_stat.stat.exists | default(false)
+    - _asterisk_pjsip_partial_stat.stat.isreg | default(false)
+  no_log: true
+
+- name: Resolve or generate random password for local SIP extension 1000
+  vars:
+    _existing_pjsip_text: >-
+      {{ (_asterisk_pjsip_partial_slurp.content | b64decode)
+         if (_asterisk_pjsip_partial_slurp is defined and not (_asterisk_pjsip_partial_slurp.skipped | default(false)))
+         else '' }}
+    _existing_exten_1000_matches: >-
+      {{ _existing_pjsip_text | regex_findall(
+           '(?ms)^\[' ~ (asterisk_sip_exten_1000 | string | regex_escape) ~ '\][^\n]*\n(?:(?!\[)[^\n]*\n)*?password\s*=\s*([A-Za-z0-9_~!@$%^&*()+,.:/?=-]{16,128})\s*(?:;[^\n]*)?$'
+         ) }}
+    _preserved_exten_1000_password: >-
+      {{ (_existing_exten_1000_matches[0]
+          if (_existing_exten_1000_matches | length > 0)
+          else '') }}
+    _has_valid_preserved_password: >-
+      {{ (_preserved_exten_1000_password | length >= 16)
+         and (_preserved_exten_1000_password | lower not in ['change_me', 'changeme', 'py-phone-caller']) }}
+  ansible.builtin.set_fact:
+    _asterisk_sip_exten_1000_password: >-
+      {{ _preserved_exten_1000_password
+         if _has_valid_preserved_password
+         else lookup('ansible.builtin.password',
+                     '/dev/null chars=ascii_letters,digits length=' ~ (asterisk_sip_exten_1000_password_length | string)) }}
+    _asterisk_sip_exten_1000_password_source: >-
+      {{ 'existing (preserved from pjsip_py_phone_caller.conf)'
+         if _has_valid_preserved_password
+         else ('rotated (new random password)' if asterisk_sip_exten_1000_rotate_password else 'generated (new random password)') }}
+  when: asterisk_sip_exten_1000_enabled
+  no_log: true
 
 # --- 3. Deploy Config Templates ---
 - name: Deploy Py-Phone-Caller partial configurations
@@ -230,3 +284,25 @@
     state: started
     enabled: true
   when: not ansible_check_mode
+
+- name: Report ready-to-use local SIP extension credentials
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        [
+          "Local SIP extension ready: " ~ (asterisk_sip_exten_1000 | string),
+          "SIP username: " ~ (asterisk_sip_exten_1000 | string),
+          "SIP password: " ~ _asterisk_sip_exten_1000_password,
+          "SIP password source: " ~ _asterisk_sip_exten_1000_password_source,
+          "SIP transport bind: " ~ asterisk_sip_bindaddr ~ " (UDP, context=" ~ asterisk_context ~ ", qualify_frequency=" ~ (asterisk_sip_exten_1000_qualify_frequency | string) ~ ")",
+        ]
+        + (
+          ["Note: asterisk_sip_bindaddr is loopback-only; set e.g. 0.0.0.0:5060 for LAN softphones."]
+          if (asterisk_sip_bindaddr is match('^127\\.'))
+          else []
+        )
+      }}
+  when:
+    - asterisk_sip_exten_1000_enabled
+    - asterisk_sip_exten_1000_log_password
+  no_log: false

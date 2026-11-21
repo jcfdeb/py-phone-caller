@@ -1,0 +1,37 @@
+---
+- name: Activate validated configuration
+  ansible.builtin.copy:
+    src: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/openalertd.toml"
+    remote_src: true
+    dest: "{{ openalert_instance.config_path }}"
+    owner: root
+    group: "{{ openalert_instance.group }}"
+    mode: "0640"
+  no_log: true
+  diff: false
+
+- name: Install validated canonical base unit
+  ansible.builtin.copy:
+    src: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}"
+    remote_src: true
+    dest: "/etc/systemd/system/{{ openalert_instance.service_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create instance drop-in directory
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ openalert_instance.service_name }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install validated instance drop-in
+  ansible.builtin.copy:
+    src: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}.d/instance.conf"
+    remote_src: true
+    dest: "/etc/systemd/system/{{ openalert_instance.service_name }}.d/instance.conf"
+    owner: root
+    group: root
+    mode: "0644"

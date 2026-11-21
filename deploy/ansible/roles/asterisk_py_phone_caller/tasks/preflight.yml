@@ -8,11 +8,29 @@
 - name: Validate explicit package provider and trunk selection
   ansible.builtin.assert:
     that:
-      - asterisk_package_provider in ['distro', 'allstarlink']
+      - asterisk_package_provider in ['distro', 'allstarlink', 'tucny']
       - asterisk_sip_trunk_enabled is boolean
       - local_sip is boolean
       - local_iax is boolean
-    fail_msg: Select distro or allstarlink; disable stack_deploy_asterisk for an externally managed PBX.
+      - asterisk_sip_exten_1000_enabled is boolean
+      - asterisk_sip_exten_1000_log_password is boolean
+      - asterisk_sip_exten_1000_rotate_password is boolean
+    fail_msg: Select distro, allstarlink or tucny; disable stack_deploy_asterisk for an externally managed PBX.
+
+- name: Validate ready-to-use local SIP extension 1000 inputs
+  ansible.builtin.assert:
+    that:
+      - asterisk_sip_exten_1000 | string is match('^[0-9]{1,16}$')
+      - "'\n' not in (asterisk_sip_exten_1000 | string) and '\r' not in (asterisk_sip_exten_1000 | string)"
+      - asterisk_sip_exten_1000_password_length is integer
+      - asterisk_sip_exten_1000_password_length >= 16 and asterisk_sip_exten_1000_password_length <= 128
+      - asterisk_sip_exten_1000_qualify_frequency is integer
+      - asterisk_sip_exten_1000_qualify_frequency >= 0
+      - asterisk_sip_exten_1000 | string != asterisk_extension | string
+    fail_msg: >-
+      Ready-to-use local SIP extension requires a numeric identifier distinct from
+      asterisk_extension, a random password length between 16 and 128, and a non-negative qualify_frequency.
+  when: asterisk_sip_exten_1000_enabled
 
 - name: Require a private IPv4 IAX listener and valid UDP port
   ansible.builtin.assert:
@@ -50,6 +68,14 @@
     fail_msg: Local PJSIP and IAX extension numbers must differ.
   when: local_sip and local_iax
 
+- name: Require ready-to-use local SIP extension 1000 to be distinct from other local extensions
+  ansible.builtin.assert:
+    that:
+      - not local_sip or (asterisk_sip_exten_1000 | string != local_sip_exten | string)
+      - not local_iax or (asterisk_sip_exten_1000 | string != local_iax_exten | string)
+    fail_msg: Ready-to-use local SIP extension number must not collide with local_sip_exten or local_iax_exten.
+  when: asterisk_sip_exten_1000_enabled
+
 - name: Restrict AllStarLink to its reviewed Debian 13 package contract
   ansible.builtin.assert:
     that:
@@ -62,6 +88,25 @@
     fail_msg: AllStarLink requires Debian 13 AMD64/ARM64, loopback ARI binding and an exact reviewed deb13 package version.
   when: asterisk_package_provider == 'allstarlink'
 
+- name: Restrict Tucny to its reviewed online Rocky 10 AMD64 package contract
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'RedHat'
+      - ansible_facts['distribution'] == 'Rocky'
+      - ansible_facts['distribution_major_version'] == '10'
+      - ansible_facts['architecture'] == 'x86_64'
+      - py_phone_caller_connectivity | default('online') == 'online'
+      - asterisk_http_bindaddr in ['127.0.0.1', '::1']
+      - asterisk_http_enabled | string | lower in ['yes', 'true']
+      - asterisk_tucny_version is string
+      - asterisk_tucny_version is match('^22[.][0-9]+[.][0-9]+-[0-9]+[.]el10$')
+      - "'\n' not in asterisk_tucny_version and '\r' not in asterisk_tucny_version"
+      - asterisk_tucny_sounds_version is string
+      - asterisk_tucny_sounds_version is match('^[0-9]+[.][0-9]+[.][0-9]+-[0-9]+[.]el10$')
+      - "'\n' not in asterisk_tucny_sounds_version and '\r' not in asterisk_tucny_sounds_version"
+    fail_msg: Tucny requires online Rocky 10 AMD64, loopback ARI and exact reviewed EL10 Asterisk 22 and sounds versions; no platform override is supported.
+  when: asterisk_package_provider == 'tucny'
+
 - name: Require non-placeholder ARI credentials for the opt-in provider
   ansible.builtin.assert:
     that:
@@ -70,16 +115,30 @@
       - ari_password | length >= 16
       - "'\n' not in ari_password and '\r' not in ari_password"
       - ari_password | lower not in ['change_me', 'changeme']
-    fail_msg: Supply a private ARI credential using Vault before installing AllStarLink.
+    fail_msg: Supply a private ARI credential using Vault before installing a third-party provider.
   no_log: true
-  when: asterisk_package_provider == 'allstarlink'
+  when: asterisk_package_provider in ['allstarlink', 'tucny']
+
+- name: Require configuration-safe Tucny ARI and enabled trunk credentials
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item is match('^[A-Za-z0-9_~!@$%^&*()+,.:/?=-]{16,128}$')
+      - "'\n' not in item and '\r' not in item"
+      - item | lower not in ['change_me', 'changeme', 'py-phone-caller']
+    fail_msg: Tucny requires Vault-managed 16-128 character config-safe ARI and enabled trunk passwords.
+  loop: "{{ [ari_password] + ([sip_password] if asterisk_sip_trunk_enabled else []) }}"
+  when: asterisk_package_provider == 'tucny'
+  no_log: true
 
 - name: Check for installed core sounds before any host changes
   ansible.builtin.stat:
     path: "{{ asterisk_sounds_dir }}/beep.wav"
     get_checksum: false
   register: standard_sounds_check
-  when: ansible_facts['os_family'] == 'RedHat'
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - asterisk_package_provider == 'distro'
 
 - name: Require a pinned verified core sounds release when the RedHat fallback is needed
   ansible.builtin.assert:
@@ -91,4 +150,5 @@
     fail_msg: Set a fixed asterisk_core_sounds_version and a trusted asterisk_core_sounds_sha256 before installing missing RedHat core sounds.
   when:
     - ansible_facts['os_family'] == 'RedHat'
+    - asterisk_package_provider == 'distro'
     - not standard_sounds_check.stat.exists

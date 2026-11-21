@@ -969,3 +969,49 @@ def test_comprehensive_openapi_swagger_json(client):
     assert "cookieAuth" in spec["components"]["securitySchemes"]
     assert "bearerAuth" in spec["components"]["securitySchemes"]
     assert "schemas" in spec["components"]
+
+
+def test_diagnostics_test_call_handles_plain_text_500(client):
+    """Diagnostic test_call must gracefully decode non-JSON upstream error bodies."""
+    import aiohttp
+
+    mock_resp = MagicMock()
+    mock_resp.status = 500
+    mock_resp.content_type = "text/plain"
+    mock_resp.json = AsyncMock(
+        side_effect=aiohttp.ContentTypeError(
+            request_info=MagicMock(),
+            history=(),
+            message="Attempt to decode JSON with unexpected mimetype: text/plain; charset=utf-8",
+        )
+    )
+    mock_resp.text = AsyncMock(return_value="500 Internal Server Error")
+
+    mock_post_ctx = MagicMock()
+    mock_post_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_post_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(return_value=mock_post_ctx)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with (
+        patch("flask_login.utils._get_user", return_value=MagicMock(is_authenticated=True)),
+        patch("py_phone_caller_ui.home.aiohttp.ClientSession", return_value=mock_session),
+    ):
+        response = client.post(
+            "/api/diagnostics/test_call",
+            json={"phone": "1000", "message": "Diag test"},
+        )
+
+    assert response.status_code == 500
+    payload = response.get_json()
+    assert payload["success"] is False
+    assert "500 Internal Server Error" in payload["error"]
+    assert "unexpected mimetype" not in payload["error"]
+

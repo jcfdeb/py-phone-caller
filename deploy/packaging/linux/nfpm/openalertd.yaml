@@ -1,0 +1,45 @@
+name: "openalertd"
+arch: "${ARCH:-amd64}"
+platform: "linux"
+version: "${VERSION:-1.0.0}"
+release: "1"
+section: "net"
+priority: "optional"
+maintainer: "py-phone-caller contributors <admin@py-phone-caller.link>"
+description: |
+  OpenAlert Daemon - Resilient Multi-Transport Alert Routing (Nostr NIP-ALERT,
+  Lightning NIP-57, 0xChat NIP-17, LoRa RF, BitChat BLE mesh, and USB GSM SMS).
+vendor: "py-phone-caller"
+homepage: "https://github.com/jcfdeb/py-phone-caller"
+license: "BSD-3-Clause"
+
+depends:
+  - libc6 | glibc
+  - systemd
+  - dbus
+
+contents:
+  - src: ./staging/openalertd/usr/local/bin/openalertd
+    dst: /usr/local/bin/openalertd
+    file_info:
+      mode: 0755
+  - src: ./staging/openalertd/etc/openalertd/openalertd.toml
+    dst: /etc/openalertd/openalertd.toml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+  - src: ./staging/openalertd/etc/openalertd/profiles/
+    dst: /etc/openalertd/profiles/
+    type: tree
+  - src: ./staging/openalertd/usr/share/openalertd/
+    dst: /usr/share/openalertd/
+    type: tree
+  - src: ./staging/openalertd/lib/systemd/system/openalertd.service
+    dst: /lib/systemd/system/openalertd.service
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: ./deploy/packaging/linux/deb/openalertd/postinst
+  preremove: ./deploy/packaging/linux/deb/openalertd/prerm
+  postremove: ./deploy/packaging/linux/deb/openalertd/postrm

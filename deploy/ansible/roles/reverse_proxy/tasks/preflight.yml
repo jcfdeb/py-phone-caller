@@ -1,0 +1,141 @@
+---
+# Safe to include from the parent topology preflight before any host mutation.
+- name: Require a supported offline Caddy platform
+  ansible.builtin.assert:
+    that:
+      - >-
+        (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] == '13')
+        or (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '26.04')
+    fail_msg: Airgapped Caddy requires Debian 13 or Ubuntu 26.04 with prevalidated signed file mirrors.
+    quiet: true
+  when: py_phone_caller_connectivity | default('online') == 'airgapped'
+
+- name: Validate explicit Caddy TLS selection
+  ansible.builtin.assert:
+    that:
+      - py_phone_caller_tls_mode in ['acme', 'internal', 'provided']
+      - py_phone_caller_public_url is match('^https://[a-zA-Z0-9.\[\]:_-]+$')
+      - py_phone_caller_connectivity | default('online') != 'airgapped' or py_phone_caller_tls_mode != 'acme'
+    quiet: true
+  when: py_phone_caller_topology | default('legacy') != 'legacy'
+
+- name: Validate target-existing TLS paths
+  ansible.builtin.assert:
+    that:
+      - item is match('^/[^\r\n"{}]+$')
+    quiet: true
+  loop:
+    - "{{ py_phone_caller_tls_certificate | default('') }}"
+    - "{{ py_phone_caller_tls_private_key | default('') }}"
+  no_log: true
+  when:
+    - py_phone_caller_topology | default('legacy') != 'legacy'
+    - py_phone_caller_tls_mode == 'provided'
+
+- name: Inspect provided TLS files without reading their contents
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+    get_mime: false
+  loop:
+    - "{{ py_phone_caller_tls_certificate | default('') }}"
+    - "{{ py_phone_caller_tls_private_key | default('') }}"
+  register: gateway_ingress_tls_files
+  no_log: true
+  when:
+    - py_phone_caller_topology | default('legacy') != 'legacy'
+    - py_phone_caller_tls_mode == 'provided'
+
+- name: Require existing regular TLS files
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg | default(false)
+    quiet: true
+  loop: "{{ gateway_ingress_tls_files.results }}"
+  no_log: true
+  when:
+    - py_phone_caller_topology | default('legacy') != 'legacy'
+    - py_phone_caller_tls_mode == 'provided'
+
+- name: Read the NAT table
+  ansible.builtin.command:
+    cmd: iptables -t nat -S
+  register: _ppc_nat
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read the IPv6 NAT table
+  ansible.builtin.command:
+    cmd: ip6tables -t nat -S
+  register: _ppc_nat6
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: py_phone_caller_topology | default('legacy') != 'legacy'
+
+- name: Read the current listeners
+  ansible.builtin.command:
+    cmd: ss -ltnp
+  register: _ppc_listeners
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Require successful explicit listener inspection
+  ansible.builtin.assert:
+    that:
+      - _ppc_listeners.rc == 0
+      - _ppc_nat.rc == 0
+      - _ppc_nat6.rc == 0
+    fail_msg: Cannot establish ingress ownership; provide working ss, iptables and ip6tables before deployment.
+    quiet: true
+  when: py_phone_caller_topology | default('legacy') != 'legacy'
+
+- name: Inspect the existing Caddy configuration ownership
+  ansible.builtin.slurp:
+    src: /etc/caddy/Caddyfile
+  register: gateway_existing_caddy_config
+  failed_when: false
+  no_log: true
+  when:
+    - py_phone_caller_topology | default('legacy') != 'legacy'
+    - _ppc_listeners.stdout is search('"caddy",pid=')
+
+- name: Refuse to replace a foreign Caddy configuration
+  ansible.builtin.assert:
+    that:
+      - >-
+        (gateway_existing_caddy_config.content | default('') | b64decode).startswith('# Managed by Ansible (role: deploy_py-phone-caller).')
+    fail_msg: An existing Caddy listener is not owned by this deployment; use external ingress or resolve ownership manually.
+    quiet: true
+  when:
+    - py_phone_caller_topology | default('legacy') != 'legacy'
+    - _ppc_listeners.stdout is search('"caddy",pid=')
+
+- name: Refuse to install a second reverse proxy
+  ansible.builtin.assert:
+    that:
+      - _ppc_nat_diversions | length == 0
+      - _ppc_foreign_listeners | length == 0
+    fail_msg: >-
+      Something else already owns the Caddy ports on this host, so Caddy would
+      install, start, and never receive a request.
+      NAT diversions: {{ _ppc_nat_diversions | join(' | ') }}.
+      Listeners: {{ _ppc_foreign_listeners | join(' | ') }}.
+      Use external ingress at {{ _ppc_ingress_upstream }} or resolve ownership manually.
+      {% if py_phone_caller_topology | default('legacy') == 'legacy' %}
+      Set py_phone_caller_caddy_force=true to install anyway (legacy only).
+      {% endif %}
+    quiet: true
+  vars:
+    _ppc_nat_diversions: >-
+      {{ ((_ppc_nat.stdout_lines | default([])) + (_ppc_nat6.stdout_lines | default([])))
+         | select('search', '--dport (80|443) ')
+         | select('search', '-j (REDIRECT|DNAT)') | list }}
+    _ppc_foreign_listeners: >-
+      {{ _ppc_listeners.stdout_lines | default([])
+         | select('search', ':(80|443)[ ]')
+         | reject('search', ('"caddy",pid=' if py_phone_caller_topology | default('legacy') != 'legacy' else 'caddy')) | list }}
+  when: py_phone_caller_topology | default('legacy') != 'legacy' or not (py_phone_caller_caddy_force | default(false) | bool)

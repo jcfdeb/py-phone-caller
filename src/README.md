@@ -299,8 +299,10 @@ The generated files contain `DYNACONF_SECTION__KEY` variables and are consumed b
 
 ## 🚀 Running Services
 
+> **Centralized Deployment Guides**: See **[`deploy/docs/README.md`](../deploy/docs/README.md)** for step-by-step installation guides across Ansible, Docker Compose, Kubernetes/Helm, DEB/RPM, and PyPI/systemd.
+
 ### Option 1: Docker Compose (Recommended)
-See [`deploy/compose/README.md`](../deploy/compose/README.md) for Docker deployment.
+See **[`deploy/docs/03-docker-compose-deployment.md`](../deploy/docs/03-docker-compose-deployment.md)** (and [`deploy/compose/README.md`](../deploy/compose/README.md)) for Docker deployment.
 
 ### Option 2: Local Development
 Each service can be run locally with:
@@ -316,7 +318,7 @@ uv run python -m asterisk_caller.asterisk_caller
 ```
 
 ### Option 3: Ansible Deployment
-See [`deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md) for production deployment.
+See **[`deploy/docs/02-ansible-deployment.md`](../deploy/docs/02-ansible-deployment.md)** (and [`deploy/ansible/README.md`](../deploy/ansible/README.md)) for production deployment.
 
 ---
 
@@ -325,13 +327,13 @@ See [`deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.
 Build all images at once:
 
 ```bash
-./src/build_all_images.sh
+CONTAINER_ENGINE=docker IMAGE_REGISTRY=localhost IMAGE_TAG=1.0.0 ./src/build_all_images.sh
 ```
 
 Or build individual services:
 
 ```bash
-podman build -t localhost/asterisk_caller:latest -f src/asterisk_caller/Dockerfile .
+podman build -t localhost/asterisk_caller:1.0.0 -f src/asterisk_caller/Dockerfile .
 ```
 
 ---
@@ -348,15 +350,16 @@ podman build -t localhost/asterisk_caller:latest -f src/asterisk_caller/Dockerfi
 | `caller_scheduler` | 8086 | HTTP | Schedule calls |
 | `caller_address_book` | 8087 | HTTP | Contact management |
 | `py_phone_caller_ui` | 5000 | HTTP | Web UI |
+| `openalertd` | 8090 | HTTP | OpenAlert REST API & Dashboard |
 
 ---
 
 ## 🗄️ Infrastructure Dependencies
 
 ### Required External Services
-- **Asterisk PBX**: v18/20+ with ARI enabled
-- **PostgreSQL**: 12+ (Database)
-- **Redis**: 6+ (Message queue & Celery backend)
+- **Asterisk PBX**: v18/20/22+ with ARI enabled
+- **PostgreSQL**: 16/17+ (Database)
+- **Redis / Valkey**: 7/8+ (Message queue & Celery backend)
 
 ### Optional Services
 - **Prometheus + Alertmanager**: For alert-triggered calls
@@ -394,15 +397,16 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv run maturin develop --manifest-path py_
 
 ## 📦 Deployment
 
-### Production Deployment
-Use Ansible for production deployments:
+### Production Deployment (Ansible)
+Use the modular native Ansible installer for bare-metal / VM production deployments:
 
 ```bash
-cd deploy/ansible/deploy_all
-ansible-playbook deploy_py-phone-caller_stack.yml
+cd deploy/ansible
+export ANSIBLE_CONFIG="$PWD/ansible.cfg"
+ansible-playbook -i /path/to/hosts.yml site.yml
 ```
 
-See the [deployment README](../deploy/ansible/deploy_all/README.md) for detailed instructions.
+See **[`deploy/docs/02-ansible-deployment.md`](../deploy/docs/02-ansible-deployment.md)** for detailed step-by-step instructions.
 
 ### Docker Compose Deployment
 For containerized deployments:
@@ -412,7 +416,7 @@ cd deploy/compose
 docker compose up -d
 ```
 
-See the [Docker Compose README](../deploy/compose/README.md) for configuration options.
+See **[`deploy/docs/03-docker-compose-deployment.md`](../deploy/docs/03-docker-compose-deployment.md)** for configuration options.
 
 ---
 
@@ -429,9 +433,11 @@ See the [Docker Compose README](../deploy/compose/README.md) for configuration o
 ## 📚 Additional Resources
 
 - **Main Project README**: [`../README.md`](../README.md)
-- **Ansible Deployment**: [`../deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md)
-- **Docker Compose**: [`../deploy/compose/README.md`](../deploy/compose/README.md)
-- **Asterisk Role**: [`../deploy/ansible/asterisk_py-phone-caller/README.md`](../deploy/ansible/asterisk_py-phone-caller/README.md)
+- **Deployment Documentation Hub**: [`../deploy/docs/README.md`](../deploy/docs/README.md)
+- **Ansible Deployment Guide**: [`../deploy/docs/02-ansible-deployment.md`](../deploy/docs/02-ansible-deployment.md)
+- **Docker Compose Guide**: [`../deploy/docs/03-docker-compose-deployment.md`](../deploy/docs/03-docker-compose-deployment.md)
+- **Kubernetes & Helm Guide**: [`../deploy/docs/04-kubernetes-and-helm-deployment.md`](../deploy/docs/04-kubernetes-and-helm-deployment.md)
+- **Native DEB & RPM Guide**: [`../deploy/docs/05-linux-deb-rpm-deployment.md`](../deploy/docs/05-linux-deb-rpm-deployment.md)
 
 ---
 

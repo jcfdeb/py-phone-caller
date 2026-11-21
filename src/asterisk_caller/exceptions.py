@@ -27,5 +27,13 @@ class AriConnectionError(AsteriskCallerError):
     """Raised when a connection to the Asterisk ARI interface fails."""
 
 
+class AriEndpointUnavailableError(AsteriskCallerError):
+    """Raised when Asterisk ARI is healthy but cannot allocate a channel for the target endpoint."""
+
+    def __init__(self, message: str, status: int = 502) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class CircuitBreakerOpenError(AsteriskCallerError):
     """Raised when the Asterisk ARI circuit breaker is open due to repeated failures."""

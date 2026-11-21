@@ -306,13 +306,89 @@ async fn wait_for_cmgs_response(port: &mut SerialStream, timeout_secs: u64) -> R
     }
 }
 
-fn is_pure_ascii(message: &str) -> bool {
-    message.chars().all(|c| c.is_ascii() && (c == '\r' || c == '\n' || (c >= ' ' && c <= '~')))
-}
+const MAX_UCS2_UNITS_PER_SMS: usize = 70;
 
 fn to_ucs2_hex(s: &str) -> String {
     s.encode_utf16()
         .map(|v| format!("{:04X}", v))
+        .collect()
+}
+
+/// Splits a UTF-8 message into segments that each fit within `max_units` UTF-16
+/// code units (70 for a single UCS-2 SMS), never splitting surrogate pairs and
+/// prefixing multipart messages with `(i/n) `.
+fn split_ucs2_chunks(message: &str, max_units: usize) -> Vec<String> {
+    if message.is_empty() || message.encode_utf16().count() <= max_units {
+        return vec![message.to_string()];
+    }
+
+    let split_with_budget = |text: &str, budget: usize| -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut remaining = text;
+        while !remaining.is_empty() {
+            let mut units = 0usize;
+            let mut cut_byte = 0usize;
+            let mut last_space_byte = None;
+
+            for (idx, ch) in remaining.char_indices() {
+                let ch_units = ch.len_utf16();
+                if units + ch_units > budget {
+                    break;
+                }
+                units += ch_units;
+                cut_byte = idx + ch.len_utf8();
+                if ch.is_whitespace() && units >= budget / 2 {
+                    last_space_byte = Some(idx);
+                }
+            }
+
+            if cut_byte == 0 {
+                if let Some(ch) = remaining.chars().next() {
+                    cut_byte = ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+
+            if cut_byte < remaining.len() {
+                if let Some(sp) = last_space_byte {
+                    if sp > 0 {
+                        let piece = remaining[..sp].trim_end();
+                        if !piece.is_empty() {
+                            parts.push(piece.to_string());
+                            remaining = remaining[sp..].trim_start();
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            parts.push(remaining[..cut_byte].to_string());
+            remaining = &remaining[cut_byte..];
+            if !remaining.is_empty() {
+                remaining = remaining.trim_start();
+            }
+        }
+        parts
+    };
+
+    // Reserve prefix width based on part count: "(1/2) " = 6 units, "(10/10) " = 8 units.
+    let mut prefix_budget = 6usize;
+    let mut raw_parts = split_with_budget(message, max_units.saturating_sub(prefix_budget).max(1));
+    if raw_parts.len() >= 10 {
+        prefix_budget = format!("({}/{}) ", raw_parts.len(), raw_parts.len()).encode_utf16().count();
+        raw_parts = split_with_budget(message, max_units.saturating_sub(prefix_budget).max(1));
+    }
+
+    let total = raw_parts.len();
+    if total <= 1 {
+        return raw_parts;
+    }
+
+    raw_parts
+        .into_iter()
+        .enumerate()
+        .map(|(i, part)| format!("({}/{}) {}", i + 1, total, part))
         .collect()
 }
 
@@ -379,58 +455,66 @@ async fn send_single_modem(modem: &ModemConfig, number: &str, message: &str, id:
                 return Err(format!("Modem {} not registered to network.", modem.id));
             }
 
-            let use_unicode = !is_pure_ascii(message);
-            
-            if use_unicode {
-                let _ = port.write_all(b"AT+CSCS=\"UCS2\"\r").await.map_err(|e| e.to_string())?;
-                let _ = port.flush().await.map_err(|e| e.to_string())?;
-                sleep(Duration::from_millis(300)).await;
-                let _ = drain_serial_to_string(&mut port).await;
-
-                let _ = port.write_all(b"AT+CSMP=17,167,0,8\r").await.map_err(|e| e.to_string())?;
-                let _ = port.flush().await.map_err(|e| e.to_string())?;
-                sleep(Duration::from_millis(300)).await;
-                let _ = drain_serial_to_string(&mut port).await;
-            } else {
-                let _ = port.write_all(b"AT+CSCS=\"GSM\"\r").await.map_err(|e| e.to_string())?;
-                let _ = port.flush().await.map_err(|e| e.to_string())?;
-                sleep(Duration::from_millis(300)).await;
-                let _ = drain_serial_to_string(&mut port).await;
-
-                let _ = port.write_all(b"AT+CSMP=17,167,0,0\r").await.map_err(|e| e.to_string())?;
-                let _ = port.flush().await.map_err(|e| e.to_string())?;
-                sleep(Duration::from_millis(300)).await;
-                let _ = drain_serial_to_string(&mut port).await;
-            }
-
+            // Always use SMS Text Mode + UCS-2 (UTF-16BE) so ASCII symbols like '[', ']', '_', '@', '$'
+            // and all international UTF-8 characters / emojis are transmitted verbatim without GSM 03.38 corruption.
             let _ = port.write_all(b"AT+CMGF=1\r").await.map_err(|e| e.to_string())?;
             let _ = port.flush().await.map_err(|e| e.to_string())?;
             sleep(Duration::from_millis(300)).await;
             let _ = drain_serial_to_string(&mut port).await;
 
-            let target_number = if use_unicode { to_ucs2_hex(number) } else { number.to_string() };
-            let cmd = format!("AT+CMGS=\"{}\"\r", target_number);
-            let _ = port.write_all(cmd.as_bytes()).await.map_err(|e| e.to_string())?;
+            let _ = port.write_all(b"AT+CSCS=\"UCS2\"\r").await.map_err(|e| e.to_string())?;
             let _ = port.flush().await.map_err(|e| e.to_string())?;
-            
-            if !wait_for_prompt(&mut port, 3000).await {
-                warn!("[ID:{}] Carrier {}: No '>' prompt seen within timeout, proceeding anyway...", id, modem.id);
-            }
-            
-            let content = if use_unicode { to_ucs2_hex(message) } else { message.to_string() };
-            let _ = port.write_all(content.as_bytes()).await.map_err(|e| e.to_string())?;
-            let _ = port.write_all(&[0x1a]).await.map_err(|e| e.to_string())?;
+            sleep(Duration::from_millis(300)).await;
+            let _ = drain_serial_to_string(&mut port).await;
+
+            let _ = port.write_all(b"AT+CSMP=17,167,0,8\r").await.map_err(|e| e.to_string())?;
             let _ = port.flush().await.map_err(|e| e.to_string())?;
-            
-            match wait_for_cmgs_response(&mut port, 12).await {
-                Ok(resp) => {
-                    if !resp.is_empty() {
-                        info!("[ID:{}] Carrier {}: response: {}", id, modem.id, resp.trim());
-                    }
-                    Ok(())
+            sleep(Duration::from_millis(300)).await;
+            let _ = drain_serial_to_string(&mut port).await;
+
+            let target_number = to_ucs2_hex(number);
+            let chunks = split_ucs2_chunks(message, MAX_UCS2_UNITS_PER_SMS);
+            let total_chunks = chunks.len();
+
+            for (idx, chunk) in chunks.into_iter().enumerate() {
+                if total_chunks > 1 {
+                    info!(
+                        "[ID:{}] Carrier {}: sending UCS-2 SMS part {}/{} ({} UTF-16 units)",
+                        id,
+                        modem.id,
+                        idx + 1,
+                        total_chunks,
+                        chunk.encode_utf16().count()
+                    );
                 }
-                Err(e) => Err(format!("Modem {} returned error: {}", modem.id, e)),
+
+                let cmd = format!("AT+CMGS=\"{}\"\r", target_number);
+                let _ = port.write_all(cmd.as_bytes()).await.map_err(|e| e.to_string())?;
+                let _ = port.flush().await.map_err(|e| e.to_string())?;
+
+                if !wait_for_prompt(&mut port, 3000).await {
+                    warn!("[ID:{}] Carrier {}: No '>' prompt seen within timeout, proceeding anyway...", id, modem.id);
+                }
+
+                let content = to_ucs2_hex(&chunk);
+                let _ = port.write_all(content.as_bytes()).await.map_err(|e| e.to_string())?;
+                let _ = port.write_all(&[0x1a]).await.map_err(|e| e.to_string())?;
+                let _ = port.flush().await.map_err(|e| e.to_string())?;
+
+                match wait_for_cmgs_response(&mut port, 15).await {
+                    Ok(resp) => {
+                        if !resp.is_empty() {
+                            info!("[ID:{}] Carrier {}: response: {}", id, modem.id, resp.trim());
+                        }
+                    }
+                    Err(e) => return Err(format!("Modem {} returned error: {}", modem.id, e)),
+                }
+
+                if idx + 1 < total_chunks {
+                    sleep(Duration::from_millis(500)).await;
+                }
             }
+            Ok(())
         }
         Err(e) => Err(format!("Failed to open serial port {} ({}): {}", modem.port, modem.id, e)),
     }
@@ -564,21 +648,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_pure_ascii() {
-        assert!(is_pure_ascii("Hello World 123"));
-        assert!(is_pure_ascii("Alert: Database is DOWN!\r\nCheck immediately."));
-        assert!(!is_pure_ascii("Non funziona più il database, controllare il cluster TimescaleDB"));
-        assert!(!is_pure_ascii("Caffè, città, però, così, naïve"));
-        assert!(!is_pure_ascii("Price: €50"));
-        assert!(!is_pure_ascii("Warning: ⚠️"));
-    }
-
-    #[test]
     fn test_to_ucs2_hex() {
         assert_eq!(to_ucs2_hex("AB"), "00410042");
         assert_eq!(to_ucs2_hex("+39"), "002B00330039");
+        assert_eq!(to_ucs2_hex("[SOS]"), "005B0053004F0053005D");
         assert_eq!(to_ucs2_hex("più"), "0070006900F9");
         let hex = to_ucs2_hex("Non funziona più il database, controllare il cluster TimescaleDB");
         assert!(hex.contains("00F9"));
+    }
+
+    #[test]
+    fn test_split_ucs2_chunks_short_message() {
+        let msg = "[SOS] (Jorge): air gapped test [openalertd-fog-arm]";
+        let chunks = split_ucs2_chunks(msg, MAX_UCS2_UNITS_PER_SMS);
+        assert_eq!(chunks, vec![msg.to_string()]);
+        assert!(chunks[0].encode_utf16().count() <= MAX_UCS2_UNITS_PER_SMS);
+    }
+
+    #[test]
+    fn test_split_ucs2_chunks_over_70_chars_and_emojis() {
+        let msg = "[SOS] (Jorge Air Gapped): Alerta questa è un'emergenza [openalertd-fog-arm]";
+        assert_eq!(msg.encode_utf16().count(), 75);
+        let chunks = split_ucs2_chunks(msg, MAX_UCS2_UNITS_PER_SMS);
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].starts_with("(1/2) [SOS]"));
+        assert!(chunks[1].starts_with("(2/2) "));
+        for c in &chunks {
+            assert!(
+                c.encode_utf16().count() <= MAX_UCS2_UNITS_PER_SMS,
+                "Chunk exceeded 70 UTF-16 units: '{}' ({})",
+                c,
+                c.encode_utf16().count()
+            );
+        }
+
+        // Surrogate-pair emojis (2 UTF-16 code units each) must never split or exceed 70 units
+        let emoji_msg = "🚨".repeat(40);
+        let emoji_chunks = split_ucs2_chunks(&emoji_msg, MAX_UCS2_UNITS_PER_SMS);
+        assert!(emoji_chunks.len() >= 2);
+        for c in &emoji_chunks {
+            assert!(c.encode_utf16().count() <= MAX_UCS2_UNITS_PER_SMS);
+        }
     }
 }

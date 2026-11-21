@@ -7,15 +7,34 @@ name = "asterisk-ws-monitor"
 version = "1.0.0"
 description = "Asterisk WS Monitor service for py-phone-caller"
 readme = "README.md"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "py-phone-caller contributors" }]
 requires-python = ">=3.14, <3.15"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Telephony",
+]
 dependencies = [
     "py_phone_caller_utils",
     "aiohttp>=3.9.0",
     "websockets>=13.0",
 ]
 
+[project.scripts]
+ppc-asterisk-ws-monitor = "asterisk_ws_monitor.asterisk_ws_monitor:cli_main"
+
+[tool.setuptools]
+packages = ["asterisk_ws_monitor"]
+
 [tool.setuptools.package-dir]
 asterisk_ws_monitor = "."
 
 [tool.setuptools.package-data]
-asterisk_ws_monitor = ["*"]
+asterisk_ws_monitor = ["*.py", "README.md"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["Dockerfile*", "pyproject.toml"]
+

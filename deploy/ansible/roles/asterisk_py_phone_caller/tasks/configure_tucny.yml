@@ -1,0 +1,81 @@
+---
+- name: Install owned private Tucny PBX include roots
+  ansible.builtin.copy:
+    dest: "{{ asterisk_conf_dir }}/{{ item.file }}"
+    content: "{{ item.content }}"
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0640"
+  loop:
+    - file: extensions.conf
+      content: |
+        ; Managed PBX include root.
+        [general]
+        static=yes
+        writeprotect=yes
+        #include extensions_py_phone_caller.conf
+    - file: pjsip.conf
+      content: |
+        ; Managed PBX include root.
+        #include pjsip_py_phone_caller.conf
+    - file: iax.conf
+      content: |
+        ; Managed private IAX listener; module loaded only when selected.
+        [general]
+        bindaddr={{ asterisk_iax_bindaddr }}
+        bindport={{ asterisk_iax_bindport }}
+        #include iax_py_phone_caller.conf
+    - file: ari.conf
+      content: |
+        ; Managed ARI include root; no vendor accounts.
+        [general]
+        enabled=yes
+        pretty=yes
+        allowed_origins=*
+        #include ari_py_phone_caller.conf
+    - file: http.conf
+      content: |
+        ; Managed private HTTP listener; no inherited TLS listener.
+        [general]
+        enabled={{ asterisk_http_enabled }}
+        bindaddr={{ asterisk_http_bindaddr }}
+        bindport={{ asterisk_http_bindport }}
+    - file: manager.conf
+      content: |
+        ; ARI is used by this stack; AMI is disabled.
+        [general]
+        enabled=no
+        webenabled=no
+  no_log: true
+  diff: false
+  notify: restart asterisk
+
+- name: Reuse the explicit non-radio PBX module allowlist
+  ansible.builtin.template:
+    src: modules_allstarlink.conf.j2
+    dest: "{{ asterisk_conf_dir }}/modules.conf"
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0640"
+  notify: restart asterisk
+
+- name: Create the packaged service runtime directory before its first start
+  ansible.builtin.file:
+    path: /run/asterisk
+    state: directory
+    owner: "{{ asterisk_user }}"
+    group: "{{ asterisk_group }}"
+    mode: "0755"
+
+- name: Inspect the packaged WAV beep without a source archive fallback
+  ansible.builtin.stat:
+    path: /usr/share/asterisk/sounds/beep.wav
+  register: asterisk_py_phone_caller_tucny_beep
+
+- name: Require the installed core WAV sound
+  ansible.builtin.assert:
+    that:
+      - asterisk_py_phone_caller_tucny_beep.stat.exists
+      - asterisk_py_phone_caller_tucny_beep.stat.isreg
+      - asterisk_py_phone_caller_tucny_beep.stat.size > 44
+    fail_msg: Tucny core WAV sounds are missing; refuse tarball fallback and inspect the signed sounds RPM installation.

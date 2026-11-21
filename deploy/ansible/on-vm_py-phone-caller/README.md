@@ -6,6 +6,11 @@ retaining the `app_servers` group, Python-only selection and existing
 `py_phone_caller_*` variables. The old commands remain available; new installations
 should follow the [canonical guide](../README.md) with an isolated inventory.
 
+New [topology profiles](../docs/topologies.md) distinguish standard local login
+from enterprise APISIX/Keycloak, independently of managed/external TLS ingress.
+Use the documented air-gapped artifact contract for offline installation;
+disabling the gateway or adding a PyPI mirror alone is insufficient.
+
 PostgreSQL, queue, gateway, reverse-proxy and firewall implementations are shared
 roles with explicit management boundaries. Turning management off leaves existing
 resources untouched. Do not inherit the checked-in VPS gateway configuration on
@@ -70,8 +75,10 @@ and phone numbers included.
 * Budget disk space for the full locked PyTorch/TTS workspace and model cache;
   the disposable test disk was expanded to 50 GB. A 10 GB root disk is too small
   for full validation. Memory requirements depend on worker/model choices.
-* Outbound HTTPS for PyPI, astral.sh (uv) and Hugging Face, unless you point
-  `py_phone_caller_uv_extra_index_url` at an internal mirror
+* The legacy connected installer needs outbound HTTPS for Python tooling,
+  packages and models; `py_phone_caller_uv_extra_index_url` only adds a Python
+  index and does not eliminate other downloads. For no-public-network installs,
+  use the [explicit air-gapped profile](../docs/topologies.md).
 
 ---
 
@@ -276,7 +283,7 @@ Keep `py_phone_caller_manage_firewall: true` in this setup. The services bind
 systemctl list-units 'py-phone-caller-*'
 journalctl -u py-phone-caller-caller-register -n 100 --no-pager
 
-sudo -u py-phone-caller cat /opt/py-phone-caller/src/config/settings.toml
+sudo -u py-phone-caller cat /opt/py-phone-caller/app/config/settings.toml
 sudo -u py-phone-caller /opt/py-phone-caller/venv/bin/python -c \
   'from py_phone_caller_utils.config import settings; print(settings.database.db_host)'
 ```

@@ -119,6 +119,7 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 604800
+app.config["PPC_OFFLINE"] = os.environ.get("PPC_OFFLINE") == "1"
 
 
 @app.after_request
@@ -214,6 +215,18 @@ app.register_blueprint(sms_blueprint)
 
 @app.route("/docs")
 def ui_swagger_docs() -> Response:
+    if app.config.get("PPC_OFFLINE", False):
+        return Response(
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
+            "<title>API documentation offline</title></head><body>"
+            "<h1>Interactive API documentation unavailable offline</h1>"
+            "<p>Swagger UI requires external CDN assets, which are disabled in offline mode. "
+            "No local Swagger UI assets are bundled.</p>"
+            "<p>The OpenAPI specification remains available locally: "
+            "<a href=\"/docs/swagger.json\">OpenAPI JSON</a>.</p></body></html>",
+            status=503,
+            mimetype="text/html",
+        )
     return Response(
         generate_swagger_ui_html(
             title="py-phone-caller Web UI API",
@@ -245,5 +258,11 @@ def setup_admin_user() -> None:
 
 setup_admin_user()
 
-if __name__ == "__main__":
+def main() -> None:
+    """Starts the py-phone-caller Flask Web UI."""
     app.run(host=UI_LISTEN_ON_HOST, port=UI_LISTEN_ON_PORT)
+
+
+if __name__ == "__main__":
+    main()
+

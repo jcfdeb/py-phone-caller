@@ -54,6 +54,10 @@ LANGUAGE_NAMES: Dict[str, str] = {
     "pt_BR": "Portuguese (Brazil)",
     "ja": "Japanese",
     "jpn": "Japanese",
+    "nl": "Dutch",
+    "nld": "Dutch",
+    "nl_NL": "Dutch (Netherlands)",
+    "nl-NL": "Dutch (Netherlands)",
     "a": "English (American)",
     "b": "English (British)",
     "e": "Spanish",
@@ -124,6 +128,10 @@ LANGUAGE_FLAGS: Dict[str, str] = {
     "ja": "🇯🇵",
     "jpn": "🇯🇵",
     "j": "🇯🇵",
+    "nl": "🇳🇱",
+    "nld": "🇳🇱",
+    "nl_NL": "🇳🇱",
+    "nl-NL": "🇳🇱",
 }
 
 LANGUAGE_ALIASES: Dict[str, str] = {
@@ -161,6 +169,9 @@ LANGUAGE_ALIASES: Dict[str, str] = {
     "hin": "hi",
     "hi_in": "hi",
     "hi-in": "hi",
+    "nld": "nl",
+    "nl_nl": "nl",
+    "nl-nl": "nl",
 }
 
 KOKORO_VOICE_PREFIX_TO_LANG: Dict[str, str] = {

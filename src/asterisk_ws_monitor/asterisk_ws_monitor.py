@@ -371,7 +371,8 @@ async def main() -> None:
             logging.info("The task was cancelled.")
 
 
-if __name__ == "__main__":
+def cli_main() -> None:
+    """Synchronous CLI entrypoint for Asterisk WS monitor."""
     try:
         signal.signal(signal.SIGTERM, receive_signal)
         signal.signal(signal.SIGINT, receive_signal)
@@ -385,3 +386,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt as err:
         logging.info(f"Process terminated due Interrupt. {err}")
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    cli_main()
+

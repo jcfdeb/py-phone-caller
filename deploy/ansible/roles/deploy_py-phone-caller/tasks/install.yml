@@ -1,8 +1,13 @@
 ---
+- name: Install exclusively from verified air-gapped inputs
+  ansible.builtin.include_tasks: install_offline.yml
+  when: py_phone_caller_connectivity | default('online') == 'airgapped'
+
 - name: Check for an existing uv
   ansible.builtin.stat:
     path: "{{ py_phone_caller_uv_bin }}"
   register: _ppc_uv
+  when: py_phone_caller_connectivity | default('online') == 'online'
 
 - name: Download the reviewed uv installer
   ansible.builtin.get_url:
@@ -14,7 +19,7 @@
     mode: "0700"
   no_log: true
   diff: false
-  when: not _ppc_uv.stat.exists
+  when: py_phone_caller_connectivity | default('online') == 'online' and not _ppc_uv.stat.exists
 
 - name: Install uv
   ansible.builtin.command:
@@ -25,7 +30,7 @@
     UV_NO_MODIFY_PATH: "1"
   become: true
   become_user: "{{ py_phone_caller_user }}"
-  when: not _ppc_uv.stat.exists
+  when: py_phone_caller_connectivity | default('online') == 'online' and not _ppc_uv.stat.exists
 
 - name: Check the installed uv version
   ansible.builtin.command:
@@ -33,11 +38,13 @@
   register: _ppc_uv_version
   changed_when: false
   failed_when: _ppc_uv_version.stdout.split()[1] != py_phone_caller_uv_version
+  when: py_phone_caller_connectivity | default('online') == 'online'
 
 - name: Confirm uv landed where the role expects it
   ansible.builtin.stat:
     path: "{{ py_phone_caller_uv_bin }}"
   register: _ppc_uv_installed
+  when: py_phone_caller_connectivity | default('online') == 'online'
 
 - name: Fail when uv is missing
   ansible.builtin.assert:
@@ -49,6 +56,7 @@
       missing. Re-run with -vvv to see the installer output, or install uv by
       hand into {{ py_phone_caller_uv_dir }}.
     quiet: true
+  when: py_phone_caller_connectivity | default('online') == 'online'
 
 - name: Create the uv state directories
   ansible.builtin.file:
@@ -60,6 +68,7 @@
   loop:
     - "{{ py_phone_caller_uv_python_install_dir }}"
     - "{{ py_phone_caller_uv_cache_dir }}"
+  when: py_phone_caller_connectivity | default('online') == 'online'
 
 # --frozen keeps uv honest about uv.lock: it never silently re-resolves.
 # --all-packages installs every workspace member, --no-dev leaves the test
@@ -75,7 +84,7 @@
     cmd: >-
       {{ py_phone_caller_uv_bin }} sync
       --frozen --all-packages --no-dev
-      {{ '--inexact' if (_ppc_sms_on_premise or py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts') else '' }}
+      {{ '--inexact' if (_ppc_sms_on_premise or py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts' or (py_phone_caller_install_spacy_model | default(false) | bool) or (py_phone_caller_install_kokoro_cjk | default(false) | bool)) else '' }}
       --python {{ py_phone_caller_python_version }}
     chdir: "{{ py_phone_caller_install_dir }}"
   environment: "{{ _ppc_uv_env }}"
@@ -90,6 +99,32 @@
   notify: Restart py-phone-caller services
   no_log: true
   diff: false
+  when: py_phone_caller_connectivity | default('online') == 'online'
+
+# Upstream PyPI wheel nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_aarch64.whl
+# ships internal .dist-info/WHEEL metadata tagged "manylinux2014_sbsa", causing uv sync
+# on aarch64 to see a platform-tag mismatch and reinstall it on every rerun. Normalize
+# only the installed venv metadata so unchanged reruns remain idempotent (changed=0).
+- name: Normalize aarch64 SBSA wheel tag in installed virtualenv metadata
+  ansible.builtin.command:
+    argv:
+      - "{{ py_phone_caller_venv_dir }}/bin/python"
+      - -I
+      - -B
+      - -c
+      - >-
+        import pathlib, sys;
+        [p.write_text(p.read_text(encoding='utf-8').replace('Tag: py3-none-manylinux2014_sbsa', 'Tag: py3-none-manylinux2014_aarch64'), encoding='utf-8')
+         for p in pathlib.Path(sys.argv[1]).glob('lib/python*/site-packages/nvidia_cusparselt_cu13-*.dist-info/WHEEL')
+         if 'Tag: py3-none-manylinux2014_sbsa' in p.read_text(encoding='utf-8')]
+      - "{{ py_phone_caller_venv_dir }}"
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  changed_when: false
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - (ansible_facts['architecture'] | default('')) == 'aarch64'
+    - _ppc_uv_sync is changed
 
 - name: Download the reviewed spaCy English model for Kokoro
   ansible.builtin.get_url:
@@ -99,7 +134,7 @@
     owner: "{{ py_phone_caller_user }}"
     group: "{{ py_phone_caller_group }}"
     mode: "0644"
-  when: py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'
+  when: py_phone_caller_connectivity | default('online') == 'online' and (py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts' or (py_phone_caller_install_spacy_model | default(false) | bool))
 
 - name: Ensure spaCy English pipeline is installed for Kokoro TTS
   ansible.builtin.command:
@@ -112,7 +147,37 @@
   become_user: "{{ py_phone_caller_user }}"
   register: _ppc_spacy_en
   changed_when: "'Installed' in _ppc_spacy_en.stdout or 'Installed' in _ppc_spacy_en.stderr"
-  when: py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts'
+  when: py_phone_caller_connectivity | default('online') == 'online' and (py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts' or (py_phone_caller_install_spacy_model | default(false) | bool))
+  no_log: true
+  notify: Restart audio service
+
+- name: Write build constraints for Kokoro CJK G2P native extensions
+  ansible.builtin.copy:
+    content: "cython<3.1\n"
+    dest: "{{ py_phone_caller_uv_cache_dir }}/kokoro-cjk-build-constraints.txt"
+    owner: "{{ py_phone_caller_user }}"
+    group: "{{ py_phone_caller_group }}"
+    mode: "0644"
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online' and (py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts' or (py_phone_caller_install_kokoro_cjk | default(false) | bool))
+    - py_phone_caller_kokoro_cjk_packages | default([]) | length > 0
+
+- name: Ensure Kokoro Japanese and Chinese G2P packages are installed
+  ansible.builtin.command:
+    argv: >-
+      {{ [py_phone_caller_uv_bin, '--no-config', 'pip', 'install',
+          '--python', py_phone_caller_venv_dir ~ '/bin/python',
+          '--build-constraint', py_phone_caller_uv_cache_dir ~ '/kokoro-cjk-build-constraints.txt']
+         + (py_phone_caller_kokoro_cjk_packages | default([])) }}
+    chdir: "{{ py_phone_caller_install_dir }}"
+  environment: "{{ _ppc_uv_env }}"
+  become: true
+  become_user: "{{ py_phone_caller_user }}"
+  register: _ppc_kokoro_cjk
+  changed_when: "'Installed' in (_ppc_kokoro_cjk.stdout ~ _ppc_kokoro_cjk.stderr)"
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online' and (py_phone_caller_final_config.generate_audio.tts_engine == 'kokoro_tts' or (py_phone_caller_install_kokoro_cjk | default(false) | bool))
+    - py_phone_caller_kokoro_cjk_packages | default([]) | length > 0
   no_log: true
   notify: Restart audio service
 
@@ -145,10 +210,11 @@
   register: _ppc_engine_current
   changed_when: false
   failed_when: false
-  when: _ppc_sms_on_premise
+  when: py_phone_caller_connectivity | default('online') == 'online' and _ppc_sms_on_premise
 
 - name: Build and install the native SMS engine
   when:
+    - py_phone_caller_connectivity | default('online') == 'online'
     - _ppc_sms_on_premise
     - _ppc_engine_current.rc | default(1) != 0
   become: true
@@ -188,7 +254,7 @@
   changed_when: false
   register: _ppc_engine_import
   failed_when: _ppc_engine_import.rc != 0
-  when: _ppc_sms_on_premise
+  when: py_phone_caller_connectivity | default('online') == 'online' and _ppc_sms_on_premise
 
 # Everything above ran as the service account, so the virtualenv and the uv
 # state are already owned correctly; no recursive chown over ~50k torch files.

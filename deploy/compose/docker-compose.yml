@@ -12,6 +12,7 @@ x-common-env: &common-env
   DYNACONF_CALL_REGISTER__CALL_REGISTER_PORT: 8083
   DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST: generate_audio
   DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_PORT: 8082
+  DYNACONF_GENERATE_AUDIO__TTS_ENGINE: ${TTS_ENGINE:-piper_tts}
   DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_HOST: caller_address_book
   DYNACONF_CALLER_ADDRESS_BOOK__CALLER_ADDRESS_BOOK_PORT: 8087
   DYNACONF_ASTERISK_CALL__ASTERISK_CALL_HOST: asterisk_caller
@@ -20,6 +21,11 @@ x-common-env: &common-env
   DYNACONF_CALLER_SMS__CALLER_SMS_PORT: 8085
   DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_HOST: caller_scheduler
   DYNACONF_SCHEDULED_CALLS__SCHEDULED_CALLS_PORT: 8086
+  DYNACONF_COMMONS__ASTERISK_PASS: ${ASTERISK_PASS:-change_me_ari_secret}
+  DYNACONF_CALLER_SMS__TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+  DYNACONF_CALLER_SMS__TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+  DYNACONF_PY_PHONE_CALLER_UI__UI_SECRET_KEY: ${UI_SECRET_KEY:-change_me_ui_secret_key_for_sessions}
+  DYNACONF_PY_PHONE_CALLER_UI__UI_ADMIN_PASSWORD: ${UI_ADMIN_PASSWORD:-change_me_admin_password_12345}
 
 x-app-env-files: &app-env-files
   - path: ./env/py-phone-caller.env
@@ -38,7 +44,7 @@ x-db-common-env: &db-common-env
 services:
   # --- Infrastructure ---
   db:
-    image: docker.io/library/postgres:16-alpine
+    image: docker.io/library/postgres:17-alpine
     container_name: py-phone-caller-db
     ports:
       - "5432:5432"
@@ -89,7 +95,7 @@ services:
     build:
       context: ../..
       dockerfile: src/caller_register/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_register:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_register:${VERSION:-1.0.0}
     container_name: caller-register
     env_file: *app-env-files
     depends_on:
@@ -108,7 +114,7 @@ services:
     build:
       context: ../..
       dockerfile: src/generate_audio/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/generate_audio:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/generate_audio:${VERSION:-1.0.0}
     container_name: generate-audio
     env_file: *app-env-files
     ports:
@@ -126,7 +132,7 @@ services:
     build:
       context: ../..
       dockerfile: src/caller_address_book/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_address_book:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_address_book:${VERSION:-1.0.0}
     container_name: caller-address-book
     env_file: *app-env-files
     depends_on:
@@ -145,7 +151,7 @@ services:
     build:
       context: ../..
       dockerfile: src/asterisk_caller/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_caller:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_caller:${VERSION:-1.0.0}
     container_name: asterisk-caller
     env_file: *app-env-files
     depends_on:
@@ -171,7 +177,7 @@ services:
     build:
       context: ../..
       dockerfile: src/asterisk_ws_monitor/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_ws_monitor:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_ws_monitor:${VERSION:-1.0.0}
     container_name: asterisk-ws-monitor
     env_file: *app-env-files
     depends_on:
@@ -197,7 +203,7 @@ services:
     build:
       context: ../..
       dockerfile: src/asterisk_recaller/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_recaller:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/asterisk_recaller:${VERSION:-1.0.0}
     container_name: asterisk-recaller
     env_file: *app-env-files
     depends_on:
@@ -217,7 +223,7 @@ services:
     build:
       context: ../..
       dockerfile: src/caller_sms/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_sms:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_sms:${VERSION:-1.0.0}
     container_name: caller-sms
     env_file: *app-env-files
     depends_on:
@@ -238,7 +244,7 @@ services:
     build:
       context: ../..
       dockerfile: src/caller_prometheus_webhook/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_prometheus_webhook:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_prometheus_webhook:${VERSION:-1.0.0}
     container_name: caller-prometheus-webhook
     env_file: *app-env-files
     depends_on:
@@ -261,7 +267,7 @@ services:
     build:
       context: ../..
       dockerfile: src/caller_scheduler/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_scheduler:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_scheduler:${VERSION:-1.0.0}
     container_name: caller-scheduler
     env_file: *app-env-files
     depends_on:
@@ -282,7 +288,7 @@ services:
     build:
       context: ../..
       dockerfile: src/py_phone_caller_ui/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/py_phone_caller_ui:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/py_phone_caller_ui:${VERSION:-1.0.0}
     container_name: py-phone-caller-ui
     env_file: *app-env-files
     depends_on:
@@ -309,7 +315,7 @@ services:
     build:
       context: ../..
       dockerfile: src/celery_worker/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/celery_worker:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/celery_worker:${VERSION:-1.0.0}
     container_name: celery-worker
     env_file: *app-env-files
     depends_on:
@@ -342,7 +348,7 @@ services:
     build:
       context: ../../src/openalert
       dockerfile: ${OPENALERT_DOCKERFILE:-Dockerfile}
-    image: ${MY_DOCKER_REGISTRY:-localhost}/openalertd:${VERSION:-latest}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/openalertd:${VERSION:-1.0.0}
     container_name: openalertd
     depends_on:
       caller_prometheus_webhook:

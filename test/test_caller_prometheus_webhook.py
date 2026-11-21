@@ -378,3 +378,44 @@ async def test_handle_alert_payload_with_coalescing_enabled(monkeypatch):
         queued_msg = mock_queue.call_args[0][0]
         assert "Alert Storm: 3 firing alerts detected" in queued_msg
 
+
+@pytest.mark.asyncio
+async def test_sms_before_call_waits_when_sms_succeeds():
+    mock_call = AsyncMock()
+    mock_call.place_call.return_value = True
+    mock_sms = AsyncMock()
+    mock_sms.send_sms.return_value = True
+
+    svc = AlertNotificationService(
+        call_client=mock_call,
+        sms_client=mock_sms,
+        sms_wait_seconds=42,
+    )
+
+    with patch("src.caller_prometheus_webhook.services.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        await svc._schedule_sms_before_call("oncall", "Test alert")
+        mock_sms.send_sms.assert_awaited_once_with("oncall", "Test alert")
+        mock_sleep.assert_awaited_once_with(42)
+        mock_call.place_call.assert_awaited_once_with("oncall", "Test alert")
+
+
+@pytest.mark.asyncio
+async def test_sms_before_call_skips_wait_when_sms_fails():
+    mock_call = AsyncMock()
+    mock_call.place_call.return_value = True
+    mock_sms = AsyncMock()
+    mock_sms.send_sms.return_value = False
+
+    svc = AlertNotificationService(
+        call_client=mock_call,
+        sms_client=mock_sms,
+        sms_wait_seconds=42,
+    )
+
+    with patch("src.caller_prometheus_webhook.services.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        await svc._schedule_sms_before_call("oncall", "Test alert")
+        mock_sms.send_sms.assert_awaited_once_with("oncall", "Test alert")
+        mock_sleep.assert_not_awaited()
+        mock_call.place_call.assert_awaited_once_with("oncall", "Test alert")
+
+

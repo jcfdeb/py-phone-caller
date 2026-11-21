@@ -27,6 +27,13 @@
   when: openalert_owner_stat.stat.exists
   no_log: true
 
+- name: Validate explicitly mapped legacy installation before allowing any conflict
+  ansible.builtin.include_tasks: adoption.yml
+  when:
+    - not openalert_owner_stat.stat.exists
+    - openalert_adopt
+    - openalert_instance.name in openalert_legacy_instances
+
 - name: Inspect unowned paths
   ansible.builtin.stat:
     path: "{{ item }}"
@@ -47,8 +54,21 @@
 
 - name: Refuse adoption of an existing unowned account
   ansible.builtin.assert:
-    that: ansible_facts.getent_passwd[openalert_instance.user] is none
+    that: ansible_facts.getent_passwd[openalert_instance.user] is none or openalert_instance.name in openalert_approved_adoptions
     fail_msg: The requested service account already exists without an ownership record.
+  when: not openalert_owner_stat.stat.exists
+
+- name: Inspect group conflicts without changing existing groups
+  ansible.builtin.getent:
+    database: group
+    key: "{{ openalert_instance.group }}"
+    fail_key: false
+  when: not openalert_owner_stat.stat.exists
+
+- name: Refuse unowned groups without validated adoption
+  ansible.builtin.assert:
+    that: ansible_facts.getent_group[openalert_instance.group] is none or openalert_instance.name in openalert_approved_adoptions
+    fail_msg: The requested group already exists without an ownership record.
   when: not openalert_owner_stat.stat.exists
 
 - name: Inspect unit registrations outside the local unit directory
@@ -63,7 +83,20 @@
 - name: Refuse to overwrite unmanaged units or state
   ansible.builtin.assert:
     that:
-      - openalert_unowned_paths.results | selectattr('stat.exists') | list | length == 0
-      - openalert_existing_unit.stdout | trim == 'not-found'
+      - openalert_unowned_paths.results | selectattr('stat.exists') | list | length == 0 or openalert_instance.name in openalert_approved_adoptions
+      - openalert_existing_unit.stdout | trim == 'not-found' or openalert_instance.name in openalert_approved_adoptions
     fail_msg: Conflicting unmanaged OpenAlert installation; adoption must be explicitly planned and backed up.
   when: not openalert_owner_stat.stat.exists
+
+- name: Detect previously activated managed instance without changing its paths
+  ansible.builtin.stat:
+    path: "{{ openalert_instance.config_path }}"
+  register: openalert_owned_config
+  when: openalert_owner_stat.stat.exists
+
+- name: Preserve existing accounts and directory metadata during candidate staging
+  ansible.builtin.set_fact:
+    openalert_existing_instances: "{{ openalert_existing_instances + [openalert_instance.name] }}"
+  when:
+    - openalert_owner_stat.stat.exists
+    - openalert_owned_config.stat.exists

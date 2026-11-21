@@ -1,0 +1,131 @@
+---
+- name: Checkpoint and activate changed instance with matched-assets recovery
+  block:
+    - name: Quiesce existing instance before consistent checkpoint
+      ansible.builtin.systemd_service:
+        name: "{{ openalert_instance.service_name }}"
+        state: stopped
+      when: openalert_activation_plan.existing
+
+    - name: Create and verify retained full and matched-assets checkpoints
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts['python']['executable'] }}"
+          - "{{ openalert_lifecycle_helper }}"
+          - checkpoint
+          - --request
+          - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/activation.json"
+          - --helper
+          - "{{ openalert_snapshot_helper }}"
+      register: openalert_checkpoint_result
+      changed_when: true
+      when: openalert_activation_plan.existing
+      no_log: true
+
+    - name: Retain verified checkpoint recovery path before installing any assets
+      ansible.builtin.set_fact:
+        openalert_checkpoint_transaction: "{{ (openalert_checkpoint_result.stdout | from_json).transaction }}"
+      when: openalert_activation_plan.existing
+
+    - name: Install matched validated configuration and units
+      ansible.builtin.include_tasks: install.yml
+
+    - name: Record installed unit for safe fresh-install failure handling
+      ansible.builtin.set_fact:
+        openalert_activation_installed: true
+
+    - name: Load and start validated changed instance
+      ansible.builtin.systemd_service:
+        name: "{{ openalert_instance.service_name }}"
+        daemon_reload: true
+        state: started
+
+    - name: Require healthy activation before recording success
+      ansible.builtin.include_tasks: health.yml
+
+    - name: Record active schema and immutable release after successful health
+      ansible.builtin.copy:
+        content: "{{ {'schema_id': openalert_instance.openalert_schema.target, 'release': openalert_release.sha256} | to_json }}\n"
+        dest: "{{ openalert_management_dir }}/active/{{ openalert_instance.name }}.json"
+        owner: root
+        group: root
+        mode: "0600"
+      when: openalert_instance.openalert_schema.target is defined
+
+    - name: Commit ownership only after successful adoption health
+      ansible.builtin.copy:
+        content: "{{ openalert_instance_identity | to_json }}\n"
+        dest: "{{ openalert_management_dir }}/owners/{{ openalert_instance.name }}.json"
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        openalert_instance_identity:
+          service_name: "{{ openalert_instance.service_name }}"
+          user: "{{ openalert_instance.user }}"
+          group: "{{ openalert_instance.group }}"
+          config_path: "{{ openalert_instance.config_path }}"
+          state_dir: "{{ openalert_instance.state_dir }}"
+      when: openalert_instance.name in openalert_approved_adoptions
+
+    - name: Enable successfully activated instance
+      ansible.builtin.systemd_service:
+        name: "{{ openalert_instance.service_name }}"
+        enabled: true
+
+  rescue:
+    - name: Keep failed candidate stopped before any recovery
+      ansible.builtin.systemd_service:
+        name: "{{ openalert_instance.service_name }}"
+        state: stopped
+      when: openalert_activation_plan.existing or openalert_activation_installed
+
+    - name: Refuse uncheckpointed automatic recovery
+      ansible.builtin.assert:
+        that: openalert_checkpoint_transaction | length > 0
+        fail_msg: >-
+          Activation failed without a complete checkpoint; no automatic restore was attempted.
+          Inspect {{ openalert_management_dir }}/checkpoints/{{ openalert_instance.name }} and the retained candidates.
+
+    - name: Recover only matched assets with unchanged declared schema
+      block:
+        - name: Verify checkpoint and restore configuration and units without restoring data
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_facts['python']['executable'] }}"
+              - "{{ openalert_lifecycle_helper }}"
+              - recover
+              - --transaction
+              - "{{ openalert_checkpoint_transaction }}"
+              - --helper
+              - "{{ openalert_snapshot_helper }}"
+          changed_when: true
+          no_log: true
+
+        - name: Reload and start recovered previous instance
+          ansible.builtin.systemd_service:
+            name: "{{ openalert_instance.service_name }}"
+            daemon_reload: true
+            state: started
+
+        - name: Verify recovered instance health
+          ansible.builtin.include_tasks: health.yml
+
+      rescue:
+        - name: Keep instance stopped when recovery or recovered health fails
+          ansible.builtin.systemd_service:
+            name: "{{ openalert_instance.service_name }}"
+            state: stopped
+
+        - name: Require explicit recovery for incompatible schema or failed verification
+          ansible.builtin.fail:
+            msg: >-
+              Automatic recovery refused or failed; instance remains stopped and no database rollback was attempted.
+              Retained checkpoint {{ openalert_checkpoint_transaction }} contains full.json, assets.json and recovery.json.
+              Verify schema compatibility before explicit operator recovery.
+
+    - name: Report failed activation even after successful matched-assets recovery
+      ansible.builtin.fail:
+        msg: >-
+          Activation failed; previous configuration and units were recovered and health passed without rolling back data.
+          Retained checkpoint {{ openalert_checkpoint_transaction }} is available for inspection.

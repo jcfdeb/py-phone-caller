@@ -5,50 +5,8 @@
 # included. The result looks healthy from systemd and fails only at the TLS
 # handshake, so check before installing rather than after.
 
-- name: Read the NAT table
-  ansible.builtin.command:
-    cmd: iptables -t nat -S
-  register: _ppc_nat
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Read the current listeners
-  ansible.builtin.command:
-    cmd: ss -ltnp
-  register: _ppc_listeners
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Refuse to install a second reverse proxy
-  ansible.builtin.assert:
-    that:
-      - _ppc_nat_diversions | length == 0
-      - _ppc_foreign_listeners | length == 0
-    fail_msg: >-
-      Something else already owns the Caddy ports on this host, so Caddy would
-      install, start, and never receive a request.
-      {% if _ppc_nat_diversions %}
-      NAT rules diverting them: {{ _ppc_nat_diversions | join(' | ') }}.
-      {% endif %}
-      {% if _ppc_foreign_listeners %}
-      Listeners: {{ _ppc_foreign_listeners | join(' | ') }}.
-      {% endif %}
-      Either set py_phone_caller_manage_caddy=false and point the existing
-      proxy at {{ _ppc_ingress_upstream }}, or remove the
-      other proxy. Set py_phone_caller_caddy_force=true to install anyway.
-    quiet: true
-  vars:
-    _ppc_nat_diversions: >-
-      {{ _ppc_nat.stdout_lines | default([])
-         | select('search', '--dport (80|443) ')
-         | select('search', '-j (REDIRECT|DNAT)') | list }}
-    _ppc_foreign_listeners: >-
-      {{ _ppc_listeners.stdout_lines | default([])
-         | select('search', ':(80|443)\s')
-         | reject('search', 'caddy') | list }}
-  when: not (py_phone_caller_caddy_force | bool)
+- name: Check ingress before changing the host
+  ansible.builtin.import_tasks: preflight.yml
 
 - name: Install the Caddy repository prerequisites (Debian)
   ansible.builtin.apt:
@@ -58,7 +16,9 @@
       - apt-transport-https
       - gnupg
     state: present
-  when: ansible_facts['os_family'] == "Debian"
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - ansible_facts['os_family'] == "Debian"
 
 - name: Require a reviewed Caddy signing key checksum
   ansible.builtin.assert:
@@ -66,7 +26,9 @@
       - py_phone_caller_caddy_signing_key_checksum is match('^sha256:[0-9a-f]{64}$')
     fail_msg: Supply py_phone_caller_caddy_signing_key_checksum before managing the upstream repository.
     quiet: true
-  when: ansible_facts['os_family'] == 'Debian'
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - ansible_facts['os_family'] == 'Debian'
 
 - name: Create the APT keyring directory
   ansible.builtin.file:
@@ -75,7 +37,9 @@
     owner: root
     group: root
     mode: "0755"
-  when: ansible_facts['os_family'] == 'Debian'
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - ansible_facts['os_family'] == 'Debian'
 
 - name: Install the Caddy signing key (Debian)
   ansible.builtin.get_url:
@@ -85,7 +49,9 @@
     owner: root
     group: root
     mode: "0644"
-  when: ansible_facts['os_family'] == "Debian"
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - ansible_facts['os_family'] == "Debian"
 
 - name: Add the Caddy repository (Debian)
   ansible.builtin.apt_repository:
@@ -95,13 +61,18 @@
     state: present
     filename: caddy-stable
     update_cache: true
-  when: ansible_facts['os_family'] == "Debian"
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - ansible_facts['os_family'] == "Debian"
 
 - name: Enable the Caddy COPR repository (RHEL/Rocky)
   ansible.builtin.command:
     cmd: dnf -y copr enable @caddy/caddy
     creates: "/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:group_caddy:caddy.repo"
-  when: ansible_facts['os_family'] == "RedHat"
+  when:
+    - py_phone_caller_connectivity | default('online') == 'online'
+    - ansible_facts['os_family'] == "RedHat"
+    - not (ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] == '10')
 
 - name: Install Caddy
   ansible.builtin.package:
@@ -117,9 +88,27 @@
     mode: "0640"
     validate: "caddy validate --adapter caddyfile --config %s"
   notify: Reload Caddy
+  no_log: "{{ py_phone_caller_topology | default('legacy') != 'legacy' and py_phone_caller_tls_mode | default('legacy') == 'provided' }}"
+  diff: false
+
+- name: Ensure internal/local Caddy domain resolves to loopback in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.0\.1\s+.*\b{{ caddy_domain_name | regex_escape }}\b'
+    line: "127.0.0.1 {{ caddy_domain_name }}"
+    state: present
+  when:
+    - caddy_domain_name is defined
+    - caddy_domain_name | length > 0
+    - >-
+      (py_phone_caller_tls_mode | default('legacy') == 'internal') or
+      (caddy_domain_name is search('\.(lan|local|internal|test)$'))
 
 - name: Enable and start Caddy
   ansible.builtin.service:
     name: caddy
     state: started
     enabled: true
+
+- name: Apply pending Caddy configuration changes immediately
+  ansible.builtin.meta: flush_handlers

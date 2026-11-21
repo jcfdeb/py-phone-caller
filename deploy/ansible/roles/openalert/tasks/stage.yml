@@ -3,6 +3,7 @@
   ansible.builtin.group:
     name: "{{ openalert_instance.group }}"
     system: true
+  when: openalert_instance.name not in openalert_approved_adoptions and openalert_instance.name not in openalert_existing_instances
 
 - name: Create dedicated non-login instance account
   ansible.builtin.user:
@@ -15,6 +16,7 @@
     shell: /usr/sbin/nologin
     system: true
     password_lock: true
+  when: openalert_instance.name not in openalert_approved_adoptions and openalert_instance.name not in openalert_existing_instances
 
 - name: Reserve managed identity for safe retry after validation failure
   ansible.builtin.copy:
@@ -30,6 +32,7 @@
       group: "{{ openalert_instance.group }}"
       config_path: "{{ openalert_instance.config_path }}"
       state_dir: "{{ openalert_instance.state_dir }}"
+  when: openalert_instance.name not in openalert_approved_adoptions and openalert_instance.name not in openalert_existing_instances
 
 - name: Create private writable instance state directory
   ansible.builtin.file:
@@ -38,8 +41,24 @@
     owner: "{{ openalert_instance.user }}"
     group: "{{ openalert_instance.group }}"
     mode: "0750"
+  when: openalert_instance.name not in openalert_approved_adoptions and openalert_instance.name not in openalert_existing_instances
 
-- name: Create protected configuration and candidate directories
+- name: Create protected configuration directory for non-adopted instances
+  ansible.builtin.file:
+    path: "{{ openalert_instance.config_path | dirname }}"
+    state: directory
+    owner: root
+    group: "{{ openalert_instance.group }}"
+    mode: "0750"
+  when: openalert_instance.name not in openalert_approved_adoptions and openalert_instance.name not in openalert_existing_instances
+
+- name: Prepare disjoint target identity and directories for relocated adoption
+  ansible.builtin.include_tasks: relocate_stage.yml
+  when:
+    - openalert_instance.name in openalert_approved_adoptions
+    - openalert_legacy_instances[openalert_instance.name].relocate | default(false) | bool
+
+- name: Create protected candidate directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -47,7 +66,6 @@
     group: "{{ openalert_instance.group }}"
     mode: "0750"
   loop:
-    - "{{ openalert_instance.config_path | dirname }}"
     - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}"
     - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}.d"
 
@@ -61,6 +79,22 @@
   no_log: true
   diff: false
 
+- name: Reject adoption changes to identities ports routing or other configuration
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts['python']['executable'] }}"
+      - "{{ openalert_lifecycle_helper }}"
+      - equivalent
+      - --instance
+      - "{{ openalert_instance | to_json }}"
+      - --legacy
+      - "{{ openalert_legacy_instances[openalert_instance.name] | to_json }}"
+      - --candidate
+      - "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/openalertd.toml"
+  changed_when: false
+  when: openalert_instance.name in openalert_approved_adoptions
+  no_log: true
+
 - name: Check assets, state, permissions and exposure as service account
   ansible.builtin.command:
     argv:
@@ -72,7 +106,7 @@
       - --state-dir
       - "{{ openalert_instance.state_dir }}"
       - --templates-dir
-      - "{{ openalert_release_dir }}/templates"
+      - "{{ openalert_instance.openalert_templates_dir | default(openalert_release_dir ~ '/templates') }}"
       - --health-url
       - "{{ openalert_instance.health_url }}"
       - --capabilities

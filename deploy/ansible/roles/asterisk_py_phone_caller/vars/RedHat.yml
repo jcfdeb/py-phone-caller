@@ -7,9 +7,9 @@ asterisk_conf_dir: /etc/asterisk
 asterisk_module_dir: /usr/lib64/asterisk/modules
 asterisk_data_dir: /var/lib/asterisk
 asterisk_cache_dir: /var/cache/asterisk
-asterisk_sounds_dir: /usr/share/asterisk/sounds/en
+asterisk_sounds_dir: "{{ '/usr/share/asterisk/sounds' if asterisk_package_provider == 'tucny' else '/usr/share/asterisk/sounds/en' }}"
 
-# Asterisk packages for EL8/9/10.
+# Legacy distro-provider packages for EL8/9/10; never used by Tucny.
 # On EL10+ (Rocky/RHEL/AlmaLinux 10), packages are provided via the lucamagrone/epel-10-extra COPR repository.
 asterisk_packages:
   - asterisk

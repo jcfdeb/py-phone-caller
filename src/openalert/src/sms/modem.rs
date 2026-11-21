@@ -248,112 +248,116 @@ impl ModemDriver {
             return Err(format!("Failed to set SMS text mode: {}", mode_resp.trim()));
         }
 
-        let use_unicode = !codec::is_pure_ascii(clean_msg);
-        let (target_number, target_body) = if use_unicode {
-            let _ = self
-                .send_command(&mut port, "AT+CSCS=\"UCS2\"\r", 1500)
-                .await;
-            let _ = self
-                .send_command(&mut port, "AT+CSMP=17,167,0,8\r", 1500)
-                .await;
-            (
-                codec::to_ucs2_hex(clean_phone),
-                codec::to_ucs2_hex(clean_msg),
-            )
-        } else {
-            let _ = self
-                .send_command(&mut port, "AT+CSCS=\"GSM\"\r", 1500)
-                .await;
-            let _ = self
-                .send_command(&mut port, "AT+CSMP=17,167,0,0\r", 1500)
-                .await;
-            (clean_phone.to_string(), clean_msg.to_string())
-        };
+        // Always use UCS-2 (UTF-16BE) so ASCII symbols like '[', ']', '_', '@', '$'
+        // and all UTF-8 / international characters / emojis arrive verbatim without GSM 03.38 corruption.
+        let _ = self
+            .send_command(&mut port, "AT+CSCS=\"UCS2\"\r", 1500)
+            .await;
+        let _ = self
+            .send_command(&mut port, "AT+CSMP=17,167,0,8\r", 1500)
+            .await;
 
-        // Initiate SMS dispatch
-        let cmgs_cmd = format!("AT+CMGS=\"{}\"\r", target_number);
-        port.write_all(cmgs_cmd.as_bytes())
-            .await
-            .map_err(|e| format!("Failed to send CMGS command: {}", e))?;
-        port.flush()
-            .await
-            .map_err(|e| format!("Failed to flush CMGS command: {}", e))?;
+        let target_number = codec::to_ucs2_hex(clean_phone);
+        let chunks = codec::split_ucs2_chunks(clean_msg, codec::MAX_UCS2_UNITS_PER_SMS);
+        let total_chunks = chunks.len();
 
-        // Wait for prompt '>'
-        let mut got_prompt = false;
-        let prompt_start = tokio::time::Instant::now();
-        let mut prompt_buf = [0u8; 256];
-        let mut prompt_acc = String::new();
+        for (idx, chunk) in chunks.into_iter().enumerate() {
+            let target_body = codec::to_ucs2_hex(&chunk);
 
-        while prompt_start.elapsed() < Duration::from_millis(3500) {
-            match tokio::time::timeout(Duration::from_millis(150), port.read(&mut prompt_buf)).await
-            {
-                Ok(Ok(n)) if n > 0 => {
-                    prompt_acc.push_str(&String::from_utf8_lossy(&prompt_buf[..n]));
-                    if prompt_acc.contains('>') {
-                        got_prompt = true;
-                        break;
+            // Initiate SMS dispatch
+            let cmgs_cmd = format!("AT+CMGS=\"{}\"\r", target_number);
+            port.write_all(cmgs_cmd.as_bytes())
+                .await
+                .map_err(|e| format!("Failed to send CMGS command: {}", e))?;
+            port.flush()
+                .await
+                .map_err(|e| format!("Failed to flush CMGS command: {}", e))?;
+
+            // Wait for prompt '>'
+            let mut got_prompt = false;
+            let prompt_start = tokio::time::Instant::now();
+            let mut prompt_buf = [0u8; 256];
+            let mut prompt_acc = String::new();
+
+            while prompt_start.elapsed() < Duration::from_millis(3500) {
+                match tokio::time::timeout(Duration::from_millis(150), port.read(&mut prompt_buf))
+                    .await
+                {
+                    Ok(Ok(n)) if n > 0 => {
+                        prompt_acc.push_str(&String::from_utf8_lossy(&prompt_buf[..n]));
+                        if prompt_acc.contains('>') {
+                            got_prompt = true;
+                            break;
+                        }
+                        if prompt_acc.contains("ERROR") {
+                            break;
+                        }
                     }
-                    if prompt_acc.contains("ERROR") {
-                        break;
-                    }
+                    _ => {}
                 }
-                _ => {}
+            }
+
+            if !got_prompt {
+                // Cancel with ESC
+                let _ = port.write_all(&[0x1b]).await;
+                let _ = port.flush().await;
+                return Err(format!(
+                    "Modem did not present prompt '>' for CMGS: {}",
+                    prompt_acc.trim()
+                ));
+            }
+
+            // Send payload followed by Ctrl+Z (0x1A)
+            port.write_all(target_body.as_bytes())
+                .await
+                .map_err(|e| format!("Failed to write SMS payload: {}", e))?;
+            port.write_all(&[0x1a])
+                .await
+                .map_err(|e| format!("Failed to write Ctrl+Z terminator: {}", e))?;
+            port.flush()
+                .await
+                .map_err(|e| format!("Failed to flush SMS payload: {}", e))?;
+
+            // Wait for final response (+CMGS: <mr> and OK)
+            let resp_start = tokio::time::Instant::now();
+            let mut resp_acc = String::new();
+            let mut resp_buf = [0u8; 1024];
+            let mut sent_ok = false;
+
+            while resp_start.elapsed() < Duration::from_secs(20) {
+                match tokio::time::timeout(Duration::from_millis(300), port.read(&mut resp_buf))
+                    .await
+                {
+                    Ok(Ok(n)) if n > 0 => {
+                        resp_acc.push_str(&String::from_utf8_lossy(&resp_buf[..n]));
+                        if resp_acc.contains("OK\r") || resp_acc.contains("OK\n") {
+                            sent_ok = true;
+                            break;
+                        }
+                        if resp_acc.contains("ERROR")
+                            || resp_acc.contains("+CMS ERROR")
+                            || resp_acc.contains("+CME ERROR")
+                        {
+                            return Err(format!("Modem dispatch rejected: {}", resp_acc.trim()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if !sent_ok && !resp_acc.contains("OK") {
+                return Err(format!(
+                    "Timeout awaiting SMS delivery confirmation: {}",
+                    resp_acc.trim()
+                ));
+            }
+
+            if idx + 1 < total_chunks {
+                sleep(Duration::from_millis(500)).await;
             }
         }
 
-        if !got_prompt {
-            // Cancel with ESC
-            let _ = port.write_all(&[0x1b]).await;
-            let _ = port.flush().await;
-            return Err(format!(
-                "Modem did not present prompt '>' for CMGS: {}",
-                prompt_acc.trim()
-            ));
-        }
-
-        // Send payload followed by Ctrl+Z (0x1A)
-        port.write_all(target_body.as_bytes())
-            .await
-            .map_err(|e| format!("Failed to write SMS payload: {}", e))?;
-        port.write_all(&[0x1a])
-            .await
-            .map_err(|e| format!("Failed to write Ctrl+Z terminator: {}", e))?;
-        port.flush()
-            .await
-            .map_err(|e| format!("Failed to flush SMS payload: {}", e))?;
-
-        // Wait for final response (+CMGS: <mr> and OK)
-        let resp_start = tokio::time::Instant::now();
-        let mut resp_acc = String::new();
-        let mut resp_buf = [0u8; 1024];
-
-        while resp_start.elapsed() < Duration::from_secs(20) {
-            match tokio::time::timeout(Duration::from_millis(300), port.read(&mut resp_buf)).await {
-                Ok(Ok(n)) if n > 0 => {
-                    resp_acc.push_str(&String::from_utf8_lossy(&resp_buf[..n]));
-                    if resp_acc.contains("OK\r") {
-                        return Ok(());
-                    }
-                    if resp_acc.contains("ERROR")
-                        || resp_acc.contains("+CMS ERROR")
-                        || resp_acc.contains("+CME ERROR")
-                    {
-                        return Err(format!("Modem dispatch rejected: {}", resp_acc.trim()));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if resp_acc.contains("OK") {
-            Ok(())
-        } else {
-            Err(format!(
-                "Timeout awaiting SMS delivery confirmation: {}",
-                resp_acc.trim()
-            ))
-        }
+        Ok(())
     }
 
     /// Reads and deletes incoming SMS messages from the SIM card.

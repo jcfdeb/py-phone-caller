@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: py-phone-caller
+resources:
+  - 00_py_phone_caller_namespace.yml
+  - 01_asterisk_endpoint.yml
+  - 02_ingress.yml
+  - 03_postgresql.yml
+  - 03_redis.yml
+  - 04_caller_config.yml
+  - 04_caller_secrets.yml
+  - 05_asterisk_ws_monitor.yml
+  - 06_asterisk_recaller.yml
+  - 07_caller_register.yml
+  - 08_asterisk_caller.yml
+  - 09_caller_prometheus_webhook.yml
+  - 10_caller_sms.yml
+  - 11_generate_audio.yml
+  - 12_caller_address_book.yml
+  - 13_caller_scheduler.yml
+  - 14_py_phone_caller_ui.yml
+  - 15_celery_worker.yml
+  - 16_haproxy.yml
+  - 17_openalertd.yml
+  - 18_gateway_apisix_keycloak.yml

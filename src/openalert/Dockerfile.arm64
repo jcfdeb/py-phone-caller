@@ -26,12 +26,17 @@ RUN dpkg --add-architecture arm64 && \
     apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     build-essential \
+    cmake \
+    ninja-build \
+    clang \
+    libclang-dev \
     gcc-aarch64-linux-gnu \
     g++-aarch64-linux-gnu \
     libc6-dev-arm64-cross \
     binutils-aarch64-linux-gnu \
     libdbus-1-dev:arm64 \
     libudev-dev:arm64 \
+    libssl-dev:arm64 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -42,6 +47,8 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
     CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
     CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
     AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar \
+    CMAKE_BUILD_PARALLEL_LEVEL=4 \
+    CMAKE_GENERATOR=Ninja \
     PKG_CONFIG_ALLOW_CROSS=1 \
     PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig \
     PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig

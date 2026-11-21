@@ -158,6 +158,22 @@ def telemetry_stream():
     )
 
 
+async def _parse_aiohttp_json(resp: aiohttp.ClientResponse) -> dict:
+    """Safely parse an aiohttp response body as JSON, falling back to plain text."""
+    try:
+        parsed = await resp.json()
+        return parsed if isinstance(parsed, dict) else {"message": str(parsed)}
+    except (aiohttp.ContentTypeError, ValueError, TypeError):
+        raw_text = ""
+        try:
+            text_val = await resp.text()
+            if isinstance(text_val, str):
+                raw_text = text_val.strip()
+        except Exception:
+            raw_text = ""
+        return {"error": raw_text or f"HTTP {resp.status} ({resp.content_type})"}
+
+
 @home_blueprint.route("/api/diagnostics/test_sms", methods=["POST"])
 @login_required
 async def test_sms_dispatch():
@@ -178,14 +194,15 @@ async def test_sms_dispatch():
     try:
         async with aiohttp.ClientSession() as session_http:
             async with session_http.post(url, json={"phone": phone, "message": message}, timeout=10.0) as resp:
-                resp_json = await resp.json()
-                if resp.status == 200:
+                resp_json = await _parse_aiohttp_json(resp)
+                if resp.status == 200 and resp_json.get("status", 200) == 200:
                     return jsonify({"success": True, "details": resp_json, "service": "caller_sms", "target": phone})
+                error_status = resp.status if resp.status != 200 else int(resp_json.get("status", 500))
                 return jsonify({
                     "success": False,
-                    "error": resp_json.get("error", resp_json.get("message", f"HTTP {resp.status} - SMS rejected")),
+                    "error": resp_json.get("error", resp_json.get("message", f"HTTP {error_status} - SMS rejected")),
                     "details": resp_json
-                }), resp.status
+                }), error_status
     except Exception as exc:
         logger.exception("Failed to dispatch diagnostic test SMS: %s", exc)
         return jsonify({"success": False, "error": f"caller_sms connection error: {exc}"}), 500
@@ -235,14 +252,15 @@ async def test_call_dispatch():
     try:
         async with aiohttp.ClientSession() as session_http:
             async with session_http.post(url, json=payload, timeout=10.0) as resp:
-                resp_json = await resp.json()
-                if resp.status == 200:
+                resp_json = await _parse_aiohttp_json(resp)
+                if resp.status == 200 and resp_json.get("status", 200) == 200:
                     return jsonify({"success": True, "details": resp_json, "service": "asterisk_caller", "target": phone})
+                error_status = resp.status if resp.status != 200 else int(resp_json.get("status", 500))
                 return jsonify({
                     "success": False,
-                    "error": resp_json.get("error", resp_json.get("message", f"HTTP {resp.status} - Call rejected")),
+                    "error": resp_json.get("error", resp_json.get("message", f"HTTP {error_status} - Call rejected")),
                     "details": resp_json
-                }), resp.status
+                }), error_status
     except Exception as exc:
         logger.exception("Failed to dispatch diagnostic test call: %s", exc)
         return jsonify({"success": False, "error": f"asterisk_caller connection error: {exc}"}), 500

@@ -1,69 +1,9 @@
 ---
-- name: Activate validated configuration
-  ansible.builtin.copy:
-    src: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/openalertd.toml"
-    remote_src: true
-    dest: "{{ openalert_instance.config_path }}"
-    owner: root
-    group: "{{ openalert_instance.group }}"
-    mode: "0640"
-    backup: true
-  register: openalert_active_config
-  no_log: true
-  diff: false
+- name: Select validated activation decision and clear previous instance recovery state
+  ansible.builtin.set_fact:
+    openalert_activation_plan: "{{ openalert_activation_plans[openalert_instance.name] }}"
+    openalert_checkpoint_transaction: ""
+    openalert_activation_installed: false
 
-- name: Install validated canonical base unit
-  ansible.builtin.copy:
-    src: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}"
-    remote_src: true
-    dest: "/etc/systemd/system/{{ openalert_instance.service_name }}"
-    owner: root
-    group: root
-    mode: "0644"
-    backup: true
-  register: openalert_active_unit
-
-- name: Create instance drop-in directory
-  ansible.builtin.file:
-    path: "/etc/systemd/system/{{ openalert_instance.service_name }}.d"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Install validated instance drop-in
-  ansible.builtin.copy:
-    src: "{{ openalert_management_dir }}/candidates/{{ openalert_instance.name }}/{{ openalert_instance.service_name }}.d/instance.conf"
-    remote_src: true
-    dest: "/etc/systemd/system/{{ openalert_instance.service_name }}.d/instance.conf"
-    owner: root
-    group: root
-    mode: "0644"
-    backup: true
-  register: openalert_active_dropin
-
-- name: Reload units only when unit assets changed
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-  when: openalert_active_unit.changed or openalert_active_dropin.changed
-
-- name: Restart only the instance whose active assets changed
-  ansible.builtin.systemd_service:
-    name: "{{ openalert_instance.service_name }}"
-    enabled: true
-    state: "{{ 'restarted' if (openalert_active_config.changed or openalert_active_unit.changed or openalert_active_dropin.changed) else 'started' }}"
-
-- name: Probe instance health without dispatching events
-  ansible.builtin.uri:
-    url: "{{ openalert_instance.health_url }}"
-    method: GET
-    status_code: 200
-    return_content: true
-    follow_redirects: none
-    use_proxy: false
-    timeout: 5
-  register: openalert_health
-  until: openalert_health.status | default(0) == 200 and openalert_health.json.status | default('') == 'ok'
-  retries: 12
-  delay: 2
-  no_log: true
+- name: Checkpoint and activate only changed instances
+  ansible.builtin.include_tasks: activate_changed.yml

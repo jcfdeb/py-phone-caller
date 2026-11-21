@@ -6,6 +6,14 @@
 # and then filters out everything it included - the play reports ok=N,
 # changed=0 and quietly does nothing at all.
 
+- name: Validate topology for direct role users too
+  ansible.builtin.import_tasks: topology.yml
+  tags: always
+
+- name: Inspect topology prerequisites for direct role users too
+  ansible.builtin.import_tasks: topology_host.yml
+  tags: always
+
 - name: Load OS-family variables
   ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
   when: ansible_facts['os_family'] in ['Debian', 'RedHat']
@@ -60,7 +68,7 @@
              },
              'auth': {
                  'provider': 'keycloak',
-                 'local_fallback_enabled': true,
+                 'local_fallback_enabled': py_phone_caller_topology == 'legacy',
                  'oauth2': {
                      'enabled': true,
                      'issuer_url': _ppc_effective_public_url ~ '/realms/' ~ py_phone_caller_keycloak_realm,

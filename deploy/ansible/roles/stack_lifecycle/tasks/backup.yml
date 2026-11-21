@@ -1,0 +1,42 @@
+---
+- name: Create recoverable snapshot while application writers are stopped
+  block:
+    - name: Stop only declared application units
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+      loop: "{{ stack_lifecycle_units }}"
+
+    - name: Dump declared local PostgreSQL databases without passwords on the command line
+      ansible.builtin.shell:
+        cmd: >-
+          umask 077;
+          /usr/sbin/runuser -u postgres -- /usr/bin/pg_dump --format=custom --no-password
+          --host=/var/run/postgresql --port=5432 --username=postgres
+          --dbname={{ item | quote }} > {{ (stack_lifecycle_database_dir ~ '/' ~ item ~ '.dump') | quote }}
+      loop: "{{ stack_lifecycle_postgresql_databases }}"
+      changed_when: true
+      no_log: true
+
+    - name: Create consistent private filesystem and SQLite snapshot
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts['python']['executable'] }}"
+          - "{{ stack_lifecycle_helper }}"
+          - create
+          - --plan
+          - "{{ stack_lifecycle_storage_dir }}/requested-plan.json"
+          - --destination
+          - "{{ stack_lifecycle_snapshot }}"
+      changed_when: true
+      no_log: true
+
+  always:
+    - name: Resume only services that were active before backup
+      ansible.builtin.systemd_service:
+        name: "{{ item.item }}"
+        state: started
+      loop: "{{ stack_lifecycle_unit_states.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.stdout | trim == 'active'

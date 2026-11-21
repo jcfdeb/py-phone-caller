@@ -6,8 +6,10 @@ Idempotently declares and updates routes on APISIX via the Manager API.
 Configures upstreams to point to loopback or an explicitly configured host.
 """
 
+import copy
 import os
 import sys
+from urllib.parse import urlsplit
 import requests
 import urllib3
 
@@ -19,6 +21,8 @@ DASHBOARD_PASS = os.getenv("APISIX_DASHBOARD_PASS", "")
 UPSTREAM_HOST = os.getenv("UPSTREAM_HOST", "127.0.0.1")
 
 KEYCLOAK_PORT = int(os.getenv("KEYCLOAK_PORT", "8180"))
+TOPOLOGY = os.getenv("PPC_TOPOLOGY", "legacy")
+PUBLIC_URL = os.getenv("PPC_PUBLIC_URL", "")
 
 ROUTES = [
     {
@@ -197,6 +201,13 @@ def login_dashboard() -> str:
 
 
 def main():
+    public_origin = urlsplit(PUBLIC_URL)
+    if TOPOLOGY != "legacy" and (
+        public_origin.scheme != "https" or not public_origin.hostname
+        or public_origin.username or public_origin.password
+        or public_origin.path or public_origin.query or public_origin.fragment
+    ):
+        raise ValueError("Explicit gateway profiles require an HTTPS public origin.")
     print(f"[*] Authenticating against APISIX Manager API at {DASHBOARD_URL}...")
     token = login_dashboard()
     headers = {
@@ -215,7 +226,7 @@ def main():
             "name": r_def["name"],
             "uri": r_def["uri"],
             "priority": r_def["priority"],
-            "plugins": r_def.get("plugins", {}),
+            "plugins": copy.deepcopy(r_def.get("plugins", {})),
             "upstream": {
                 "type": "roundrobin",
                 "nodes": {
@@ -224,6 +235,20 @@ def main():
             },
             "status": 1
         }
+        if TOPOLOGY != "legacy":
+            rewrite = route_payload["plugins"].setdefault("proxy-rewrite", {})
+            rewrite.pop("use_real_request_uri_unsafe", None)
+            rewrite["host"] = public_origin.netloc
+            rewrite["headers"] = {
+                "set": {
+                    "X-Forwarded-Proto": "https",
+                    "X-Forwarded-Host": public_origin.netloc,
+                    "X-Forwarded-Port": str(public_origin.port or 443),
+                },
+                "remove": ["Forwarded"],
+            }
+            if r_id == "route-keycloak-admin":
+                route_payload["status"] = 0
 
         url = f"{DASHBOARD_URL}/apisix/admin/routes/{r_id}"
         print(f"[*] Syncing route '{r_id}' ({r_def['uri']} -> {upstream_node})...")

@@ -1,5 +1,7 @@
 # Turnkey Grafana Observability Dashboard for py-phone-caller
 
+> **Centralized Step-by-Step Guide**: See **[`deploy/docs/07-enterprise-gateway-and-observability.md`](../docs/07-enterprise-gateway-and-observability.md)** (and the **[Deployment Documentation Hub](../docs/README.md)**) for the complete Enterprise Gateway & Observability guide.
+
 The `grafana-py-phone-caller.json` template provides a turnkey, production-grade NOC and SRE observability dashboard for `py-phone-caller` v1.2.0+.
 
 ---

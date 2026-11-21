@@ -14,14 +14,15 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 KEYCLOAK_URL = os.getenv("KEYCLOAK_URL", "https://127.0.0.1:8443")
 ADMIN_USER = os.getenv("KEYCLOAK_ADMIN_USER", os.getenv("ADMIN_USER", "admin"))
-ADMIN_PASS = os.getenv("KEYCLOAK_ADMIN_PASS", os.getenv("ADMIN_PASS", "admin123"))
+ADMIN_PASS = os.getenv("KEYCLOAK_ADMIN_PASS", os.getenv("ADMIN_PASS", ""))
 REALM_NAME = os.getenv("KEYCLOAK_REALM", os.getenv("REALM_NAME", "py-phone-caller"))
-M2M_SECRET = os.getenv("KEYCLOAK_M2M_SECRET", os.getenv("M2M_SECRET", "py-phone-caller-m2m-secret-2026"))
+M2M_SECRET = os.getenv("KEYCLOAK_M2M_SECRET", os.getenv("M2M_SECRET", ""))
 PUBLIC_URL = os.getenv("KEYCLOAK_PUBLIC_URL", os.getenv("PUBLIC_URL", "https://127.0.0.1:9443"))
+TOPOLOGY = os.getenv("PPC_TOPOLOGY", "legacy")
 
-USER_ADMIN_PASS = os.getenv("KEYCLOAK_USER_ADMIN_PASS", "Password123!")
-USER_OPERATOR_PASS = os.getenv("KEYCLOAK_USER_OPERATOR_PASS", "Password123!")
-USER_VIEWER_PASS = os.getenv("KEYCLOAK_USER_VIEWER_PASS", "Password123!")
+USER_ADMIN_PASS = os.getenv("KEYCLOAK_USER_ADMIN_PASS", "")
+USER_OPERATOR_PASS = os.getenv("KEYCLOAK_USER_OPERATOR_PASS", "")
+USER_VIEWER_PASS = os.getenv("KEYCLOAK_USER_VIEWER_PASS", "")
 
 ROLES = [
     {"name": "alert-admin", "description": "Platform Administrator with full unrestricted control"},
@@ -71,6 +72,8 @@ def get_admin_token() -> str:
 
 
 def main():
+    if not all((ADMIN_PASS, M2M_SECRET, USER_ADMIN_PASS, USER_OPERATOR_PASS, USER_VIEWER_PASS)):
+        raise ValueError("Explicit Keycloak credentials are required; no default passwords are used.")
     print(f"[*] Authenticating against Keycloak at {KEYCLOAK_URL}...")
     token = get_admin_token()
     headers = {
@@ -80,17 +83,23 @@ def main():
 
     # 1. Create or verify Realm
     realms_resp = requests.get(f"{KEYCLOAK_URL}/admin/realms", headers=headers, verify=False, timeout=10)
+    realms_resp.raise_for_status()
     realms = [r["realm"] for r in realms_resp.json()]
 
     if REALM_NAME in realms:
         print(f"[+] Realm '{REALM_NAME}' already exists.")
+        if TOPOLOGY != "legacy":
+            res = requests.put(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}", headers=headers,
+                               json={"sslRequired": "external"}, verify=False, timeout=10)
+            res.raise_for_status()
+            print(f"[+] Realm '{REALM_NAME}' TLS policy updated.")
     else:
         print(f"[*] Creating realm '{REALM_NAME}'...")
         realm_payload = {
             "realm": REALM_NAME,
             "enabled": True,
             "displayName": "PyPhoneCaller Identity & Access Management",
-            "sslRequired": "none",
+            "sslRequired": "none" if TOPOLOGY == "legacy" else "external",
             "registrationAllowed": False,
             "rememberMe": True,
             "verifyEmail": False,
@@ -101,6 +110,7 @@ def main():
 
     # 2. Create Realm Roles
     existing_roles_resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/roles", headers=headers, verify=False, timeout=10)
+    existing_roles_resp.raise_for_status()
     existing_roles = {r["name"]: r for r in existing_roles_resp.json()}
 
     for role_def in ROLES:
@@ -115,14 +125,16 @@ def main():
 
     # Refresh roles dictionary
     existing_roles_resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/roles", headers=headers, verify=False, timeout=10)
+    existing_roles_resp.raise_for_status()
     roles_map = {r["name"]: r for r in existing_roles_resp.json()}
 
     # 3. Create or update Clients
     clients_resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/clients", headers=headers, verify=False, timeout=10)
+    clients_resp.raise_for_status()
     existing_clients = {c["clientId"]: c for c in clients_resp.json()}
 
     # 3.1 Web UI Client (Public + PKCE + standard flow)
-    ui_client_id = "py-phone-caller-ui"
+    ui_client_id = os.getenv("KEYCLOAK_UI_CLIENT_ID", "py-phone-caller-ui")
     ui_payload = {
         "clientId": ui_client_id,
         "name": "PyPhoneCaller Web UI",
@@ -136,15 +148,8 @@ def main():
         "baseUrl": f"{PUBLIC_URL}/",
         "redirectUris": [
             f"{PUBLIC_URL}/*",
-            "https://127.0.0.1:9443/*",
-            "http://127.0.0.1:9080/*",
-            "http://127.0.0.1:5000/*",
-            "http://localhost:5000/*",
-            "https://192.168.101.212:9443/*",
-            "http://192.168.101.212:9080/*",
-            "http://192.168.101.17:5000/*",
         ],
-        "webOrigins": ["*"],
+        "webOrigins": [PUBLIC_URL],
     }
 
     if ui_client_id in existing_clients:
@@ -160,7 +165,7 @@ def main():
         print(f"[+] Client '{ui_client_id}' created.")
 
     # 3.2 M2M Client (Confidential + Client Credentials)
-    m2m_client_id = "py-phone-caller-m2m"
+    m2m_client_id = os.getenv("KEYCLOAK_M2M_CLIENT_ID", "py-phone-caller-m2m")
     m2m_payload = {
         "clientId": m2m_client_id,
         "name": "PyPhoneCaller M2M Client",
@@ -185,11 +190,13 @@ def main():
         res.raise_for_status()
         # Find internal ID
         c_resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/clients?clientId={m2m_client_id}", headers=headers, verify=False, timeout=10)
+        c_resp.raise_for_status()
         m2m_internal_id = c_resp.json()[0]["id"]
         print(f"[+] Client '{m2m_client_id}' created.")
 
     # Assign alert-operator role to M2M service account
     sa_user_resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/clients/{m2m_internal_id}/service-account-user", headers=headers, verify=False, timeout=10)
+    sa_user_resp.raise_for_status()
     if sa_user_resp.status_code == 200:
         sa_user = sa_user_resp.json()
         sa_user_id = sa_user["id"]
@@ -202,10 +209,12 @@ def main():
                 verify=False,
                 timeout=10,
             )
+            res.raise_for_status()
             print(f"[+] Assigned 'alert-operator' role to M2M service account.")
 
     # 4. Create or update Users
     users_resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/users", headers=headers, verify=False, timeout=10)
+    users_resp.raise_for_status()
     existing_users = {u["username"]: u for u in users_resp.json()}
 
     for u_def in USERS:
@@ -250,29 +259,29 @@ def main():
             res.raise_for_status()
             # fetch id
             u_lookup = requests.get(f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/users?username={uname}", headers=headers, verify=False, timeout=10)
+            u_lookup.raise_for_status()
             user_id = u_lookup.json()[0]["id"]
             print(f"[+] User '{uname}' created.")
 
         # Assign Role
         target_role = roles_map.get(role_to_assign)
         if target_role:
-            requests.post(
+            res = requests.post(
                 f"{KEYCLOAK_URL}/admin/realms/{REALM_NAME}/users/{user_id}/role-mappings/realm",
                 headers=headers,
                 json=[{"id": target_role["id"], "name": target_role["name"]}],
                 verify=False,
                 timeout=10,
             )
+            res.raise_for_status()
             print(f"[+] Role '{role_to_assign}' mapped to '{uname}'.")
 
     print("\n=======================================================")
     print(" Keycloak Configuration Complete!")
     print(f" Realm:    {REALM_NAME}")
     print(f" UI Client: {ui_client_id} (Public)")
-    print(f" M2M Client:{m2m_client_id} (Secret: {M2M_SECRET})")
-    print(f" Admin:     admin_user    / {USER_ADMIN_PASS}")
-    print(f" Operator:  operator_user / {USER_OPERATOR_PASS}")
-    print(f" Viewer:    viewer_user   / {USER_VIEWER_PASS}")
+    print(f" M2M Client:{m2m_client_id}")
+    print(" Credentials are stored privately; they are never printed.")
     print("=======================================================")
 
 

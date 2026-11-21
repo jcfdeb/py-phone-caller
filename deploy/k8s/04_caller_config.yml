@@ -9,7 +9,6 @@ data:
   settings.toml: |-
     [commons]
     asterisk_user = "py-phone-caller"
-    asterisk_pass = "use-a-secure-password-here"
     asterisk_host = "asterisk-service"
     asterisk_web_port = "8088"
     asterisk_http_scheme = "http"
@@ -21,7 +20,7 @@ data:
     asterisk_context = "py-phone-caller"
     asterisk_extension = "3216"
     asterisk_chan_type = "SIP/sip-provider"
-    asterisk_callerid = "Py-Phone-Caller"
+    asterisk_caller_id = "Py-Phone-Caller"
     asterisk_call_http_scheme = "http"
     asterisk_call_host = "asterisk-caller-service"
     asterisk_call_port = "8081"
@@ -54,9 +53,33 @@ data:
     generate_audio_host = "generate-audio-service"
     generate_audio_port = "8082"
     generate_audio_app_route = "make_audio"
-    tts_engine = "kokoro_tts"
+    tts_engine = "piper_tts"
     gcloud_tts_language_code = "es"
+    aws_polly_region_name = "eu-north-1"
+    aws_polly_voice = "Enrique"
+    pre_trained_models_folder = "pre_trained_models"
+    facebook_mms_models_folder = "facebook"
+    facebook_mms_language_code = "spa"
+    facebook_mms_num2words_language_code = "es"
+    piper_models_folder = "piper_tts"
+    piper_language_code = "it_IT"
+    piper_language_default_code = "EN_us"
+    piper_python_interpreter = "python3"
+    piper_voices_url = "https://huggingface.co/rhasspy/piper-voices/tree/main"
+    kokoro_models_folder = "kokoro_tts"
+    kokoro_lang = "e"
+    kokoro_python_interpreter = "python3"
+    kokoro_model_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/e9d173129d407bf1378c402aba163de4dde2615e/kokoro-v0_19.onnx"
+    kokoro_voices_base_url = "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices"
+    kokoro_repo_id = "hexgrad/Kokoro-82M"
+    kokoro_model_filename = "kokoro-v1_0.pth"
+    silero_models_folder = "silero_tts"
+    silero_lang = "en"
+    silero_speaker = "en_0"
+    silero_sample_rate = 8000
+    silero_python_interpreter = "python3"
     serving_audio_folder = "audio"
+    is_audio_ready_endpoint = "is_audio_ready"
     num_of_cpus = 4
 
     [caller_prometheus_webhook]
@@ -74,8 +97,6 @@ data:
     caller_sms_app_route = "send_sms"
     sms_before_call_wait_seconds = 120
     caller_sms_carrier = "twilio"
-    twilio_account_sid = "your-twilio-sid"
-    twilio_auth_token = "your-twilio-auth-token"
     twilio_sms_from = "+1123456789"
 
     [caller_address_book]
@@ -107,7 +128,6 @@ data:
     db_port = 5432
     db_name = "py_phone_caller"
     db_user = "py_phone_caller"
-    db_password = 'use-a-secure-password'
     db_max_size = 50
     db_max_inactive_connection_lifetime = 30.0
 
@@ -129,4 +149,5 @@ data:
     asterisk_play_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/play?asterisk_chan=[The Asterisk Channel ID]&msg_chk_sum=[The message checksum]"
     generate_audio_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/make_audio?message=[Alert Message Text]&msg_chk_sum=[The message checksum]"
     caller_sms_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/?phone=[Destination Phone Number]&message=[Alert Message Text]"
+    scheduled_call_error = "Lost parameter, Usage: Method: POST - http://ADDRESS/schedule_call?phone=[Destination Phone Number]&message=[Alert Message Text]&scheduled_at=[Date and Time YYYY-MM-DD HH:MM]"
     lost_directory_error = "The folder to serve the audio files was not found."

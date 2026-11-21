@@ -27,6 +27,8 @@
   hosts: "{{ pbx_test_host | default('pbx-disposable-unselected') }}"
   become: true
   gather_facts: false
+  vars:
+    asterisk_py_phone_caller_tucny_test_defaults: "{{ lookup('file', playbook_dir ~ '/../roles/asterisk_py_phone_caller/defaults/main.yml') | from_yaml }}"
   tasks:
     - name: Require authenticated ARI status
       ansible.builtin.uri:
@@ -111,11 +113,42 @@
     - name: Read exact installed PBX package versions
       ansible.builtin.command:
         argv: >-
-          {{ ['dpkg-query', '-W', '-f=${binary:Package} ${Version}\n'] +
-             (['asl3-asterisk', 'asl3-asterisk-modules', 'asl3-asterisk-config']
-              if asterisk_package_provider == 'allstarlink' else ['asterisk', 'asterisk-modules']) }}
+          {{ (['rpm', '-q', '--qf', '%{NAME} %{VERSION}-%{RELEASE}.%{ARCH}\n',
+               'asterisk', 'asterisk-pjsip', 'asterisk-curl', 'asterisk-iax2',
+               'asterisk-sounds-core-en', 'asterisk-sounds-core-en-wav'])
+             if asterisk_package_provider == 'tucny' else
+             (['dpkg-query', '-W', '-f=${binary:Package} ${Version}\n'] +
+              (['asl3-asterisk', 'asl3-asterisk-modules', 'asl3-asterisk-config']
+               if asterisk_package_provider == 'allstarlink' else ['asterisk', 'asterisk-modules'])) }}
       register: pbx_test_versions
       changed_when: false
+
+    - name: Inspect installed Tucny RPM facts
+      ansible.builtin.package_facts:
+        manager: rpm
+      when: asterisk_package_provider == 'tucny'
+
+    - name: Require exact reviewed Tucny package versions and architectures
+      ansible.builtin.assert:
+        that:
+          - item in ansible_facts.packages
+          - ansible_facts.packages[item] | length == 1
+          - ansible_facts.packages[item][0].epoch | default(0, true) | int == 0
+          - ansible_facts.packages[item][0].arch == ('noarch' if item.startswith('asterisk-sounds-') else 'x86_64')
+          - >-
+            (ansible_facts.packages[item][0].version ~ '-' ~ ansible_facts.packages[item][0].release) ==
+            ((asterisk_tucny_sounds_version | default(asterisk_py_phone_caller_tucny_test_defaults.asterisk_tucny_sounds_version))
+             if item.startswith('asterisk-sounds-') else
+             (asterisk_tucny_version | default(asterisk_py_phone_caller_tucny_test_defaults.asterisk_tucny_version)))
+      loop: [asterisk, asterisk-pjsip, asterisk-curl, asterisk-iax2, asterisk-sounds-core-en, asterisk-sounds-core-en-wav]
+      when: asterisk_package_provider == 'tucny'
+
+    - name: Require running Tucny callback modules
+      ansible.builtin.assert:
+        that:
+          - pbx_test_modules.stdout is search('func_curl[.]so[^\n]+Running')
+          - pbx_test_modules.stdout is search('res_curl[.]so[^\n]+Running')
+      when: asterisk_package_provider == 'tucny'
 
     - name: Save nonsecret runtime evidence on the controller
       ansible.builtin.copy:

@@ -2,6 +2,7 @@
 Model discovery and language capability scanner across TTS engines.
 """
 
+import importlib.util
 import os
 import sys
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -179,6 +180,27 @@ def _build_piper_active_langs(installed: Dict[str, Any], default_lang: str) -> L
     return langs
 
 
+def _kokoro_lang_deps_ready(lang_code: str) -> bool:
+    """Checks optional G2P Python dependencies required for Kokoro ja/zh voices."""
+    norm = LANGUAGE_ALIASES.get(str(lang_code).lower(), str(lang_code).lower())
+    if norm in ("ja", "j"):
+        base_ok = all(
+            importlib.util.find_spec(mod) is not None
+            for mod in ("pyopenjtalk", "fugashi", "jaconv", "mojimoji")
+        )
+        dict_ok = (
+            importlib.util.find_spec("unidic_lite") is not None
+            or importlib.util.find_spec("unidic") is not None
+        )
+        return base_ok and dict_ok
+    if norm in ("zh", "z"):
+        return all(
+            importlib.util.find_spec(mod) is not None
+            for mod in ("cn2an", "jieba", "ordered_set", "pypinyin", "pypinyin_dict")
+        )
+    return True
+
+
 def _build_kokoro_active_langs(installed: Dict[str, Any], default_lang: str) -> List[Dict[str, Any]]:
     langs = []
     seen = set()
@@ -191,7 +213,7 @@ def _build_kokoro_active_langs(installed: Dict[str, Any], default_lang: str) -> 
                 "code": lang_code,
                 "voice": v,
                 "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
-                "ready": installed["kokoro_tts"]["ready"],
+                "ready": bool(installed["kokoro_tts"]["ready"]) and _kokoro_lang_deps_ready(lang_code),
             })
 
     def_norm = LANGUAGE_ALIASES.get(default_lang.lower(), default_lang.lower())
@@ -206,7 +228,7 @@ def _build_kokoro_active_langs(installed: Dict[str, Any], default_lang: str) -> 
             langs.insert(0, {
                 "code": default_lang,
                 "name": LANGUAGE_NAMES.get(default_lang, "Spanish"),
-                "ready": installed["kokoro_tts"]["ready"],
+                "ready": bool(installed["kokoro_tts"]["ready"]) and _kokoro_lang_deps_ready(default_lang),
             })
     return langs
 
@@ -308,7 +330,7 @@ def scan_installed_languages(base_models_dir: str = None) -> Dict[str, Any]:
                     "voice": v,
                     "name": LANGUAGE_NAMES.get(lang_code, lang_code.capitalize()),
                     "engine": "kokoro_tts",
-                    "ready": True,
+                    "ready": _kokoro_lang_deps_ready(lang_code),
                     "is_default": False,
                     "flag": LANGUAGE_FLAGS.get(lang_code, ""),
                 })

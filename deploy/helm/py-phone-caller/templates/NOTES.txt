@@ -1,0 +1,15 @@
+Thank you for installing {{ .Chart.Name }} v{{ .Chart.Version }}!
+
+Release Name: {{ .Release.Name }}
+Namespace:    {{ .Release.Namespace }}
+
+1. Verify all pods are healthy:
+   kubectl get pods -n {{ .Release.Namespace }}
+
+2. Access the Web UI:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/py-phone-caller-ui-service 5000:{{ .Values.services.pyPhoneCallerUi.port }}
+
+{{- if .Values.openalertd.enabled }}
+3. Access OpenAlert REST API & /sos Portal:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/openalertd-service 8090:{{ .Values.openalertd.httpPort }}
+{{- end }}

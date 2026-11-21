@@ -1,5 +1,6 @@
 .collections/
 .ansible/
+dist/
 tests/.rendered/
 tests/.runtime/
 __pycache__/
