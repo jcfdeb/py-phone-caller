@@ -212,3 +212,423 @@ def test_workspace_service_entrypoints_importable(monkeypatch):
     ):
         assert importlib.import_module(mod) is not None
 
+
+def _resolve_real_tool(tool_name: str) -> str:
+    """Resolve the direct binary path for a CLI tool (bypassing mise shims when HOME is overridden)."""
+    import os
+    import shutil
+
+    mise_bin = shutil.which("mise") or str(Path.home() / ".local" / "bin" / "mise")
+    if Path(mise_bin).is_file():
+        proc = subprocess.run(
+            [mise_bin, "which", tool_name],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            resolved = proc.stdout.strip().splitlines()[0]
+            if Path(resolved).is_file():
+                return resolved
+
+    extra_path = os.pathsep.join(
+        [
+            str(Path.home() / ".local" / "share" / "mise" / "shims"),
+            str(Path.home() / ".local" / "bin"),
+            str(Path.home() / ".cargo" / "bin"),
+            os.environ.get("PATH", ""),
+        ]
+    )
+    found = shutil.which(tool_name, path=extra_path)
+    if not found:
+        import pytest
+
+        pytest.skip(f"{tool_name} binary is not installed in this environment")
+    return found
+
+
+def _write_executable(path: Path, script: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o700)
+
+
+def test_sec_fix_py_transactional_auto_rollback_and_happy_path_in_sandbox(tmp_path):
+    """Prove at runtime that sec:fix:py restores uv.lock & re-syncs on test failure, and commits on pass."""
+    import os
+    import shutil
+
+    task_bin = _resolve_real_tool("task")
+    sandbox = tmp_path / "workspace"
+    sandbox.mkdir()
+    shutil.copy2(REPO_ROOT / "Taskfile.yml", sandbox / "Taskfile.yml")
+
+    original_lock = "# original locked graph v1\naiohttp==3.11.0\n"
+    upgraded_lock = "# upgraded locked graph v2\naiohttp==3.14.0\n"
+    lock_file = sandbox / "uv.lock"
+    lock_file.write_text(original_lock, encoding="utf-8")
+
+    fake_home = tmp_path / "fake_home"
+    fake_bin = fake_home / ".local" / "bin"
+    invocations_log = tmp_path / "invocations.log"
+
+    _write_executable(
+        fake_bin / "uv",
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+echo "uv $*" >> "{invocations_log}"
+if [ "${{1:-}}" = "lock" ] && [ "${{2:-}}" = "--upgrade-package" ]; then
+  printf '%s' "{upgraded_lock}" > uv.lock
+  exit 0
+fi
+if [ "${{1:-}}" = "sync" ]; then
+  cp uv.lock .synced_state
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "task",
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+echo "subtask $*" >> "{invocations_log}"
+if [ "${{1:-}}" = "verify:py" ] && [ "${{FAIL_VERIFY_PY:-0}}" = "1" ]; then
+  echo "Simulated pytest regression!" >&2
+  exit 1
+fi
+exit 0
+""",
+    )
+
+    base_env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+    }
+
+    # 1. Failure scenario: verify:py fails -> uv.lock and .synced_state MUST roll back to original_lock
+    failed_run = subprocess.run(
+        [task_bin, "sec:fix:py", "PKG=aiohttp"],
+        cwd=sandbox,
+        env={**base_env, "FAIL_VERIFY_PY": "1"},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert failed_run.returncode != 0, "sec:fix:py must exit non-zero when tests fail"
+    combined_err = failed_run.stdout + failed_run.stderr
+    assert "[ROLLBACK]" in combined_err
+    assert lock_file.read_text(encoding="utf-8") == original_lock, "uv.lock was NOT restored after test failure!"
+    assert (sandbox / ".synced_state").read_text(encoding="utf-8") == original_lock, (
+        "rollback() must re-run uv sync so .venv matches the restored uv.lock"
+    )
+    assert not (sandbox / ".security-reports" / "uv.lock.bak").exists()
+
+    log_lines = invocations_log.read_text(encoding="utf-8").splitlines()
+    sync_calls = [line for line in log_lines if line == "uv sync --frozen --all-packages --inexact"]
+    assert len(sync_calls) == 2, f"Expected 2 --all-packages --inexact sync calls (upgrade + rollback), got {log_lines}"
+
+    # 2. Happy-path scenario: verify:smoke & verify:py pass -> upgraded uv.lock is kept cleanly
+    invocations_log.unlink()
+    ok_run = subprocess.run(
+        [task_bin, "sec:fix:py", "PKG=aiohttp"],
+        cwd=sandbox,
+        env={**base_env, "FAIL_VERIFY_PY": "0"},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert ok_run.returncode == 0, f"Expected pass on clean verification, got: {ok_run.stderr}"
+    assert lock_file.read_text(encoding="utf-8") == upgraded_lock
+    assert not (sandbox / ".security-reports" / "uv.lock.bak").exists()
+
+
+def test_sec_fix_rust_transactional_auto_rollback_on_test_and_policy_failures(tmp_path):
+    """Prove at runtime that sec:fix:rust restores Cargo.lock on either test failure or cargo-deny violation."""
+    import os
+    import shutil
+
+    task_bin = _resolve_real_tool("task")
+    sandbox = tmp_path / "workspace"
+    rust_dir = sandbox / "src" / "openalert"
+    rust_dir.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "Taskfile.yml", sandbox / "Taskfile.yml")
+    (sandbox / "deny.toml").write_text("[advisories]\nversion = 2\n", encoding="utf-8")
+    (rust_dir / "Cargo.toml").write_text('[package]\nname = "openalertd"\nversion = "1.0.0"\n', encoding="utf-8")
+
+    original_cargo_lock = '# original Cargo.lock v1\nname = "rustls"\nversion = "0.23.1"\n'
+    upgraded_cargo_lock = '# upgraded Cargo.lock v2\nname = "rustls"\nversion = "0.23.46"\n'
+    cargo_lock = rust_dir / "Cargo.lock"
+    cargo_lock.write_text(original_cargo_lock, encoding="utf-8")
+    upgraded_fixture = tmp_path / "upgraded_Cargo.lock"
+    upgraded_fixture.write_text(upgraded_cargo_lock, encoding="utf-8")
+
+    fake_bin = tmp_path / "fake_bin"
+
+    _write_executable(
+        fake_bin / "cargo",
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+if [ "${{1:-}}" = "update" ]; then
+  cp "{upgraded_fixture}" "{cargo_lock}"
+  exit 0
+fi
+if [ "${{1:-}}" = "deny" ]; then
+  if [ "${{FAIL_CARGO_DENY:-0}}" = "1" ]; then
+    echo "Banned GPL-3.0 license detected!" >&2
+    exit 1
+  fi
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "task",
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "verify:rust" ] && [ "${FAIL_VERIFY_RUST:-0}" = "1" ]; then
+  echo "Simulated cargo test failure!" >&2
+  exit 1
+fi
+exit 0
+""",
+    )
+
+    base_env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+    }
+
+    # Case A: verify:rust fails -> Cargo.lock rolls back
+    res_test_fail = subprocess.run(
+        [task_bin, "sec:fix:rust", "PKG=rustls"],
+        cwd=sandbox,
+        env={**base_env, "FAIL_VERIFY_RUST": "1", "FAIL_CARGO_DENY": "0"},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_test_fail.returncode != 0
+    assert "[ROLLBACK]" in (res_test_fail.stdout + res_test_fail.stderr)
+    assert cargo_lock.read_text(encoding="utf-8") == original_cargo_lock
+
+    # Case B: verify:rust passes, but cargo-deny policy check fails -> Cargo.lock STILL rolls back
+    res_deny_fail = subprocess.run(
+        [task_bin, "sec:fix:rust", "PKG=rustls"],
+        cwd=sandbox,
+        env={**base_env, "FAIL_VERIFY_RUST": "0", "FAIL_CARGO_DENY": "1"},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_deny_fail.returncode != 0
+    assert "[ROLLBACK]" in (res_deny_fail.stdout + res_deny_fail.stderr)
+    assert cargo_lock.read_text(encoding="utf-8") == original_cargo_lock
+
+    # Case C: Both pass -> upgraded Cargo.lock is preserved and backup is cleaned up
+    res_ok = subprocess.run(
+        [task_bin, "sec:fix:rust", "PKG=rustls"],
+        cwd=sandbox,
+        env={**base_env, "FAIL_VERIFY_RUST": "0", "FAIL_CARGO_DENY": "0"},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_ok.returncode == 0, f"Expected pass, got: {res_ok.stderr}"
+    assert cargo_lock.read_text(encoding="utf-8") == upgraded_cargo_lock
+    assert not (sandbox / ".security-reports" / "Cargo.lock.bak").exists()
+
+
+def test_ruff_s_canary_catches_injected_vulnerabilities_under_real_config(tmp_path):
+    """Negative canary test: verify root pyproject.toml Ruff S config catches SQLi, shell=True, pickle, YAML, eval."""
+    canary_src = "\n".join(
+        [
+            "import pickle",
+            "import subprocess",
+            "import yaml",
+            "",
+            "def insecure_handler(user_id: str, raw_blob: bytes, cmd: str):",
+            '    query = f"SELECT * FROM calls WHERE id = \'{user_id}\'"',
+            "    subprocess.Popen(cmd, shell=True)",
+            "    obj = pickle.loads(raw_blob)",
+            "    cfg = yaml.load(user_id, Loader=yaml.Loader)",
+            "    res = eval(user_id)",
+            "    return query, obj, cfg, res",
+            "",
+        ]
+    )
+
+    proc = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--no-sync",
+            "ruff",
+            "check",
+            "--config",
+            str(REPO_ROOT / "pyproject.toml"),
+            "--select",
+            "S",
+            "--stdin-filename",
+            str(REPO_ROOT / "src" / "caller_register" / "_canary_vuln_probe.py"),
+            "-",
+        ],
+        cwd=REPO_ROOT,
+        input=canary_src,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0, "Ruff S must fail on injected production vulnerabilities"
+    for expected_code in ("S608", "S602", "S301", "S506", "S307"):
+        assert expected_code in proc.stdout, f"Expected {expected_code} to be flagged, got:\n{proc.stdout}"
+
+    # Verify clean parameterized counterpart passes with exit code 0
+    clean_src = (
+        "async def safe_lookup(db_table, call_id: str):\n"
+        '    return await db_table.raw("SELECT * FROM calls WHERE id = {}", call_id)\n'
+    )
+    clean_proc = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--no-sync",
+            "ruff",
+            "check",
+            "--config",
+            str(REPO_ROOT / "pyproject.toml"),
+            "--select",
+            "S",
+            "--stdin-filename",
+            str(REPO_ROOT / "src" / "caller_register" / "_canary_safe_probe.py"),
+            "-",
+        ],
+        cwd=REPO_ROOT,
+        input=clean_src,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert clean_proc.returncode == 0, f"Clean code should pass Ruff S, got:\n{clean_proc.stdout}"
+
+
+def test_gitleaks_and_sec_fast_canary_block_staged_secret_and_redact_output(tmp_path):
+    """Negative canary test: run real gitleaks + real 'task sec:fast' in an isolated git repo."""
+    import os
+    import shutil
+
+    gitleaks_bin = _resolve_real_tool("gitleaks")
+    task_bin = _resolve_real_tool("task")
+
+    repo = tmp_path / "canary_repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "test").mkdir()
+    (repo / "tests").mkdir()
+    (repo / "deploy").mkdir()
+    shutil.copy2(REPO_ROOT / ".gitleaks.toml", repo / ".gitleaks.toml")
+    shutil.copy2(REPO_ROOT / "pyproject.toml", repo / "pyproject.toml")
+    shutil.copy2(REPO_ROOT / "Taskfile.yml", repo / "Taskfile.yml")
+
+    # Provide lightweight shim for `uv` that delegates `uv run ruff ...` to the existing workspace ruff binary offline
+    shim_bin = tmp_path / "shim_bin"
+    ruff_bin = REPO_ROOT / ".venv" / "bin" / "ruff"
+    _write_executable(
+        shim_bin / "uv",
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+if [ "${{1:-}}" = "run" ] && [ "${{2:-}}" = "ruff" ]; then
+  shift 2
+  exec "{ruff_bin}" "$@"
+fi
+exec "{shutil.which('uv') or '/home/jcf/.local/bin/uv'}" "$@"
+""",
+    )
+    canary_env = {
+        **os.environ,
+        "PATH": os.pathsep.join(
+            [
+                str(shim_bin),
+                str(Path(gitleaks_bin).parent),
+                str(Path(task_bin).parent),
+                os.environ.get("PATH", ""),
+            ]
+        ),
+    }
+
+    for git_args in (
+        ["init", "-q"],
+        ["config", "user.email", "canary@example.invalid"],
+        ["config", "user.name", "Canary Test"],
+    ):
+        subprocess.run(["git", *git_args], cwd=repo, check=True, capture_output=True)
+
+    # 1. Stage a clean Python module -> 'task sec:fast' must PASS
+    target_py = repo / "src" / "service.py"
+    target_py.write_text('def ok() -> str:\n    return "healthy"\n', encoding="utf-8")
+    (repo / "test" / "t.py").write_text("assert True\n", encoding="utf-8")
+    (repo / "tests" / "t.py").write_text("assert True\n", encoding="utf-8")
+    (repo / "deploy" / "d.py").write_text("X = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+
+    clean_fast = subprocess.run(
+        [task_bin, "sec:fast"],
+        cwd=repo,
+        env=canary_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert clean_fast.returncode == 0, f"Clean staged repo must pass sec:fast:\n{clean_fast.stdout}\n{clean_fast.stderr}"
+
+    # 2. Stage a Vulnerable Python file (eval -> S307) -> 'task sec:fast' MUST block via Ruff S
+    target_py.write_text("def bad(x: str):\n    return eval(x)\n", encoding="utf-8")
+    subprocess.run(["git", "add", "src/service.py"], cwd=repo, check=True, capture_output=True)
+    sast_blocked_fast = subprocess.run(
+        [task_bin, "sec:fast"],
+        cwd=repo,
+        env=canary_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert sast_blocked_fast.returncode != 0, "task sec:fast must fail when Ruff S detects S307"
+    assert "S307" in (sast_blocked_fast.stdout + sast_blocked_fast.stderr)
+
+    # 3. Stage a dynamically constructed GitHub Personal Access Token -> gitleaks & sec:fast MUST block and redact
+    synthetic_pat = "ghp_" + ("A9b8C7d6E5f4G3h2I1j0K9l8M7n6O5p4Q3r2")
+    target_py.write_text(f'API_TOKEN = "{synthetic_pat}"\n', encoding="utf-8")
+    subprocess.run(["git", "add", "src/service.py"], cwd=repo, check=True, capture_output=True)
+
+    leak_check = subprocess.run(
+        [
+            gitleaks_bin,
+            "protect",
+            "--staged",
+            "--config",
+            ".gitleaks.toml",
+            "--redact",
+            "--no-banner",
+        ],
+        cwd=repo,
+        env=canary_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert leak_check.returncode != 0, "Gitleaks must block staged secret token"
+    leak_output = leak_check.stdout + leak_check.stderr
+    assert synthetic_pat not in leak_output, "Gitleaks --redact must never print raw secret value to logs"
+
+    blocked_fast = subprocess.run(
+        [task_bin, "sec:fast"],
+        cwd=repo,
+        env=canary_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert blocked_fast.returncode != 0, "task sec:fast must fail when a secret is staged"
+
+
