@@ -44,3 +44,64 @@ dev = [
     "ruff>=0.9.0",
     "maturin>=1.14.1",
 ]
+
+[tool.bandit]
+exclude_dirs = [
+    ".venv",
+    ".task",
+    ".security-reports",
+    "test",
+    "tests",
+    "deploy/ansible/tests",
+    "src/openalert/tests",
+    "src/openalert/packaging/tests",
+    "dist",
+    "build",
+    "docs",
+]
+# B110/B112: existing defensive fail-open telemetry/UI try-except-pass/continue blocks
+# B404/B603/B607: controlled non-shell subprocess calls to piper/ffmpeg/cargo/packaging tools
+# B104/B105: false positives on 0.0.0.0->127.0.0.1 sanitizer & env-var constant names
+# B615: existing Hugging Face Hub TTS model downloaders (facebook_mms / kokoro_tts)
+skips = ["B104", "B105", "B110", "B112", "B404", "B603", "B607", "B615"]
+
+[tool.ruff.lint]
+extend-select = ["S"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test suites & test harnesses
+"test/**/*.py" = ["S101", "S105", "S106", "S108", "S311", "S603", "S607"]
+"tests/**/*.py" = ["S101", "S105", "S106", "S108", "S603", "S607"]
+"deploy/ansible/tests/**/*.py" = ["S101", "S104", "S105", "S106", "S108", "S310", "S501", "S603", "S607"]
+"deploy/ansible/tools/**/*.py" = ["S101"]
+"src/openalert/tests/**/*.py" = ["S101", "S104", "S310", "S603", "S607"]
+"src/openalert/packaging/tests/**/*.py" = ["S101", "S603", "S607"]
+# Build & packaging orchestrators (DEB/RPM format requires MD5/SHA1 control digests)
+"deploy/packaging/**/*.py" = ["S101", "S324", "S603", "S607"]
+"deploy/ansible/packaging/**/*.py" = ["S603", "S607"]
+"deploy/ansible/roles/openalert/files/*.py" = ["S103", "S104", "S603"]
+"deploy/ansible/roles/stack_lifecycle/files/stack_snapshot.py" = ["S108", "S112"]
+"src/openalert/packaging/release_bundle.py" = ["S603", "S607"]
+# Local dev/bootstrap gateway scripts using self-signed TLS
+"deploy/gateway/**/*.py" = ["S501"]
+"deploy/ansible/roles/gateway/files/**/*.py" = ["S501"]
+# Controlled non-shell audio synthesis subprocesses (piper/ffmpeg)
+"src/generate_audio/runners.py" = ["S603"]
+# Verified false positives: env-var constant names & 0.0.0.0 -> 127.0.0.1 host sanitizer
+"src/py-phone-caller-utils/py_phone_caller_utils/py_phone_caller_db/db_user.py" = ["S105"]
+"src/py_phone_caller_ui/services.py" = ["S105"]
+"src/py_phone_caller_ui/home/__init__.py" = ["S104", "S110"]
+# Existing defensive fail-open try-except blocks in UI/telemetry/TTS cleanup
+"src/asterisk_caller/asterisk_caller.py" = ["S110"]
+"src/asterisk_caller/constants.py" = ["S110"]
+"src/caller_address_book/services.py" = ["S110"]
+"src/caller_sms/services.py" = ["S110"]
+"src/py-phone-caller-utils/py_phone_caller_utils/event_bus.py" = ["S110"]
+"src/py-phone-caller-utils/py_phone_caller_utils/py_phone_caller_db/db_address_book.py" = ["S112"]
+"src/py-phone-caller-utils/py_phone_caller_utils/py_phone_caller_voices/*.py" = ["S110"]
+"src/py-phone-caller-utils/py_phone_caller_utils/web/__init__.py" = ["S110"]
+"src/py_phone_caller_ui/address_book/__init__.py" = ["S110", "S112"]
+"src/py_phone_caller_ui/home/health.py" = ["S110"]
+"src/py_phone_caller_ui/schedule_call/__init__.py" = ["S110"]
+"src/py_phone_caller_ui/ws_events/__init__.py" = ["S110"]
+

@@ -1,0 +1,450 @@
+version: '3'
+
+set: [errexit, nounset, pipefail]
+shopt: [globstar]
+
+env:
+  PATH: '{{.HOME}}/.local/share/mise/shims:{{.HOME}}/.local/bin:{{.HOME}}/.cargo/bin:{{.PATH}}'
+
+vars:
+  RUST_DIR: src/openalert
+  RUST_MANIFEST: src/openalert/Cargo.toml
+  RUST_LOCK: src/openalert/Cargo.lock
+  SMS_RUST_MANIFEST: src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/Cargo.toml
+  SMS_RUST_LOCK: src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/Cargo.lock
+  REPORT_DIR: .security-reports
+  DIST_DIR: dist
+  SEMGREP_PYTHON: '3.12'
+  REGISTRY: '{{.MY_DOCKER_REGISTRY | default "localhost"}}'
+  VERSION: '{{.VERSION | default "1.0.0"}}'
+  DEFAULT_IMAGE: '{{.REGISTRY}}/openalertd:{{.VERSION}}'
+  CORE_SERVICES: openalertd caller_prometheus_webhook generate_audio py_phone_caller_ui
+  ALL_SERVICES: >-
+    openalertd
+    asterisk_caller
+    asterisk_recaller
+    asterisk_ws_monitor
+    caller_address_book
+    caller_prometheus_webhook
+    caller_register
+    caller_scheduler
+    caller_sms
+    celery_worker
+    generate_audio
+    py_phone_caller_ui
+  OPENALERT_URL: http://127.0.0.1:8090
+  UI_URL: http://127.0.0.1:5000
+  WEBHOOK_URL: http://127.0.0.1:8084
+
+tasks:
+  # ---------------------------------------------------------------------------
+  # 0. Preflight, Directory Init & Git Hook Setup
+  # ---------------------------------------------------------------------------
+  sec:init:
+    internal: true
+    silent: true
+    cmds:
+      - mkdir -p "{{.REPORT_DIR}}"
+
+  sec:doctor:
+    desc: Verify required AppSec CLI tools are installed and on PATH
+    cmds:
+      - |
+        missing=0
+        for bin in uv cargo gitleaks osv-scanner trivy syft cargo-audit cargo-deny; do
+          if ! command -v "$bin" >/dev/null 2>&1; then
+            echo "[MISSING] $bin (run 'mise install' to bootstrap)"
+            missing=1
+          else
+            echo "[OK]      $bin -> $(command -v "$bin")"
+          fi
+        done
+        for opt in trufflehog nuclei cosign; do
+          if command -v "$opt" >/dev/null 2>&1; then
+            echo "[OK-OPT]  $opt -> $(command -v "$opt")"
+          else
+            echo "[INFO]    $opt not installed (only required for release/DAST tasks)"
+          fi
+        done
+        if [ "$missing" -ne 0 ]; then
+          echo "Preflight failed: missing required security tools." >&2
+          exit 1
+        fi
+
+  sec:hooks:install:
+    desc: Install local git pre-commit hook running 'task sec:fast'
+    cmds:
+      - |
+        mkdir -p .git/hooks
+        cat > .git/hooks/pre-commit <<'EOF'
+        #!/usr/bin/env bash
+        set -euo pipefail
+        export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+        exec task sec:fast
+        EOF
+        chmod +x .git/hooks/pre-commit
+        echo "Installed .git/hooks/pre-commit -> task sec:fast"
+
+  # ---------------------------------------------------------------------------
+  # 1. Execution Tier Entrypoints
+  # ---------------------------------------------------------------------------
+  sec:fast:
+    desc: Fast pre-commit gate (~1-2s, staged secrets + Ruff S-rules)
+    deps:
+      - sec:secrets:staged
+      - sec:sast:fast
+
+  sec:ci:
+    desc: Full PR & CI gate (SAST + Workspace SCA + IaC config scan)
+    deps: [sec:init]
+    cmds:
+      - task: sec:sast:full
+      - task: sec:sca:all
+      - task: sec:iac
+
+  sec:release:
+    desc: Full release security gate (CI suite + history secrets + SBOMs + image scans)
+    deps: [sec:init]
+    cmds:
+      - task: sec:ci
+      - task: sec:secrets:history
+      - task: sec:sbom
+      - task: sec:image:core
+
+  # ---------------------------------------------------------------------------
+  # 2. Secrets & Credential Hygiene
+  # ---------------------------------------------------------------------------
+  sec:secrets:staged:
+    desc: Block staged secrets before commit (Gitleaks)
+    cmds:
+      - gitleaks protect --staged --config .gitleaks.toml --redact --no-banner
+
+  sec:secrets:history:
+    desc: Audit git commit history & verify live credentials (Gitleaks + TruffleHog)
+    deps: [sec:init]
+    cmds:
+      - gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --report-format sarif --report-path "{{.REPORT_DIR}}/gitleaks.sarif"
+      - |
+        if command -v trufflehog >/dev/null 2>&1; then
+          trufflehog git file://. --only-verified --fail --no-update
+        else
+          echo "ERROR: trufflehog is required for sec:secrets:history" >&2
+          exit 1
+        fi
+
+  # ---------------------------------------------------------------------------
+  # 3. Static Application Security Testing (SAST)
+  # ---------------------------------------------------------------------------
+  sec:sast:fast:
+    desc: Fast Python security lint via Ruff S-rules (scoped outside .venv/dist)
+    sources:
+      - pyproject.toml
+      - src/**/*.py
+      - test/**/*.py
+      - tests/**/*.py
+      - deploy/**/*.py
+    cmds:
+      - uv run ruff check --select S src/ test/ tests/ deploy/
+
+  sec:sast:py:
+    desc: Deep Python & Rust SAST (Bandit SARIF + Semgrep OSS)
+    deps: [sec:init]
+    cmds:
+      - uv tool run --from "bandit[sarif]" bandit -c pyproject.toml -r src/ -f sarif -o "{{.REPORT_DIR}}/bandit.sarif"
+      - >-
+        uv tool run --python "{{.SEMGREP_PYTHON}}" semgrep scan
+        --config p/python
+        --config p/rust
+        --config p/owasp-top-ten
+        --exclude '*.example'
+        --exclude .venv
+        --exclude dist
+        --exclude docs
+        --exclude .security-reports
+        --exclude target
+        --exclude .collections
+        --exclude 'deploy/ansible/tests'
+        --exclude-rule rust.lang.security.unsafe-usage.unsafe-usage
+        --exclude-rule rust.lang.security.args.args
+        --exclude-rule rust.lang.security.temp-dir.temp-dir
+        --exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        --exclude-rule python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
+        --exclude-rule python.flask.security.injection.tainted-url-host.tainted-url-host
+        --exclude-rule python.flask.security.audit.flask-url-for-external-true.flask-url-for-external-true
+        --error
+        --sarif
+        --output "{{.REPORT_DIR}}/semgrep.sarif"
+        src/
+
+  sec:sast:rust:
+    desc: Rust static & correctness lints on openalertd (Cargo Clippy)
+    cmds:
+      - cargo clippy --manifest-path "{{.RUST_MANIFEST}}" --all-targets --locked -- -D warnings
+
+  sec:sast:full:
+    desc: Run all Python & Rust SAST checks
+    cmds:
+      - task: sec:sast:fast
+      - task: sec:sast:py
+      - task: sec:sast:rust
+
+  # ---------------------------------------------------------------------------
+  # 4. Software Composition Analysis (SCA) & Supply Chain
+  #    NOTE: No `sources:` caching here — advisory feeds update continuously
+  #    even when local lockfiles have not changed.
+  # ---------------------------------------------------------------------------
+  sec:sca:py:
+    desc: Audit ALL 12 workspace Python packages (prod & dev) from uv.lock
+    deps: [sec:init]
+    cmds:
+      - >-
+        uv export --frozen --all-packages --no-emit-workspace --no-dev --no-hashes --format requirements-txt
+        | uv tool run pip-audit --no-deps --disable-pip -r /dev/stdin --desc --format json --output "{{.REPORT_DIR}}/pip-audit-prod.json"
+      - >-
+        uv export --frozen --all-packages --no-emit-workspace --no-hashes --format requirements-txt
+        | uv tool run pip-audit --no-deps --disable-pip -r /dev/stdin --desc --format json --output "{{.REPORT_DIR}}/pip-audit-all.json"
+
+  sec:sca:rust:
+    desc: Audit openalertd & sms_rust_backend crates and license/source policy (cargo-audit + cargo-deny)
+    deps: [sec:init]
+    cmds:
+      - cargo deny --manifest-path "{{.RUST_MANIFEST}}" --config deny.toml check
+      - cargo audit --file "{{.RUST_LOCK}}" --json > "{{.REPORT_DIR}}/cargo-audit.json" || true
+      - cargo audit --file "{{.SMS_RUST_LOCK}}" --json > "{{.REPORT_DIR}}/cargo-audit-sms.json" || true
+      - cargo audit --file "{{.RUST_LOCK}}" --deny warnings
+      - cargo audit --file "{{.SMS_RUST_LOCK}}" --deny warnings
+
+  sec:sca:osv:
+    desc: Cross-ecosystem lockfile vulnerability scan (OSV-Scanner >= 2.0)
+    deps: [sec:init]
+    cmds:
+      - >-
+        osv-scanner scan source
+        --lockfile="uv.lock"
+        --lockfile="{{.RUST_LOCK}}"
+        --lockfile="{{.SMS_RUST_LOCK}}"
+        --format sarif
+        --output "{{.REPORT_DIR}}/osv.sarif"
+
+  sec:sca:all:
+    desc: Run Python, Rust, and OSV dependency audits
+    cmds:
+      - task: sec:sca:py
+      - task: sec:sca:rust
+      - task: sec:sca:osv
+
+  # ---------------------------------------------------------------------------
+  # 5. SBOM, IaC, Multi-Service Containers & Release Signing
+  # ---------------------------------------------------------------------------
+  sec:iac:
+    desc: Scan Dockerfiles, Compose, K8s manifests, and Helm charts (Trivy config)
+    deps: [sec:init]
+    cmds:
+      - >-
+        trivy config
+        --ignorefile .trivyignore.yaml
+        --skip-dirs .venv,dist,docs,.security-reports,src/openalert/target,data,deploy/ansible/.collections,deploy/ansible/tests
+        --severity HIGH,CRITICAL
+        --exit-code 1
+        --format sarif
+        --output "{{.REPORT_DIR}}/trivy-iac.sarif"
+        .
+
+  sec:sbom:
+    desc: Generate CycloneDX JSON SBOMs for workspace & release dist/ (Syft)
+    deps: [sec:init]
+    cmds:
+      - >-
+        syft dir:.
+        --source-name py-phone-caller
+        --source-version "{{.VERSION}}"
+        --exclude './.venv/**'
+        --exclude './dist/**'
+        --exclude './docs/**'
+        --exclude './data/**'
+        --exclude './test/**'
+        --exclude './tests/**'
+        --exclude './.security-reports/**'
+        --exclude './src/openalert/target/**'
+        --exclude './src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/target/**'
+        --exclude './deploy/ansible/.collections/**'
+        -o "cyclonedx-json={{.REPORT_DIR}}/sbom-source.cdx.json"
+      - |
+        if [ -d "{{.DIST_DIR}}" ]; then
+          cp "{{.REPORT_DIR}}/sbom-source.cdx.json" "{{.DIST_DIR}}/SBOM.cdx.json"
+        fi
+
+  sec:image:
+    desc: Scan a single container image (task sec:image IMAGE=localhost/openalertd:1.0.0)
+    deps: [sec:init]
+    vars:
+      TARGET_IMAGE: '{{.IMAGE | default .DEFAULT_IMAGE}}'
+      SAFE_NAME:
+        sh: echo "{{.IMAGE | default .DEFAULT_IMAGE}}" | tr '/:' '__'
+    cmds:
+      - >-
+        trivy image
+        --ignorefile .trivyignore.yaml
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --exit-code 1
+        --format sarif
+        --output "{{.REPORT_DIR}}/trivy-image-{{.SAFE_NAME}}.sarif"
+        "{{.TARGET_IMAGE}}"
+
+  sec:image:core:
+    desc: Scan core Compose production images (openalertd, webhook, audio, UI)
+    deps: [sec:init]
+    cmds:
+      - for: { var: CORE_SERVICES }
+        task: sec:image
+        vars:
+          IMAGE: '{{.REGISTRY}}/{{.ITEM}}:{{.VERSION}}'
+
+  sec:image:all:
+    desc: Scan all 12 built microservice images
+    deps: [sec:init]
+    cmds:
+      - for: { var: ALL_SERVICES }
+        task: sec:image
+        vars:
+          IMAGE: '{{.REGISTRY}}/{{.ITEM}}:{{.VERSION}}'
+
+  sec:dast:
+    desc: Non-destructive runtime probe against live endpoint (task sec:dast TARGET_URL=http://127.0.0.1:8090)
+    deps: [sec:init]
+    vars:
+      PROBE_URL: '{{.TARGET_URL | default .OPENALERT_URL}}'
+    cmds:
+      - >-
+        nuclei
+        -u "{{.PROBE_URL}}"
+        -tags cve,misconfig,exposure,headers
+        -severity medium,high,critical
+        -sarif-export "{{.REPORT_DIR}}/nuclei.sarif"
+
+  sec:sign:release:
+    desc: Sign release checksums, manifest, and SBOM using keyless Sigstore Cosign
+    cmds:
+      - |
+        for artifact in "{{.DIST_DIR}}/SHA256SUMS" "{{.DIST_DIR}}/RELEASE_MANIFEST.json" "{{.DIST_DIR}}/SBOM.cdx.json"; do
+          if [ -f "$artifact" ]; then
+            cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "$artifact"
+          fi
+        done
+
+  # ---------------------------------------------------------------------------
+  # 6. Non-Regression ("Do Not Break Working Stuff") Guardrails
+  # ---------------------------------------------------------------------------
+  verify:build:sms-rust:
+    desc: Build editable PyO3 SMS native module (rust_engine) into .venv
+    cmds:
+      - PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv run --no-sync maturin develop --manifest-path "{{.SMS_RUST_MANIFEST}}"
+
+  verify:smoke:
+    desc: Fast smoke check — lockfile integrity + headless import of all 12 Python services + PyO3 SMS engine + Rust cargo check
+    cmds:
+      - uv lock --check
+      - >-
+        CALLER_CONFIG=src/config/settings.toml
+        ENABLE_TELEMETRY=false
+        UI_ADMIN_PASSWORD_RESETED=True
+        PICCOLO_CONF=py_phone_caller_utils.py_phone_caller_db.piccolo_conf
+        DYNACONF_COMMONS__ASTERISK_PASS=test_asterisk_pass
+        DYNACONF_DATABASE__DB_PASSWORD=test_db_password
+        DYNACONF_CALLER_SMS__TWILIO_ACCOUNT_SID=test_twilio_sid
+        DYNACONF_CALLER_SMS__TWILIO_AUTH_TOKEN=test_twilio_token
+        DYNACONF_PY_PHONE_CALLER_UI__UI_SECRET_KEY=test_ui_secret_key
+        DYNACONF_PY_PHONE_CALLER_UI__ADMIN_PASSWORD=test_admin_password
+        PYTHONPATH=src:src/py-phone-caller-utils
+        uv run --no-sync python -c "import importlib; [importlib.import_module(m) for m in (
+        'py_phone_caller_utils',
+        'asterisk_caller.asterisk_caller',
+        'asterisk_recaller.asterisk_recaller',
+        'asterisk_ws_monitor.asterisk_ws_monitor',
+        'caller_address_book.caller_address_book',
+        'caller_prometheus_webhook.caller_prometheus_webhook',
+        'caller_register.caller_register',
+        'caller_scheduler.caller_scheduler',
+        'caller_sms.caller_sms',
+        'celery_worker',
+        'generate_audio.generate_audio',
+        'py_phone_caller_ui',
+        'rust_engine',
+        )]; from py_phone_caller_utils.sms import enqueue_sms; assert enqueue_sms is not None; print('[OK] All 12 Python packages + native rust_engine imported cleanly')"
+      - cargo check --manifest-path "{{.RUST_MANIFEST}}" --all-targets --locked
+
+  verify:py:
+    desc: Full Python non-regression gate (lock check + unit & packaging tests)
+    cmds:
+      - uv lock --check
+      - >-
+        uv run --no-sync pytest
+        test/
+        tests/test_appsec_pipeline.py
+        tests/test_pypi_packaging.py
+        tests/test_linux_packaging.py
+        tests/test_k8s_and_compose_packaging.py
+        tests/test_airgap_preparation.py
+        deploy/ansible/tests/test_ansible_bundle.py
+
+  verify:rust:
+    desc: Full Rust non-regression gate (cargo clippy -D warnings + full openalertd test suite)
+    cmds:
+      - cargo clippy --manifest-path "{{.RUST_MANIFEST}}" --all-targets --locked -- -D warnings
+      - cargo test --manifest-path "{{.RUST_MANIFEST}}" --locked
+
+  verify:all:
+    desc: Complete non-regression & fast security verification across Python, Rust, and packaging
+    cmds:
+      - task: verify:smoke
+      - task: verify:py
+      - task: verify:rust
+      - task: sec:fast
+
+  # ---------------------------------------------------------------------------
+  # 7. Transactional Dependency Remediation Helpers (Auto-Rollback on Failure)
+  # ---------------------------------------------------------------------------
+  sec:fix:py:
+    desc: Safely upgrade a Python package in uv.lock with automatic rollback if tests fail (task sec:fix:py PKG=aiohttp)
+    deps: [sec:init]
+    requires:
+      vars: [PKG]
+    cmds:
+      - |
+        backup="{{.REPORT_DIR}}/uv.lock.bak"
+        cp uv.lock "$backup"
+        rollback() {
+          echo "[ROLLBACK] Verification failed after upgrading '{{.PKG}}' — restoring previous uv.lock..." >&2
+          mv "$backup" uv.lock
+          uv sync --frozen --all-packages --inexact
+        }
+        trap rollback ERR
+        uv lock --upgrade-package "{{.PKG}}"
+        uv sync --frozen --all-packages --inexact
+        task verify:smoke
+        task verify:py
+        trap - ERR
+        rm -f "$backup"
+        echo "[OK] Upgraded '{{.PKG}}' and passed all smoke + regression tests."
+
+  sec:fix:rust:
+    desc: Safely upgrade a Rust crate in Cargo.lock with automatic rollback if clippy/tests fail (task sec:fix:rust PKG=rustls)
+    deps: [sec:init]
+    requires:
+      vars: [PKG]
+    cmds:
+      - |
+        backup="{{.REPORT_DIR}}/Cargo.lock.bak"
+        cp "{{.RUST_LOCK}}" "$backup"
+        rollback() {
+          echo "[ROLLBACK] Verification failed after upgrading '{{.PKG}}' — restoring previous {{.RUST_LOCK}}..." >&2
+          mv "$backup" "{{.RUST_LOCK}}"
+        }
+        trap rollback ERR
+        cargo update --manifest-path "{{.RUST_MANIFEST}}" -p "{{.PKG}}"
+        task verify:rust
+        cargo deny --manifest-path "{{.RUST_MANIFEST}}" --config deny.toml check
+        trap - ERR
+        rm -f "$backup"
+        echo "[OK] Upgraded '{{.PKG}}' and passed clippy, cargo test, and cargo-deny."

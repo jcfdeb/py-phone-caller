@@ -257,22 +257,20 @@ impl BitChatService {
             sleep(Duration::from_millis(400)).await;
         }
 
-        if force_power_cycle {
-            if adapter.is_powered().await.unwrap_or(false) {
-                info!(
-                    "🔄 [BLE Self-Healing] Power-cycling '{}' to clear stale BlueZ GATT/advertising state...",
-                    dev_name
+        if force_power_cycle && adapter.is_powered().await.unwrap_or(false) {
+            info!(
+                "🔄 [BLE Self-Healing] Power-cycling '{}' to clear stale BlueZ GATT/advertising state...",
+                dev_name
+            );
+            if let Err(e) = adapter.set_powered(false).await {
+                warn!(
+                    "⚠️ [BLE Self-Healing] Power-off '{}' returned: {} (continuing recovery)",
+                    dev_name, e
                 );
-                if let Err(e) = adapter.set_powered(false).await {
-                    warn!(
-                        "⚠️ [BLE Self-Healing] Power-off '{}' returned: {} (continuing recovery)",
-                        dev_name, e
-                    );
-                }
-                // Give UART BLE firmware (e.g. Spreadtrum/Unisoc) time to finish HCI teardown
-                // before powering back on so it does not reject with status 0x0a (Busy).
-                sleep(Duration::from_millis(1200)).await;
             }
+            // Give UART BLE firmware (e.g. Spreadtrum/Unisoc) time to finish HCI teardown
+            // before powering back on so it does not reject with status 0x0a (Busy).
+            sleep(Duration::from_millis(1200)).await;
         }
 
         let powered = Self::ensure_adapter_powered_with_retry(adapter, dev_name, 6).await;

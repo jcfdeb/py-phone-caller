@@ -1,0 +1,36 @@
+# ==============================================================================
+# Trivy Scoped IaC & Container Ignore Policy (.trivyignore.yaml)
+#
+# Governance Rule: Every entry MUST specify exact rule ID, scoped file path(s),
+# expiration review date, and engineering rationale. Never use global ignores.
+# ==============================================================================
+
+misconfigurations:
+  - id: AVD-DS-0002
+    paths:
+      - docker-compose.hardware.yml
+      - deploy/compose/docker-compose.hardware.yml
+    expired_at: 2027-06-01
+    statement: >-
+      openalertd hardware passthrough overlay intentionally requires CAP_NET_ADMIN
+      and CAP_NET_RAW for BlueZ BLE HCI/L2CAP mesh sockets (bluer crate). Base
+      docker-compose.yml runs without elevated capabilities.
+
+  - id: AVD-KSV-0014
+    paths:
+      - "deploy/k8s/**"
+      - "deploy/helm/**"
+    expired_at: 2027-03-01
+    statement: >-
+      Baseline v1.0.x Kubernetes/Helm manifests write temporary TTS audio/runtime
+      state; readOnlyRootFilesystem + emptyDir mounts scheduled for K8s hardening pass.
+
+  - id: AVD-KSV-0118
+    paths:
+      - "deploy/k8s/**"
+      - "deploy/helm/**"
+    expired_at: 2027-03-01
+    statement: >-
+      Service images already drop root via Dockerfile USER directives (appuser /
+      openalert:10001); explicit K8s pod/container securityContext blocks scheduled
+      for dedicated K8s manifest hardening pass to preserve zero-regression rollout.

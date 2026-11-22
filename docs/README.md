@@ -16,7 +16,8 @@ docs/
 ├── 🏛️ Architecture & Technical Reference
 │   ├── architecture-and-call-flows.md       # 📐 End-to-End Call, Dual-Channel SMS/SIP, DTMF & Mesh Flows
 │   ├── services-and-endpoints.md            # 🔌 Complete Microservices & REST API Reference
-│   └── uv-migration-and-workspace-guide.md  # 🐍 Python 3.14 UV Workspace, Maturin Rust SMS & Packaging
+│   ├── uv-migration-and-workspace-guide.md  # 🐍 Python 3.14 UV Workspace, Maturin Rust SMS & Packaging
+│   └── appsec-and-supply-chain-guide.md     # 🛡️ AppSec, Supply-Chain & Non-Regression Developer Guide
 │
 ├── 🚀 Operations, Gateway & Telephony Setup
 │   ├── ../deploy/docs/README.md             # 🌟 Modular Deployment Hub (Ansible, Compose, K8s/Helm, DEB/RPM, PyPI, ARM64/Air-Gap, 12-Gate Validation)
@@ -68,6 +69,8 @@ docs/
   Feature summary covering the Strategy-pattern TTS overhaul (Silero V3, `/languages`, cross-engine fallback), multilingual Flask-Babel RTL Web UI, Asterisk ARI circuit breaker, Redis distributed locks, dual-channel SMS/SIP routing, always-UCS-2 GSM SMS, OpenAlert mesh bridge, and upgrade guidance.
 - **[UV Workspace & Packaging Guide](uv-migration-and-workspace-guide.md)**  
   Developer guide covering the Python 3.14 multi-package `uv` workspace, unified `uv.lock`, editable shared library linking (`py_phone_caller_utils`), `maturin` Rust SMS backend (`rust_engine`) builds, `pytest` / `ruff` workflows, wheel publishing, and multi-stage container builds.
+- **[AppSec, Supply-Chain & Non-Regression Developer Guide](appsec-and-supply-chain-guide.md)**  
+  Contributor onboarding and operations playbook for [`Taskfile.yml`](../Taskfile.yml), [`mise.toml`](../mise.toml), pre-commit hooks (`task sec:fast`), full SAST/SCA/IaC/SBOM/Cosign gates (`task sec:ci`, `task sec:release`), non-regression checks (`task verify:all`), and transactional single-package CVE upgrades with auto-rollback (`task sec:fix:py`, `task sec:fix:rust`).
 
 ---
 
@@ -105,7 +108,7 @@ docs/
 
 ---
 
-## 🎯 Quick Navigation by Role
+### 🎯 Quick Navigation by Role
 
 | If you are... | Start here: |
 | :--- | :--- |
@@ -115,7 +118,7 @@ docs/
 | **A Telephony / PBX Administrator** | ➡️ **[FreePBX & Asterisk ARI Setup Guide](freepbx-asterisk-setup-guide.md)** |
 | **Deploying Off-Grid Field Mesh (LoRa / BLE / Nostr)** | ➡️ **[OpenAlert Architecture Guide](openalert/README.md)** |
 | **A Developer integrating with the REST API** | ➡️ **[Services & Endpoints Reference](services-and-endpoints.md)** |
-| **A Software Engineer contributing code** | ➡️ **[UV Workspace & Packaging Guide](uv-migration-and-workspace-guide.md)** |
+| **A Software Engineer contributing code** | ➡️ **[UV Workspace & Packaging Guide](uv-migration-and-workspace-guide.md)** · **[AppSec & Supply-Chain Guide](appsec-and-supply-chain-guide.md)** |
 | **An Operations Engineer setting up Monitoring** | ➡️ **[OpenTelemetry & Observability Guide](opentelemetry-guide.md)** |
 
 ---

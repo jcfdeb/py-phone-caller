@@ -776,10 +776,12 @@ def test_proxy_acknowledge_success(mock_get, client):
 
     with patch("flask_login.utils._get_user") as mock_user:
         mock_user.return_value = MagicMock(is_authenticated=True)
-        res = client.get("/calls/proxy_acknowledge?asterisk_chan=PJSIP/101-0001")
+        res = client.get("/calls/proxy_acknowledge?asterisk_chan=PJSIP/101-0001%26injected%3D1")
         assert res.status_code == 200
         assert res.get_json()["status"] == 200
         assert res.get_json()["message"] == "Acknowledged"
+        _, kwargs = mock_get.call_args
+        assert kwargs["params"] == {"asterisk_chan": "PJSIP/101-0001&injected=1"}
 
 
 def test_proxy_acknowledge_missing_param(client):
@@ -792,6 +794,30 @@ def test_proxy_acknowledge_missing_param(client):
         res = client.get("/calls/proxy_acknowledge")
         assert res.status_code == 400
         assert "Missing asterisk_chan" in res.get_json()["message"]
+
+
+@patch("py_phone_caller_ui.address_book.requests.put")
+def test_api_modify_contact_validates_and_encodes_contact_id(mock_put, client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = b'{"updated": true}'
+    mock_resp.json.return_value = {"updated": True}
+    mock_put.return_value = mock_resp
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "1"
+        sess["_fresh"] = True
+
+    with patch("flask_login.utils._get_user") as mock_user:
+        mock_user.return_value = MagicMock(is_authenticated=True)
+        bad_res = client.post("/address_book/api/modify/..%5Cadmin", json={"name": "Alice"})
+        assert bad_res.status_code == 400
+        mock_put.assert_not_called()
+
+        ok_res = client.post("/address_book/api/modify/contact-42", json={"name": "Alice"})
+        assert ok_res.status_code == 200
+        called_url = mock_put.call_args[0][0]
+        assert called_url.endswith("/contact-42")
 
 
 @patch("py_phone_caller_ui.calls.requests.get")

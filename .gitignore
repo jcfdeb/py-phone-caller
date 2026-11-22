@@ -151,3 +151,7 @@ credentials/
 !/deploy/ansible/tests/test_rocky_platform.py
 !/deploy/ansible/tests/test_tucny_provider.py
 !/deploy/ansible/tests/test_ansible_bundle.py
+
+# AppSec & Taskfile local caches / SARIF & SBOM reports
+/.security-reports/
+/.task/

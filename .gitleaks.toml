@@ -1,0 +1,31 @@
+# ==============================================================================
+# Gitleaks Secret Scanning Configuration (.gitleaks.toml)
+# Extends upstream default rules while excluding synthetic test fixtures,
+# documentation examples, and upstream demo placeholder tokens.
+# ==============================================================================
+
+title = "py-phone-caller & OpenAlert Gitleaks Policy"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures, documentation snippets, and upstream APISIX/example placeholders"
+paths = [
+    '''^test/''',
+    '''^tests/''',
+    '''^deploy/ansible/tests/''',
+    '''^src/openalert/tests/''',
+    '''^docs/''',
+    '''^doc/''',
+    '''^assets/''',
+    '''\.example$''',
+    '''^src/openalert/README\.md$''',
+    '''^src/openalert/config/profiles/.*\.toml$''',
+    '''^deploy/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/defaults/main\.yml$''',
+]
+regexes = [
+    # Upstream Apache APISIX default quickstart admin key in dev/reference gateway configs
+    '''edd1c9f034335f136f87ad84b625c8f1''',
+    '''a1b2c3d4e5f60718293a4b5c6d7e8f90''',
+]

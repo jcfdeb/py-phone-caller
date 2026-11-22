@@ -748,14 +748,21 @@ def api_modify_contact(contact_id: str):
     :rtype: flask.Response
     """
 
+    from urllib.parse import quote
+
+    clean_contact_id = contact_id.strip()
+    if not clean_contact_id or "/" in clean_contact_id or "\\" in clean_contact_id or ".." in clean_contact_id:
+        return jsonify({"status": 400, "message": "Invalid contact_id"}), 400
+
     try:
         payload = request.get_json(force=True)
     except Exception:
         return jsonify({"status": 400, "message": "Invalid JSON"}), 400
 
     try:
+        safe_id = quote(clean_contact_id, safe="")
         resp = requests.put(
-            f"{CALLER_ADDR_BOOK_BASE}/{ROUTE_MODIFY}/{contact_id}",
+            f"{CALLER_ADDR_BOOK_BASE}/{ROUTE_MODIFY}/{safe_id}",
             json=payload,
             timeout=5,
         )

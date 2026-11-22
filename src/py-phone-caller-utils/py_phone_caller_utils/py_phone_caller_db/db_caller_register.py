@@ -215,8 +215,10 @@ async def get_current_call_id(seconds_to_forget, call_chk_sum):
 
     try:
         current_call_id = await Calls.raw(
-            "SELECT id from calls where ((AGE((SELECT timezone('utc', now())),first_dial))"
-            + f" < (SELECT {seconds_to_forget} * '1 seconds'::interval)) AND call_chk_sum='{str(call_chk_sum)}';"
+            "SELECT id FROM calls WHERE ((AGE((SELECT timezone('utc', now())), first_dial))"
+            " < (SELECT {}::double precision * '1 seconds'::interval)) AND call_chk_sum = {};",
+            int(seconds_to_forget),
+            str(call_chk_sum),
         )
         try:
             return current_call_id[0].get("id")
@@ -248,8 +250,10 @@ async def get_dialed_times(seconds_to_forget, call_chk_sum):
 
     try:
         dialed_times = await Calls.raw(
-            "SELECT dialed_times from calls where ((AGE((SELECT timezone('utc', now())),first_dial)) "
-            + f"< (SELECT {seconds_to_forget} * '1 seconds'::interval)) AND call_chk_sum='{call_chk_sum}';"
+            "SELECT dialed_times FROM calls WHERE ((AGE((SELECT timezone('utc', now())), first_dial))"
+            " < (SELECT {}::double precision * '1 seconds'::interval)) AND call_chk_sum = {};",
+            int(seconds_to_forget),
+            str(call_chk_sum),
         )
         try:
             return dialed_times[0].get("dialed_times")

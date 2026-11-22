@@ -162,3 +162,102 @@ def test_models_domain_validations():
     )
     assert spec.timeout_seconds == 60
     assert spec.context == "from-internal"
+
+
+@pytest.mark.asyncio
+async def test_db_caller_register_parameterizes_sql_and_handles_results():
+    from piccolo.query.methods.raw import Raw
+    from py_phone_caller_utils.py_phone_caller_db.db_caller_register import (
+        Calls,
+        get_current_call_id,
+        get_dialed_times,
+    )
+
+    sqli_payload = "deadbeef' OR '1'='1"
+    captured_queries = []
+
+    original_raw = Calls.raw
+
+    def spy_raw(sql, *args):
+        raw_obj = original_raw(sql, *args)
+        captured_queries.append(raw_obj.querystring.compile_string())
+        return raw_obj
+
+    with (
+        patch.object(Calls, "raw", side_effect=spy_raw),
+        patch.object(Raw, "run", new_callable=AsyncMock) as mock_run,
+    ):
+        mock_run.return_value = [{"id": "call-uuid-999"}]
+        call_id = await get_current_call_id("60", sqli_payload)
+        assert call_id == "call-uuid-999"
+
+        compiled_sql, bound_args = captured_queries[-1]
+        assert sqli_payload not in compiled_sql
+        assert "$1" in compiled_sql and "$2" in compiled_sql
+        assert bound_args == [60, sqli_payload]
+
+        # Empty result returns None
+        mock_run.return_value = []
+        assert await get_current_call_id(60, "abcd1234") is None
+
+        # Dialed times happy path + parameterization check
+        mock_run.return_value = [{"dialed_times": 3}]
+        dialed = await get_dialed_times(120, sqli_payload)
+        assert dialed == 3
+        compiled_sql_2, bound_args_2 = captured_queries[-1]
+        assert sqli_payload not in compiled_sql_2
+        assert "$1" in compiled_sql_2 and "$2" in compiled_sql_2
+        assert bound_args_2 == [120, sqli_payload]
+
+        # Empty result returns None
+        mock_run.return_value = []
+        assert await get_dialed_times(120, "abcd1234") is None
+
+        # Event loop RuntimeError propagates
+        mock_run.side_effect = RuntimeError("RUNTIME_LOOP_IN_ERROR: closed")
+        with pytest.raises(RuntimeError):
+            await get_current_call_id(60, "abcd1234")
+        with pytest.raises(RuntimeError):
+            await get_dialed_times(60, "abcd1234")
+
+        # Generic DB exception fails closed to None
+        mock_run.side_effect = ValueError("transient db error")
+        assert await get_current_call_id(60, "abcd1234") is None
+        assert await get_dialed_times(60, "abcd1234") is None
+
+
+@pytest.mark.asyncio
+async def test_db_asterisk_recaller_select_backup_calls_parameterized():
+    from piccolo.query.methods.raw import Raw
+    from py_phone_caller_utils.py_phone_caller_db.db_asterisk_recaller import (
+        Calls,
+        select_backup_calls,
+    )
+
+    captured_queries = []
+    original_raw = Calls.raw
+
+    def spy_raw(sql, *args):
+        raw_obj = original_raw(sql, *args)
+        captured_queries.append(raw_obj.querystring.compile_string())
+        return raw_obj
+
+    sample_rows = [
+        {
+            "id": "uuid-1",
+            "phone": "+393341234567",
+            "message": "Node down",
+            "call_backup_callee_number_calls": 1,
+            "seconds_to_forget": 300,
+        }
+    ]
+    with (
+        patch.object(Calls, "raw", side_effect=spy_raw),
+        patch.object(Raw, "run", new_callable=AsyncMock, return_value=sample_rows),
+    ):
+        rows = await select_backup_calls("3")
+        assert rows == sample_rows
+        compiled_sql, bound_args = captured_queries[-1]
+        assert "$1" in compiled_sql
+        assert bound_args == [3]
+

@@ -1,0 +1,19 @@
+# ==============================================================================
+# py-phone-caller & OpenAlert — Reproducible AppSec & Supply-Chain Tooling
+#
+# Usage:
+#   mise trust && mise install
+#   mise exec -- task sec:doctor
+# ==============================================================================
+
+[tools]
+task = "3.54.0"
+gitleaks = "8.30.1"
+trufflehog = "3.100.0"
+osv-scanner = "2.7.1"
+trivy = "0.76.2"
+syft = "1.57.2"
+cosign = "3.1.4"
+cargo-deny = "0.22.0"
+"aqua:rustsec/rustsec/cargo-audit" = "0.23.0"
+"aqua:projectdiscovery/nuclei" = "3.11.1"

@@ -50,19 +50,17 @@ async def select_backup_calls(max_backup_calls):
         list: A list of call records matching the backup criteria.
     """
     # Select calls where the main retry window has expired (first_dial + seconds_to_forget < now)
-    # We use raw SQL to compare first_dial + seconds_to_forget interval with current time
-    # Note: Using string formatting for the integer parameter as Piccolo's raw() doesn't
-    # support $1 style placeholders. The value comes from configuration, not user input.
     result = await Calls.raw(
-        f"""
+        """
         SELECT id, phone, message, call_backup_callee_number_calls, seconds_to_forget
         FROM calls
         WHERE acknowledge_at = '-infinity'
           AND (first_dial + (seconds_to_forget || ' seconds')::interval) < NOW()
-          AND call_backup_callee_number_calls < {int(max_backup_calls)}
+          AND call_backup_callee_number_calls < {}
           AND cycle_done = FALSE
           AND oncall = TRUE
-        """
+        """,
+        int(max_backup_calls),
     )
     return result
 

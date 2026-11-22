@@ -268,6 +268,7 @@ Legacy [combined](deploy/ansible/deploy_all/README.md), [Python](deploy/ansible/
 - **[Web UI Operator Tour](docs/web-ui-tour/README.md)** - Visual walkthrough of the multilingual Web Management UI, calls table, SMS dashboard, and on-call calendars.
 - **[OpenTelemetry & Observability Guide](docs/opentelemetry-guide.md)** - Metrics scraping (`/metrics`), health/readiness probes (`/health`, `/ready`), and distributed tracing ([Tempo](docs/tempo_traces.md)).
 - **[UV Workspace & Packaging Guide](docs/uv-migration-and-workspace-guide.md)** - Python 3.14 UV workspace, Maturin Rust SMS engine, dependency management, and container builds.
+- **[AppSec, Supply-Chain & Non-Regression Guide](docs/appsec-and-supply-chain-guide.md)** - Contributor onboarding, `Taskfile.yml` security tiers (`sec:fast`, `sec:ci`, `sec:release`), non-regression checks (`verify:all`), and transactional CVE auto-rollback (`sec:fix:py`, `sec:fix:rust`).
 - **[Archived Documentation Index](docs/archive/README.md)** - Preserved pre-release, historical audit, and superseded legacy guides.
 - `LICENSE` - BSD 3-Clause license.
 

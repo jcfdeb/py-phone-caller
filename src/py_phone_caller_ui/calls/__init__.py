@@ -338,13 +338,19 @@ async def proxy_acknowledge():
     try:
         try:
             response = requests.get(
-                f"{CALL_REGISTER_ENDPOINT}?asterisk_chan={asterisk_chan}", timeout=5
+                CALL_REGISTER_ENDPOINT,
+                params={"asterisk_chan": asterisk_chan},
+                timeout=5,
             )
         except Exception as exc:
             if CALL_REGISTER_HOST in ("192.168.101.17", "192.168.101.111"):
                 try:
-                    fallback_url = f"{CALL_REGISTER_HTTP_SCHEME}://127.0.0.1:{CALL_REGISTER_PORT}/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}?asterisk_chan={asterisk_chan}"
-                    response = requests.get(fallback_url, timeout=5)
+                    fallback_url = f"{CALL_REGISTER_HTTP_SCHEME}://127.0.0.1:{CALL_REGISTER_PORT}/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}"
+                    response = requests.get(
+                        fallback_url,
+                        params={"asterisk_chan": asterisk_chan},
+                        timeout=5,
+                    )
                 except Exception:
                     raise exc
             else:
