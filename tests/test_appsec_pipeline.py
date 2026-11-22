@@ -111,11 +111,35 @@ def test_deny_toml_policy_contract():
     assert "GPL-3.0-only" not in cfg["licenses"]["allow"]
 
 
+    for item in cfg["advisories"].get("ignore", []):
+        assert isinstance(item, dict) and item.get("id", "").startswith("RUSTSEC-"), (
+            f"deny.toml ignore entry must be a structured RUSTSEC table: {item}"
+        )
+        assert "Expires " in item.get("reason", "") and len(item["reason"]) >= 30, (
+            f"deny.toml ignore {item.get('id')} must document expiration date and rationale"
+        )
+
+    osv_cfg = tomllib.loads((REPO_ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
+    today = datetime.date.today()
+    ignored_vulns = osv_cfg.get("IgnoredVulns", [])
+    assert ignored_vulns, "osv-scanner.toml must define explicit baseline entries"
+    for vuln in ignored_vulns:
+        vid = vuln.get("id", "")
+        until = vuln.get("ignoreUntil")
+        reason = vuln.get("reason", "")
+        assert not vid.startswith("PYSEC-"), f"Python advisories ({vid}) must be fixed in uv.lock, not ignored"
+        assert isinstance(until, datetime.date) and until > today, (
+            f"osv-scanner.toml ignore {vid} is missing or past ignoreUntil ({until} <= {today})"
+        )
+        assert len(reason.strip()) >= 25, f"osv-scanner.toml ignore {vid} must document engineering rationale"
+
+
 def test_trivyignore_governance_invariants():
     trivy_path = REPO_ROOT / ".trivyignore.yaml"
     assert trivy_path.is_file()
     cfg = yaml.safe_load(trivy_path.read_text(encoding="utf-8"))
 
+    today = datetime.date.today()
     entries = cfg.get("misconfigurations", [])
     assert entries, ".trivyignore.yaml should contain documented baseline entries"
     for entry in entries:
@@ -125,7 +149,10 @@ def test_trivyignore_governance_invariants():
         stmt = entry.get("statement", "")
         assert rule_id and rule_id.startswith("AVD-"), f"Invalid rule id: {rule_id}"
         assert isinstance(paths, list) and len(paths) > 0, f"{rule_id} must be path-scoped, never global"
-        assert isinstance(exp, (datetime.date, str)) and str(exp), f"{rule_id} must define expired_at"
+        exp_date = datetime.date.fromisoformat(exp) if isinstance(exp, str) else exp
+        assert isinstance(exp_date, datetime.date) and exp_date > today, (
+            f"{rule_id} expired_at must be a valid future date, got {exp}"
+        )
         assert len(stmt.strip()) >= 20, f"{rule_id} must include an engineering rationale statement"
 
 
@@ -161,6 +188,15 @@ def test_github_appsec_workflow_and_legacy_retirement():
     assert workflow_path.is_file()
     wf = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     assert "appsec" in wf["jobs"]
+
+    steps = wf["jobs"]["appsec"]["steps"]
+    sarif_steps = [s for s in steps if "codeql-action/upload-sarif@" in s.get("uses", "")]
+    assert sarif_steps and sarif_steps[0]["uses"].endswith("@v4"), "Must use codeql-action/upload-sarif@v4"
+
+    artifact_steps = [s for s in steps if "actions/upload-artifact@" in s.get("uses", "")]
+    assert artifact_steps and artifact_steps[0].get("with", {}).get("include-hidden-files") is True, (
+        "upload-artifact must set include-hidden-files: true so .security-reports/ dot-directory is uploaded"
+    )
 
     for retired in ("bandit-scan.yml", "codeql-analysis.yml", "shiftleft-analysis.yml"):
         assert not (REPO_ROOT / ".github" / "workflows" / retired).exists(), f"Legacy {retired} should be retired"

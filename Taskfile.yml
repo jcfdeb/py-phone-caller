@@ -208,8 +208,22 @@ tasks:
       - cargo deny --manifest-path "{{.RUST_MANIFEST}}" --config deny.toml check
       - cargo audit --file "{{.RUST_LOCK}}" --json > "{{.REPORT_DIR}}/cargo-audit.json" || true
       - cargo audit --file "{{.SMS_RUST_LOCK}}" --json > "{{.REPORT_DIR}}/cargo-audit-sms.json" || true
-      - cargo audit --file "{{.RUST_LOCK}}" --deny warnings
-      - cargo audit --file "{{.SMS_RUST_LOCK}}" --deny warnings
+      - |
+        ignore_flags=()
+        if [ -f osv-scanner.toml ]; then
+          for id in $(uv run --no-sync python -c '
+        import tomllib
+        with open("osv-scanner.toml", "rb") as f:
+            for item in tomllib.load(f).get("IgnoredVulns", []):
+                vid = item["id"]
+                if vid.startswith("RUSTSEC-"):
+                    print(vid)
+        '); do
+            ignore_flags+=("--ignore=$id")
+          done
+        fi
+        cargo audit --file "{{.RUST_LOCK}}" --deny warnings "${ignore_flags[@]}"
+        cargo audit --file "{{.SMS_RUST_LOCK}}" --deny warnings "${ignore_flags[@]}"
 
   sec:sca:osv:
     desc: Cross-ecosystem lockfile vulnerability scan (OSV-Scanner >= 2.0)
@@ -217,11 +231,12 @@ tasks:
     cmds:
       - >-
         osv-scanner scan source
+        --config osv-scanner.toml
         --lockfile="uv.lock"
         --lockfile="{{.RUST_LOCK}}"
         --lockfile="{{.SMS_RUST_LOCK}}"
         --format sarif
-        --output "{{.REPORT_DIR}}/osv.sarif"
+        --output-file "{{.REPORT_DIR}}/osv.sarif"
 
   sec:sca:all:
     desc: Run Python, Rust, and OSV dependency audits

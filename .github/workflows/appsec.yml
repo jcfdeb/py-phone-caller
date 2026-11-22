@@ -22,25 +22,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository (full history for Gitleaks)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Install native Linux headers for openalertd (bluer, udev, oqs-sys)
+      - name: Install native Linux headers for openalertd (bluer, udev, openssl)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pkg-config \
             libdbus-1-dev \
             libudev-dev \
-            libssl-dev \
-            cmake \
-            ninja-build \
-            clang \
-            libclang-dev
+            libssl-dev
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -55,7 +51,7 @@ jobs:
           components: clippy
 
       - name: Install pinned AppSec CLI tools via mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v5
 
       - name: Verify AppSec toolchain (sec:doctor)
         run: task sec:doctor
@@ -77,16 +73,17 @@ jobs:
 
       - name: Upload SARIF reports to GitHub Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true
         with:
           sarif_file: .security-reports
 
       - name: Upload Security Reports & CycloneDX SBOM Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: appsec-reports-and-sbom
+          include-hidden-files: true
           path: |
             .security-reports/*.sarif
             .security-reports/*.json

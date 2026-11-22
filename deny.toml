@@ -12,7 +12,10 @@ all-features = false
 [advisories]
 yanked = "deny"
 unmaintained = "workspace"
-ignore = []
+ignore = [
+    { id = "RUSTSEC-2026-0459", reason = "Expires 2027-06-01: libsqlite3-sys via rusqlite 0.32 requires crafted untrusted SQLite+WAL files; openalertd only opens daemon-owned local spool DBs. Planned major upgrade to rusqlite >=0.41." },
+    { id = "RUSTSEC-2026-0543", reason = "Expires 2027-06-01: chrono unmaintained notice with no upstream patch; also transitively required by tera 1.20." },
+]
 
 [licenses]
 allow = [

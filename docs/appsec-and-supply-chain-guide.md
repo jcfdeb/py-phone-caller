@@ -402,7 +402,16 @@ To prevent "ignore-and-forget" security drift, [`tests/test_appsec_pipeline.py`]
          openalertd hardware overlay intentionally requires CAP_NET_ADMIN and
          CAP_NET_RAW for BlueZ BLE HCI/L2CAP mesh sockets (bluer crate).
    ```
-3. **SCA Tasks Never Skip on Cached Lockfiles:**
+3. **Every Advisory Baseline in `osv-scanner.toml` and `deny.toml` Must Be Time-Boxed & Justified:**
+   When an upstream crate advisory requires a breaking major upgrade or affects an inactive/non-compiled feature, temporary baselines in [`osv-scanner.toml`](../osv-scanner.toml) (shared by `osv-scanner` and `cargo-audit` in `sec:sca:rust`) and [`deny.toml`](../deny.toml) **must** carry a future `ignoreUntil = YYYY-MM-DD` / `Expires YYYY-MM-DD` review trigger and a detailed `reason`:
+   ```toml
+   [[IgnoredVulns]]
+   id = "RUSTSEC-2026-0459"
+   ignoreUntil = 2027-06-01
+   reason = "rand 0.8.8 via snow 0.9 / ed25519-dalek 2.2; openalertd never invokes custom logger inside thread_rng(). Upgrade when upstream moves to rand 0.10."
+   ```
+   *(Contract tests verify `ignoreUntil` / `Expires` is strictly in the future so stale ignores fail CI automatically on expiration.)*
+4. **SCA Tasks Never Skip on Cached Lockfiles:**
    `sec:sca:py`, `sec:sca:rust`, `sec:sca:osv`, and `sec:sca:all` are contract-tested to ensure `sources:` caching is never added—because new CVEs are published daily even when `uv.lock` and `Cargo.lock` have not changed.
 
 ---
@@ -416,10 +425,10 @@ The GitHub Actions workflow [`.github/workflows/appsec.yml`](../.github/workflow
 - Manual `workflow_dispatch`
 
 In CI, the workflow:
-1. Installs native Linux headers (`libdbus-1-dev`, `libudev-dev`, `libssl-dev`, `clang`, `cmake`), Python `3.14` + `3.12`, Rust `stable`, and pinned `mise` tools (`jdx/mise-action@v2`).
+1. Installs native Linux headers (`libdbus-1-dev`, `libudev-dev`, `libssl-dev`), Python `3.14` + `3.12` (`astral-sh/setup-uv@v7`), Rust `stable`, and pinned `mise` tools (`jdx/mise-action@v5`).
 2. Executes the exact same `task` targets (`sec:doctor`, `sec:sast:full`, `sec:secrets:history`, `sec:iac`, `sec:sbom`, `sec:sca:all`).
-3. Uploads all `.security-reports/*.sarif` files (`gitleaks.sarif`, `bandit.sarif`, `semgrep.sarif`, `osv.sarif`, `trivy-iac.sarif`) to **GitHub Security -> Code scanning** (`if: always()`).
-4. Publishes `.security-reports/*.sarif`, `*.json`, and `sbom-source.cdx.json` as downloadable workflow artifacts (`appsec-reports-and-sbom`).
+3. Uploads all `.security-reports/*.sarif` files (`gitleaks.sarif`, `bandit.sarif`, `semgrep.sarif`, `osv.sarif`, `trivy-iac.sarif`) to **GitHub Security -> Code scanning** (`github/codeql-action/upload-sarif@v4`, `if: always()`).
+4. Publishes `.security-reports/*.sarif`, `*.json`, and `sbom-source.cdx.json` as downloadable workflow artifacts (`actions/upload-artifact@v7` with `include-hidden-files: true`).
 
 ---
 

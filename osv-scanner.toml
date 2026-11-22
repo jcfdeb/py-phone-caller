@@ -1,0 +1,120 @@
+# Time-boxed, audited baseline exceptions for upstream-blocked Rust advisories.
+# Governance enforced by tests/test_appsec_pipeline.py:
+#   1. Every entry MUST set `ignoreUntil` (YYYY-MM-DD, strictly in the future).
+#   2. Every entry MUST provide an engineering `reason` (>= 25 chars) explaining non-reachability or migration plan.
+#   3. Python (`PYSEC-*`) advisories MUST NOT be ignored here; patch uv.lock via `task sec:fix:py`.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0459"
+ignoreUntil = 2027-06-01
+reason = "libsqlite3-sys via rusqlite 0.32 / sqlx 0.7 requires opening untrusted crafted SQLite+WAL files; openalertd and sms_rust_backend only open service-owned local spool DBs. Planned major upgrade to rusqlite >=0.41 / sqlx >=0.8."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+ignoreUntil = 2027-06-01
+reason = "chrono unmaintained notice (no upstream version fix available); required transitively by tera 1.20."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0555"
+ignoreUntil = 2027-06-01
+reason = "chrono-tz 0.9 unmaintained notice pulled transitively by tera 1.20 built-ins."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0559"
+ignoreUntil = 2027-06-01
+reason = "chrono-tz-build 0.3 unmaintained build-time notice pulled transitively by tera 1.20."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0134"
+ignoreUntil = 2027-06-01
+reason = "rustls-pemfile unmaintained notice; dev-only transitive dependency of rcgen 0.13 in openalertd [dev-dependencies]."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2023-0089"
+ignoreUntil = 2027-06-01
+reason = "atomic-polyfill unmaintained notice pulled transitively by postcard 1.1.3 -> heapless 0.7; unused on Linux x86_64/aarch64."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0574"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 unsound notice (transitive via postcard 1.1.3); openalertd only uses postcard alloc Vec<u8> serialization, never heapless containers."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0575"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 unsound notice (transitive via postcard 1.1.3); openalertd never instantiates heapless containers."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0576"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 unsound notice (transitive via postcard 1.1.3); openalertd never instantiates heapless containers."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0577"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 unsound notice (transitive via postcard 1.1.3); openalertd never instantiates heapless containers."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0578"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 SortedLinkedList unsound notice (transitive via postcard 1.1.3); unreachable in openalertd."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0579"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 Deque unsound notice (transitive via postcard 1.1.3); unreachable in openalertd."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0580"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 treiber stack unsound notice (transitive via postcard 1.1.3); unreachable in openalertd."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0581"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 Deque::make_contiguous unsound notice (transitive via postcard 1.1.3); unreachable in openalertd."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0582"
+ignoreUntil = 2027-06-01
+reason = "heapless 0.7 IndexMap unsound notice (transitive via postcard 1.1.3); unreachable in openalertd."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0020"
+ignoreUntil = 2027-06-01
+reason = "pyo3 0.20 PyString::from_object advisory; sms_rust_backend never calls PyString::from_object. Major migration to pyo3 >=0.29 + pyo3-async-runtimes tracked separately."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0177"
+ignoreUntil = 2027-06-01
+reason = "pyo3 0.20 PyCFunction::new_closure Sync bound advisory; sms_rust_backend uses standard #[pyfunction] macros only. Planned pyo3 >=0.29 migration."
+
+[[IgnoredVulns]]
+id = "GHSA-36hh-v3qg-5jq4"
+ignoreUntil = 2027-06-01
+reason = "pyo3 0.20 advisory blocked on breaking pyo3-asyncio -> pyo3-async-runtimes rewrite in sms_rust_backend; untrusted Python callers are not exposed."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0363"
+ignoreUntil = 2027-06-01
+reason = "sqlx 0.7 binary wire protocol cast issue affects remote DB wire protocols; sms_rust_backend enables local embedded sqlite feature only."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2023-0071"
+ignoreUntil = 2027-06-01
+reason = "rsa 0.9 recorded in sms_rust_backend Cargo.lock via disabled sqlx-mysql optional dependency; crate is never compiled into rust_engine."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0542"
+ignoreUntil = 2027-06-01
+reason = "humantime unmaintained notice in sms_rust_backend (via env_logger 0.10); no fixed version available."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+ignoreUntil = 2027-06-01
+reason = "paste proc-macro unmaintained notice in sms_rust_backend; compile-time macro only with no runtime exposure."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0441"
+ignoreUntil = 2027-06-01
+reason = "pin-utils 0.1 unmaintained notice in sms_rust_backend; zero-dependency macro crate with no upstream replacement."
