@@ -3,9 +3,9 @@
 > [!TIP]
 > **Looking for the modern 1.0.0 deployment guide?**
 > - For full A-to-Z production deployment (Ansible, Docker/Podman Compose, systemd): see **[Operator Installation Guide (A to Z)](OPERATOR_INSTALLATION_GUIDE.md)**.
-> - For enterprise API Gateway & Keycloak SSO (Manual & Automated): see **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**.
-> - For dedicated FreePBX & Asterisk ARI dialplan setup: see **[FreePBX & Asterisk Setup Guide](freepbx-asterisk-setup-guide.md)**.
-> - For the complete API reference: see **[Services and Endpoints Reference](services-and-endpoints.md)**.
+> - For enterprise API Gateway & Keycloak SSO (Manual & Automated): see **[Enterprise Gateway & Keycloak SSO Guide](../ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**.
+> - For dedicated FreePBX & Asterisk ARI dialplan setup: see **[FreePBX & Asterisk Setup Guide](../freepbx-asterisk-setup-guide.md)**.
+> - For the complete API reference: see **[Services and Endpoints Reference](../services-and-endpoints.md)**.
 >
 > *This document is retained as a comprehensive legacy architecture walk-through.*
 
@@ -27,7 +27,7 @@ The **py-phone-caller** components are represented using the *blue* boxes in our
 
 The system is designed as a set of decoupled microservices that communicate via REST APIs and share a centralized database.
 
-![py-phone-caller the big picture](diagram/py_phone_caller_diagram.png "py-phone-caller flow diagram")
+![py-phone-caller the big picture](../assets/system-map.svg "py-phone-caller flow diagram")
 
 #### A Little Description Of The Components
 
@@ -108,23 +108,23 @@ Last but not least, a *custom extension* and an **ARI** (*Asterisk REST Interfac
 1.  First press the "**Connectivity**" button.
 2.  Later press the "**Trunks**" button.
 
-![trunk configuration step 1](freepbx-setup/image/trunk/trunk-01.png "Trunk configuration")
+![trunk configuration step 1](../freepbx-setup/image/trunk/trunk-01.png "Trunk configuration")
 
 1.  Press the "**+ Add Trunk**" button.
 2.  Press the "**+ Add SIP (chan_sip) Trunk**" button.
 
-![trunk configuration step 2](freepbx-setup/image/trunk/trunk-02.png "Trunk configuration")
+![trunk configuration step 2](../freepbx-setup/image/trunk/trunk-02.png "Trunk configuration")
 
 1.  Configure the "**Trunk Name**" (e.g., `sip-provider`).
 2.  In the "**Outbound CallerID**" use your assigned number.
 3.  Open the tab "**sip Settings**".
 
-![trunk configuration step 3](freepbx-setup/image/trunk/trunk-03.png "Trunk configuration")
+![trunk configuration step 3](../freepbx-setup/image/trunk/trunk-03.png "Trunk configuration")
 
 1.  Open the "**Outgoing**" tab.
 2.  On the "**PEER Details**" section, insert the configuration provided by your provider.
 
-![trunk configuration step 4](freepbx-setup/image/trunk/trunk-04.png "Trunk configuration")
+![trunk configuration step 4](../freepbx-setup/image/trunk/trunk-04.png "Trunk configuration")
 
 *   **PEER Details configuration example**:
 
@@ -142,8 +142,8 @@ insecure=very
 
 1.  Press the '**Apply Config**' button and wait for the reload.
 
-![trunk configuration step 5](freepbx-setup/image/trunk/trunk-05.png "Trunk configuration")
-![trunk configuration step 6](freepbx-setup/image/trunk/trunk-06.png "Trunk configuration")
+![trunk configuration step 5](../freepbx-setup/image/trunk/trunk-05.png "Trunk configuration")
+![trunk configuration step 6](../freepbx-setup/image/trunk/trunk-06.png "Trunk configuration")
 
 #### 2.2. Configuration of the Custom Extension (Dialplan)
 
@@ -152,12 +152,12 @@ Within this configuration, we'll be able to start a call and pass the control to
 1.  Press the "**Admin**" button.
 2.  Choose the "**Config Edit**" option.
 
-![SIP custom extension step 1](freepbx-setup/image/custom_extension/ediit_custom_exten-01.png "SIP custom extension")
+![SIP custom extension step 1](../freepbx-setup/image/custom_extension/ediit_custom_exten-01.png "SIP custom extension")
 
 1.  Select '**extensions_custom.conf**'.
 2.  Add the following dialplan logic:
 
-![SIP custom extension step 2](freepbx-setup/image/custom_extension/ediit_custom_exten-02.png "SIP custom extension")
+![SIP custom extension step 2](../freepbx-setup/image/custom_extension/ediit_custom_exten-02.png "SIP custom extension")
 
 ```ini
 [py-phone-caller]
@@ -193,16 +193,16 @@ same => 33,Hangup()
 
 1.  Check again the "**Working on extensions_custom.conf**" text area in order to validate the new settings.
 
-![SIP custom extension step 3](freepbx-setup/image/custom_extension/ediit_custom_exten-03.png "SIP custom extension")
+![SIP custom extension step 3](../freepbx-setup/image/custom_extension/ediit_custom_exten-03.png "SIP custom extension")
 
 1.  Save the changes by pressing the "**Save**" button.
 2.  **Apply Config**.
 
-![SIP custom extension step 4](freepbx-setup/image/custom_extension/ediit_custom_exten-04.png "SIP custom extension")
+![SIP custom extension step 4](../freepbx-setup/image/custom_extension/ediit_custom_exten-04.png "SIP custom extension")
 
 1. Wait until the configuration reloading process is done.
 
-![SIP custom extension step 5](freepbx-setup/image/custom_extension/ediit_custom_exten-05.png "SIP custom extension")
+![SIP custom extension step 5](../freepbx-setup/image/custom_extension/ediit_custom_exten-05.png "SIP custom extension")
 
 #### 2.3. Creating a Standard Extension (The Callee)
 
@@ -211,13 +211,13 @@ same => 33,Hangup()
 1.  Press "**Applications**" -> "**Extensions**".
 2.  Select "**+ Add Extension**" -> "**Add New SIP (Legacy) [chan_sip] Extension**".
 
-![SIP extension for the callee 1](freepbx-setup/image/sip_extension/01_sip_extension.png "A PBX extension")
+![SIP extension for the callee 1](../freepbx-setup/image/sip_extension/01_sip_extension.png "A PBX extension")
 
 1.  Set "**User Extension**" to `1614`.
 2.  Set a strong "**Secret**".
 3.  **Submit** and **Apply Config**.
 
-![SIP extension for the callee 3](freepbx-setup/image/sip_extension/03_sip_extension.png "A PBX extension")
+![SIP extension for the callee 3](../freepbx-setup/image/sip_extension/03_sip_extension.png "A PBX extension")
 
 #### 2.4. Configuration of the Asterisk ARI User
 
@@ -226,13 +226,13 @@ This user is vital for the WebSocket monitor and the caller service.
 1.  Press "**Settings**" -> "**Asterisk REST Interface Users**".
 2.  Press "**+ Add User**".
 
-![ARI user step 1](freepbx-setup/image/rest_interface_user/rest_interface_user-01.png "ARI user")
+![ARI user step 1](../freepbx-setup/image/rest_interface_user/rest_interface_user-01.png "ARI user")
 
 1.  Set name to `py-phone-caller`.
 2.  Set "**Read Only**" to "**No**".
 3.  **Submit** and **Apply Config**.
 
-![ARI user step 3](freepbx-setup/image/rest_interface_user/rest_interface_user-03.png "ARI user")
+![ARI user step 3](../freepbx-setup/image/rest_interface_user/rest_interface_user-03.png "ARI user")
 
 ---
 
@@ -486,7 +486,7 @@ Once the system is up and running, it's time to verify that all the pieces are w
 
 Open your browser and navigate to `http://192.168.122.104:5000`. You should see the login screen.
 
-![Web UI Login](freepbx-setup/image/sip_extension/00_sip_extension.png "Placeholder for UI Screenshot")
+![Web UI Login](../freepbx-setup/image/sip_extension/00_sip_extension.png "Placeholder for UI Screenshot")
 
 To find your administrative password, check the logs of the UI container:
 ```bash

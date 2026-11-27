@@ -1,0 +1,309 @@
+---
+- name: Inspect real disposable topology runtime without exercising dispatch
+  hosts: "{{ topology_test_host | default('topology-disposable-unselected') }}"
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  no_log: true
+  vars_files:
+    - ../roles/deploy_py-phone-caller/defaults/main.yml
+  vars:
+    topology_test_python_units: >-
+      {{ py_phone_caller_services | map(attribute='name') | map('replace', '_', '-')
+         | map('regex_replace', '^', py_phone_caller_service_prefix)
+         | map('regex_replace', '$', '.service') | list }}
+    topology_test_gateway_units: >-
+      {{ ['etcd', 'apisix', 'apisix-dashboard', 'keycloak']
+         | map('regex_replace', '^', py_phone_caller_service_prefix)
+         | map('regex_replace', '$', '.service') | list }}
+    topology_test_units: >-
+      {{ topology_test_python_units + ['caddy.service', 'asterisk.service']
+         + (topology_test_gateway_units if py_phone_caller_topology == 'enterprise' else []) }}
+    topology_test_gateway_files:
+      - /etc/py-phone-caller/apisix/config.yaml
+      - /etc/py-phone-caller/apisix/dashboard_conf.yaml
+      - /etc/py-phone-caller/apisix/apisix.yaml
+      - /etc/py-phone-caller/keycloak.env
+      - /etc/py-phone-caller/keycloak-provision.sha256
+      - /etc/py-phone-caller/apisix-provision.sha256
+    topology_test_files: >-
+      {{ [py_phone_caller_settings_file, py_phone_caller_secrets_file, '/etc/caddy/Caddyfile',
+          '/etc/asterisk/ari.conf', '/etc/asterisk/http.conf', '/etc/asterisk/pjsip.conf',
+          '/etc/asterisk/extensions.conf', topology_test_tls_ca_path]
+         + (topology_test_python_units | map('regex_replace', '^', '/etc/systemd/system/') | list)
+         + ((topology_test_gateway_units | map('regex_replace', '^', '/etc/systemd/system/') | list)
+            + topology_test_gateway_files if py_phone_caller_topology == 'enterprise' else []) }}
+    topology_test_health_ports: [8081, 8082, 8083, 8084, 8085, 8086, 8087]
+  tasks:
+    - name: Require authorization for read-only inspection and controller evidence
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all == [topology_test_host]
+          - stack_disposable_test_acknowledged | default(false) | bool
+          - topology_test_allow_changes | default(false) | bool
+          - topology_test_parent_joined | default(false) | bool
+          - not ansible_check_mode
+          - py_phone_caller_public_url == 'https://caller.internal'
+          - topology_test_report is defined
+
+    - name: Allow service startup to settle
+      ansible.builtin.wait_for:
+        timeout: 5
+
+    - name: Read every Python gateway Caddy and PBX unit start timestamp
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", '--property=Id,LoadState,ActiveState,ActiveEnterTimestampMonotonic,ExecMainStartTimestampMonotonic,NRestarts,FragmentPath,DropInPaths']
+      loop: "{{ topology_test_units }}"
+      changed_when: false
+      register: topology_test_starts
+
+    - name: Require all selected services to be loaded active and actually started
+      ansible.builtin.assert:
+        that:
+          - "'LoadState=loaded' in item.stdout_lines"
+          - "'ActiveState=active' in item.stdout_lines"
+          - item.stdout is search('(?m)^ActiveEnterTimestampMonotonic=[1-9][0-9]*$')
+          - item.stdout is search('(?m)^ExecMainStartTimestampMonotonic=[1-9][0-9]*$')
+      loop: "{{ topology_test_starts.results }}"
+
+    - name: Read effective network restrictions for every Python unit
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", '--property=IPAddressAllow,IPAddressDeny']
+      loop: "{{ topology_test_python_units }}"
+      changed_when: false
+      register: topology_test_network
+
+    - name: Assert exact localhost-only IPv4 and IPv6 restrictions
+      ansible.builtin.assert:
+        that:
+          - item.stdout_lines | length == 2
+          - "(item.stdout_lines | select('match', '^IPAddressAllow=') | first).split('=')[1].split() | sort == ['127.0.0.0/8', '::1/128']"
+          - "(item.stdout_lines | select('match', '^IPAddressDeny=') | first).split('=')[1].split() | sort == ['0.0.0.0/0', '::/0']"
+      loop: "{{ topology_test_network.results }}"
+
+    - name: Read TCP listeners without process arguments
+      ansible.builtin.command:
+        argv: [ss, -H, -ltn]
+      changed_when: false
+      register: topology_test_listeners
+
+    - name: Require every gateway listener to be private and reject legacy TLS listeners
+      ansible.builtin.assert:
+        that:
+          - topology_test_listeners.stdout_lines | select('search', '^\\S+\\s+\\d+\\s+\\d+\\s+\\S+:' ~ (item | string) ~ '\\s') | list | length >= 1
+          - topology_test_listeners.stdout_lines | select('search', '^\\S+\\s+\\d+\\s+\\d+\\s+\\S+:' ~ (item | string) ~ '\\s') | reject('search', '^\\S+\\s+\\d+\\s+\\d+\\s+(127[.]0[.]0[.]1|\\[::1\\]|\\[::ffff:127[.]0[.]0[.]1\\]):' ~ (item | string) ~ '\\s') | list | length == 0
+          - topology_test_listeners.stdout is not search(':(7800|8443|9443)\\s')
+      loop: [2379, 2380, 8180, 9001, 9009, 9080, 9091, 9180]
+      when: py_phone_caller_topology == 'enterprise'
+
+    - name: Require no gateway listeners for the standard topology
+      ansible.builtin.assert:
+        that:
+          - topology_test_listeners.stdout is not search(':(2379|2380|7800|8180|8443|9001|9009|9080|9091|9180|9443)\\s')
+      when: py_phone_caller_topology == 'standard'
+
+    - name: Require the disposable public name to resolve exclusively to loopback
+      ansible.builtin.command:
+        argv: [getent, ahosts, caller.internal]
+      changed_when: false
+      register: topology_test_resolution
+
+    - name: Reject public or nonlocal resolution before making HTTP requests
+      ansible.builtin.assert:
+        that:
+          - topology_test_resolution.stdout_lines | length > 0
+          - topology_test_resolution.stdout_lines | reject('match', '^(127[.]0[.]0[.]1|::1)\\s') | list | length == 0
+
+    - name: Check the explicit target-side public trust certificate
+      ansible.builtin.command:
+        argv: [openssl, x509, -in, "{{ topology_test_tls_ca_path }}", -noout]
+      changed_when: false
+
+    - name: Probe API health only with GET and no redirects
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ item }}/health"
+        method: GET
+        status_code: 200
+        follow_redirects: none
+        use_proxy: false
+        use_netrc: false
+        return_content: false
+        timeout: 5
+      loop: "{{ topology_test_health_ports }}"
+      register: topology_test_health
+      until: topology_test_health is succeeded
+      retries: 6
+      delay: 5
+
+    - name: Probe Caddy HTTPS health home and the login entry point without following redirects
+      ansible.builtin.uri:
+        url: "{{ py_phone_caller_public_url }}{{ item.path }}"
+        method: GET
+        ca_path: "{{ topology_test_tls_ca_path }}"
+        validate_certs: true
+        follow_redirects: none
+        use_proxy: false
+        use_netrc: false
+        return_content: false
+        status_code: "{{ item.status }}"
+        timeout: 10
+      loop:
+        - {path: /health, status: [200]}
+        - {path: /, status: [200, 302]}
+        - path: /login
+          status: "{{ [302] if py_phone_caller_topology == 'enterprise' else [200] }}"
+      register: topology_test_https
+      until: topology_test_https is succeeded
+      retries: 6
+      delay: 5
+
+    - name: Require any UI redirect to stay on the same origin and expected login path
+      ansible.builtin.assert:
+        that:
+          - item.location | urlsplit('scheme') in ['', 'https']
+          - item.location | urlsplit('netloc') in ['', 'caller.internal']
+          - item.location | urlsplit('username') is none
+          - item.location | urlsplit('password') is none
+          - item.location | urlsplit('path') in ['/login', '/oauth2/login']
+          - item.item.path != '/login' or item.location | urlsplit('path') == '/oauth2/login'
+      loop: "{{ topology_test_https.results }}"
+      when: item.status == 302
+
+    - name: Read enterprise OpenID discovery through the public TLS origin only
+      ansible.builtin.uri:
+        url: "{{ py_phone_caller_public_url }}/realms/{{ py_phone_caller_keycloak_realm }}/.well-known/openid-configuration"
+        method: GET
+        ca_path: "{{ topology_test_tls_ca_path }}"
+        validate_certs: true
+        follow_redirects: none
+        use_proxy: false
+        use_netrc: false
+        return_content: true
+        status_code: 200
+        timeout: 10
+      register: topology_test_discovery
+      until: topology_test_discovery is succeeded
+      retries: 6
+      delay: 5
+      when: py_phone_caller_topology == 'enterprise'
+
+    - name: Require the exact public realm and protocol endpoints without requesting tokens
+      ansible.builtin.assert:
+        that:
+          - topology_test_discovery.json.issuer == py_phone_caller_public_url ~ '/realms/' ~ py_phone_caller_keycloak_realm
+          - topology_test_discovery.json[item.key] == py_phone_caller_public_url ~ '/realms/' ~ py_phone_caller_keycloak_realm ~ '/protocol/openid-connect/' ~ item.value
+          - topology_test_discovery.json[item.key] | urlsplit('scheme') == 'https'
+          - topology_test_discovery.json[item.key] | urlsplit('netloc') == 'caller.internal'
+          - "'code' in topology_test_discovery.json.response_types_supported"
+          - "'S256' in topology_test_discovery.json.code_challenge_methods_supported"
+      loop:
+        - {key: authorization_endpoint, value: auth}
+        - {key: token_endpoint, value: token}
+        - {key: userinfo_endpoint, value: userinfo}
+        - {key: jwks_uri, value: certs}
+        - {key: end_session_endpoint, value: logout}
+      when: py_phone_caller_topology == 'enterprise'
+
+    - name: Hash required configurations certificates and application gateway units without reading contents into evidence
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        checksum_algorithm: sha256
+        get_checksum: true
+        get_mime: false
+        get_attributes: false
+      loop: "{{ topology_test_files }}"
+      register: topology_test_configuration
+
+    - name: Require all expected configuration and unit files
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg
+          - item.stat.checksum | length == 64
+      loop: "{{ topology_test_configuration.results }}"
+
+    - name: Require private application configuration permissions
+      ansible.builtin.assert:
+        that:
+          - item.stat.pw_name == py_phone_caller_user
+          - item.stat.mode in ['0600', '0640']
+      loop: "{{ topology_test_configuration.results[:2] }}"
+
+    - name: Find additional PBX database queue and systemd configuration files across supported distributions
+      ansible.builtin.find:
+        paths: [/etc/asterisk, /etc/postgresql, /var/lib/pgsql/data, /etc/redis, /etc/valkey, /etc/systemd/system/caddy.service.d, /etc/systemd/system/asterisk.service.d]
+        patterns: ['*.conf']
+        recurse: true
+        file_type: file
+      register: topology_test_dependency_paths
+
+    - name: Hash dependency configurations and the actual loaded unit fragments
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        checksum_algorithm: sha256
+        get_checksum: true
+        get_mime: false
+        get_attributes: false
+      loop: >-
+        {{ ((topology_test_dependency_paths.files | map(attribute='path') | list)
+            + (topology_test_starts.results | map(attribute='stdout_lines') | flatten
+               | select('match', '^FragmentPath=/') | map('regex_replace', '^FragmentPath=', '') | list)
+            + (topology_test_starts.results | map(attribute='stdout_lines') | flatten
+               | select('match', '^DropInPaths=/') | map('regex_replace', '^DropInPaths=', '')
+               | map('split', ' ') | flatten | reject('equalto', '') | list)
+            + ['/etc/redis.conf', '/etc/valkey/valkey.conf']) | unique | sort }}
+      register: topology_test_dependency_files
+
+    - name: Initialize nonsecret configuration evidence
+      ansible.builtin.set_fact:
+        topology_test_hashes: {}
+
+    - name: Retain only checksums and ownership not file contents or volatile metadata
+      ansible.builtin.set_fact:
+        topology_test_hashes: >-
+          {{ topology_test_hashes | combine({item.item: {
+              'sha256': item.stat.checksum, 'mode': item.stat.mode,
+              'uid': item.stat.uid, 'gid': item.stat.gid}}) }}
+      loop: "{{ topology_test_configuration.results + topology_test_dependency_files.results }}"
+      when: item.stat.exists | default(false) and item.stat.isreg | default(false)
+
+    - name: Read the actual installed Python version
+      ansible.builtin.command:
+        argv: ["{{ py_phone_caller_venv_dir }}/bin/python", --version]
+      changed_when: false
+      register: topology_test_python
+
+    - name: Recheck every service after health probes to reject restarts during inspection
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", '--property=Id,LoadState,ActiveState,ActiveEnterTimestampMonotonic,ExecMainStartTimestampMonotonic,NRestarts,FragmentPath,DropInPaths']
+      loop: "{{ topology_test_units }}"
+      changed_when: false
+      register: topology_test_settled_starts
+
+    - name: Require stable timestamps throughout this inspection
+      ansible.builtin.assert:
+        that:
+          - topology_test_starts.results | map(attribute='stdout') | list == topology_test_settled_starts.results | map(attribute='stdout') | list
+
+    - name: Save only stable nonsecret evidence on the controller
+      ansible.builtin.copy:
+        dest: "{{ topology_test_report }}"
+        mode: '0600'
+        content: >-
+          {{ {'schema': 1, 'topology': py_phone_caller_topology,
+              'starts': dict(topology_test_starts.results | map(attribute='item')
+                | zip(topology_test_starts.results | map(attribute='stdout'))),
+              'network': dict(topology_test_network.results | map(attribute='item')
+                | zip(topology_test_network.results | map(attribute='stdout'))),
+              'files': topology_test_hashes, 'python': topology_test_python.stdout,
+              'api_health': topology_test_health.results | map(attribute='status') | list,
+              'https_health_home_login': topology_test_https.results | map(attribute='status') | list,
+              'private_gateway_listeners_validated': py_phone_caller_topology == 'enterprise',
+              'oidc_discovery_validated': py_phone_caller_topology == 'enterprise',
+              'actual_authentication_performed': false,
+              'limitations': ['Actual authentication not performed; OIDC discovery is read-only support evidence only.',
+                              'Systemd policy is recorded; external firewall/BPF and airgap enforcement require parent validation.']}
+             | to_nice_json }}
+      delegate_to: localhost
+      become: false
+      changed_when: false

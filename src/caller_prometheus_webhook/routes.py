@@ -133,7 +133,7 @@ def setup_routes(app: web.Application) -> None:
         catalog = create_service_catalog(
             service_name="caller_prometheus_webhook",
             description="Prometheus Alertmanager webhook receiver for py-phone-caller",
-            version="1.0.0",
+            version="1.1.0",
             docs_url="/docs",
             openapi_spec="/docs/swagger.json",
             endpoints={
@@ -164,6 +164,36 @@ def setup_routes(app: web.Application) -> None:
         call_and_sms,
     )
 
+    alertmanager_body = {
+        "required": True,
+        "content": {
+            "application/json": {
+                "example": {
+                    "version": "4",
+                    "status": "firing",
+                    "receiver": "py-phone-caller",
+                    "groupLabels": {"alertname": "DatabaseNodeDown"},
+                    "commonLabels": {"alertname": "DatabaseNodeDown", "severity": "critical", "instance": "db-01:5432"},
+                    "commonAnnotations": {
+                        "summary": "PostgreSQL primary node db-01 is unreachable",
+                        "description": "TCP health check failed on db-01:5432 for more than 2 minutes.",
+                    },
+                    "alerts": [
+                        {
+                            "status": "firing",
+                            "labels": {"alertname": "DatabaseNodeDown", "severity": "critical", "instance": "db-01:5432"},
+                            "annotations": {
+                                "summary": "PostgreSQL primary node db-01 is unreachable",
+                                "description": "TCP health check failed on db-01:5432 for more than 2 minutes.",
+                            },
+                            "startsAt": "2026-11-26T12:00:00Z",
+                        }
+                    ],
+                }
+            }
+        },
+    }
+
     setup_swagger_routes(
         app=app,
         service_name="caller_prometheus_webhook",
@@ -172,25 +202,32 @@ def setup_routes(app: web.Application) -> None:
             f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_ONLY}": {
                 "post": {
                     "summary": "Process alert for phone call dispatch",
-                    "description": "Receives standard Prometheus Alertmanager JSON payload and queues phone calls to configured receivers.",
+                    "description": "Receives standard Prometheus Alertmanager v4 JSON payload and queues voice calls to configured receivers.",
+                    "requestBody": alertmanager_body,
                     "responses": {"200": {"description": "Webhook received"}},
                 }
             },
             f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_ONLY}": {
                 "post": {
-                    "summary": "Process alert for SMS dispatch",
+                    "summary": "Process alert for SMS / SIP MESSAGE dispatch",
+                    "description": "Receives Prometheus Alertmanager v4 JSON payload and dispatches SMS or SIP MESSAGE notifications.",
+                    "requestBody": alertmanager_body,
                     "responses": {"200": {"description": "Webhook received"}},
                 }
             },
             f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_SMS_BEFORE_CALL}": {
                 "post": {
-                    "summary": "Process alert with SMS followed by call",
+                    "summary": "Process alert with SMS followed by voice call escalation",
+                    "description": "Sends an immediate SMS and escalates to a voice call after sms_before_call_wait_seconds if unacknowledged.",
+                    "requestBody": alertmanager_body,
                     "responses": {"200": {"description": "Webhook received"}},
                 }
             },
             f"/{PROMETHEUS_WEBHOOK_APP_ROUTE_CALL_AND_SMS}": {
                 "post": {
-                    "summary": "Process alert with concurrent call and SMS",
+                    "summary": "Process alert with concurrent voice call and SMS",
+                    "description": "Simultaneously dispatches both an outbound Asterisk voice call and an SMS / SIP MESSAGE.",
+                    "requestBody": alertmanager_body,
                     "responses": {"200": {"description": "Webhook received"}},
                 }
             },

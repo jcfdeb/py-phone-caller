@@ -3,13 +3,13 @@
 The shared PBX role supports an **explicitly selected AllStarLink provider** for
 Debian 13 (`trixie`) on AMD64 and ARM64. It is not an architecture-based fallback.
 AllStarLink packages are third-party Asterisk builds with radio extensions, not
-official Debian packages. Only the AMD64 installation/API/rerun scenario below
-has been exercised; this is not full telephony or ARM64 qualification.
+official Debian packages. Only the AMD64 installation/API/rerun scenarios below
+have been exercised; this is not live PSTN/trunk telephony or physical ARM64 qualification.
 
-An explicit **Tucny Asterisk 22** provider is also implemented for **online Rocky
-Linux 10 AMD64 only**. Its package/trust review and offline tests are described
-below; **this is not runtime qualification**. There is no automatic fallback,
-cross-distribution repository mixing, or platform override for this provider.
+An explicit **Tucny Asterisk 22** provider (`22.9.0-1.el10`) is also implemented and
+runtime-qualified for **online Rocky Linux 10 and AlmaLinux 10 AMD64** (`SELinux Enforcing`).
+There is no automatic fallback, cross-distribution repository mixing, or platform override
+for this provider.
 
 ## Selection
 
@@ -18,7 +18,7 @@ cross-distribution repository mixing, or platform override for this provider.
 | `stack_deploy_asterisk: false` | Leave the PBX entirely unmanaged. Configure Python's ARI endpoint for the externally managed PBX. No PBX packages, repository or configuration changes. |
 | `stack_deploy_asterisk: true`, `asterisk_package_provider: distro` | Existing distribution-package route, where packages are available; compatibility default. Debian 13's official repositories currently lack the server package. |
 | `stack_deploy_asterisk: true`, `asterisk_package_provider: allstarlink` | Signed `trixie/main` packages with exact version selection. Debian 13 only; no Ubuntu or RedHat repository mixing. |
-| `stack_deploy_asterisk: true`, `asterisk_package_provider: tucny` | Explicit reviewed Tucny EL10 Asterisk 22 RPMs, exact managed installation versions, online Rocky 10 AMD64 only. Bypasses the legacy COPR and sound-tarball routes. |
+| `stack_deploy_asterisk: true`, `asterisk_package_provider: tucny` | Explicit reviewed Tucny EL10 Asterisk 22 RPMs, exact managed installation versions, online Rocky 10 / AlmaLinux 10 AMD64 only. Bypasses the legacy COPR and sound-tarball routes. |
 
 ### Ubuntu 26.04 LTS
 
@@ -40,8 +40,8 @@ candidate or empty/stale index fails with preparation instructions; it does not
 add repositories or refresh indexes to conceal that failure. Prepare Ubuntu
 repositories externally, or set `stack_deploy_asterisk: false` and use an external
 PBX. **Never install Debian AllStarLink packages on Ubuntu.** Package-triggered
-startup is suppressed until the role has configured the service. ARM hardware
-validation remains deferred.
+startup is suppressed until the role has configured the service. Physical ARM64 hardware
+validation remains a separate maintenance gate outside automated CI.
 
 ### Debian AllStarLink selection
 
@@ -364,8 +364,8 @@ before recording the passing results. No calls were processed. Existing OpenAler
 test services were not restarted. See [tests](../tests/README.md) and the
 [support matrix](support-matrix.md).
 
-**Still unqualified:** ARM64 execution, local-extension/trunk calls, media/audio
-delivery, package-version upgrades, reboot recovery and adoption/rollback. The
+**Still unqualified:** physical ARM64 appliance execution, live local-extension/trunk calls, media/audio
+delivery over live trunks, package-version upgrades, and adoption/rollback. The
 broader consolidation remains in progress. Pinning also means security updates
 need active review: monitor upstream Asterisk and AllStarLink advisories, select
 a fixed updated version, and rehearse it on an isolated host before production.

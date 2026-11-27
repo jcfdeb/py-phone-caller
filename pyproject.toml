@@ -1,6 +1,6 @@
 [project]
 name = "py-phone-caller-workspace"
-version = "1.0.0"
+version = "1.1.0"
 description = "Automated phone call and SMS alerting platform for Asterisk-based environments"
 readme = "README.md"
 requires-python = ">=3.14, <3.15"
@@ -13,7 +13,7 @@ dependencies = []
 # through generate-audio -> kokoro -> misaki[en] -> spacy-curated-transformers.
 # Build dependencies are not part of the resolution, so this only pins the
 # compiler used to build sdists; uv.lock is unaffected.
-build-constraint-dependencies = ["cython<3.1"]
+build-constraint-dependencies = ["cython==3.0.12"]
 
 [tool.uv.workspace]
 members = [
@@ -73,11 +73,13 @@ extend-select = ["S"]
 "test/**/*.py" = ["S101", "S105", "S106", "S108", "S311", "S603", "S607"]
 "tests/**/*.py" = ["S101", "S105", "S106", "S108", "S603", "S607"]
 "deploy/ansible/tests/**/*.py" = ["S101", "S104", "S105", "S106", "S108", "S310", "S501", "S603", "S607"]
+"deploy/ansible/tests/test_runtime_isolation.py" = ["S101", "S102", "S307"]
 "deploy/ansible/tools/**/*.py" = ["S101"]
 "src/openalert/tests/**/*.py" = ["S101", "S104", "S310", "S603", "S607"]
 "src/openalert/packaging/tests/**/*.py" = ["S101", "S603", "S607"]
 # Build & packaging orchestrators (DEB/RPM format requires MD5/SHA1 control digests)
 "deploy/packaging/**/*.py" = ["S101", "S324", "S603", "S607"]
+"deploy/pages/**/*.py" = ["S603", "S607"]
 "deploy/ansible/packaging/**/*.py" = ["S603", "S607"]
 "deploy/ansible/roles/openalert/files/*.py" = ["S103", "S104", "S603"]
 "deploy/ansible/roles/stack_lifecycle/files/stack_snapshot.py" = ["S108", "S112"]

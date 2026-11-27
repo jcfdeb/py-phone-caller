@@ -9,7 +9,7 @@ It allows you to independently select any combination of the three core componen
 > - **Debian 13 (`trixie`) AMD64**: Qualified for `standard` (`online` & `airgapped`), `enterprise`, AllStarLink Asterisk 22 (`2:22.10.1+asl3-3.10.8-1.deb13`), and OpenAlert systemd lifecycle/adoption.
 > - **Ubuntu 26.04.1 LTS (`resolute`) AMD64**: Qualified for `standard` (`online` & `airgapped`), `enterprise`, official Ubuntu Asterisk 22 (`1:22.5.2~dfsg`), and OpenAlert systemd lifecycle/adoption.
 > - **Rocky Linux 10.2 AMD64 (`SELinux Enforcing`)**: Qualified for `online` `standard` and `enterprise` with Tucny Asterisk 22 (`22.9.0-1.el10`), OpenAlert systemd lifecycle (`openalertd.service`), Valkey, and live Keycloak OIDC login.
-> - **ARM64 (`aarch64` / Orange Pi 5 Plus RK3588, Armbian 26.11.3 / Ubuntu 26.04 LTS)**: Qualified for all-in-one `standard` (`online` & `airgapped`) with Asterisk 22 (`distro`), PostgreSQL 18, Redis 8, Caddy internal TLS, `openalertd v1.0.0` (`arm64`), offline Piper TTS, authentic UI login, `changed=0` reruns, and cold-reboot recovery. See **[09. ARM64 Appliance & Air-Gapped Deployment](09-arm64-appliance-and-airgapped-deployment.md)** and **[10. End-to-End Installation Validation](10-end-to-end-installation-validation.md)**.
+> - **ARM64 (`aarch64` / Orange Pi 5 Plus RK3588, Armbian 26.11.3 / Ubuntu 26.04 LTS)**: Qualified for all-in-one `standard` (`online` & `airgapped`) with Asterisk 22 (`distro`), PostgreSQL 18, Redis 8, Caddy internal TLS, `openalertd v1.1.0` (`arm64`), offline Piper TTS, authentic UI login, `changed=0` reruns, and cold-reboot recovery. See **[09. ARM64 Appliance & Air-Gapped Deployment](09-arm64-appliance-and-airgapped-deployment.md)** and **[10. End-to-End Installation Validation](10-end-to-end-installation-validation.md)**.
 
 ---
 
@@ -37,7 +37,7 @@ ansible-galaxy collection install -r requirements.yml -p "$PWD/.collections"
 
 > [!TIP]
 > **Using the Pre-Built Offline Ansible Bundle (`dist/ansible/`)**
-> If you extracted `dist/ansible/py-phone-caller-ansible-v1.0.0-offline.tar.gz`, the `.collections/` directory is already bundled and verified inside the archive—you can skip step 4!
+> If you extracted `dist/ansible/py-phone-caller-ansible-v1.1.0-offline.tar.gz`, the `.collections/` directory is already bundled and verified inside the archive—you can skip step 4!
 
 ---
 
@@ -165,8 +165,8 @@ all:
 
           # 7. OpenAlert Release Bundle & Instance Definition (mapping keyed by instance name)
           openalert_release:
-            source: /abs/path/to/src/openalert/dist/openalertd-v0.2.0-linux-x86_64.tar.gz
-            sha256: "86f444506182b2e2ada4fc7efea1ea77a61752ec8f63daefef99de5d1ead5b40"
+            source: /abs/path/to/dist/openalertd-v1.1.0-linux-x86_64.tar.gz
+            sha256: "<sha256-of-openalertd-v1.1.0-archive>"
           openalert_instances:
             hub:
               service_name: openalertd.service
@@ -179,8 +179,8 @@ all:
 ```
 
 > [!IMPORTANT]
-> **Using or Building the OpenAlert Release Archive (`openalert_release.source`)**
-> The verified `v0.2.0` release bundle (containing `release.json` contract metadata) is included at `src/openalert/dist/openalertd-v0.2.0-linux-x86_64.tar.gz` (and `src/openalert/dist/phase1-validation-20261030/openalertd-v0.2.0-linux-x86_64.tar.gz`). If you rebuild `openalertd` from source, run:
+> **Using or Building the OpenAlert Release Archive (`openalert_release.source`) & Enterprise Linux 10 Prerequisites**
+> Build the `v1.1.0` OpenAlert release bundle (`dist/openalertd-v1.1.0-linux-x86_64.tar.gz`, containing `release.json` contract metadata) using `deploy/packaging/build_all_releases.py` or:
 > ```bash
 > cargo build --release --manifest-path src/openalert/Cargo.toml
 > ./src/openalert/packaging/build_release_bundle.sh \
@@ -189,9 +189,10 @@ all:
 >   --source-revision "$(git rev-parse HEAD)" \
 >   --build-baseline "debian-13-amd64" \
 >   --rustc-version "rustc 1.99.1" \
->   --output-dir src/openalert/dist
+>   --output-dir dist
 > ```
 > Copy the printed `Archive:` path and `SHA-256:` digest into `openalert_release.source` and `openalert_release.sha256`.
+> Both **Rocky Linux 10** and **AlmaLinux 10** (Tucny Asterisk `22.9.0-1.el10`) are supported targets; minimal AlmaLinux 10 images must have `iptables-nft` installed (`sudo dnf install -y iptables-nft`) before running `site.yml` reverse-proxy ingress preflight checks.
 
 ---
 

@@ -216,7 +216,7 @@ def generate_unified_swagger_portal_html(
 def build_openapi_schema(
     title: str,
     description: str,
-    version: str = "1.0.0",
+    version: str = "1.1.0",
     paths: Optional[Dict[str, Any]] = None,
     tags: Optional[List[Dict[str, Any]]] = None,
     components: Optional[Dict[str, Any]] = None,
@@ -254,7 +254,7 @@ def setup_swagger_routes(
     service_name: str,
     description: str,
     paths: Dict[str, Any],
-    version: str = "1.0.0",
+    version: str = "1.1.0",
 ):
     """
     Registers `/docs` (interactive Swagger UI) and `/docs/swagger.json` (OpenAPI spec)

@@ -3,8 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-    <title>OpenAlert — Decentralized Nostr & Multi-Protocol Alerting Bridge</title>
+    <title>OpenAlert — Decentralized Nostr &amp; Multi-Protocol Alerting Bridge</title>
     <meta name="description" content="OpenAlert (openalertd) is an autonomous, decentralized alerting bridge built in Rust. Supporting Nostr NIP-17/44/04, BitChat BLE Mesh, Emergency SOS Wi-Fi Captive Portal, LoRa Sub-GHz RF, Cellular SMS, and Prometheus Alertmanager.">
+    <meta property="og:title" content="OpenAlert (openalertd) — Decentralized Nostr &amp; Off-Grid Mesh Router">
+    <meta property="og:description" content="Autonomous Rust alerting daemon bridging Nostr NIP-ALERT &amp; 0xChat E2EE, BitChat BLE (Noise XX), LoRa 868 MHz RF, Emergency /sos Wi-Fi Captive Portal, GSM SMS, and py-phone-caller.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://jcfdeb.github.io/py-phone-caller/openalert/">
+    <meta property="og:image" content="https://jcfdeb.github.io/py-phone-caller/openalert/og-openalert.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="OpenAlert (openalertd) — Decentralized Nostr &amp; Off-Grid Mesh Router">
+    <meta name="twitter:description" content="Autonomous Rust alerting daemon bridging Nostr NIP-ALERT, BitChat BLE Mesh, LoRa RF, /sos Wi-Fi Captive Portal, and Asterisk telephony.">
+    <meta name="twitter:image" content="https://jcfdeb.github.io/py-phone-caller/openalert/og-openalert.png">
     <link rel="icon" type="image/png" href="openalert-logo.png">
     <style>
         :root {
@@ -542,8 +554,10 @@
         <!-- Top Navigation -->
         <nav class="top-nav">
             <div class="nav-badges">
-                <span class="badge badge-frozen" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border-color: rgba(16, 185, 129, 0.3);">🛡️ Production Hardened v0.2.0</span>
-                <span class="badge badge-tests">✅ 100+ Tests Passed</span>
+                <a href="../" class="theme-btn" style="text-decoration: none;">&larr; py-phone-caller Suite</a>
+                <a href="../manual/openalert/" class="theme-btn" style="text-decoration: none;">📚 Docs Manual</a>
+                <span class="badge badge-frozen" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border-color: rgba(16, 185, 129, 0.3);">🛡️ Release v1.1.0</span>
+                <span class="badge badge-tests">✅ 114 Rust / 709+ Suite Tests</span>
                 <span class="badge badge-rust">🦀 Pure Rust 2024</span>
             </div>
             <div>
@@ -571,7 +585,9 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
                     GitHub Repository
                 </a>
-                <a href="#quickstart" class="btn btn-secondary">⚡ Quickstart Guide</a>
+                <a href="../manual/openalert/" class="btn btn-secondary">📚 OpenAlert Manual</a>
+                <a href="../manual/openalert/NIP-ALERT/" class="btn btn-secondary">📜 NIP-ALERT Spec</a>
+                <a href="#quickstart" class="btn btn-secondary">⚡ Quickstart</a>
                 <a href="#features" class="btn btn-secondary">📐 Technical Specs</a>
             </div>
         </header>
@@ -988,12 +1004,12 @@
         <!-- Quality & Verification -->
         <h2 class="section-title">Hardened Release & Quality Assurance</h2>
         <p class="section-intro">
-            At milestone v0.2.0, <code>openalertd</code> is officially <strong>hardened and field-certified</strong>. All core protocols, hardware auto-recovery supervisors, RF telemetry algorithms, off-grid Wi-Fi SOS Captive Portals, and enterprise edge gateway integrations are fully tested and locked:
+            At release <strong>v1.1.0</strong>, <code>openalertd</code> is officially <strong>hardened and field-certified</strong> across Debian 13, Ubuntu 26.04 LTS, Rocky Linux 10, AlmaLinux 10, Kubernetes (GKE/k3s), and physical ARM64 SBCs. All core protocols, NIP-57 Lightning Zap receipt verifiers, always-UCS-2 GSM SMS drivers, hardware auto-recovery supervisors, RF telemetry algorithms, off-grid Wi-Fi SOS Captive Portals, and enterprise edge gateway integrations are fully tested and locked:
         </p>
 
         <div class="feature-grid">
             <div class="card" style="border-left: 4px solid var(--success);">
-                <div class="card-title" style="color: var(--success);">✅ 100+ Automated Tests</div>
+                <div class="card-title" style="color: var(--success);">✅ 114 Rust Tests (709+ Suite Tests)</div>
                 <div class="card-body">
                     Zero test failures across unit and integration suites. Comprehensive test matrix covers kernel USB supervisor recovery, mock sysfs resolution, RF telemetry trailer codecs, quadratic link cost calculation, multi-hop mesh forwarding, split-horizon suppression, NIP-04/44/59 onion wrapping, offline SVG CAPTCHA verification, and live SSE streaming.
                 </div>
@@ -1015,9 +1031,11 @@
         <!-- Footer -->
         <footer>
             <div class="footer-links">
-                <a href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+                <a href="../">py-phone-caller Suite</a>
                 <span>&bull;</span>
-                <a href="https://github.com/jcfdeb/py-phone-caller/tree/main/docs/openalert" target="_blank" rel="noopener noreferrer">Documentation</a>
+                <a href="../manual/openalert/">Documentation Manual</a>
+                <span>&bull;</span>
+                <a href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
                 <span>&bull;</span>
                 <a href="https://github.com/jcfdeb/py-phone-caller/tree/main/src/openalert" target="_blank" rel="noopener noreferrer">Source Code</a>
                 <span>&bull;</span>
@@ -1026,7 +1044,7 @@
             <p>
                 OpenAlert is part of the <strong>py-phone-caller</strong> decentralized alerting ecosystem.<br>
                 Supported by the <strong>Human Rights Foundation (HRF) Bitcoin Development Fund</strong>.<br>
-                Licensed under the Apache License, Version 2.0.
+                <code>openalertd</code> is dual-licensed under <strong>MIT OR Apache-2.0</strong> (suite core licensed under BSD 3-Clause).
             </p>
         </footer>
     </div>

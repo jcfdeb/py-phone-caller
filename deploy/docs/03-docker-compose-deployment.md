@@ -49,15 +49,20 @@ docker compose build
 
 ### Option B: Build via `./src/build_all_images.sh` (Supports Podman & Docker)
 
-From the **repository root**, run the unified build script. Note that `deploy/compose/docker-compose.yml` defaults to image tag `1.0.0` (`${MY_DOCKER_REGISTRY:-localhost}/<service>:${VERSION:-1.0.0}`), so pass `IMAGE_TAG=1.0.0`:
+From the **repository root**, run the unified build script. Note that `deploy/compose/docker-compose.yml` defaults to image tag `1.1.0` (`${MY_DOCKER_REGISTRY:-localhost}/<service>:${VERSION:-1.1.0}`), so pass `IMAGE_TAG=1.1.0`:
 
 ```bash
 # Using Docker:
-CONTAINER_ENGINE=docker IMAGE_REGISTRY=localhost IMAGE_TAG=1.0.0 ./src/build_all_images.sh
+CONTAINER_ENGINE=docker IMAGE_REGISTRY=localhost IMAGE_TAG=1.1.0 ./src/build_all_images.sh
 
 # Or using Podman:
-CONTAINER_ENGINE=podman IMAGE_REGISTRY=localhost IMAGE_TAG=1.0.0 ./src/build_all_images.sh
+CONTAINER_ENGINE=podman IMAGE_REGISTRY=localhost IMAGE_TAG=1.1.0 ./src/build_all_images.sh
 ```
+
+> [!NOTE]
+> **Docker BuildKit (`docker-buildx`) & Gateway Dashboard Notes**:
+> - Building `openalertd` via Docker uses conditional BuildKit globs in `src/openalert/Dockerfile` and requires `DOCKER_BUILDKIT=1` (defaulted automatically by `./src/build_all_images.sh`) plus the `docker-buildx` plugin on Debian/Ubuntu Docker hosts.
+> - `deploy/compose/docker-compose.gateway.yml` mounts `deploy/gateway/apisix/dashboard_conf.yaml` so `apisix-dashboard` connects to `apisix-etcd:2379` (rather than loopback `127.0.0.1:2379`) and binds APISIX Admin API strictly to `127.0.0.1:9180`.
 
 ### Fast ARM64 (`aarch64`) Cross-Compilation for `openalertd`
 If you are building `openalertd` for an ARM64 SBC (such as Orange Pi 5 Plus or Raspberry Pi 5) on an `x86_64` workstation, use `src/openalert/Dockerfile.arm64` (which cross-compiles at native `x86_64` speed without slow QEMU `rustc` emulation):
@@ -65,7 +70,7 @@ If you are building `openalertd` for an ARM64 SBC (such as Orange Pi 5 Plus or R
 ```bash
 docker buildx build --platform linux/arm64 \
   -f src/openalert/Dockerfile.arm64 \
-  -t localhost/openalertd:1.0.0 --load src/openalert
+  -t localhost/openalertd:1.1.0 --load src/openalert
 ```
 
 ---
@@ -117,7 +122,7 @@ CADDY_DOMAIN_NAME=py-phone-caller.lan
 
 # Image registry & version tag
 MY_DOCKER_REGISTRY=localhost
-VERSION=1.0.0
+VERSION=1.1.0
 ```
 
 ---
@@ -166,7 +171,7 @@ docker compose -f docker-compose.yml -f docker-compose.gateway.yml up -d
    ```
    Every service should return:
    ```json
-   {"status": "healthy", "version": "1.0.0"}
+   {"status": "healthy", "version": "1.1.0"}
    ```
 
 3. **Probe the Web UI (`:5000`) and OpenAlert Daemon (`:8090`)**:

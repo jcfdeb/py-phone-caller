@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>404 — Page Not Found | py-phone-caller &amp; OpenAlert</title>
+    <meta name="robots" content="noindex">
+    <style>
+      :root {
+        --bg: #080c18;
+        --card: rgba(15, 23, 42, 0.85);
+        --border: rgba(148, 163, 184, 0.18);
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --indigo: #6366f1;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f8fafc;
+          --card: rgba(255, 255, 255, 0.94);
+          --border: rgba(15, 23, 42, 0.12);
+          --text: #0f172a;
+          --muted: #475569;
+          --accent: #0284c7;
+          --indigo: #4f46e5;
+        }
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.16), transparent 42%),
+          radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.14), transparent 42%),
+          var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      main {
+        max-width: 620px;
+        width: 100%;
+        padding: 2.75rem 2.25rem;
+        border-radius: 20px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+        text-align: center;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.35rem 0.85rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        background: rgba(56, 189, 248, 0.12);
+        border: 1px solid rgba(56, 189, 248, 0.28);
+        margin-bottom: 1.1rem;
+      }
+      h1 {
+        font-size: clamp(2.2rem, 5vw, 3.1rem);
+        letter-spacing: -0.03em;
+        margin-bottom: 0.75rem;
+      }
+      p {
+        color: var(--muted);
+        line-height: 1.65;
+        margin-bottom: 1.85rem;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        justify-content: center;
+      }
+      a.btn {
+        text-decoration: none;
+        padding: 0.72rem 1.25rem;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+      a.btn:hover { transform: translateY(-1px); opacity: 0.92; }
+      a.btn-primary {
+        background: linear-gradient(135deg, var(--indigo), var(--accent));
+        color: #ffffff;
+        border-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="badge">Signal Route Not Found · HTTP 404</span>
+      <h1>Lost on the Wire</h1>
+      <p>
+        The page you requested does not exist or has moved into the unified
+        <strong>v1.1.0 Documentation Manual</strong>. Choose one of the active portals below:
+      </p>
+      <div class="actions">
+        <a class="btn btn-primary" id="link-manual" href="/py-phone-caller/manual/">Open Docs Manual</a>
+        <a class="btn" id="link-suite" href="/py-phone-caller/">py-phone-caller Suite</a>
+        <a class="btn" id="link-openalert" href="/py-phone-caller/openalert/">OpenAlert Mesh</a>
+      </div>
+    </main>
+    <script>
+      (function () {
+        var p = window.location.pathname || "/";
+        var root = p.indexOf("/py-phone-caller/") === 0 ? "/py-phone-caller/" : "/";
+        document.getElementById("link-suite").setAttribute("href", root);
+        document.getElementById("link-manual").setAttribute("href", root + "manual/");
+        document.getElementById("link-openalert").setAttribute("href", root + "openalert/");
+      })();
+    </script>
+  </body>
+</html>

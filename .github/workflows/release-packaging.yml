@@ -37,7 +37,8 @@ jobs:
             deploy/ansible/tests/test_ansible_bundle.py \
             tests/test_pypi_packaging.py \
             tests/test_linux_packaging.py \
-            tests/test_k8s_and_compose_packaging.py -v
+            tests/test_k8s_and_compose_packaging.py \
+            tests/test_docs_coherence.py -v
 
       - name: Build all release artifacts (Ansible, PyPI, RPM/DEB, K8s/Helm)
         run: uv run python deploy/packaging/build_all_releases.py

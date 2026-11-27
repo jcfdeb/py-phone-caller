@@ -36,7 +36,7 @@ async def test_instrument_aiohttp_app_health_and_metrics(aiohttp_client):
         data = await resp.json()
         assert data["status"] == "healthy"
         assert data["service"] == "test_service"
-        assert data["version"] == "1.0.0"
+        assert data["version"] == "1.1.0"
 
     resp_metrics = await client.get("/metrics")
     assert resp_metrics.status == 200
@@ -55,7 +55,7 @@ def test_instrument_flask_app_health_and_metrics():
         data = resp.get_json()
         assert data["status"] == "healthy"
         assert data["service"] == "test_flask_service"
-        assert data["version"] == "1.0.0"
+        assert data["version"] == "1.1.0"
 
     resp_metrics = test_client.get("/metrics")
     assert resp_metrics.status_code == 200

@@ -1,5 +1,5 @@
 Name:           py-phone-caller
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        Automated phone call and SMS alerting platform for Asterisk PBX
 License:        BSD-3-Clause

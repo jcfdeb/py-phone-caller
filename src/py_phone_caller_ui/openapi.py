@@ -1294,7 +1294,7 @@ def get_ui_openapi_spec() -> Dict[str, Any]:
                                     "properties": {
                                         "status": {"type": "string", "example": "healthy"},
                                         "service": {"type": "string", "example": "py_phone_caller_ui"},
-                                        "version": {"type": "string", "example": "1.0.0"},
+                                        "version": {"type": "string", "example": "1.1.0"},
                                     },
                                 }
                             }
@@ -1344,7 +1344,7 @@ def get_ui_openapi_spec() -> Dict[str, Any]:
                                     "properties": {
                                         "status": {"type": "string", "example": "healthy"},
                                         "service": {"type": "string", "example": "py_phone_caller_ui"},
-                                        "version": {"type": "string", "example": "1.0.0"},
+                                        "version": {"type": "string", "example": "1.1.0"},
                                     },
                                 }
                             }
@@ -1474,7 +1474,7 @@ def get_ui_openapi_spec() -> Dict[str, Any]:
                 "telemetry streaming bus, diagnostic dispatches, call registries, scheduler queues, "
                 "address book rosters, carrier SMS tracking, and administrative REST endpoints."
             ),
-            "version": "1.0.0",
+            "version": "1.1.0",
             "contact": {
                 "name": "py-phone-caller Support",
                 "url": "https://github.com/jcfdeb/py-phone-caller",

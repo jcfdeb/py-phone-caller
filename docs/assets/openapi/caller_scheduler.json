@@ -1,0 +1,132 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "caller_scheduler",
+    "description": "Call Scheduler Service powered by Celery background tasks",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8086",
+      "description": "Direct service listener"
+    },
+    {
+      "url": "https://alerts.example.com/api/v1/schedules",
+      "description": "Via APISIX Gateway"
+    }
+  ],
+  "paths": {
+    "/schedule_call": {
+      "post": {
+        "summary": "Schedule a call for future dispatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "0039123456789"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Scheduled notification"
+                  },
+                  "scheduled_at": {
+                    "type": "string",
+                    "example": "2026-10-01 15:30:00"
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "Priority 0-9 (>=8 routes to telephony.p0)"
+                  },
+                  "lang": {
+                    "type": "string",
+                    "example": "spa",
+                    "description": "Optional target language code for TTS audio"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "message",
+                  "scheduled_at"
+                ]
+              },
+              "example": {
+                "phone": "0039123456789",
+                "message": "Scheduled notification",
+                "scheduled_at": "2026-10-01 15:30:00",
+                "priority": 5,
+                "lang": "spa"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Call scheduled successfully"
+          },
+          "400": {
+            "description": "Missing parameters or invalid date"
+          },
+          "500": {
+            "description": "Queue submission failure"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Liveness probe (/health, /healthz, /live)",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "healthy",
+                  "service": "caller_scheduler",
+                  "version": "1.1.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Dependency-aware readiness probe",
+        "responses": {
+          "200": {
+            "description": "Downstream dependencies (PostgreSQL / Redis / Asterisk ARI) ready"
+          },
+          "503": {
+            "description": "Dependency check degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus text-format telemetry metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition payload"
+          }
+        }
+      }
+    }
+  }
+}

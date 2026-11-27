@@ -1,8 +1,9 @@
 # Native Python deployment and compatibility mapping
 
 The shared entry point supports independently selected Python, Asterisk and
-OpenAlert on Debian 13 and Ubuntu 26.04 LTS. AMD64 startup/rerun evidence is in the
-[support matrix](support-matrix.md); ARM64 execution waits for the devices.
+OpenAlert on Debian 13, Ubuntu 26.04 LTS, Rocky Linux 10, and AlmaLinux 10. AMD64
+startup/rerun evidence is in the [support matrix](support-matrix.md); physical ARM64
+appliance execution remains a separate maintenance gate.
 Neither a working VM installation nor this document authorizes live adoption.
 
 ## Inventory and source inputs

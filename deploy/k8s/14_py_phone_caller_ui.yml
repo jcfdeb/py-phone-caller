@@ -34,7 +34,7 @@ spec:
     spec:
       containers:
         - name: py-phone-caller-ui
-          image: quay.io/py-phone-caller/py_phone_caller_ui:1.0.0
+          image: quay.io/py-phone-caller/py_phone_caller_ui:1.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000

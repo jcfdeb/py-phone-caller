@@ -3,8 +3,8 @@
 # OpenAlert Daemon (openalertd) - Multi-Stage Production Dockerfile
 #
 # Supports flexible build context:
-#   - From src/openalert:  docker build -f packaging/docker/Dockerfile -t openalertd:1.0.0 .
-#   - From repo root:      docker build -f packaging/docker/Dockerfile --build-arg OPENALERT_DIR=src/openalert -t openalertd:1.0.0 .
+#   - From src/openalert:  docker build -f packaging/docker/Dockerfile -t openalertd:1.1.0 .
+#   - From repo root:      docker build -f packaging/docker/Dockerfile --build-arg OPENALERT_DIR=src/openalert -t openalertd:1.1.0 .
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -49,7 +49,7 @@ RUN touch src/lib.rs src/main.rs && \
 FROM docker.io/library/debian:bookworm-slim AS runtime
 
 LABEL org.opencontainers.image.title="OpenAlert Daemon (openalertd)" \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.version="1.1.0" \
       org.opencontainers.image.description="Decentralized Edge Alert Router (Nostr NIP-ALERT, NIP-57 Lightning Zaps, 0xChat NIP-17 C2, BitChat BLE, LoRa RF, GSM SMS & Telephony Bridge)" \
       org.opencontainers.image.authors="Jorge <https://github.com/jcfdeb>" \
       org.opencontainers.image.source="https://github.com/jcfdeb/py-phone-caller" \

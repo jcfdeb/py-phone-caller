@@ -263,7 +263,7 @@ def setup_routes(app: web.Application) -> None:
         catalog = create_service_catalog(
             service_name="caller_address_book",
             description="Address book and on-call contact management service for py-phone-caller",
-            version="1.0.0",
+            version="1.1.0",
             docs_url="/docs",
             openapi_spec="/docs/swagger.json",
             endpoints={
@@ -309,21 +309,60 @@ def setup_routes(app: web.Application) -> None:
         paths={
             f"/{CALLER_ADDRESS_BOOK_ROUTE_ADD_CONTACT}": {
                 "post": {
-                    "summary": "Create new contact",
-                    "description": "Adds contact to Piccolo address book with on-call availability schedule.",
+                    "summary": "Create new on-call responder contact",
+                    "description": "Adds a dual-channel responder contact (voice + optional SMS number) and on-call shift window.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string", "example": "Alice Rossi"},
+                                        "phone_number": {"type": "string", "example": "1000", "description": "Voice SIP extension or E.164/00-prefixed number"},
+                                        "sms_phone_number": {"type": "string", "example": "+39000000000", "description": "Optional dedicated cellular SMS number"},
+                                        "on_call": {"type": "boolean", "example": True},
+                                        "priority": {"type": "integer", "example": 1},
+                                        "on_call_start": {"type": "string", "example": "2026-11-27T08:00:00Z"},
+                                        "on_call_end": {"type": "string", "example": "2026-11-28T08:00:00Z"},
+                                    },
+                                    "required": ["name", "phone_number"],
+                                }
+                            }
+                        }
+                    },
                     "responses": {"200": {"description": "Contact created"}},
                 }
             },
             f"/{CALLER_ADDRESS_BOOK_ROUTE_ON_CALL_CONTACT}": {
                 "get": {
-                    "summary": "Resolve current on-call phone number",
-                    "responses": {"200": {"description": "Current on-call contact number"}},
+                    "summary": "Resolve active on-call responder",
+                    "description": "Returns the highest-priority responder whose shift covers the current UTC timestamp.",
+                    "responses": {"200": {"description": "Current on-call contact JSON (phone_number, sms_phone_number, name)"}},
                 }
             },
             "/contacts_export_csv": {
                 "get": {
-                    "summary": "Export contacts to CSV file",
+                    "summary": "Export contacts directory to CSV",
                     "responses": {"200": {"description": "CSV stream attachment"}},
+                }
+            },
+            "/contacts_import_csv": {
+                "post": {
+                    "summary": "Bulk import contacts from CSV file",
+                    "requestBody": {
+                        "content": {
+                            "multipart/form-data": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {"type": "string", "format": "binary", "description": "UTF-8 CSV file of contacts"}
+                                    },
+                                    "required": ["file"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "Contacts imported"}},
                 }
             },
         },

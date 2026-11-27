@@ -84,9 +84,11 @@ yarn-error.log*
 ehthumbs.db
 Thumbs.db
 
-# Documentation build
+# Documentation & Pages build outputs
 site/
+_site/
 _build/
+.pages-stage/
 
 # Local configuration overrides and secrets
 /src/config/.secrets.toml
@@ -113,7 +115,7 @@ token.pickle
 openalert.db*
 /tmp/openalert-data/*
 /deploy/ansible/on-vm_py-phone-caller/group_vars/app_servers/secrets.yml
-/src/openalert/config/openalertd.toml
+/src/openalert/config/openalertd.local.toml
 
 # Downloaded TTS Models
 /src/generate_audio/pre_trained_models/*
@@ -151,6 +153,15 @@ credentials/
 !/deploy/ansible/tests/test_rocky_platform.py
 !/deploy/ansible/tests/test_tucny_provider.py
 !/deploy/ansible/tests/test_ansible_bundle.py
+!/deploy/ansible/tests/prepare_airgap_fixture.yml
+!/deploy/ansible/tests/run_topology_disposable.py
+!/deploy/ansible/tests/test_airgap.py
+!/deploy/ansible/tests/test_runtime_isolation.py
+!/deploy/ansible/tests/test_topology.py
+!/deploy/ansible/tests/test_topology_ingress.py
+!/deploy/ansible/tests/test_topology_runner.py
+!/deploy/ansible/tests/topology-disposable.yml
+!/deploy/ansible/tests/topology-inspect.yml
 
 # AppSec & Taskfile local caches / SARIF & SBOM reports
 /.security-reports/

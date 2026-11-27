@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "📖 Documentation Manual & 5-Minute Quickstart"
+    url: "https://jcfdeb.github.io/py-phone-caller/manual/"
+    about: "Searchable deployment guides, Asterisk PBX examples, OpenAlert configuration, and interactive OpenAPI 3.0 Explorer."
+  - name: "🔒 Report a Security Vulnerability Privately"
+    url: "https://github.com/jcfdeb/py-phone-caller/security/advisories/new"
+    about: "Please DO NOT file public issues for security vulnerabilities — use private GitHub Security Advisories (see SECURITY.md)."

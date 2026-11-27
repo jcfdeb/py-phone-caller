@@ -349,7 +349,7 @@ async def init_app():
         catalog = create_service_catalog(
             service_name="generate_audio",
             description="Multi-engine offline & cloud Text-to-Speech audio synthesis service",
-            version="1.0.0",
+            version="1.1.0",
             docs_url="/docs",
             openapi_spec="/docs/swagger.json",
             endpoints={
@@ -415,7 +415,7 @@ async def init_app():
                 }
             },
         },
-        version="1.0.0",
+        version="1.1.0",
     )
     instrument_aiohttp_app(app, "generate_audio")
 

@@ -3254,8 +3254,8 @@ async fn test_phase2_nip57_lightning_zap_adapter_e2e_and_strict_isolation() {
 fn test_phase3_container_packaging_and_v1_0_0_release_artifacts() {
     use std::path::Path;
 
-    // 1. Verify crate version is 1.0.0
-    assert_eq!(env!("CARGO_PKG_VERSION"), "1.0.0");
+    // 1. Verify crate version is 1.1.0
+    assert_eq!(env!("CARGO_PKG_VERSION"), "1.1.0");
 
     // 2. Verify Multi-Stage Dockerfile (x86_64 / native)
     let dockerfile = std::fs::read_to_string("Dockerfile").expect("Read src/openalert/Dockerfile");
@@ -3298,7 +3298,7 @@ fn test_phase3_container_packaging_and_v1_0_0_release_artifacts() {
     assert!(hw_compose.contains("NET_ADMIN"));
 
     println!(
-        "✅ Phase 3 v1.0.0 multi-stage Dockerfile, ARM64 Dockerfile.arm64, docker-compose.yml, and docker-compose.hardware.yml verified!"
+        "✅ Phase 3 v1.1.0 multi-stage Dockerfile, ARM64 Dockerfile.arm64, docker-compose.yml, and docker-compose.hardware.yml verified!"
     );
 }
 

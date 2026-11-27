@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+title: "py-phone-caller & OpenAlert: Sovereign Emergency Telephony, Offline Neural TTS & Decentralized Mesh Alerting Suite"
+message: "If you use py-phone-caller, OpenAlert (openalertd), or the NIP-ALERT specification in research, civil-defense, or open-source systems, please cite it using the metadata below."
+type: software
+version: "1.1.0"
+date-released: "2026-11-26"
+license:
+  - BSD-3-Clause
+  - MIT
+  - Apache-2.0
+repository-code: "https://github.com/jcfdeb/py-phone-caller"
+url: "https://jcfdeb.github.io/py-phone-caller/"
+authors:
+  - alias: "jcfdeb"
+    name: "py-phone-caller & OpenAlert Maintainers"
+keywords:
+  - emergency-alerting
+  - asterisk-pbx
+  - ari
+  - nostr
+  - nip-alert
+  - lora
+  - bluetooth-low-energy
+  - bitchat
+  - offline-tts
+  - air-gapped
+  - rust
+  - python
+abstract: >-
+  py-phone-caller and OpenAlert (openalertd) form an open-source, self-hosted
+  emergency notification and off-grid mesh routing platform combining Python 3.14
+  telephony microservices, Asterisk 22 ARI voice synthesis and DTMF acknowledgment,
+  always-UCS-2 cellular GSM SMS, and a pure-Rust decentralized alert router across
+  Nostr (NIP-ALERT Kind 30000 & NIP-17 C2), BitChat BLE (Noise XX), sub-GHz LoRa RF,
+  and offline Emergency /sos Wi-Fi Captive Portals.

@@ -1,17 +1,41 @@
-# py-phone-caller
+# py-phone-caller & OpenAlert (`v1.1.0`)
 
-Automated phone call and SMS alerting platform for Asterisk-based environments.
+<p align="center">
+  <a href="https://jcfdeb.github.io/py-phone-caller/">
+    <img src="docs/assets/og-py-phone-caller.png" alt="py-phone-caller & OpenAlert v1.1.0 Banner" width="860">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://jcfdeb.github.io/py-phone-caller/"><strong>🌐 Suite Showcase</strong></a> ·
+  <a href="https://jcfdeb.github.io/py-phone-caller/openalert/"><strong>📡 OpenAlert Mesh</strong></a> ·
+  <a href="https://jcfdeb.github.io/py-phone-caller/manual/"><strong>📖 Docs Manual</strong></a> ·
+  <a href="docs/quickstart-5-minutes.md"><strong>⚡ 5-Minute Quickstart</strong></a> ·
+  <a href="https://jcfdeb.github.io/py-phone-caller/manual/api-explorer/"><strong>🔌 OpenAPI 3.0 Explorer</strong></a>
+</p>
+
+Sovereign emergency alerting, voice telephony, dual-channel SMS/SIP messaging, and off-grid mesh routing suite for Asterisk-based and air-gapped environments.
+
+[![Release](https://img.shields.io/badge/release-v1.1.0-teal.svg)](CHANGELOG.md)
+[![CI](https://github.com/jcfdeb/py-phone-caller/actions/workflows/ci.yml/badge.svg)](https://github.com/jcfdeb/py-phone-caller/actions/workflows/ci.yml)
+[![AppSec](https://github.com/jcfdeb/py-phone-caller/actions/workflows/appsec.yml/badge.svg)](https://github.com/jcfdeb/py-phone-caller/actions/workflows/appsec.yml)
+[![Pages](https://github.com/jcfdeb/py-phone-caller/actions/workflows/pages.yml/badge.svg)](https://jcfdeb.github.io/py-phone-caller/)
+[![Python](https://img.shields.io/badge/python-3.14-blue.svg)](pyproject.toml)
+[![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](src/openalert/Cargo.toml)
+[![HRF Grant](https://img.shields.io/badge/OpenAlert%20supported%20by-HRF%20Bitcoin%20Dev%20Fund-f7931a.svg)](https://x.com/gladstein/status/2092304843037884677)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause%20%2F%20MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 > [!WARNING]
-> **Security Notice**: This solution is designed to run inside a trusted network segment.
-> Only the Web UI should be exposed, and it must be protected by authentication and a reverse proxy.
-> All other services should remain private.
+> **Security Notice**: This solution is designed to run inside a trusted network segment or air-gapped perimeter.
+> Only the Web UI (or the Edge Gateway) should be exposed, and it must be protected by authentication and a reverse proxy.
+> All internal microservice ports (`8081`–`8087`, `8090`) must remain private. See [`SECURITY.md`](SECURITY.md).
 
 ## Overview
 
-py-phone-caller is a Python-based alerting platform that turns events into outbound phone calls and SMS messages _(USB GSM Modem, SIP MESSAGE, and Twilio)_ through Asterisk PBX _(phone calls)_. It can be triggered manually (API/UI), scheduled for later delivery, or driven by Prometheus Alertmanager _(Nagios, Zabbix, or the optional `openalertd` mesh daemon)_.
+The repository delivers two tightly integrated—yet independently deployable—pillars:
 
-The system is built as a modular set of microservices that communicate over HTTP and queue work with Celery/Redis. Text-to-speech (TTS) services generate the audio played in calls, and a web UI provides operational visibility.
+1. **`py-phone-caller` (Python 3.14 + Rust GSM Engine)**: Turns monitoring alerts (*Prometheus Alertmanager, Nagios, Zabbix, Grafana*), scheduled jobs, or manual dispatches into outbound **Asterisk 22 voice calls** (with offline neural TTS and DTMF `4` acknowledgment) and **dual-channel SMS / RFC 3428 SIP `MESSAGE`** notifications (*on-premise USB GSM/LTE modems with always-UCS-2 encoding or Twilio*).
+2. **`OpenAlert` (`openalertd`, pure Rust)**: Autonomous store-and-forward edge and mesh router bridging off-grid **LoRa 868 MHz RF**, **BitChat Bluetooth LE**, **`/sos` Wi-Fi Captive Portals** (offline SVG CAPTCHA), and **Nostr (`NIP-ALERT` Kind 30000 & 0xChat NIP-17 E2EE C2)** directly into `py-phone-caller` or standalone webhooks.
 
 ## Start Here — Pick Your Deployment Tier
 
@@ -170,9 +194,9 @@ All deployment guides are centralized under **[`deploy/docs/README.md`](deploy/d
 - **[01. Architecture, Prerequisites & Configuration Reference](deploy/docs/01-architecture-and-prerequisites.md)**: Service port map (`:8081`–`:8087`, `:5000`, `:8090`), Asterisk ARI dialplan setup, `settings.toml`, `.secrets.toml`, TTS models, and USB GSM modems.
 - **[02. Native Ansible Deployment Guide](deploy/docs/02-ansible-deployment.md)** ([`deploy/ansible/`](deploy/ansible/README.md)): Independently select OpenAlert, Python, and Asterisk (`standard` / `enterprise`, `online` / `airgapped`, plus `adopt.yml`, `backup.yml`, `restore.yml`, `rollback.yml`).
 - **[03. Docker & Docker Compose Deployment Guide](deploy/docs/03-docker-compose-deployment.md)** ([`deploy/compose/`](deploy/compose/README.md)): Full 15-container stack, USB GSM/LoRa/BLE hardware passthrough (`docker-compose.hardware.yml`), and APISIX/Keycloak gateway overlay (`docker-compose.gateway.yml`).
-- **[04. Kubernetes & Helm v3 Deployment Guide](deploy/docs/04-kubernetes-and-helm-deployment.md)** ([`deploy/helm/py-phone-caller/`](deploy/helm/py-phone-caller/README.md) & [`deploy/k8s/`](deploy/k8s/README.md)): Parameterized Helm v3 chart (`py-phone-caller-1.0.0.tgz`) and 43-resource Kustomize manifests.
+- **[04. Kubernetes & Helm v3 Deployment Guide](deploy/docs/04-kubernetes-and-helm-deployment.md)** ([`deploy/helm/py-phone-caller/`](deploy/helm/py-phone-caller/README.md) & [`deploy/k8s/`](deploy/k8s/README.md)): Parameterized Helm v3 chart (`py-phone-caller-1.1.0.tgz`) and 43-resource Kustomize manifests.
 - **[05. Native Linux Packages (`.deb` & `.rpm`) Guide](deploy/docs/05-linux-deb-rpm-deployment.md)** ([`deploy/packaging/linux/`](deploy/packaging/linux/README.md)): Native `apt` (`.deb`) and `dnf` (`.rpm`) installation for Debian/Ubuntu and RHEL/Rocky/AlmaLinux.
-- **[06. Python Wheels (`PyPI`) & Systemd Deployment Guide](deploy/docs/06-pypi-and-systemd-deployment.md)** ([`deploy/packaging/pypi/`](deploy/packaging/pypi/README.md) & `deploy/systemd/`): Installing `py-phone-caller[all]==1.0.0` into a custom virtual environment with `systemd` units.
+- **[06. Python Wheels (`PyPI`) & Systemd Deployment Guide](deploy/docs/06-pypi-and-systemd-deployment.md)** ([`deploy/packaging/pypi/`](deploy/packaging/pypi/README.md) & `deploy/systemd/`): Installing `py-phone-caller[all]==1.1.0` into a custom virtual environment with `systemd` units.
 - **[07. Enterprise Gateway (`APISIX` + `Keycloak`) & Observability](deploy/docs/07-enterprise-gateway-and-observability.md)** ([`docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md`](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md) & [`deploy/dashboards/`](deploy/dashboards/README.md)): Zero-Trust OIDC SSO, 3-tier RBAC, Prometheus scraping, and turnkey Grafana dashboard.
 - **[08. Release Packaging & Verification Guide](deploy/docs/08-release-packaging.md)** ([`deploy/packaging/`](deploy/packaging/README.md)): Reproducibly building all 33 distributable release archives/packages in `dist/` via `deploy/packaging/build_all_releases.py`.
 - **[09. ARM64 Appliance & Air-Gapped Deployment Guide](deploy/docs/09-arm64-appliance-and-airgapped-deployment.md)**: All-in-one Orange Pi 5 Plus (RK3588 `aarch64`) deployment in both `online` and 100% `airgapped` modes (`unshare --net`), signed `file:` APT mirror, USB GSM SIM7600E-H, and local SIP softphone verification.
@@ -185,7 +209,7 @@ Pick one path (see **[`deploy/docs/README.md`](deploy/docs/README.md)** for the 
 
 ### Option A: Docker Compose (fastest, external Asterisk required)
 
-For the full walkthrough including hardware USB GSM/LoRa/BLE passthrough and the Enterprise APISIX/Keycloak overlay, see **[03. Docker & Docker Compose Deployment Guide](deploy/docs/03-docker-compose-deployment.md)**.
+For the full walkthrough including hardware USB GSM/LoRa/BLE passthrough and the Enterprise APISIX/Keycloak overlay, see **[03. Docker & Docker Compose Deployment Guide](deploy/docs/03-docker-compose-deployment.md)**. *(Note: `deploy/compose/docker-compose.yml` launches the full 15-container platform including the Web UI on `:5000`, whereas the root `docker-compose.yml` launches only a lightweight 3-container `openalertd` + webhook + Piper TTS edge bridge.)*
 
 1. Configure Asterisk access used by the containers:
    - `src/config/settings.toml`: set `[commons] asterisk_host`, `asterisk_user`, and `asterisk_web_port` if different.
@@ -251,26 +275,32 @@ Legacy [combined](deploy/ansible/deploy_all/README.md), [Python](deploy/ansible/
 
 ## Project Status
 
-- **v1.0.0 Deployment Pillars Qualified**: Native Ansible (Debian 13, Ubuntu 26.04 LTS, Rocky Linux 10.2 `SELinux Enforcing`, plus physical ARM64 Orange Pi 5 Plus in both `online` and 100% `airgapped` modes), Docker Compose, Kubernetes & Helm v3 (`GKE` & `k3s`), native `.deb`/`.rpm` packages, and PyPI/systemd — see **[`deploy/docs/README.md`](deploy/docs/README.md)** and the [support matrix](deploy/ansible/docs/support-matrix.md).
+- **v1.1.0 Deployment Pillars Qualified**: Native Ansible (Debian 13, Ubuntu 26.04 LTS, Rocky Linux 10 `SELinux Enforcing`, AlmaLinux 10 `SELinux Enforcing`, plus physical ARM64 Orange Pi 5 Plus in both `online` and 100% `airgapped` modes), Docker Compose (+ APISIX/Keycloak Gateway), Kubernetes & Helm v3 (`GKE` & `k3s` with `EndpointSlice`), native `.deb`/`.rpm` packages, and PyPI/systemd — see **[`deploy/docs/README.md`](deploy/docs/README.md)** and the [support matrix](deploy/ansible/docs/support-matrix.md).
 - Core voice calling, DTMF acknowledgment (`4` key), dual-channel SMS/SIP `MESSAGE`, and OpenAlert mesh flows are verified end-to-end.
 - Operating the stack in production requires Asterisk/FreePBX and Linux administration knowledge.
 
 ## Documentation
 
+- **[5-Minute Local Quickstart (Zero VoIP Trunk Needed)](docs/quickstart-5-minutes.md)** - Try live voice calls, DTMF `4` acknowledgment, and SIP `MESSAGE` alerts locally with Linphone on extension `1000`.
 - **[Centralized Deployment Documentation Hub (`deploy/docs/`)](deploy/docs/README.md)** - Complete modular step-by-step installation guides across Ansible, Docker Compose, Kubernetes/Helm, DEB/RPM, PyPI/systemd, ARM64/Air-Gapped appliances, and 12-Gate validation.
 - **[Master Documentation Library](docs/README.md)** - Comprehensive documentation map, architectural guides, and operational manuals.
-- **[Release Notes & Current Capabilities](docs/1.0.1-release.md)** - Detailed release summary, post-1.0.1 capabilities, and upgrade guide.
+- **[Changelog (`CHANGELOG.md`)](CHANGELOG.md)** - Unified version history (`v1.1.0`, `v1.0.1`, `v1.0.0`, `v0.0.2`).
+- **[Release 1.0.1 Enhancement Report](docs/1.0.1-release.md)** - Deep-dive notes on the Strategy-pattern TTS engine & RTL UI.
 - **[Architecture & Call Flows Guide](docs/architecture-and-call-flows.md)** - End-to-end call lifecycle, DTMF acknowledgment (`4` key), dual-channel SMS/SIP `MESSAGE` routing, always-UCS-2 GSM SMS, retry loops, and OpenAlert mesh bridge.
-- **[Services & Endpoints Reference](docs/services-and-endpoints.md)** - Complete REST API specification for all microservices, `/ready` probes, OpenAPI `/docs`, and Piccolo ORM schemas.
+- **[Services & Endpoints Reference](docs/services-and-endpoints.md)** & **[Interactive OpenAPI 3.0 Explorer](docs/api-explorer.md)** - Complete REST API specification across all 9 services, `/ready` probes, OpenAPI `/docs`, and Piccolo ORM schemas.
+- **[Hardware & Sovereign Field-Kit BOM Guide](docs/hardware-and-field-kit-bom.md)** - Tested ARM64 SBCs, USB 4G/LTE AT modems (`udev` rules), LoRa 868/915 MHz radios, BLE adapters, and SIP phones.
+- **[Day-2 SRE Runbook & Self-Monitoring Rules](docs/sre-day2-operations-and-watchdog.md)** - Ready-to-use Prometheus watchdog alerting rules ([`prometheus-alerting-rules.yml`](deploy/dashboards/prometheus-alerting-rules.yml)), online backups, and zero-downtime secret rotation.
 - **[Enterprise Gateway & Keycloak SSO Guide](docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** - Automated and manual guide for Apache APISIX & Keycloak OIDC.
-- **[FreePBX & Asterisk Setup Guide](docs/freepbx-asterisk-setup-guide.md)** - Visual FreePBX setup plus native Asterisk 22 Ansible automation & local SIP Extension `1000`.
+- **[Asterisk PBX Configuration & Examples](docs/asterisk-pbx-configuration-guide.md)** - Complete `/etc/asterisk/*.conf` examples (ARI, PJSIP VoIP trunks, local softphone extension `1000`, Stasis + DTMF `4` ACK dialplan, `modules.conf`, and SELinux).
+- **[FreePBX & Asterisk GUI Setup Guide](docs/freepbx-asterisk-setup-guide.md)** - Visual FreePBX walkthrough plus native Asterisk 22 Ansible automation & local SIP Extension `1000`.
 - **[OpenAlert Architecture & Nostr Alerting (`NIP-ALERT`)](docs/openalert/README.md)** - Decentralized LoRa RF, BitChat BLE, `/sos` Captive Portal, and Nostr bridge (`openalertd`).
 - **[Web UI Operator Tour](docs/web-ui-tour/README.md)** - Visual walkthrough of the multilingual Web Management UI, calls table, SMS dashboard, and on-call calendars.
 - **[OpenTelemetry & Observability Guide](docs/opentelemetry-guide.md)** - Metrics scraping (`/metrics`), health/readiness probes (`/health`, `/ready`), and distributed tracing ([Tempo](docs/tempo_traces.md)).
 - **[UV Workspace & Packaging Guide](docs/uv-migration-and-workspace-guide.md)** - Python 3.14 UV workspace, Maturin Rust SMS engine, dependency management, and container builds.
 - **[AppSec, Supply-Chain & Non-Regression Guide](docs/appsec-and-supply-chain-guide.md)** - Contributor onboarding, `Taskfile.yml` security tiers (`sec:fast`, `sec:ci`, `sec:release`), non-regression checks (`verify:all`), and transactional CVE auto-rollback (`sec:fix:py`, `sec:fix:rust`).
 - **[Archived Documentation Index](docs/archive/README.md)** - Preserved pre-release, historical audit, and superseded legacy guides.
-- `LICENSE` - BSD 3-Clause license.
+- **[Security Policy (`SECURITY.md`)](SECURITY.md)**, **[Contributing Guide (`CONTRIBUTING.md`)](CONTRIBUTING.md)** & **[Code of Conduct (`CODE_OF_CONDUCT.md`)](CODE_OF_CONDUCT.md)**.
+- **Licensing**: `py-phone-caller` is licensed under [`LICENSE`](LICENSE) (BSD 3-Clause); `openalertd` (`src/openalert/`) is dual-licensed under [`MIT`](src/openalert/LICENSE-MIT) OR [`Apache-2.0`](src/openalert/LICENSE-APACHE).
 
 ## Further Readings
 

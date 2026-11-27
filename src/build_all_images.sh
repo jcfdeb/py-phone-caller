@@ -21,10 +21,11 @@
 #
 # Usage:
 #   ./src/build_all_images.sh
-#   CONTAINER_ENGINE=docker IMAGE_TAG=1.0.0 ./src/build_all_images.sh
+#   CONTAINER_ENGINE=docker IMAGE_TAG=1.1.0 ./src/build_all_images.sh
 # ==============================================================================
 
 export SUPPRESS_BOLTDB_WARNING="true"
+export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
 
 set -euo pipefail
 

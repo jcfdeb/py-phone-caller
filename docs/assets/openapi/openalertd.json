@@ -1,0 +1,473 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "openalertd (OpenAlert Mesh Daemon)",
+    "description": "Autonomous Rust multi-protocol alert router bridging REST, Prometheus Alertmanager, Nostr (NIP-ALERT Kind 30000 & 0xChat NIP-17 C2), BitChat BLE (Noise XX), LoRa 868 MHz RF peering, GSM AT SMS, and Emergency /sos Wi-Fi Captive Portals.",
+    "version": "1.1.0",
+    "license": {
+      "name": "MIT OR Apache-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8090",
+      "description": "Default openalertd HTTP & NOC Dashboard listener"
+    }
+  ],
+  "paths": {
+    "/api/v1/alerts": {
+      "post": {
+        "tags": [
+          "Alert Ingress"
+        ],
+        "summary": "Ingest a native OpenAlert JSON event",
+        "description": "Validates optional Basic/Bearer/HMAC credentials, deduplicates, persists to SQLite spool, and routes across Nostr, BitChat BLE, LoRa peering, GSM SMS, and py-phone-caller webhooks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "id": "ups-room-temp-01",
+                "severity": "critical",
+                "summary": "Core rack temperature exceeded 42C",
+                "source": "rest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Alert accepted and queued for multi-transport dispatch"
+          },
+          "401": {
+            "description": "Invalid Bearer token, Basic auth, or HMAC-SHA256 signature"
+          }
+        }
+      }
+    },
+    "/api/v1/webhook/prometheus": {
+      "post": {
+        "tags": [
+          "Alert Ingress"
+        ],
+        "summary": "Ingest a Prometheus Alertmanager v4 webhook payload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "status": "firing",
+                "alerts": [
+                  {
+                    "status": "firing",
+                    "labels": {
+                      "alertname": "GridPowerLost",
+                      "severity": "critical"
+                    },
+                    "annotations": {
+                      "summary": "Mains AC lost on substation B"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Alertmanager batch ingested"
+          }
+        }
+      }
+    },
+    "/sos": {
+      "get": {
+        "tags": [
+          "Emergency SOS Portal"
+        ],
+        "summary": "Render the isolated mobile-first Emergency SOS Web Portal HTML",
+        "responses": {
+          "200": {
+            "description": "Self-contained HTML5 SOS dispatch form"
+          }
+        }
+      }
+    },
+    "/api/v1/sos/challenge": {
+      "get": {
+        "tags": [
+          "Emergency SOS Portal"
+        ],
+        "summary": "Generate an offline 4-digit distorted SVG CAPTCHA challenge signed with HMAC-SHA256",
+        "responses": {
+          "200": {
+            "description": "Inline SVG CAPTCHA image and signed one-time token"
+          }
+        }
+      }
+    },
+    "/api/v1/sos/trigger": {
+      "post": {
+        "tags": [
+          "Emergency SOS Portal"
+        ],
+        "summary": "Verify offline CAPTCHA nonce and dispatch a civilian/field SOS alert",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "category": "MEDICAL",
+                "sender": "Sector 4 Aid Post",
+                "message": "Urgent medical evacuation needed at trailhead marker 12",
+                "captcha_token": "<SIGNED_TOKEN>",
+                "captcha_answer": "4821"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SOS alert verified and broadcast across mesh/telephony"
+          },
+          "400": {
+            "description": "Invalid CAPTCHA or rate-limit cooldown active"
+          }
+        }
+      }
+    },
+    "/api/v1/sos/zap-invoice": {
+      "post": {
+        "tags": [
+          "Emergency SOS Portal"
+        ],
+        "summary": "Create a signed NIP-57 Kind 9734 Zap Request & BOLT-11 Lightning invoice",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "amount_sats": 1000,
+                "category": "EMERGENCY",
+                "sender": "Field Operator",
+                "message": "Bridge washed out on highway sector 7"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "BOLT-11 invoice + inline SVG QR metadata"
+          }
+        }
+      }
+    },
+    "/api/v1/sos/zap-status/{zap_request_id}": {
+      "get": {
+        "tags": [
+          "Emergency SOS Portal"
+        ],
+        "summary": "Poll 6-stage cryptographic verification status of a NIP-57 Kind 9735 Zap Receipt",
+        "parameters": [
+          {
+            "name": "zap_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "d4e5f6a7b8c90123456789abcdef0123"
+            },
+            "example": "d4e5f6a7b8c90123456789abcdef0123"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zap settlement and Nostr/0xChat dispatch status"
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "tags": [
+          "Mesh & Telemetry"
+        ],
+        "summary": "Daemon runtime status, uptime, relay quorum, LoRa duty-cycle, and spool counts",
+        "responses": {
+          "200": {
+            "description": "JSON node health summary"
+          }
+        }
+      }
+    },
+    "/api/v1/events/live": {
+      "get": {
+        "tags": [
+          "Mesh & Telemetry"
+        ],
+        "summary": "Server-Sent Events (SSE) real-time NOC telemetry stream (2s cadence)",
+        "responses": {
+          "200": {
+            "description": "text/event-stream live diagnostics"
+          }
+        }
+      }
+    },
+    "/api/v1/peers": {
+      "get": {
+        "tags": [
+          "Peering & Spool"
+        ],
+        "summary": "List LAN, WireGuard, and LoRa RF peers, distance-vector routes, RSSI/SNR, and circuit breakers",
+        "responses": {
+          "200": {
+            "description": "Peer link state array"
+          }
+        }
+      }
+    },
+    "/api/v1/peers/{name}/reset": {
+      "post": {
+        "tags": [
+          "Peering & Spool"
+        ],
+        "summary": "Manually reset a tripped peer circuit breaker back to Closed",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "lora-hilltop-01"
+            },
+            "example": "lora-hilltop-01"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Peer circuit breaker reset"
+          }
+        }
+      }
+    },
+    "/api/v1/spool": {
+      "get": {
+        "tags": [
+          "Peering & Spool"
+        ],
+        "summary": "Inspect pending store-and-forward alerts in the embedded SQLite flash spool",
+        "responses": {
+          "200": {
+            "description": "Pending spool records"
+          }
+        }
+      }
+    },
+    "/api/v1/spool/purge": {
+      "post": {
+        "tags": [
+          "Peering & Spool"
+        ],
+        "summary": "Purge pending records from the persistent SQLite flash spool",
+        "responses": {
+          "200": {
+            "description": "Spool purged"
+          }
+        }
+      }
+    },
+    "/api/v1/sms/status": {
+      "get": {
+        "tags": [
+          "Cellular GSM & BitChat BLE"
+        ],
+        "summary": "Query USB GSM/LTE AT modem link state, signal quality, and recipient ACLs",
+        "responses": {
+          "200": {
+            "description": "Modem status JSON"
+          }
+        }
+      }
+    },
+    "/api/v1/sms/history": {
+      "get": {
+        "tags": [
+          "Cellular GSM & BitChat BLE"
+        ],
+        "summary": "Query inbound and outbound UCS-2 SMS journal from SQLite",
+        "responses": {
+          "200": {
+            "description": "SMS history entries"
+          }
+        }
+      }
+    },
+    "/api/v1/sms/send": {
+      "post": {
+        "tags": [
+          "Cellular GSM & BitChat BLE"
+        ],
+        "summary": "Send an outbound UTF-8 / UCS-2 SMS via the attached USB GSM AT modem",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "recipient": "+39000000000",
+                "message": "Field test via openalertd GSM"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SMS transmitted"
+          }
+        }
+      }
+    },
+    "/api/v1/bitchat/status": {
+      "get": {
+        "tags": [
+          "Cellular GSM & BitChat BLE"
+        ],
+        "summary": "Inspect BlueZ BLE GATT peripheral status and discovered BitChat mesh peers",
+        "responses": {
+          "200": {
+            "description": "BitChat radar status"
+          }
+        }
+      }
+    },
+    "/api/v1/bitchat/broadcast": {
+      "post": {
+        "tags": [
+          "Cellular GSM & BitChat BLE"
+        ],
+        "summary": "Broadcast an advisory frame across the local BitChat Bluetooth LE mesh",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "message": "Evacuate sector B immediately"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "BLE mesh frame queued"
+          }
+        }
+      }
+    },
+    "/api/v1/config": {
+      "get": {
+        "tags": [
+          "Configuration & Crypto Tools"
+        ],
+        "summary": "Read active openalertd TOML configuration",
+        "responses": {
+          "200": {
+            "description": "Sanitized TOML configuration"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Configuration & Crypto Tools"
+        ],
+        "summary": "Validate, back up (.bak), and persist updated TOML configuration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "toml": "[node]\nname = \"edge-01\"\n\n[rest]\nlisten_port = 8090\n"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuration saved"
+          }
+        }
+      }
+    },
+    "/api/v1/config/validate": {
+      "post": {
+        "tags": [
+          "Configuration & Crypto Tools"
+        ],
+        "summary": "Dry-run validate a candidate TOML configuration string",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "toml": "[node]\nname = \"edge-01\"\n\n[sos]\nenabled = true\npath = \"/sos\"\n"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/generate-keypair": {
+      "post": {
+        "tags": [
+          "Configuration & Crypto Tools"
+        ],
+        "summary": "Generate a BIP-340 Secp256k1 Nostr keypair (nsec / npub / hex)",
+        "responses": {
+          "200": {
+            "description": "Generated keypair"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/hash-password": {
+      "post": {
+        "tags": [
+          "Configuration & Crypto Tools"
+        ],
+        "summary": "Compute SHA-256 credential hash for [rest.auth], [dashboard.auth], or [sos.auth]",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "password": "<PASSWORD>"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Hex SHA-256 digest"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Daemon liveness probe",
+        "responses": {
+          "200": {
+            "description": "openalertd healthy"
+          }
+        }
+      }
+    }
+  }
+}

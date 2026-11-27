@@ -11,7 +11,8 @@ Welcome to the official documentation library for **py-phone-caller** and **Open
 ```text
 docs/
 ├── README.md                                # 📍 You are here: Master Documentation Index
-├── 1.0.1-release.md                         # 🏆 Release Notes, Capabilities & Upgrade Guide
+├── ../CHANGELOG.md                          # 🏆 Unified Suite Changelog (v1.1.0)
+├── 1.0.1-release.md                         # 📋 v1.0.1 Enhancement Deep-Dive Notes
 │
 ├── 🏛️ Architecture & Technical Reference
 │   ├── architecture-and-call-flows.md       # 📐 End-to-End Call, Dual-Channel SMS/SIP, DTMF & Mesh Flows
@@ -45,17 +46,21 @@ docs/
 ## 📑 Core Documentation Index
 
 ### 1. 🚀 Operations & Deployment
+- **[5-Minute Local Quickstart (Zero VoIP Trunk Needed)](quickstart-5-minutes.md)**  
+  *Fastest way to experience the suite live.* Register the free **Linphone** softphone to local Asterisk PJSIP extension `1000`, receive a real offline-synthesized neural TTS voice alert, press **`4`** on your keypad to acknowledge, and receive an instant RFC 3428 SIP `MESSAGE` text alert.
 - **[Centralized Deployment Documentation Hub (`deploy/docs/`)](../deploy/docs/README.md)**  
   *The canonical, verified installation and operations hub.* Covers modular guides `01`–`10`:
-  - Native **Ansible** (`site.yml`) for Debian 13 (AllStarLink), Ubuntu 26.04 LTS, and Rocky Linux 10.2 (Tucny Asterisk `22.9.0-1.el10`) with ready-to-use local SIP extension `1000` (`asterisk_sip_exten_1000_enabled`), backup/restore/rollback, and OpenAlert adoption.
+  - Native **Ansible** (`site.yml`) for Debian 13 (AllStarLink), Ubuntu 26.04 LTS, Rocky Linux 10, and AlmaLinux 10 (Tucny Asterisk `22.9.0-1.el10`, `SELinux Enforcing`) with ready-to-use local SIP extension `1000` (`asterisk_sip_exten_1000_enabled`), backup/restore/rollback, and OpenAlert adoption.
   - **Docker / Podman Compose** (full stack + hardware passthrough + gateway overlays).
-  - **Kubernetes & Helm v3** (`43`-resource Kustomize manifests & `py-phone-caller-1.0.0.tgz` chart).
+  - **Kubernetes & Helm v3** (`43`-resource Kustomize manifests & `py-phone-caller-1.1.0.tgz` chart with `EndpointSlice`).
   - **Native Linux `.deb` / `.rpm` packages**, **PyPI wheels + `systemd`**, and **Release Packaging** (`build_all_releases.py`).
   - **Physical ARM64 & 100% Air-Gapped Appliances** (Orange Pi 5 Plus RK3588, offline signed `file:` APT mirror, offline TTS weights, `IPAddressDeny=any`).
   - **12-Gate End-to-End Validation Checklist** (`deploy/docs/10-end-to-end-installation-validation.md`).
 - **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**  
   Automated (Ansible `stack_topology: enterprise`) and manual copy-and-paste deployment guide for Apache APISIX unified API gateway, Keycloak OIDC IAM, 3-tier RBAC (`alert-admin`, `alert-operator`, `alert-viewer`), M2M Alertmanager OAuth2 tokens, and public TLS termination. Also see [`deploy/docs/07-enterprise-gateway-and-observability.md`](../deploy/docs/07-enterprise-gateway-and-observability.md).
-- **[FreePBX & Asterisk ARI Setup Guide](freepbx-asterisk-setup-guide.md)**  
+- **[Asterisk PBX Configuration & Examples (Native Linux)](asterisk-pbx-configuration-guide.md)**  
+  Complete, copy-pasteable `/etc/asterisk/` configurations (sanitized with `<PASSWORD>`) for standalone Asterisk 18–22 servers: `http.conf`, `ari_py_phone_caller.conf`, `pjsip_py_phone_caller.conf` (VoIP SIP trunks + mobile/VPN-ready local extension `1000`), `extensions_py_phone_caller.conf` (Stasis + TTS + DTMF `4` ACK `${CURL(...)}` callbacks), `iax_py_phone_caller.conf`, `modules.conf`, SELinux rules, and matching `settings.toml` / `.secrets.toml`.
+- **[FreePBX & Asterisk GUI Setup Guide](freepbx-asterisk-setup-guide.md)**  
   Visual FreePBX configuration walkthrough (SIP/PJSIP Trunks, Extensions, Stasis Dialplan, ARI users, G.711 codecs) plus native Asterisk 22 Ansible automation and ready-to-use local SIP extension `1000` / RFC 3428 SIP `MESSAGE` setup.
 
 ---
@@ -63,8 +68,12 @@ docs/
 ### 2. 🏛️ Architecture & Technical Reference
 - **[Architecture & Call Flows](architecture-and-call-flows.md)**  
   Comprehensive architecture guide detailing the 11 Python microservices + `openalertd` mesh bridge, domain-driven data boundaries, Mermaid sequence diagrams for outbound calls, real-time DTMF acknowledgment (`4` to ack, `5` to repeat), recaller/backup escalation, **dual-channel contact routing** (`phone_number` + `sms_phone_number`), **smart SMS/SIP `MESSAGE` failover**, always-UCS-2 70-unit chunked USB GSM SMS, multi-engine offline TTS (Kokoro, Silero, Piper, MMS), Celery `p0_emergency` scheduling, and air-gapped design principles.
-- **[Services & Endpoints Reference](services-and-endpoints.md)**  
-  Authoritative REST API reference covering every microservice route, exact port allocations (`8081`–`8087`, `5000`, `8090`/`8088`), request/response JSON schemas, OpenAPI/Swagger endpoints (`/docs`, `/docs/swagger.json`), standardized health/readiness probes (`/health`, `/healthz`, `/live`, `/ready`), Prometheus `/metrics`, and Piccolo ORM database tables.
+- **[Services & Endpoints Reference](services-and-endpoints.md)** & **[Interactive OpenAPI 3.0 Explorer](api-explorer.md)**  
+  Authoritative REST API reference and interactive multi-service OpenAPI 3.0.3 explorer (`curl` generator + downloadable `.json` specs) covering all 8 Python services + `openalertd`, exact port allocations (`8081`–`8087`, `5000`, `8090`/`8088`), `/ready` probes, and Piccolo ORM database tables.
+- **[Hardware Compatibility & Sovereign Field-Kit BOM Guide](hardware-and-field-kit-bom.md)**  
+  Reference BOM for NOC rack appliances, `/sos` emergency field kits, and hilltop solar repeaters: Orange Pi / Raspberry Pi sizing, SIM7600 / Quectel EC25 USB GSM modems + persistent `udev` rules, sub-GHz LoRa serial radios, BlueZ BLE adapters, and rugged SIP handsets.
+- **[Day-2 SRE Runbook & Self-Monitoring ("Who Watches the Watchmen?")](sre-day2-operations-and-watchdog.md)**  
+  Turnkey Prometheus self-monitoring alert rules ([`prometheus-alerting-rules.yml`](../deploy/dashboards/prometheus-alerting-rules.yml)), zero-downtime PostgreSQL & SQLite WAL backups, secret rotation, and DLQ/spool triage.
 - **[Release Notes & Current Capabilities](1.0.1-release.md)**  
   Feature summary covering the Strategy-pattern TTS overhaul (Silero V3, `/languages`, cross-engine fallback), multilingual Flask-Babel RTL Web UI, Asterisk ARI circuit breaker, Redis distributed locks, dual-channel SMS/SIP routing, always-UCS-2 GSM SMS, OpenAlert mesh bridge, and upgrade guidance.
 - **[UV Workspace & Packaging Guide](uv-migration-and-workspace-guide.md)**  
@@ -112,10 +121,11 @@ docs/
 
 | If you are... | Start here: |
 | :--- | :--- |
+| **Evaluating the project in 5 minutes (no SIP trunk)** | ➡️ **[5-Minute Local Quickstart (Linphone + Exten `1000`)](quickstart-5-minutes.md)** |
 | **A Sysadmin / SRE installing for the first time** | ➡️ **[Centralized Deployment Documentation Hub (`deploy/docs/`)](../deploy/docs/README.md)** |
 | **Deploying on ARM64 / 100% Air-Gapped hardware** | ➡️ **[ARM64 Appliance & Air-Gapped Guide](../deploy/docs/09-arm64-appliance-and-airgapped-deployment.md)** |
 | **Deploying Enterprise SSO (APISIX + Keycloak)** | ➡️ **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)** |
-| **A Telephony / PBX Administrator** | ➡️ **[FreePBX & Asterisk ARI Setup Guide](freepbx-asterisk-setup-guide.md)** |
+| **A Telephony / PBX Administrator** | ➡️ **[Asterisk PBX Configuration & Examples](asterisk-pbx-configuration-guide.md)** & **[FreePBX GUI Guide](freepbx-asterisk-setup-guide.md)** |
 | **Deploying Off-Grid Field Mesh (LoRa / BLE / Nostr)** | ➡️ **[OpenAlert Architecture Guide](openalert/README.md)** |
 | **A Developer integrating with the REST API** | ➡️ **[Services & Endpoints Reference](services-and-endpoints.md)** |
 | **A Software Engineer contributing code** | ➡️ **[UV Workspace & Packaging Guide](uv-migration-and-workspace-guide.md)** · **[AppSec & Supply-Chain Guide](appsec-and-supply-chain-guide.md)** |

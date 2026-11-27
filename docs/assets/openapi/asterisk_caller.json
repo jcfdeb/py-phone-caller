@@ -1,0 +1,207 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "asterisk_caller",
+    "description": "Asterisk ARI Call Placement and Audio Dispatch Service",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8081",
+      "description": "Direct service listener"
+    },
+    {
+      "url": "https://alerts.example.com/api/v1/telephony",
+      "description": "Via APISIX Gateway"
+    }
+  ],
+  "paths": {
+    "/place_call": {
+      "post": {
+        "summary": "Place immediate call via ARI",
+        "description": "Initiates an outbound phone call through Asterisk ARI.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "0039123456789"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Critical alert"
+                  },
+                  "backup_callee": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "lang": {
+                    "type": "string",
+                    "example": "en"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "message"
+                ]
+              },
+              "example": {
+                "phone": "0039123456789",
+                "message": "Critical alert",
+                "backup_callee": false,
+                "lang": "en"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Call successfully placed"
+          }
+        }
+      }
+    },
+    "/call_to_queue": {
+      "post": {
+        "summary": "Enqueue call for background dialing",
+        "description": "Places call onto internal worker queue (accepts JSON body or query parameters).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "1000",
+                    "description": "Destination number, SIP extension, or 'oncall' alias"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Critical alert: PostgreSQL replication lag exceeded 30 seconds"
+                  },
+                  "lang": {
+                    "type": "string",
+                    "example": "en",
+                    "description": "Optional TTS language code"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "message"
+                ]
+              },
+              "example": {
+                "phone": "1000",
+                "message": "Critical alert: PostgreSQL replication lag exceeded 30 seconds",
+                "lang": "en"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enqueued successfully"
+          }
+        }
+      }
+    },
+    "/play": {
+      "post": {
+        "summary": "Play audio to active channel",
+        "description": "Dispatches synthesized WAV audio playback to an active Asterisk channel in Stasis and resumes the dialplan.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "asterisk_chan": {
+                    "type": "string",
+                    "example": "1732660000.42"
+                  },
+                  "msg_chk_sum": {
+                    "type": "string",
+                    "example": "9f86d081884c7d659a2feaa0c55ad015"
+                  },
+                  "lang": {
+                    "type": "string",
+                    "example": "en"
+                  }
+                },
+                "required": [
+                  "asterisk_chan",
+                  "msg_chk_sum"
+                ]
+              },
+              "example": {
+                "asterisk_chan": "1732660000.42",
+                "msg_chk_sum": "9f86d081884c7d659a2feaa0c55ad015",
+                "lang": "en"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Playback started"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Liveness probe (/health, /healthz, /live)",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "healthy",
+                  "service": "asterisk_caller",
+                  "version": "1.1.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Dependency-aware readiness probe",
+        "responses": {
+          "200": {
+            "description": "Downstream dependencies (PostgreSQL / Redis / Asterisk ARI) ready"
+          },
+          "503": {
+            "description": "Dependency check degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus text-format telemetry metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition payload"
+          }
+        }
+      }
+    }
+  }
+}

@@ -366,3 +366,14 @@ live paths or run standalone installation scripts to bypass this boundary.
 Phase 4 lifecycle procedures require isolated rehearsals and separate operator
 authorization before any migration work. Removal must never be inferred from
 an instance omitted from inventory.
+
+---
+
+## Multi-OS Cloud, Kubernetes & Air-Gap Compliance Verification — 2026-11-23
+
+An end-to-end compliance sweep across Google Cloud (`europe-west2`) and isolated local KVM (`qemu:///system`) further verified and closed the following gates:
+
+- **AlmaLinux 10.3 AMD64 (`SELinux Enforcing`)**: Enabled first-class `AlmaLinux` role assertions alongside Rocky 10 (`Tucny` Asterisk `22.9.0-1.el10`). Full `enterprise` `site.yml` (`ok=299 changed=56 failed=0`), `verify.yml`, unchanged rerun (`ok=302 changed=0`), live Keycloak OIDC + M2M Bearer `/api/cluster_health` HTTP `200`, and cold-reboot recovery (`ok=11`, `SELinux Enforcing`) passed. *(Note: minimal AlmaLinux 10 cloud images require `dnf install -y iptables-nft` prior to reverse-proxy preflight.)*
+- **Four-OS Connected Qualification Refresh**: Re-verified Debian 13 (`AllStarLink 22.10.1+asl3`, `ok=241` / rerun `changed=0` / cold-reboot `ok=11`), Ubuntu 26.04 LTS (`ok=295` / rerun `changed=0`), and Rocky Linux 10 (`ok=299` / rerun `changed=0` / `SELinux Enforcing`).
+- **Strict Air-Gapped Ubuntu 26.04 LTS + Day-2 Playbooks**: Verified full offline build & install (`site.yml` `ok=281 changed=63 failed=0`, rerun `ok=267 changed=0`, cold-reboot `verify.yml` `ok=11`) under `iptables` + `ip6tables` egress/DNS block, plus live `playbooks/backup.yml` -> `restore.yml` (`py_phone_caller` PostgreSQL + SQLite), `assets` `rollback.yml`, `playbooks/adopt.yml` (`adopt-openalert-in-place` and `adopt-openalert-relocate` root-to-unprivileged migration).
+- **Container & Kubernetes Pillars**: Verified 15-container Docker Compose + Gateway (`apisix-dashboard` `RestartCount=0`), local `k3s` (`v1.37.2+k3s1`, Kustomize `18/18` Deployments + Helm `14/14` Deployments), and managed GCP `GKE` (`v1.36.4-gke.2377000`, `gateway.enabled=true`, `17/17` Deployments `Ready`, `3/3` PVCs `Bound`, cross-VPC Asterisk ARI Stasis registration). All ephemeral cloud and KVM test resources were destroyed and audited (`Listed 0 items`).

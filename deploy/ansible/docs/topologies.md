@@ -2,10 +2,13 @@
 
 Topology, ingress ownership, connectivity and CPU architecture are independent
 choices. These profiles compose the existing shared roles, not separate installers.
-**Connected `enterprise` (Debian 13, Ubuntu 26.04 LTS, and Rocky Linux 10.2 AMD64)
-and fully `airgapped` `standard` (Debian 13 and Ubuntu 26.04 LTS AMD64) profiles
-are runtime-qualified on disposable VMs.** ARM64 hardware tests remain paused
-pending Orange Pi 5 Plus board arrival and separate authorization.
+**Connected `enterprise` (Debian 13, Ubuntu 26.04 LTS, Rocky Linux 10, and AlmaLinux 10
+AMD64) and fully `airgapped` `standard` (Debian 13 and Ubuntu 26.04 LTS AMD64) profiles
+are runtime-qualified on disposable VMs/cloud instances** (note: minimal AlmaLinux 10
+images must install `iptables-nft` before reverse-proxy ingress preflight, and strict
+air-gapped Ubuntu 26.04 hosts must strip `/etc/apt/apt.conf.d/` invoke hooks such as
+`20apt-esm-hook.conf`). Physical Orange Pi 5 Plus ARM64 hardware tests remain a separate
+validation gate outside automated CI.
 
 Start from the intentionally incomplete
 [enterprise example](../inventories/examples/enterprise/hosts.yml) or
@@ -223,5 +226,5 @@ download or public SaaS carrier is an acceptable offline fallback.
     only `py-phone-caller-ui` restarted).
 - All temporary qualification VMs and networks have been deleted. Production
   changes, telephony/radio traffic and physical Orange Pi 5 Plus ARM64 hardware
-  tests require separate approval upon hardware arrival. See the
+  tests require separate approval and maintenance windows. See the
   [support matrix](support-matrix.md) for full details.

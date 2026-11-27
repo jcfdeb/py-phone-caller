@@ -100,7 +100,7 @@ scrape_configs:
 ### Step 2: Import the Grafana Dashboard (`grafana-py-phone-caller.json`)
 
 #### Option A: Via Grafana Web UI
-1. Open Grafana $\rightarrow$ **Dashboards** $\rightarrow$ **New** $\rightarrow$ **Import**.
+1. Open Grafana → **Dashboards** → **New** → **Import**.
 2. Upload [`deploy/dashboards/grafana-py-phone-caller.json`](../dashboards/grafana-py-phone-caller.json).
 3. Select your Prometheus data source and click **Import**.
 

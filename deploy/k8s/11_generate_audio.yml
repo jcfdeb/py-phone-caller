@@ -46,7 +46,7 @@ spec:
     spec:
       containers:
         - name: generate-audio
-          image: quay.io/py-phone-caller/generate_audio:1.0.0
+          image: quay.io/py-phone-caller/generate_audio:1.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082

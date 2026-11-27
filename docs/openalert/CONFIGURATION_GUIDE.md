@@ -112,7 +112,7 @@ docker run -d \
   -e OPENALERT_DAEMON__LOG_LEVEL=info \
   -e OPENALERT_STORAGE__PATH="/data/openalert.db" \
   -v openalert-data:/data \
-  localhost/openalertd:1.0.0
+  localhost/openalertd:1.1.0
 ```
 
 ### Docker Compose (`docker-compose.yml` & `docker-compose.hardware.yml`)
@@ -129,7 +129,7 @@ docker compose -f docker-compose.yml -f docker-compose.hardware.yml up -d
 ```yaml
 services:
   openalertd:
-    image: localhost/openalertd:1.0.0
+    image: localhost/openalertd:1.1.0
     restart: unless-stopped
     ports:
       - "8090:8090"
@@ -168,7 +168,7 @@ spec:
     spec:
       containers:
         - name: openalertd
-          image: localhost/openalertd:1.0.0
+          image: localhost/openalertd:1.1.0
           ports:
             - containerPort: 8090
               name: rest-api

@@ -1,0 +1,61 @@
+name: "🐛 Bug Report"
+description: "Report a reproducible defect in py-phone-caller, openalertd, Asterisk integration, or deployment tooling"
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve **py-phone-caller & OpenAlert**!
+        **Important:** Never paste real passwords, `.secrets.toml` values, personal phone numbers, or Nostr `nsec` keys — replace them with `<PASSWORD>` or `<REDACTED>`.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Affected Component"
+      options:
+        - "py-phone-caller (Python 3.14 Microservices)"
+        - "openalertd (Rust Mesh & Nostr Daemon)"
+        - "caller_sms / rust_engine (USB GSM AT Modem / SIP MESSAGE)"
+        - "generate_audio (Kokoro / Silero / Piper / MMS / Polly / gTTS)"
+        - "Asterisk PBX / FreePBX / ARI / Dialplan"
+        - "Deployment (Ansible / Docker Compose / Kubernetes / Helm / DEB / RPM)"
+        - "Web UI / Documentation / GitHub Pages"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: "OS, Architecture & Version"
+      description: "e.g., Ubuntu 26.04 x86_64, Rocky Linux 10, Debian 13 ARM64 (Orange Pi 5 Plus), GKE Helm v1.1.0"
+      placeholder: "Ubuntu 26.04 LTS x86_64 · v1.1.0 · Asterisk 22"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to Reproduce"
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Trigger alert via ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Observed Behavior & Sanitized Logs"
+      render: shell
+      placeholder: "Paste sanitized error output or stack trace (<PASSWORD> for any secrets)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected Behavior"
+    validations:
+      required: false

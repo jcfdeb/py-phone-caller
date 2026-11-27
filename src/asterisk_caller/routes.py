@@ -268,14 +268,44 @@ def setup_routes(app: web.Application, service: AsteriskCallerService) -> None:
             f"/{ASTERISK_CALL_APP_ROUTE_CALL_TO_QUEUE}": {
                 "post": {
                     "summary": "Enqueue call for background dialing",
-                    "description": "Places call onto internal worker queue.",
+                    "description": "Places call onto internal worker queue (accepts JSON body or query parameters).",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "phone": {"type": "string", "example": "1000", "description": "Destination number, SIP extension, or 'oncall' alias"},
+                                        "message": {"type": "string", "example": "Critical alert: PostgreSQL replication lag exceeded 30 seconds"},
+                                        "lang": {"type": "string", "example": "en", "description": "Optional TTS language code"},
+                                    },
+                                    "required": ["phone", "message"],
+                                }
+                            }
+                        }
+                    },
                     "responses": {"200": {"description": "Enqueued successfully"}},
                 }
             },
             f"/{ASTERISK_CALL_APP_ROUTE_PLAY}": {
                 "post": {
                     "summary": "Play audio to active channel",
-                    "description": "Dispatches audio playback command to active channel in Stasis.",
+                    "description": "Dispatches synthesized WAV audio playback to an active Asterisk channel in Stasis and resumes the dialplan.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "asterisk_chan": {"type": "string", "example": "1732660000.42"},
+                                        "msg_chk_sum": {"type": "string", "example": "9f86d081884c7d659a2feaa0c55ad015"},
+                                        "lang": {"type": "string", "example": "en"},
+                                    },
+                                    "required": ["asterisk_chan", "msg_chk_sum"],
+                                }
+                            }
+                        }
+                    },
                     "responses": {"200": {"description": "Playback started"}},
                 }
             },

@@ -225,6 +225,34 @@ class MetadataTests(unittest.TestCase):
         with self.assertRaises(contract.ContractError):
             contract.load_json('{"schema_version":1,"schema_version":1}')
 
+    def test_prebuilt_nullable_provenance_contract(self):
+        binary = elf()
+        record = metadata(binary=binary)
+        record["source_dirty"] = None
+        record["build"]["prebuilt"] = True
+        record["build"]["cargo_locked"] = None
+        validated = contract.validate_metadata(record, "amd64", binary)
+        self.assertTrue(validated["build"]["prebuilt"])
+
+        for bad_record in (
+            {**metadata(binary=binary), "source_dirty": None},
+            {**metadata(binary=binary), "build": {**metadata(binary=binary)["build"], "cargo_locked": None}},
+        ):
+            with self.assertRaises(contract.ContractError):
+                contract.validate_metadata(bad_record, "amd64", binary)
+
+        missing_dirty = metadata(binary=binary)
+        missing_dirty["build"]["prebuilt"] = True
+        missing_dirty.pop("source_dirty")
+        with self.assertRaises(contract.ContractError):
+            contract.validate_metadata(missing_dirty, "amd64", binary)
+
+        string_dirty = metadata(binary=binary)
+        string_dirty["build"]["prebuilt"] = True
+        string_dirty["source_dirty"] = "null"
+        with self.assertRaises(contract.ContractError):
+            contract.validate_metadata(string_dirty, "amd64", binary)
+
 
 class RuntimeTests(TemporaryCase):
     def test_both_architecture_runtime_paths_and_missing_dependencies(self):

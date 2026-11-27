@@ -1,0 +1,81 @@
+name: CI Verification Suite
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Python, Rust, Ansible & Documentation Coherence Gate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install native Linux headers for openalertd & Ansible CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libdbus-1-dev \
+            libudev-dev \
+            libssl-dev \
+            ffmpeg
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.14 & sync frozen workspace
+        run: |
+          uv python install 3.14 3.12
+          uv sync --frozen --all-packages
+
+      - name: Install Rust stable toolchain with Clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Build native rust_engine SMS extension
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+        run: |
+          uv run maturin develop --manifest-path src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/Cargo.toml --locked
+
+      - name: Verify GitHub Pages Build
+        run: python3 deploy/pages/build_pages.py --output-dir _site
+
+      - name: Run Python, Packaging & Documentation Coherence Suite
+        run: |
+          uv lock --check
+          uv run --no-sync pytest \
+            test/ \
+            tests/test_appsec_pipeline.py \
+            tests/test_pypi_packaging.py \
+            tests/test_linux_packaging.py \
+            tests/test_k8s_and_compose_packaging.py \
+            tests/test_airgap_preparation.py \
+            tests/test_docs_coherence.py \
+            deploy/ansible/tests/test_ansible_bundle.py
+
+      - name: Run Rust Clippy & Test Suite
+        run: |
+          cargo clippy --manifest-path src/openalert/Cargo.toml --all-targets --locked -- -D warnings
+          cargo test --manifest-path src/openalert/Cargo.toml --locked
+
+      - name: Run Offline Ansible Role & Contract Unit Suite
+        run: |
+          uv venv .venv-ansible --python 3.14
+          uv pip install --python .venv-ansible/bin/python -r deploy/ansible/tests/requirements-controller.txt requests flask aiohttp pytest
+          .venv-ansible/bin/ansible-galaxy collection install -r deploy/ansible/requirements.yml -p deploy/ansible/.collections
+          cd deploy/ansible
+          ANSIBLE_CONFIG="$PWD/ansible.cfg" ../../.venv-ansible/bin/python -m unittest discover -s tests -v

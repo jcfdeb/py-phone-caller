@@ -8,14 +8,14 @@ async def test_create_service_catalog():
     catalog = create_service_catalog(
         service_name="test_service",
         description="A test service catalog",
-        version="1.0.0",
+        version="1.1.0",
         docs_url="/docs",
         openapi_spec="/docs/swagger.json",
         endpoints={"POST /test": "Test endpoint"},
     )
     assert catalog["service"] == "test_service"
     assert catalog["status"] == "online"
-    assert catalog["version"] == "1.0.0"
+    assert catalog["version"] == "1.1.0"
     assert catalog["docs_url"] == "/docs"
     assert "/docs/swagger.json" in catalog["openapi_spec"]
     assert "POST /test" in catalog["endpoints"]

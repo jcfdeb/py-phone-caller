@@ -13,7 +13,7 @@ vars:
   DIST_DIR: dist
   SEMGREP_PYTHON: '3.12'
   REGISTRY: '{{.MY_DOCKER_REGISTRY | default "localhost"}}'
-  VERSION: '{{.VERSION | default "1.0.0"}}'
+  VERSION: '{{.VERSION | default "1.1.0"}}'
   DEFAULT_IMAGE: '{{.REGISTRY}}/openalertd:{{.VERSION}}'
   CORE_SERVICES: openalertd caller_prometheus_webhook generate_audio py_phone_caller_ui
   ALL_SERVICES: >-
@@ -287,7 +287,7 @@ tasks:
         fi
 
   sec:image:
-    desc: Scan a single container image (task sec:image IMAGE=localhost/openalertd:1.0.0)
+    desc: Scan a single container image (task sec:image IMAGE=localhost/openalertd:1.1.0)
     deps: [sec:init]
     vars:
       TARGET_IMAGE: '{{.IMAGE | default .DEFAULT_IMAGE}}'
@@ -398,7 +398,23 @@ tasks:
         tests/test_linux_packaging.py
         tests/test_k8s_and_compose_packaging.py
         tests/test_airgap_preparation.py
+        tests/test_docs_coherence.py
         deploy/ansible/tests/test_ansible_bundle.py
+
+  version:check:
+    desc: Verify all Python, Rust, and Helm manifests match the canonical root version
+    cmds:
+      - uv run --no-sync pytest tests/test_docs_coherence.py -k version -v
+
+  docs:build:
+    desc: Build the hybrid GitHub Pages site (_site/) including landing pages and /manual/ docs portal
+    cmds:
+      - python3 deploy/pages/build_pages.py --output-dir _site
+
+  docs:serve:
+    desc: Build and serve the hybrid GitHub Pages site locally on http://127.0.0.1:8008
+    cmds:
+      - python3 deploy/pages/build_pages.py --output-dir _site --serve --port 8008
 
   verify:rust:
     desc: Full Rust non-regression gate (cargo clippy -D warnings + full openalertd test suite)

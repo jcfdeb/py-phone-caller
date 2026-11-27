@@ -1,0 +1,196 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "generate_audio",
+    "description": "Multi-engine Text-to-Speech (Kokoro, Silero, Piper, MMS, Polly, gTTS) audio synthesis service",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8082",
+      "description": "Direct service listener"
+    },
+    {
+      "url": "https://alerts.example.com/api/v1/audio",
+      "description": "Via APISIX Gateway"
+    }
+  ],
+  "paths": {
+    "/make_audio": {
+      "post": {
+        "summary": "Generate WAV audio from text",
+        "description": "Triggers 8 kHz 16-bit mono WAV synthesis using the configured or overridden TTS engine.",
+        "parameters": [
+          {
+            "name": "message",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "Critical alert: primary database CPU at 98%"
+          },
+          {
+            "name": "msg_chk_sum",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "9f86d081884c7d659a2feaa0c55ad015"
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "en"
+          },
+          {
+            "name": "speed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number"
+            },
+            "example": 1.0
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "kokoro_tts"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audio synthesis started or already cached"
+          },
+          "400": {
+            "description": "Missing required message or msg_chk_sum parameter"
+          }
+        }
+      }
+    },
+    "/is_audio_ready": {
+      "get": {
+        "summary": "Check audio synthesis readiness",
+        "parameters": [
+          {
+            "name": "msg_chk_sum",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "9f86d081884c7d659a2feaa0c55ad015"
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "en"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Readiness status JSON ({exists: bool})"
+          }
+        }
+      }
+    },
+    "/languages": {
+      "get": {
+        "summary": "Discover installed offline TTS models and languages",
+        "responses": {
+          "200": {
+            "description": "Active engine, languages, and installed models catalog"
+          }
+        }
+      }
+    },
+    "/audio/{filename}": {
+      "get": {
+        "summary": "Serve synthesized WAV audio file",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "9f86d081884c7d659a2feaa0c55ad015_en.wav"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "16-bit mono 8 kHz WAV file"
+          },
+          "404": {
+            "description": "Audio file not found"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Liveness probe (/health, /healthz, /live)",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "healthy",
+                  "service": "generate_audio",
+                  "version": "1.1.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Dependency-aware readiness probe",
+        "responses": {
+          "200": {
+            "description": "Downstream dependencies (PostgreSQL / Redis / Asterisk ARI) ready"
+          },
+          "503": {
+            "description": "Dependency check degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus text-format telemetry metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition payload"
+          }
+        }
+      }
+    }
+  }
+}

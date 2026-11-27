@@ -462,9 +462,9 @@ python3 /opt/py-phone-caller/deploy/gateway/apisix/setup_apisix_routes.py
 ```
 
 This configures APISIX to route:
-- `/realms/*`, `/resources/*`, `/admin/*` $\to$ Keycloak (`127.0.0.1:8180`)
-- `/*` $\to$ Web UI (`127.0.0.1:5000`)
-- `/api/v1/*` $\to$ Backend microservice endpoints
+- `/realms/*`, `/resources/*`, `/admin/*` → Keycloak (`127.0.0.1:8180`)
+- `/*` → Web UI (`127.0.0.1:5000`)
+- `/api/v1/*` → Backend microservice endpoints
 
 ---
 
@@ -533,12 +533,12 @@ curl -s -X POST https://your-domain.com/realms/py-phone-caller/protocol/openid-c
 1. Navigate to: `https://your-domain.com/admin`
 2. Log in as master `admin`.
 3. In the top-left dropdown, switch from `master` to the `py-phone-caller` realm.
-4. Go to **Users** $\to$ **Add user** to create operators or engineers.
+4. Go to **Users** → **Add user** to create operators or engineers.
 5. In the user's **Role mapping** tab, assign either `alert-admin`, `alert-operator`, or `alert-viewer`.
 
 ### Federating with Enterprise Identity Providers (GitHub, Google, Entra ID)
 In the Keycloak Admin Console (`py-phone-caller` realm):
-1. Go to **Identity Providers** $\to$ Click **GitHub** / **Google** / **OpenID Connect v1.0**.
+1. Go to **Identity Providers** → Click **GitHub** / **Google** / **OpenID Connect v1.0**.
 2. Paste your corporate Client ID and Client Secret.
 3. Users will now see a *"Log in with GitHub"* or *"Log in with Google"* button automatically on your portal login page!
 
@@ -559,7 +559,7 @@ Or on your control workstation:
 | Issue | Root Cause | Solution |
 | :--- | :--- | :--- |
 | **502 Bad Gateway on Keycloak routes** | Keycloak Quarkus JVM takes 15–30 seconds to boot on container start. | Wait 30 seconds and check `podman logs keycloak`. Ensure it says `Listening on: http://0.0.0.0:8180`. |
-| **Invalid Parameter: redirect_uri** | The browser redirect URI does not match the allowed list in Keycloak client. | In Keycloak Admin UI, open `py-phone-caller-ui` client $\to$ check **Valid redirect URIs**. Add `https://your-domain.com/*`. |
+| **Invalid Parameter: redirect_uri** | The browser redirect URI does not match the allowed list in Keycloak client. | In Keycloak Admin UI, open `py-phone-caller-ui` client → check **Valid redirect URIs**. Add `https://your-domain.com/*`. |
 | **Port Conflict on 9000** | APISIX Dashboard default (9000) conflicts with Keycloak management port. | We run APISIX Dashboard on port `9001` and Keycloak management on `9009`. |
 | **Infinite Login Loop** | Reverse proxy is stripping `X-Forwarded-Proto` header. | In Apache, ensure `RequestHeader set X-Forwarded-Proto "https"` is configured inside the `<VirtualHost *:443>`. |
 | **Local Fallback Admin Password Forgotten** | Local database password needs reset. | Set `UI_USER_RESET_PASSWORD=true` in `/etc/py-phone-caller/credentials.env` and restart `py-phone-caller-py-phone-caller-ui.service`. |

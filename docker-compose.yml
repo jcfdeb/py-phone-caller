@@ -1,5 +1,11 @@
 # ==============================================================================
-# OpenAlert & py-phone-caller v1.0.0 - Production Docker Compose Stack
+# OpenAlert & py-phone-caller v1.1.0 - Lightweight Edge & Webhook Bridge Stack
+#
+# NOTE: This root Compose file launches ONLY the 3-container OpenAlert edge
+# bridge (openalertd + caller_prometheus_webhook + generate_audio).
+# For the FULL 15-container py-phone-caller platform (Web UI :5000, PostgreSQL,
+# Redis, Celery, all 11 microservices, and optional APISIX/Keycloak Gateway),
+# use: deploy/compose/docker-compose.yml (see deploy/docs/03-docker-compose-deployment.md).
 #
 # Quick Start (Software Transports: REST, /sos Portal, Nostr Quorum, Embedded
 # Nostr Micro-Relay :8088, NIP-57 Lightning Zap Adapter & Telephony Bridge):
@@ -10,7 +16,7 @@
 #
 # Build ARM64 Image (Fast Cross-Compilation on x86_64 or Native on ARM64):
 #   docker buildx build --platform linux/arm64 -f src/openalert/Dockerfile.arm64 \
-#     -t localhost/openalertd:1.0.0-arm64 --load src/openalert
+#     -t localhost/openalertd:1.1.0-arm64 --load src/openalert
 # ==============================================================================
 
 services:
@@ -21,7 +27,7 @@ services:
     build:
       context: ./src/openalert
       dockerfile: ${OPENALERT_DOCKERFILE:-Dockerfile}
-    image: ${MY_DOCKER_REGISTRY:-localhost}/openalertd:${VERSION:-1.0.0}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/openalertd:${VERSION:-1.1.0}
     container_name: openalertd
     restart: unless-stopped
     ports:
@@ -68,7 +74,7 @@ services:
     build:
       context: .
       dockerfile: src/caller_prometheus_webhook/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_prometheus_webhook:${VERSION:-1.0.0}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/caller_prometheus_webhook:${VERSION:-1.1.0}
     container_name: py-phone-caller-webhook
     restart: unless-stopped
     depends_on:
@@ -101,7 +107,7 @@ services:
     build:
       context: .
       dockerfile: src/generate_audio/Dockerfile
-    image: ${MY_DOCKER_REGISTRY:-localhost}/generate_audio:${VERSION:-1.0.0}
+    image: ${MY_DOCKER_REGISTRY:-localhost}/generate_audio:${VERSION:-1.1.0}
     container_name: py-phone-caller-audio
     restart: unless-stopped
     environment:

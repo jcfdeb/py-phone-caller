@@ -100,7 +100,7 @@ Every deployment method (Ansible, Docker Compose, Kubernetes, Helm, RPM/DEB, and
 
 If you use the **[Native Ansible Installer](02-ansible-deployment.md)** with `stack_deploy_asterisk: true`, Ansible installs and configures Asterisk automatically.
 
-If you connect `py-phone-caller` to an **existing/external Asterisk or FreePBX server** (Docker Compose, Kubernetes, Helm, or DEB/RPM), ensure your Asterisk server has:
+If you connect `py-phone-caller` to an **existing/external Asterisk or FreePBX server** (Docker Compose, Kubernetes, Helm, or DEB/RPM), see **[Asterisk PBX Configuration & Examples](../../docs/asterisk-pbx-configuration-guide.md)** for full `/etc/asterisk/*.conf` examples and ensure your Asterisk server has:
 
 1. **HTTP Server Enabled (`/etc/asterisk/http.conf`)**:
    ```ini
@@ -118,7 +118,7 @@ If you connect `py-phone-caller` to an **existing/external Asterisk or FreePBX s
    [py-phone-caller]
    type = user
    read_only = no
-   password = YOUR_STRONG_ARI_PASSWORD
+   password = <PASSWORD>
    ```
 3. **Stasis Dialplan & DTMF Acknowledgment (`/etc/asterisk/extensions.conf`)**:
    When `asterisk_caller` originates a call, it drops the answered channel into the `py-phone-caller` Stasis application (`context = "py-phone-caller"`, `extension = "3216"` by default). After `Stasis` finishes playing the TTS message, the dialplan marks the call as heard (`GET /heard`), prompts the callee to press **`4`** (default acknowledgment digit, matching `deploy/ansible/roles/asterisk_py_phone_caller/templates/extensions.conf.j2`), and invokes `GET /ack` on `caller_register` (`:8083`) when `4` is entered:
@@ -167,9 +167,10 @@ In addition, **any setting** in `settings.toml` or `.secrets.toml` can be overri
 DYNACONF_<SECTION>__<KEY>=<value>
 ```
 For example:
-- `[commons] asterisk_host` $\rightarrow$ `DYNACONF_COMMONS__ASTERISK_HOST`
-- `[database] db_password` $\rightarrow$ `DYNACONF_DATABASE__DB_PASSWORD`
-- `[py_phone_caller_ui] ui_admin_password` $\rightarrow$ `DYNACONF_PY_PHONE_CALLER_UI__UI_ADMIN_PASSWORD`
+
+- `[commons] asterisk_host` → `DYNACONF_COMMONS__ASTERISK_HOST`
+- `[database] db_password` → `DYNACONF_DATABASE__DB_PASSWORD`
+- `[py_phone_caller_ui] ui_admin_password` → `DYNACONF_PY_PHONE_CALLER_UI__UI_ADMIN_PASSWORD`
 
 ### Required Secrets Checklist (`.secrets.toml`)
 Never commit real secrets to Git. Whether you provide `.secrets.toml` on disk, Kubernetes `Secret`, Helm `--set secrets.*`, or Ansible Vault, you must configure these keys:

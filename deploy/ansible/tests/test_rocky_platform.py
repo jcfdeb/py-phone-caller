@@ -32,7 +32,9 @@ class RockyPlatformTests(unittest.TestCase):
             ("Rocky", "10.2", "x86_64", True),
             ("Rocky", "10.2", "aarch64", False),
             ("Rocky", "9.6", "x86_64", False),
-            ("AlmaLinux", "10.2", "x86_64", False),
+            ("AlmaLinux", "10.2", "x86_64", True),
+            ("AlmaLinux", "10.2", "aarch64", False),
+            ("AlmaLinux", "9.5", "x86_64", False),
             ("Debian", "13", "aarch64", True),
             ("Ubuntu", "26.04", "x86_64", True),
             ("Ubuntu", "24.04", "x86_64", False),
@@ -56,10 +58,12 @@ class RockyPlatformTests(unittest.TestCase):
     def test_rocky10_caddy_uses_distribution_repositories(self):
         task = next(item for item in load_tasks("roles/reverse_proxy/tasks/main.yml")
                     if item["name"] == "Enable the Caddy COPR repository (RHEL/Rocky)")
-        for major, expected in (("10", False), ("9", True)):
-            values = {"py_phone_caller_connectivity": "online", "ansible_facts": {
-                "os_family": "RedHat", "distribution": "Rocky", "distribution_major_version": major}}
-            self.assertEqual(all(evaluate(item, values) for item in task["when"]), expected)
+        for distribution in ("Rocky", "AlmaLinux"):
+            for major, expected in (("10", False), ("9", True)):
+                with self.subTest(distribution=distribution, major=major):
+                    values = {"py_phone_caller_connectivity": "online", "ansible_facts": {
+                        "os_family": "RedHat", "distribution": distribution, "distribution_major_version": major}}
+                    self.assertEqual(all(evaluate(item, values) for item in task["when"]), expected)
 
     def test_explicit_profiles_do_not_ignore_missing_audio_dependencies(self):
         task = next(item for item in load_tasks("roles/deploy_py-phone-caller/tasks/prereqs.yml")

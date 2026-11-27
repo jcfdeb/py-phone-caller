@@ -1,0 +1,34 @@
+# Apache APISIX Dashboard configuration for Docker / Podman Compose
+conf:
+  listen:
+    host: 0.0.0.0
+    port: 9000
+  allow_list:
+    - 127.0.0.1
+    - ::1
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+  etcd:
+    endpoints:
+      - apisix-etcd:2379
+    mtls:
+      key_file: ""
+      cert_file: ""
+      ca_file: ""
+  log:
+    error_log:
+      level: warn
+      file_path: logs/error.log
+    access_log:
+      file_path: logs/access.log
+
+plugins:
+  - api-breaker
+  - authz-keycloak
+  - cors
+  - limit-count
+  - limit-req
+  - openid-connect
+  - prometheus
+  - proxy-rewrite

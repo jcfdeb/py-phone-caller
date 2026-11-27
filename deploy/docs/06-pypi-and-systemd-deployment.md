@@ -25,10 +25,10 @@ The `dist/pypi/` directory contains **13 publishable Python packages** (**1** um
 | `celery-worker` | `ppc-celery-worker` | `py-phone-caller run celery-worker` | *(worker)* | Celery worker for priority and scheduled call tasks |
 
 ### Available Extras on `py-phone-caller`
-- `py-phone-caller[services]==1.0.0`: Installs `py_phone_caller_utils` + all 9 backend/worker services (excludes UI and heavy neural TTS weights).
-- `py-phone-caller[ui]==1.0.0`: Installs `py_phone_caller_utils` + `py-phone-caller-ui`.
-- `py-phone-caller[audio]==1.0.0`: Installs `py_phone_caller_utils` + `generate-audio` (includes PyTorch, Kokoro, Piper, Transformers, AWS Boto3, gTTS).
-- `py-phone-caller[all]==1.0.0`: Installs the `py-phone-caller` umbrella CLI plus **all 12 workspace packages** (all 13 PyPI packages) in one command.
+- `py-phone-caller[services]==1.1.0`: Installs `py_phone_caller_utils` + all 9 backend/worker services (excludes UI and heavy neural TTS weights).
+- `py-phone-caller[ui]==1.1.0`: Installs `py_phone_caller_utils` + `py-phone-caller-ui`.
+- `py-phone-caller[audio]==1.1.0`: Installs `py_phone_caller_utils` + `generate-audio` (includes PyTorch, Kokoro, Piper, Transformers, AWS Boto3, gTTS).
+- `py-phone-caller[all]==1.1.0`: Installs the `py-phone-caller` umbrella CLI plus **all 12 workspace packages** (all 13 PyPI packages) in one command.
 
 ---
 
@@ -50,7 +50,7 @@ The `dist/pypi/` directory contains **13 publishable Python packages** (**1** um
    # Install from local dist/pypi/ wheels (or your private PyPI index)
    sudo uv pip install --python /opt/py-phone-caller/venv/bin/python \
      --find-links ./dist/pypi \
-     "py-phone-caller[all]==1.0.0"
+     "py-phone-caller[all]==1.1.0"
 
    sudo chown -R py-phone-caller:py-phone-caller /opt/py-phone-caller
    ```

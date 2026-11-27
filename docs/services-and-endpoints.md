@@ -60,7 +60,7 @@ All HTTP microservices automatically register uniform liveness, readiness, servi
   {
     "status": "healthy",
     "service": "asterisk_caller",
-    "version": "1.0.0"
+    "version": "1.1.0"
   }
   ```
 
@@ -340,7 +340,7 @@ Flask web interface and Backend-for-Frontend (BFF) with full `Flask-Babel` inter
   - `users`: User account administration, password reset, and role management.
 
 #### Health, Telemetry & Diagnostics Endpoints
-- `GET /health` & `GET /ready` *(unauthenticated)*: Public liveness and readiness JSON probes (`{"service": "py_phone_caller_ui", "status": "healthy", "version": "1.0.0"}`).
+- `GET /health` & `GET /ready` *(unauthenticated)*: Public liveness and readiness JSON probes (`{"service": "py_phone_caller_ui", "status": "healthy", "version": "1.1.0"}`).
 - `GET /api/cluster_health` *(authenticated)*: Concurrent health aggregation JSON across PostgreSQL, Redis, Asterisk ARI/WS, SMS engine, API Gateway, and IAM (also displayed live in the NOC Dashboard Cluster Health HUD). Redirects to `/login` when unauthenticated.
 - `GET /api/dashboard_metrics` *(authenticated)*: Live KPI counters (call ack rate, SMS success rate, active schedules, on-call responders, call lifecycle breakdown).
 - `GET /api/telemetry_stream` *(authenticated)*: Real-time Server-Sent Events (SSE) stream pushing live telephony and dashboard metric updates.

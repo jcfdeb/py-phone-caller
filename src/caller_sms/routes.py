@@ -136,7 +136,7 @@ def setup_routes(app: web.Application) -> None:
         catalog = create_service_catalog(
             service_name="caller_sms",
             description="Caller SMS service for py-phone-caller",
-            version="1.0.0",
+            version="1.1.0",
             docs_url="/docs",
             openapi_spec="/docs/swagger.json",
             endpoints={
@@ -190,13 +190,35 @@ def setup_routes(app: web.Application) -> None:
                     "summary": "Retrieve SMS log records",
                     "description": "Fetches recent SMS delivery records from Piccolo database.",
                     "parameters": [
-                        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50}},
-                        {"name": "phone", "in": "query", "schema": {"type": "string"}},
-                        {"name": "status", "in": "query", "schema": {"type": "string"}},
+                        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50, "example": 50}},
+                        {"name": "phone", "in": "query", "schema": {"type": "string", "example": "1000"}},
+                        {"name": "status", "in": "query", "schema": {"type": "string", "example": "sent"}},
                     ],
                     "responses": {
                         "200": {"description": "List of SMS log records"},
                     },
+                }
+            },
+            "/sms/inbound": {
+                "post": {
+                    "summary": "Ingest inbound SMS event from cellular modem",
+                    "description": "Records an incoming GSM/LTE SMS received by the on-premise modem poller.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "sender": {"type": "string", "example": "+39000000000"},
+                                        "message": {"type": "string", "example": "ACK"},
+                                        "modem_id": {"type": "string", "example": "primary_carrier"},
+                                    },
+                                    "required": ["sender", "message"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "Inbound SMS processed"}},
                 }
             },
         },

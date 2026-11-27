@@ -58,7 +58,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: openalertd
-          image: quay.io/py-phone-caller/openalertd:1.0.0
+          image: quay.io/py-phone-caller/openalertd:1.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8090

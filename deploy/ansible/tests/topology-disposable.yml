@@ -1,0 +1,106 @@
+---
+# Only the parent invokes this on a provisioned, explicitly acknowledged VM.
+- name: Authorize a single isolated topology qualification target
+  hosts: "{{ topology_test_host | default('topology-disposable-unselected') }}"
+  gather_facts: false
+  any_errors_fatal: true
+  no_log: true
+  vars_files:
+    - ../roles/deploy_py-phone-caller/defaults/main.yml
+  tasks:
+    - name: Require authorization before gathering facts or changing the target
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all == [topology_test_host]
+          - stack_hosts == topology_test_host
+          - stack_disposable_test_acknowledged | default(false) | bool
+          - topology_test_allow_changes | default(false) | bool
+          - topology_test_parent_joined | default(false) | bool
+          - not ansible_check_mode
+          - stack_deploy_py_phone_caller | bool
+          - not stack_deploy_openalert | bool
+          - py_phone_caller_topology in ['standard', 'enterprise']
+          - py_phone_caller_manage_gateway == (py_phone_caller_topology == 'enterprise')
+          - py_phone_caller_topology != 'standard' or py_phone_caller_connectivity == 'airgapped'
+          - py_phone_caller_ingress == 'caddy'
+          - py_phone_caller_manage_reverse_proxy | bool
+          - py_phone_caller_tls_mode in ['internal', 'provided']
+          - py_phone_caller_public_url == 'https://caller.internal'
+          - caddy_domain_name == 'caller.internal'
+          - topology_test_tls_ca_path is match('^/[A-Za-z0-9_./-]+[.](crt|pem)$')
+          - py_phone_caller_service_ip_address_deny == ['any']
+          - py_phone_caller_service_ip_address_allow == ['localhost']
+          - py_phone_caller_airgap_networks == []
+          - py_phone_caller_manage_services | bool
+          - py_phone_caller_manage_firewall | bool
+          - py_phone_caller_firewall_ports | difference([80, 443]) | length == 0
+          - py_phone_caller_firewall_extra_ports == []
+          - not asterisk_sip_trunk_enabled | bool
+          - asterisk_http_bindaddr == '127.0.0.1'
+          - asterisk_sip_bindaddr == '127.0.0.1:5060'
+          - asterisk_iax_bindaddr == '127.0.0.1'
+          - py_phone_caller_services | map(attribute='name') | sort == ['asterisk_caller', 'asterisk_recaller', 'asterisk_ws_monitor', 'caller_address_book', 'caller_prometheus_webhook', 'caller_register', 'caller_scheduler', 'caller_sms', 'celery_worker', 'generate_audio', 'py_phone_caller_ui']
+
+    - name: Merge all effective application layers before safety assertions
+      ansible.builtin.set_fact:
+        topology_test_config: >-
+          {{ py_phone_caller_config_defaults
+             | combine(py_phone_caller_config, recursive=True)
+             | combine(py_phone_caller_config_secrets, recursive=True)
+             | combine(py_phone_caller_config_overrides, recursive=True) }}
+
+    - name: Require the private no-dispatch database queue and runtime inputs
+      ansible.builtin.assert:
+        that:
+          - topology_test_config.database.db_host == '127.0.0.1'
+          - topology_test_config.database.db_name == 'py_phone_caller_runtime'
+          - topology_test_config.database.db_user == 'py_phone_caller_runtime'
+          - topology_test_config.queue.queue_host == '127.0.0.1'
+          - topology_test_config.queue.queue_url == 'redis://127.0.0.1:6379/15'
+          - topology_test_config.commons.asterisk_host == '127.0.0.1'
+          - topology_test_config.caller_prometheus_webhook.prometheus_webhook_receivers == []
+          - topology_test_config.caller_sms.modems == []
+          - topology_test_config.asterisk_recaller.times_to_dial | int == 0
+          - topology_test_config.asterisk_recaller.call_backup_callee_max_times | int == 0
+          - topology_test_config.py_phone_caller_ui.ui_listen_on_host == '127.0.0.1'
+          - topology_test_config.py_phone_caller_ui.ui_listen_on_port | int == 5000
+          - not py_phone_caller_ui_reset_password | bool
+          - topology_test_config.generate_audio.preload | dict2items | map(attribute='value') | flatten | length == 0
+          - py_phone_caller_topology != 'standard' or topology_test_config.auth.provider == 'local'
+          - py_phone_caller_topology != 'standard' or not topology_test_config.auth.oauth2.enabled | bool
+          - py_phone_caller_topology != 'standard' or not topology_test_config.gateway.behind_gateway | bool
+
+    - name: Require the current private enterprise listener contract
+      ansible.builtin.assert:
+        that:
+          - py_phone_caller_service_host == '127.0.0.1'
+          - py_phone_caller_gateway_http_port | int == 9080
+          - py_phone_caller_gateway_https_port | int == 9443
+          - py_phone_caller_gateway_dashboard_port | int == 9001
+          - py_phone_caller_keycloak_http_port | int == 8180
+          - py_phone_caller_keycloak_https_port | int == 8443
+          - py_phone_caller_keycloak_realm is match('^[A-Za-z0-9_-]+$')
+          - gateway_keycloak_postgresql_url is match('^jdbc:postgresql://127[.]0[.]0[.]1:[0-9]+/[A-Za-z0-9_-]+$')
+      when: py_phone_caller_topology == 'enterprise'
+
+    - name: Gather operating system facts only after authorization
+      ansible.builtin.setup:
+        gather_subset: [min]
+
+    - name: Limit qualification to the approved operating systems
+      ansible.builtin.assert:
+        that:
+          - >-
+            (ansible_facts.distribution == 'Debian' and ansible_facts.distribution_major_version == '13') or
+            (ansible_facts.distribution == 'Ubuntu' and ansible_facts.distribution_version == '26.04') or
+            (ansible_facts.distribution in ['Rocky', 'AlmaLinux'] and ansible_facts.distribution_major_version in ['9', '10'])
+
+- name: Perform the real installation through the shared entry point
+  ansible.builtin.import_playbook: ../site.yml
+  vars:
+    stack_hosts: "{{ topology_test_host | default('topology-disposable-unselected') }}"
+
+# Mirrors verify.yml and python-inspect.yml, but never follows login redirects
+# or disables certificate verification. Do not replace this with fake APIs.
+- name: Verify and record the real runtime without dispatch or authentication
+  ansible.builtin.import_playbook: topology-inspect.yml

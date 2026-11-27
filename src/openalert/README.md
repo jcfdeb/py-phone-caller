@@ -1,11 +1,11 @@
 # OpenAlert Daemon (`openalertd`)
 ### Mission-Critical Decentralized Alert Routing Daemon, Mesh Gateway & Telephony Bridge
 
-[![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue.svg)](#license)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
 [![HRF Grant](https://img.shields.io/badge/supported%20by-HRF%20Bitcoin%20Dev%20Fund-f7931a.svg)](https://x.com/gladstein/status/2092304843037884677)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
-[![Tests](https://img.shields.io/badge/tests-110%20passed-success.svg)]()
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](../../CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-114%20passed-success.svg)]()
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg)]()
 
 > **OpenAlert** is a decentralized, resilient alerting daemon designed to bridge emergency notifications across isolated networks and physical air gaps. Developed with the support of a grant from the **[Human Rights Foundation (HRF) Bitcoin Development Fund](https://x.com/gladstein/status/2092304843037884677)**, `openalertd` ensures that life-safety alarms, disaster advisories, and critical infrastructure telemetries reach first responders even under total internet blackouts, grid collapses, or adversarial censorship.
@@ -35,6 +35,7 @@
 Traditional alerting stacks rely heavily on centralized SaaS endpoints, public cloud infrastructure, and uninterrupted TCP/IP backhauls. In crisis scenarios (severe weather, network partitioning, power outages, conflict zones), these brittle uplinks fail first.
 
 `openalertd` resolves this single point of failure by operating as an **autonomous multi-protocol store-and-forward mesh router**:
+
 * **Universal Translation:** Translates between IT monitoring watchdogs (Prometheus Alertmanager, Grafana, custom webhooks), decentralized relays (**Nostr**), peer-to-peer radio meshes (**LoRa**), ad-hoc Bluetooth meshes (**BitChat**), and off-grid **Emergency SOS Wi-Fi Captive Portals** (`/sos`).
 * **Zero External Dependencies:** Built in pure, memory-safe Rust with an embedded SQLite engine and an embedded HTML5/CSS3 real-time dashboard. No external web server, Node.js, database server, or broker required.
 * **Telephony Integration:** Natively cascades alerts to `py-phone-caller`, dispatching automated voice calls and SMS alerts over SIP/Asterisk trunking.
@@ -45,7 +46,7 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 
 ### 🚨 Simplified Emergency SOS Web Portal (`/sos`) & Off-Grid Wi-Fi Captive Portal
 * **Configurable SOS Endpoint (`[sos]`):** Exposes a simplified, mobile-first Emergency SOS Web UI (default `/sos`, configurable via `sos.path`) so civilians or field operators without BitChat or 0xChat installed can trigger life-safety alerts without exposing the administrative NOC UI (`/`).
-* **Offline 4-Digit SVG Visual CAPTCHA:** Generates dynamic, distorted 4-digit SVG challenges signed with an ephemeral **HMAC-SHA256** key and one-time nonce verification (`GET /api/v1/sos/challenge` $\rightarrow$ `POST /api/v1/sos/trigger`), blocking automated bot flooding completely offline.
+* **Offline 4-Digit SVG Visual CAPTCHA:** Generates dynamic, distorted 4-digit SVG challenges signed with an ephemeral **HMAC-SHA256** key and one-time nonce verification (`GET /api/v1/sos/challenge` → `POST /api/v1/sos/trigger`), blocking automated bot flooding completely offline.
 * **One-Tap Browser GPS Geolocation (`gps_enabled`):** Optional mobile geolocation button (`navigator.geolocation.getCurrentPosition`) that appends `GPS:lat,lon (±acc_m)` to emergency dispatches.
 * **⚡ NIP-57 Lightning Zap Alert Adapter (`[sos] zap_enabled` & `[nostr.zaps]`):** Optional collapsible section on `/sos` (`POST /api/v1/sos/zap-invoice` & `GET /api/v1/sos/zap-status/{id}`) that builds a signed `Kind 9734` Zap Request, resolves the node's `lud16` Lightning Address, renders an inline SVG BOLT-11 QR code + `lightning:` deep-link, and verifies the resulting `Kind 9735` Zap Receipt via a 6-stage cryptographic pipeline with tiered satoshi severity escalation (`min_sats_warning = 21`, `min_sats_critical = 1000`, `min_sats_emergency = 10000`) and **strict Nostr/0xChat-only egress isolation**.
 * **Optional SOS Authentication (`[sos.auth]`):** Supports open emergency access (guarded by the offline SVG CAPTCHA and `cooldown_seconds` rate-limiting) or HTTP Basic Authentication (`username` + SHA-256 `password_hash`).
@@ -57,9 +58,9 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 
 ### 📱 0xChat Mobile Integration & Embedded Nostr Micro-Relay
 * **Tactical In-Process Micro-Relay (`[nostr.relay_server]`):** Zero-external-dependency Nostr WebSocket server embedded directly in `openalertd` on port `8088` (NIP-01, NIP-11 discovery, NIP-20 acknowledgments, NIP-33 `#d` filtering, NIP-40 expiration, NIP-57 Zap mirroring, SQLite persistence).
-* **Modern E2EE Onion Encryption:** Dual-mode encrypted DM engine wrapping notifications in NIP-59 / NIP-17 Gift Wraps (`Kind 1059` Wrap $\rightarrow$ `Kind 13` Seal $\rightarrow$ `Kind 14` Rumor) using NIP-44 v2 ChaCha20-Poly1305 authenticated encryption.
+* **Modern E2EE Onion Encryption:** Dual-mode encrypted DM engine wrapping notifications in NIP-59 / NIP-17 Gift Wraps (`Kind 1059` Wrap → `Kind 13` Seal → `Kind 14` Rumor) using NIP-44 v2 ChaCha20-Poly1305 authenticated encryption.
 * **Interactive Tactical C2 & Thread-Aware Replies:** Real-time authenticated C2 parsing (`status`, `ping`, `mesh <msg>`, `sms <num> <msg>`, `ack`, `help`) with prefix flexibility (`!`, `/`, or bare verbs). Thread-aware parent resolution enables instant 1-tap `ack`/`ok` by replying directly to alert cards in 0xChat.
-* **Multi-Bearer Cross-Bridging:** Seamless translation across 0xChat (Nostr) $\longleftrightarrow$ BitChat (BLE Mesh) $\longleftrightarrow$ Cellular (4G LTE SMS).
+* **Multi-Bearer Cross-Bridging:** Seamless translation across 0xChat (Nostr) ⟷ BitChat (BLE Mesh) ⟷ Cellular (4G LTE SMS).
 * **Dual SSL / TLS Strategy:** Production deployments delegate WSS termination to reverse proxies (Caddy, Nginx). For single-box air-gapped field kits, `openalertd` features battle-ready native TLS (`[nostr.relay_server.tls]`) via `tokio-rustls` for direct `wss://` sockets without external services.
 
 ### ⚡ NIP-57 Lightning Zap Receipt Verifier (`[nostr.zaps]`)
@@ -87,7 +88,7 @@ Traditional alerting stacks rely heavily on centralized SaaS endpoints, public c
 
 ### 🛡️ Resilience, Storage & Ingress Hardening
 * **Embedded SQLite Flash Spool:** Zero-loss persistence for outbound packets during network outages. Spooled items are automatically flushed upon link recovery.
-* **Self-Healing Circuit Breakers:** Independent per-peer circuit breakers (Closed $\rightarrow$ Open $\rightarrow$ Half-Open) with exponential cooldown backoff prevent cascading buffer bloat when peers go offline.
+* **Self-Healing Circuit Breakers:** Independent per-peer circuit breakers (Closed → Open → Half-Open) with exponential cooldown backoff prevent cascading buffer bloat when peers go offline.
 * **Cryptographic Ingress Protection:** Supports HTTP Bearer tokens and HMAC-SHA256 signature verification with anti-replay timestamp validation windows.
 * **Sliding-Window Retention:** Background database cleaner prunes historical alerts and spooled records to protect disk space on embedded flash drives.
 
@@ -330,11 +331,11 @@ openalertd [COMMAND] [OPTIONS]
 
 ## 8. REST API Specification
 
-All HTTP endpoints bind to unprivileged ports ($\ge 1024$), default `8090`.
+All HTTP endpoints bind to unprivileged ports (≥ 1024), default `8090`.
 
 ### Health & Metrics
 * **`GET /health`**  
-  Returns `{ "status": "ok", "version": "1.0.0", "uptime_seconds": 124 }`. Unauthenticated.
+  Returns `{ "status": "ok", "version": "1.1.0", "uptime_seconds": 124 }`. Unauthenticated.
 * **`GET /metrics`**  
   Prometheus exposition format (`openalert_alerts_received_total`, `openalert_alerts_routed_total`, `openalert_peering_spool_backlog`, etc.).
 
@@ -446,7 +447,7 @@ To generate a production-ready, stripped binary distribution tarball with SHA-25
 ```bash
 bash packaging/build_release_bundle.sh
 ```
-Outputs `openalertd-v1.0.0-linux-<arch>.tar.gz` containing the binary, templates, turnkey profiles, systemd service, Docker & ARM64 multi-stage manifests (`docker/`), optional Wi-Fi AP Captive Portal bundle (`wifi-ap/`), installer, and verification scripts.
+Outputs `openalertd-v1.1.0-linux-<arch>.tar.gz` containing the binary, templates, turnkey profiles, systemd service, Docker & ARM64 multi-stage manifests (`docker/`), optional Wi-Fi AP Captive Portal bundle (`wifi-ap/`), installer, and verification scripts.
 
 ### 3. Automated POSIX Installer & Optional Wi-Fi SOS Captive Portal
 ```bash
@@ -463,10 +464,10 @@ sudo bash packaging/verify_install.sh
 ### 4. Multi-Stage Docker, ARM64 Cross-Compilation & Docker Compose
 ```bash
 # 1. Build optimal multi-stage image (~35-40 MB, Debian Bookworm Slim):
-docker build -t openalertd:1.0.0 -f Dockerfile .
+docker build -t openalertd:1.1.0 -f Dockerfile .
 
 # 2. Fast ARM64 (aarch64) image build (native-speed cross-compilation on x86_64 or native on ARM64):
-docker buildx build --platform linux/arm64 -f Dockerfile.arm64 -t openalertd:1.0.0-arm64 --load .
+docker buildx build --platform linux/arm64 -f Dockerfile.arm64 -t openalertd:1.1.0-arm64 --load .
 
 # 3. Launch full Docker Compose stack from repository root (software transports + py-phone-caller):
 cd ../..
@@ -530,7 +531,7 @@ src/openalert/
 ### Critical Maintenance Invariants
 * **BitChat Codec Invariance:** Do NOT alter the packet structures, Noise XX handshake state machine, Ed25519 signatures, or 256-byte payload bucket sizes in `src/bitchat.rs`. These guarantee binary wire compatibility with native BitChat mobile clients.
 * **Timing-Safe Cryptography:** Any credential or secret comparison (Bearer tokens, HMAC signatures, dashboard/SOS passwords) MUST use constant-time comparison (`subtle::ConstantTimeEq`).
-* **Unprivileged Ports:** The daemon default port MUST remain $\ge 1024$ (default `8090`).
+* **Unprivileged Ports:** The daemon default port MUST remain ≥ 1024 (default `8090`).
 
 ---
 

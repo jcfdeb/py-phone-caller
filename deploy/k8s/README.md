@@ -1,4 +1,4 @@
-### Kubernetes Deployment Guide (py-phone-caller 1.0.0)
+### Kubernetes Deployment Guide (py-phone-caller 1.1.0)
 
 > **Centralized Step-by-Step Guide**: See **[`deploy/docs/04-kubernetes-and-helm-deployment.md`](../docs/04-kubernetes-and-helm-deployment.md)** (and the **[Deployment Documentation Hub](../docs/README.md)**) for the complete, verified step-by-step Kubernetes and Helm v3 installation guide.
 
@@ -13,7 +13,7 @@ This directory contains production-ready Kubernetes manifests for deploying the 
 | Manifest | Component | Purpose |
 | :--- | :--- | :--- |
 | `00_py_phone_caller_namespace.yml` | Namespace | Creates the `py-phone-caller` namespace |
-| `01_asterisk_endpoint.yml` | Service & Endpoints | Connects cluster to external Asterisk PBX (ARI/WebSocket) |
+| `01_asterisk_endpoint.yml` | Service & EndpointSlice | Connects cluster to external Asterisk PBX (ARI/WebSocket) |
 | `02_ingress.yml` | Ingress | Exposes HTTP routes through Ingress Controller |
 | `03_postgresql.yml` | PostgreSQL 17 | Relational database deployment, service, and PVC |
 | `03_redis.yml` | Redis 7 | Task queue broker for Celery and scheduled calls |
@@ -50,13 +50,13 @@ kubectl apply -k deploy/k8s/
 #### Option B: Step-by-Step Manifest Apply
 
 ##### 1. Configure External Asterisk PBX
-Update the IP address of your Asterisk PBX in `01_asterisk_endpoint.yml`:
+Update the IP address of your Asterisk PBX in `01_asterisk_endpoint.yml` (`EndpointSlice`):
 ```yaml
-subsets:
+endpoints:
   - addresses:
-      - ip: <ASTERISK_PBX_IP>
-    ports:
-      - port: 8088
+      - "<ASTERISK_PBX_IP>"
+    conditions:
+      ready: true
 ```
 
 ##### 2. Apply Namespace, ConfigMap, and Secret

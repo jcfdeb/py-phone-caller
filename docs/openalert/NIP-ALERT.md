@@ -193,15 +193,18 @@ Because NIP-59 Gift Wraps (`Kind 1059`) intentionally randomize their outer `cre
 
 ## 7. Delivery Quorum (NIP-20) & Relay Health Scoring
 
-When publishing an alert event to $N$ configured relays:
-1. The publisher transmits `["EVENT", <event_json>]` concurrently to all $N$ relays and awaits NIP-20 command results:
-   ```json
-   ["OK", "<event_id>", true, ""]
-   ```
-2. Each relay maintains an exponential moving average health score $S \in [0.0, 1.0]$:
-   - On NIP-20 acceptance: $S \leftarrow 0.8 \cdot S + 0.2$
-   - On timeout, socket error, or NIP-20 rejection: $S \leftarrow 0.6 \cdot S$
-3. Delivery succeeds when at least `quorum_min_relays` ($M \le N$) relays return `accepted = true` within `nip20_timeout_seconds`. If quorum is not met, the alert remains in the local SQLite persistent spool (`status = 'pending'`) for automatic retry or failover routing (e.g., LoRa peering or GSM SMS).
+When publishing an alert event to `N` configured relays:
+
+1. The publisher transmits `["EVENT", <event_json>]` concurrently to all `N` relays and awaits NIP-20 command results:
+
+    ```json
+    ["OK", "<event_id>", true, ""]
+    ```
+
+2. Each relay maintains an exponential moving average health score `S ∈ [0.0, 1.0]`:
+    - On NIP-20 acceptance: `S ← 0.8 × S + 0.2`
+    - On timeout, socket error, or NIP-20 rejection: `S ← 0.6 × S`
+3. Delivery succeeds when at least `quorum_min_relays` (`M ≤ N`) relays return `accepted = true` within `nip20_timeout_seconds`. If quorum is not met, the alert remains in the local SQLite persistent spool (`status = 'pending'`) for automatic retry or failover routing (e.g., LoRa peering or GSM SMS).
 
 ---
 

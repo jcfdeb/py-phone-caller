@@ -124,11 +124,12 @@ HTTP service that converts text messages into audio files using multiple TTS eng
 
 - **Port:** `8082`
 - **Supported TTS Engines:**
-  - **gTTS** _(Google Text-to-Speech)_
-  - **Facebook MMS** _(Offline-capable)_
-  - **Piper TTS** _(Offline-capable)_
-  - **AWS Polly** _(AWS Text-to-Speech)_
-  - **Kokoro TTS** _(Offline-capable)_
+  - **Kokoro TTS** _(Offline-capable, 82M neural)_
+  - **Silero TTS** _(Offline-capable, PyTorch V3 compact multilingual)_
+  - **Piper TTS** _(Offline-capable, ONNX)_
+  - **Facebook MMS** _(Offline-capable, 1,000+ languages)_
+  - **AWS Polly** _(AWS Cloud Text-to-Speech)_
+  - **gTTS** _(Google Cloud Text-to-Speech)_
 - **Key Responsibilities:**
   - Generate `.wav` audio for call messages
   - Serve audio readiness checks

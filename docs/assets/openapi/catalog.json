@@ -1,0 +1,97 @@
+{
+  "version": "1.1.0",
+  "service_count": 9,
+  "total_operations": 122,
+  "services": [
+    {
+      "id": "py_phone_caller_ui",
+      "label": "Web UI & NOC Center",
+      "port": 5000,
+      "gateway_prefix": "/",
+      "source": "src/py_phone_caller_ui/openapi.py",
+      "spec_file": "py_phone_caller_ui.json",
+      "operations": 53,
+      "description": "Comprehensive OpenAPI 3.0 reference for the py-phone-caller Web Dashboard, telemetry streaming bus, diagnostic dispatches, call registries, scheduler queues, address book rosters, carrier SMS tracking, and administrative REST endpoints."
+    },
+    {
+      "id": "openalertd",
+      "label": "OpenAlert Mesh Daemon",
+      "port": 8090,
+      "gateway_prefix": "/openalert",
+      "source": "src/openalert/src/ingress/rest.rs",
+      "spec_file": "openalertd.json",
+      "operations": 24,
+      "description": "Autonomous Rust multi-protocol alert router bridging REST, Prometheus Alertmanager, Nostr (NIP-ALERT Kind 30000 & 0xChat NIP-17 C2), BitChat BLE (Noise XX), LoRa 868 MHz RF peering, GSM AT SMS, and Emergency /sos Wi-Fi Captive Portals."
+    },
+    {
+      "id": "asterisk_caller",
+      "label": "asterisk_caller",
+      "port": 8081,
+      "gateway_prefix": "/api/v1/telephony",
+      "source": "src/asterisk_caller/routes.py",
+      "spec_file": "asterisk_caller.json",
+      "operations": 6,
+      "description": "Asterisk ARI Call Placement and Audio Dispatch Service"
+    },
+    {
+      "id": "generate_audio",
+      "label": "generate_audio (TTS)",
+      "port": 8082,
+      "gateway_prefix": "/api/v1/audio",
+      "source": "src/generate_audio/generate_audio.py",
+      "spec_file": "generate_audio.json",
+      "operations": 7,
+      "description": "Multi-engine Text-to-Speech (Kokoro, Silero, Piper, MMS, Polly, gTTS) audio synthesis service"
+    },
+    {
+      "id": "caller_register",
+      "label": "caller_register",
+      "port": 8083,
+      "gateway_prefix": "/api/v1/registry",
+      "source": "src/caller_register/routes.py",
+      "spec_file": "caller_register.json",
+      "operations": 8,
+      "description": "Call registration, lifecycle tracking, and DTMF acknowledgment registry"
+    },
+    {
+      "id": "caller_prometheus_webhook",
+      "label": "caller_prometheus_webhook",
+      "port": 8084,
+      "gateway_prefix": "/api/v1/alerts",
+      "source": "src/caller_prometheus_webhook/routes.py",
+      "spec_file": "caller_prometheus_webhook.json",
+      "operations": 7,
+      "description": "Prometheus Alertmanager Webhook Ingestion Service"
+    },
+    {
+      "id": "caller_sms",
+      "label": "caller_sms",
+      "port": 8085,
+      "gateway_prefix": "/api/v1/sms",
+      "source": "src/caller_sms/routes.py",
+      "spec_file": "caller_sms.json",
+      "operations": 6,
+      "description": "Caller SMS emergency alert dispatch service for py-phone-caller"
+    },
+    {
+      "id": "caller_scheduler",
+      "label": "caller_scheduler",
+      "port": 8086,
+      "gateway_prefix": "/api/v1/schedules",
+      "source": "src/caller_scheduler/routes.py",
+      "spec_file": "caller_scheduler.json",
+      "operations": 4,
+      "description": "Call Scheduler Service powered by Celery background tasks"
+    },
+    {
+      "id": "caller_address_book",
+      "label": "caller_address_book",
+      "port": 8087,
+      "gateway_prefix": "/api/v1/contacts",
+      "source": "src/caller_address_book/routes.py",
+      "spec_file": "caller_address_book.json",
+      "operations": 7,
+      "description": "Address Book and On-Call Responder Directory Management Service"
+    }
+  ]
+}

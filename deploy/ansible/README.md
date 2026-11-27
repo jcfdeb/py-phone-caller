@@ -5,8 +5,9 @@
 `site.yml` is the canonical entry point for explicitly selected OpenAlert,
 Python application and Asterisk components. **Component-only, combined, `standard`
 `airgapped`, `enterprise`, and OpenAlert lifecycle/relocation checks are qualified
-on Debian 13 AMD64, Ubuntu 26.04 LTS AMD64, and Rocky Linux 10.2 AMD64 VMs; physical
-Orange Pi 5 Plus ARM64 hardware qualification is paused pending board arrival.**
+on Debian 13 AMD64, Ubuntu 26.04 LTS AMD64, Rocky Linux 10 AMD64, and AlmaLinux 10
+AMD64 VMs/cloud instances; physical Orange Pi 5 Plus ARM64 hardware and live
+telephony/radio dispatch remain separate validation gates.**
 Start on a disposable, explicitly authorized host. This documentation does not
 authorize changing or migrating a live installation.
 
@@ -179,12 +180,13 @@ runtime qualification: **335 automated tests and 1,247 subtests pass** across th
 Ansible, OpenAlert, air-gap, and multi-pillar packaging suites. VM scenarios cover
 OpenAlert isolation/safety, Python-only and combined startup, PJSIP/IAX2 (AllStarLink
 on Debian 13, official `distro` on Ubuntu 26.04, and Tucny `22.9.0-1.el10` on Rocky
-10.2), `standard` `airgapped` provisioning with offline Piper TTS synthesis and UI
+10 / AlmaLinux 10 — ensure `iptables-nft` is present on minimal AlmaLinux 10 images),
+`standard` `airgapped` provisioning with offline Piper TTS synthesis and UI
 login, connected `enterprise` provisioning with live Keycloak OIDC login, OpenAlert
 in-place and relocated adoption/recovery, zero-change reruns, external-service
 ownership, legacy entry points and pinned Git/local delivery. Whole-tree lint is not
 clean because role-prefix naming findings remain explicitly deferred as tracked debt
-(not suppressed). Physical Orange Pi 5 Plus ARM64 hardware execution and real
-telephony/radio dispatch remain separate gates pending hardware arrival.
+(not suppressed). Physical Orange Pi 5 Plus ARM64 hardware execution and live
+telephony/radio dispatch remain separate operational validation gates.
 
 See [tests/README.md](tests/README.md) for reproduction and test runner details.

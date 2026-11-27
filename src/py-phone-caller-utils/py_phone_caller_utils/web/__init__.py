@@ -61,7 +61,7 @@ def get_param(
 def create_service_catalog(
     service_name: str,
     description: str,
-    version: str = "1.0.0",
+    version: str = "1.1.0",
     docs_url: str = "/docs",
     openapi_spec: str = "/docs/swagger.json",
     endpoints: Optional[Dict[str, str]] = None,

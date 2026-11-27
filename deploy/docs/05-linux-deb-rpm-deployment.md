@@ -14,8 +14,8 @@ This guide walks you step by step through installing **`py-phone-caller`** and *
 
 | Package | Debian / Ubuntu (`.deb`) | RHEL / Rocky / AlmaLinux (`.rpm`) | Installed Files & System Accounts |
 | :--- | :--- | :--- | :--- |
-| **`py-phone-caller`** | `py-phone-caller_1.0.0-1_all.deb` | `py-phone-caller-1.0.0-1.noarch.rpm` | • System user/group: `py-phone-caller`<br>• Application tree: `/opt/py-phone-caller/py-phone-caller/`<br>• Bundled offline wheels: `/opt/py-phone-caller/wheels/*.whl`<br>• Env file: `/opt/py-phone-caller/py-phone-caller/config/py-phone-caller.env` (`CALLER_CONFIG_DIR=/etc/py-phone-caller`)<br>• Config directory: `/etc/py-phone-caller/settings.toml` & `.secrets.toml.example`<br>• Systemd units: `/lib/systemd/system/*.service` + `py-phone-caller.target` |
-| **`openalertd`** | `openalertd_1.0.0-1_amd64.deb`<br>*(or `_arm64.deb`)* | `openalertd-1.0.0-1.x86_64.rpm`<br>*(or `.aarch64.rpm`)* | • System user/group: `openalert`<br>• Binary: `/usr/local/bin/openalertd`<br>• Config: `/etc/openalertd/openalertd.toml` & `/etc/openalertd/profiles/*.toml`<br>• Assets: `/usr/share/openalertd/templates/` & `wifi-ap/`<br>• State/log dirs: `/var/lib/openalertd`, `/var/log/openalertd`<br>• Systemd unit: `/lib/systemd/system/openalertd.service` |
+| **`py-phone-caller`** | `py-phone-caller_1.1.0-1_all.deb` | `py-phone-caller-1.1.0-1.noarch.rpm` | • System user/group: `py-phone-caller`<br>• Application tree: `/opt/py-phone-caller/py-phone-caller/`<br>• Bundled offline wheels: `/opt/py-phone-caller/wheels/*.whl`<br>• Env file: `/opt/py-phone-caller/py-phone-caller/config/py-phone-caller.env` (`CALLER_CONFIG_DIR=/etc/py-phone-caller`)<br>• Config directory: `/etc/py-phone-caller/settings.toml` & `.secrets.toml.example`<br>• Systemd units: `/lib/systemd/system/*.service` + `py-phone-caller.target` |
+| **`openalertd`** | `openalertd_1.1.0-1_amd64.deb`<br>*(or `_arm64.deb`)* | `openalertd-1.1.0-1.x86_64.rpm`<br>*(or `.aarch64.rpm`)* | • System user/group: `openalert`<br>• Binary: `/usr/local/bin/openalertd`<br>• Config: `/etc/openalertd/openalertd.toml` & `/etc/openalertd/profiles/*.toml`<br>• Assets: `/usr/share/openalertd/templates/` & `wifi-ap/`<br>• State/log dirs: `/var/lib/openalertd`, `/var/log/openalertd`<br>• Systemd unit: `/lib/systemd/system/openalertd.service` |
 
 ---
 
@@ -30,11 +30,11 @@ sudo systemctl enable --now postgresql redis-server
 
 ### On Rocky Linux 10 / RHEL 10 / AlmaLinux 10
 ```bash
-sudo dnf install -y postgresql-server valkey curl ca-certificates
+sudo dnf install -y postgresql-server valkey curl ca-certificates tar ffmpeg-free
 sudo postgresql-setup --initdb
 sudo systemctl enable --now postgresql valkey
 ```
-*(Note: On Rocky Linux 10, `valkey` is the official drop-in replacement for `redis` and listens on the standard `127.0.0.1:6379` port).*
+*(Note: On Rocky Linux 10 and AlmaLinux 10, `valkey` is the official drop-in replacement for `redis` and listens on the standard `127.0.0.1:6379` port; `ffmpeg-free` requires EPEL or RPM Fusion if not already enabled.)*
 
 ---
 
@@ -66,15 +66,15 @@ EOF
 ### On Debian / Ubuntu
 ```bash
 sudo apt-get install -y \
-  ./dist/linux/py-phone-caller_1.0.0-1_all.deb \
-  ./dist/linux/openalertd_1.0.0-1_amd64.deb
+  ./dist/linux/py-phone-caller_1.1.0-1_all.deb \
+  ./dist/linux/openalertd_1.1.0-1_amd64.deb
 ```
 
 ### On Rocky Linux / RHEL / AlmaLinux
 ```bash
 sudo dnf install -y \
-  ./dist/linux/py-phone-caller-1.0.0-1.noarch.rpm \
-  ./dist/linux/openalertd-1.0.0-1.x86_64.rpm
+  ./dist/linux/py-phone-caller-1.1.0-1.noarch.rpm \
+  ./dist/linux/openalertd-1.1.0-1.x86_64.rpm
 ```
 
 ---
@@ -95,7 +95,7 @@ sudo env UV_PYTHON_INSTALL_DIR=/opt/py-phone-caller/.uv/python /usr/local/bin/uv
 # 3. Install all 12 bundled py-phone-caller workspace wheels and dependencies into /opt/py-phone-caller/venv
 sudo /usr/local/bin/uv pip install --python /opt/py-phone-caller/venv/bin/python \
   --find-links /opt/py-phone-caller/wheels \
-  "py-phone-caller[all]==1.0.0"
+  "py-phone-caller[all]==1.1.0"
 
 # 4. Also install the native Rust SMS engine wheel if present in /opt/py-phone-caller/wheels
 if ls /opt/py-phone-caller/wheels/rust_sms_engine-*.whl >/dev/null 2>&1; then
@@ -187,7 +187,7 @@ dir = "/usr/share/openalertd/templates"
      openalertd.service
    ```
 
-3. **Verify All Health Endpoints** *(Note: allow ~10–15 seconds on first boot for `generate-audio.service` on `:8082` to initialize its PyTorch/Kokoro TTS models)*:
+3. **Verify All Health Endpoints** *(Note: allow ~25 seconds on first boot for `generate-audio.service` on `:8082` to preload its Piper ONNX TTS model before `/health` responds, or longer when additional neural models are preloaded)*:
    ```bash
    sleep 12
    for port in 8081 8082 8083 8084 8085 8086 8087; do

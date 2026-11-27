@@ -240,7 +240,7 @@ Budget roughly **45 minutes**, most of it waiting for `uv sync` to download
 > trunk on the test host); and `py_phone_caller_remove_build_deps`.
 >
 > The step-by-step runbook with expected output at every step is
-> [`deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md).
+> [`deploy/ansible/deploy_all/README.md`](../../deploy/ansible/deploy_all/README.md).
 
 ### 4.1 Choosing an Entry Point
 
@@ -984,7 +984,7 @@ For environments requiring centralized Single Sign-On (SSO), 3-tier Role-Based A
 - **OIDC PKCE Flow**: The Web UI uses standard OpenID Connect authorization code flow with PKCE (`/oauth2/login`, `/oauth2/callback`, `/oauth2/logout`) with fallback to local database authentication.
 - **M2M Token Verification**: Machine clients (such as Prometheus Alertmanager) request OAuth2 client credential tokens to access protected alert ingestion endpoints.
 
-👉 For comprehensive manual and automated deployment instructions, consult the **[Enterprise Gateway & Keycloak SSO Guide](ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**.
+👉 For comprehensive manual and automated deployment instructions, consult the **[Enterprise Gateway & Keycloak SSO Guide](../ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md)**.
 
 ---
 
@@ -1075,9 +1075,9 @@ Each unit receives
 those two TOML files — no guessing from `__file__` or the working directory.
 
 The complete variable reference lives in
-[`deploy/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md`](../deploy/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md),
+[`deploy/ansible/on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md`](../../deploy/ansible/on-vm_py-phone-caller/README.md),
 and the step-by-step runbook in
-[`deploy/ansible/deploy_all/README.md`](../deploy/ansible/deploy_all/README.md).
+[`deploy/ansible/deploy_all/README.md`](../../deploy/ansible/deploy_all/README.md).
 
 ---
 

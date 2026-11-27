@@ -1,0 +1,248 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "caller_register",
+    "description": "Call registration, lifecycle tracking, and DTMF acknowledgment registry",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8083",
+      "description": "Direct service listener"
+    },
+    {
+      "url": "https://alerts.example.com/api/v1/registry",
+      "description": "Via APISIX Gateway"
+    }
+  ],
+  "paths": {
+    "/register_call": {
+      "post": {
+        "summary": "Register call attempt",
+        "description": "Registers or updates a phone call attempt in the Piccolo database.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "0039123456789"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Alert payload"
+                  },
+                  "asterisk_chan": {
+                    "type": "string",
+                    "example": "PJSIP/trunk-00000001"
+                  },
+                  "oncall": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "backup_callee": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "lang": {
+                    "type": "string",
+                    "example": "en"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "message",
+                  "asterisk_chan"
+                ]
+              },
+              "example": {
+                "phone": "0039123456789",
+                "message": "Alert payload",
+                "asterisk_chan": "PJSIP/trunk-00000001",
+                "oncall": false,
+                "backup_callee": false,
+                "lang": "en"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Call successfully registered"
+          }
+        }
+      }
+    },
+    "/msg": {
+      "post": {
+        "summary": "Retrieve voice message for channel",
+        "description": "Retrieves alert message text and checksum associated with an active Asterisk channel ID.",
+        "parameters": [
+          {
+            "name": "asterisk_chan",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1732660000.42"
+            },
+            "example": "1732660000.42"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Voice message details"
+          }
+        }
+      }
+    },
+    "/heard": {
+      "get": {
+        "summary": "Mark call message as heard by callee",
+        "description": "Invoked by the Asterisk dialplan CURL callback immediately after TTS playback completes.",
+        "parameters": [
+          {
+            "name": "asterisk_chan",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1732660000.42"
+            },
+            "example": "1732660000.42"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "heard_at timestamp recorded"
+          }
+        }
+      }
+    },
+    "/ack": {
+      "get": {
+        "summary": "Acknowledge call (DTMF '4' or operator ACK)",
+        "description": "Marks acknowledge_at and cycle_done=true so asterisk_recaller stops further retry/backup attempts.",
+        "parameters": [
+          {
+            "name": "asterisk_chan",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "1732660000.42"
+            },
+            "example": "1732660000.42"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Call acknowledged"
+          }
+        }
+      }
+    },
+    "/scheduled_call": {
+      "post": {
+        "summary": "Record future scheduled call",
+        "description": "Persists a scheduled call entry in PostgreSQL.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "1000"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Scheduled maintenance window starting in 15 minutes"
+                  },
+                  "scheduled_at": {
+                    "type": "string",
+                    "example": "2026-12-01 09:00:00"
+                  },
+                  "lang": {
+                    "type": "string",
+                    "example": "en"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "message",
+                  "scheduled_at"
+                ]
+              },
+              "example": {
+                "phone": "1000",
+                "message": "Scheduled maintenance window starting in 15 minutes",
+                "scheduled_at": "2026-12-01 09:00:00",
+                "lang": "en"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Call successfully scheduled"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Liveness probe (/health, /healthz, /live)",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "healthy",
+                  "service": "caller_register",
+                  "version": "1.1.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Dependency-aware readiness probe",
+        "responses": {
+          "200": {
+            "description": "Downstream dependencies (PostgreSQL / Redis / Asterisk ARI) ready"
+          },
+          "503": {
+            "description": "Dependency check degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus text-format telemetry metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition payload"
+          }
+        }
+      }
+    }
+  }
+}

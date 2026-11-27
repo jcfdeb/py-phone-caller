@@ -11,13 +11,13 @@ The service Dockerfiles are built from the repository root, not from `src/`, bec
 From the repository root, build one image with:
 
 ```bash
-podman build -f src/caller_register/Dockerfile . -t localhost/caller_register:1.0.0
+podman build -f src/caller_register/Dockerfile . -t localhost/caller_register:1.1.0
 ```
 
 Or build the full service image set with:
 
 ```bash
-CONTAINER_ENGINE=docker IMAGE_REGISTRY=localhost IMAGE_TAG=1.0.0 ./src/build_all_images.sh
+CONTAINER_ENGINE=docker IMAGE_REGISTRY=localhost IMAGE_TAG=1.1.0 ./src/build_all_images.sh
 ```
 
 Or build directly via Docker Compose from `deploy/compose/`:
@@ -32,17 +32,17 @@ docker compose build
 
 ```bash
 # Native architecture multi-stage build (~35-40 MB runtime image):
-docker build -t localhost/openalertd:1.0.0 -f src/openalert/Dockerfile src/openalert
+docker build -t localhost/openalertd:1.1.0 -f src/openalert/Dockerfile src/openalert
 
 # Fast ARM64 (aarch64) cross-compilation from x86_64 (or native build on ARM64 SBCs):
 docker buildx build --platform linux/arm64 -f src/openalert/Dockerfile.arm64 \
-  -t localhost/openalertd:1.0.0-arm64 --load src/openalert
+  -t localhost/openalertd:1.1.0-arm64 --load src/openalert
 ```
 
 Optional build-script environment variables:
 
 ```bash
-CONTAINER_ENGINE=podman IMAGE_REGISTRY=localhost IMAGE_TAG=1.0.0 ./src/build_all_images.sh
+CONTAINER_ENGINE=podman IMAGE_REGISTRY=localhost IMAGE_TAG=1.1.0 ./src/build_all_images.sh
 ```
 
 ## Start the stack
@@ -89,7 +89,7 @@ docker compose -f docker-compose.yml -f docker-compose.gateway.yml up -d
 - `DYNACONF_*`: generated from `settings.toml` and `.secrets.toml` by `assets/scripts/config/toml_to_dynaconf_env.py`.
 - `POSTGRES_PASSWORD`: overrides the default development database password.
 - `MY_DOCKER_REGISTRY`: image registry prefix, defaults to `localhost`.
-- `VERSION`: image tag, defaults to `1.0.0`.
+- `VERSION`: image tag, defaults to `1.1.0`.
 - `ENABLE_TELEMETRY`: defaults to `false`.
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: optional OpenTelemetry collector endpoint.
 - `OTEL_EXPORTER_OTLP_PROTOCOL`: defaults to `grpc`.

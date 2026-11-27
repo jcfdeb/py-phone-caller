@@ -265,14 +265,53 @@ def setup_routes(app: web.Application, service: CallRegistrationService) -> None
             f"/{CALL_REGISTER_APP_ROUTE_VOICE_MESSAGE}": {
                 "post": {
                     "summary": "Retrieve voice message for channel",
-                    "description": "Retrieves alert message and checksum associated with active channel.",
+                    "description": "Retrieves alert message text and checksum associated with an active Asterisk channel ID.",
+                    "parameters": [
+                        {"name": "asterisk_chan", "in": "query", "required": True, "schema": {"type": "string", "example": "1732660000.42"}},
+                    ],
                     "responses": {"200": {"description": "Voice message details"}},
+                }
+            },
+            f"/{CALL_REGISTER_APP_ROUTE_HEARD}": {
+                "get": {
+                    "summary": "Mark call message as heard by callee",
+                    "description": "Invoked by the Asterisk dialplan CURL callback immediately after TTS playback completes.",
+                    "parameters": [
+                        {"name": "asterisk_chan", "in": "query", "required": True, "schema": {"type": "string", "example": "1732660000.42"}},
+                    ],
+                    "responses": {"200": {"description": "heard_at timestamp recorded"}},
+                }
+            },
+            f"/{CALL_REGISTER_APP_ROUTE_ACKNOWLEDGE}": {
+                "get": {
+                    "summary": "Acknowledge call (DTMF '4' or operator ACK)",
+                    "description": "Marks acknowledge_at and cycle_done=true so asterisk_recaller stops further retry/backup attempts.",
+                    "parameters": [
+                        {"name": "asterisk_chan", "in": "query", "required": True, "schema": {"type": "string", "example": "1732660000.42"}},
+                    ],
+                    "responses": {"200": {"description": "Call acknowledged"}},
                 }
             },
             f"/{CALL_REGISTER_SCHEDULED_CALL_APP_ROUTE}": {
                 "post": {
                     "summary": "Record future scheduled call",
-                    "description": "Parses and records scheduled call attempt.",
+                    "description": "Persists a scheduled call entry in PostgreSQL.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "phone": {"type": "string", "example": "1000"},
+                                        "message": {"type": "string", "example": "Scheduled maintenance window starting in 15 minutes"},
+                                        "scheduled_at": {"type": "string", "example": "2026-12-01 09:00:00"},
+                                        "lang": {"type": "string", "example": "en"},
+                                    },
+                                    "required": ["phone", "message", "scheduled_at"],
+                                }
+                            }
+                        }
+                    },
                     "responses": {"200": {"description": "Call successfully scheduled"}},
                 }
             },

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-phone-caller"
-version = "1.0.0"
+version = "1.1.0"
 description = "Automated phone call and SMS alerting platform for Asterisk-based environments"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -21,41 +21,41 @@ classifiers = [
     "Topic :: System :: Monitoring",
 ]
 dependencies = [
-    "py_phone_caller_utils==1.0.0",
+    "py_phone_caller_utils==1.1.0",
 ]
 
 [project.optional-dependencies]
 services = [
-    "asterisk-caller==1.0.0",
-    "asterisk-recaller==1.0.0",
-    "asterisk-ws-monitor==1.0.0",
-    "caller-address-book==1.0.0",
-    "caller-prometheus-webhook==1.0.0",
-    "caller-register==1.0.0",
-    "caller-scheduler==1.0.0",
-    "caller-sms==1.0.0",
-    "celery-worker==1.0.0",
+    "asterisk-caller==1.1.0",
+    "asterisk-recaller==1.1.0",
+    "asterisk-ws-monitor==1.1.0",
+    "caller-address-book==1.1.0",
+    "caller-prometheus-webhook==1.1.0",
+    "caller-register==1.1.0",
+    "caller-scheduler==1.1.0",
+    "caller-sms==1.1.0",
+    "celery-worker==1.1.0",
 ]
 audio = [
-    "generate-audio==1.0.0",
-    "py_phone_caller_utils[audio]==1.0.0",
+    "generate-audio==1.1.0",
+    "py_phone_caller_utils[audio]==1.1.0",
 ]
 ui = [
-    "py-phone-caller-ui==1.0.0",
+    "py-phone-caller-ui==1.1.0",
 ]
 all = [
-    "asterisk-caller==1.0.0",
-    "asterisk-recaller==1.0.0",
-    "asterisk-ws-monitor==1.0.0",
-    "caller-address-book==1.0.0",
-    "caller-prometheus-webhook==1.0.0",
-    "caller-register==1.0.0",
-    "caller-scheduler==1.0.0",
-    "caller-sms==1.0.0",
-    "celery-worker==1.0.0",
-    "generate-audio==1.0.0",
-    "py_phone_caller_utils[audio]==1.0.0",
-    "py-phone-caller-ui==1.0.0",
+    "asterisk-caller==1.1.0",
+    "asterisk-recaller==1.1.0",
+    "asterisk-ws-monitor==1.1.0",
+    "caller-address-book==1.1.0",
+    "caller-prometheus-webhook==1.1.0",
+    "caller-register==1.1.0",
+    "caller-scheduler==1.1.0",
+    "caller-sms==1.1.0",
+    "celery-worker==1.1.0",
+    "generate-audio==1.1.0",
+    "py_phone_caller_utils[audio]==1.1.0",
+    "py-phone-caller-ui==1.1.0",
 ]
 
 [project.scripts]

@@ -4,16 +4,24 @@ metadata:
   name: asterisk-service
 spec:
   ports:
-    - protocol: TCP
+    - name: ari-http
+      protocol: TCP
       port: {{ .Values.asterisk.webPort }}
       targetPort: {{ .Values.asterisk.webPort }}
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: asterisk-service
-subsets:
+  name: asterisk-service-ext
+  labels:
+    kubernetes.io/service-name: asterisk-service
+addressType: IPv4
+ports:
+  - name: ari-http
+    protocol: TCP
+    port: {{ .Values.asterisk.webPort }}
+endpoints:
   - addresses:
-      - ip: {{ .Values.asterisk.externalIp | quote }}
-    ports:
-      - port: {{ .Values.asterisk.webPort }}
+      - {{ .Values.asterisk.externalIp | quote }}
+    conditions:
+      ready: true

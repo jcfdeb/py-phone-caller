@@ -1,7 +1,7 @@
 name: "py-phone-caller"
 arch: "all"
 platform: "linux"
-version: "${VERSION:-1.0.0}"
+version: "${VERSION:-1.1.0}"
 release: "1"
 section: "net"
 priority: "optional"

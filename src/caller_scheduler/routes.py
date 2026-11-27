@@ -76,7 +76,7 @@ def setup_routes(app: web.Application) -> None:
         catalog = create_service_catalog(
             service_name="caller_scheduler",
             description="Call scheduling service backed by Celery background tasks",
-            version="1.0.0",
+            version="1.1.0",
             docs_url="/docs",
             openapi_spec="/docs/swagger.json",
             endpoints={

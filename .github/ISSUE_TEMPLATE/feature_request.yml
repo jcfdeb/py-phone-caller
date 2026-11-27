@@ -1,0 +1,32 @@
+name: "🚀 Feature or Protocol Enhancement"
+description: "Propose a new feature, hardware driver, TTS engine, or NIP-ALERT / mesh improvement"
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: pillar
+    attributes:
+      label: "Target Pillar"
+      options:
+        - "py-phone-caller Core & Web UI"
+        - "OpenAlert (openalertd / NIP-ALERT / LoRa / BitChat / SOS)"
+        - "Telephony & Hardware Drivers (Asterisk / GSM / Audio)"
+        - "Packaging, Kubernetes, Ansible & Observability"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Operational Problem or Use Case"
+      description: "Describe the real-world alerting, air-gapped, or field scenario this solves."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed Design"
+      description: "Outline configuration keys, API routes, wire-compatibility constraints, or security considerations."
+    validations:
+      required: true

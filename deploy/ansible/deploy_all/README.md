@@ -1239,11 +1239,12 @@ carries `After=py-phone-caller-caller-register.service`.
 
 ### Full variable reference
 
-[`../on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md`](../on-vm_py-phone-caller/roles/deploy_py-phone-caller/README.md)
+[`../on-vm_py-phone-caller/README.md`](../on-vm_py-phone-caller/README.md) (and [`../docs/python-native.md`](../docs/python-native.md))
 
 ### Related documents
 
+- [`../../docs/README.md`](../../docs/README.md) — centralized deployment documentation hub (`01`–`10`)
 - [`../on-vm_py-phone-caller/README.md`](../on-vm_py-phone-caller/README.md) — services only, without the PBX
 - [`../asterisk_py-phone-caller/README.md`](../asterisk_py-phone-caller/README.md) — the PBX on its own
 - [`../tools/README.md`](../tools/README.md) — the TOML → Ansible vars converter
-- [`../../../docs/OPERATOR_INSTALLATION_GUIDE.md`](../../../docs/OPERATOR_INSTALLATION_GUIDE.md) — the full operator guide, including the container deployment
+- [`../../../docs/archive/OPERATOR_INSTALLATION_GUIDE.md`](../../../docs/archive/OPERATOR_INSTALLATION_GUIDE.md) — archived historical operator guide

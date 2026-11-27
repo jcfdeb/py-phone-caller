@@ -1,5 +1,5 @@
 # ==============================================================================
-# OpenAlert v1.0.0 - Physical Hardware Passthrough Overlay
+# OpenAlert v1.1.0 - Physical Hardware Passthrough Overlay
 #
 # Passes USB GSM/LTE AT Modems (/dev/ttyUSB*), 868/915 MHz LoRa Transceivers
 # (/dev/ttyACM* or /dev/lora0), and host BlueZ Bluetooth Low Energy (D-Bus + HCI)

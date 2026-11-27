@@ -1,0 +1,271 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "caller_prometheus_webhook",
+    "description": "Prometheus Alertmanager Webhook Ingestion Service",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8084",
+      "description": "Direct service listener"
+    },
+    {
+      "url": "https://alerts.example.com/api/v1/alerts",
+      "description": "Via APISIX Gateway"
+    }
+  ],
+  "paths": {
+    "/call_only": {
+      "post": {
+        "summary": "Process alert for phone call dispatch",
+        "description": "Receives standard Prometheus Alertmanager v4 JSON payload and queues voice calls to configured receivers.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "version": "4",
+                "status": "firing",
+                "receiver": "py-phone-caller",
+                "groupLabels": {
+                  "alertname": "DatabaseNodeDown"
+                },
+                "commonLabels": {
+                  "alertname": "DatabaseNodeDown",
+                  "severity": "critical",
+                  "instance": "db-01:5432"
+                },
+                "commonAnnotations": {
+                  "summary": "PostgreSQL primary node db-01 is unreachable",
+                  "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                },
+                "alerts": [
+                  {
+                    "status": "firing",
+                    "labels": {
+                      "alertname": "DatabaseNodeDown",
+                      "severity": "critical",
+                      "instance": "db-01:5432"
+                    },
+                    "annotations": {
+                      "summary": "PostgreSQL primary node db-01 is unreachable",
+                      "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                    },
+                    "startsAt": "2026-11-26T12:00:00Z"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook received"
+          }
+        }
+      }
+    },
+    "/sms_only": {
+      "post": {
+        "summary": "Process alert for SMS / SIP MESSAGE dispatch",
+        "description": "Receives Prometheus Alertmanager v4 JSON payload and dispatches SMS or SIP MESSAGE notifications.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "version": "4",
+                "status": "firing",
+                "receiver": "py-phone-caller",
+                "groupLabels": {
+                  "alertname": "DatabaseNodeDown"
+                },
+                "commonLabels": {
+                  "alertname": "DatabaseNodeDown",
+                  "severity": "critical",
+                  "instance": "db-01:5432"
+                },
+                "commonAnnotations": {
+                  "summary": "PostgreSQL primary node db-01 is unreachable",
+                  "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                },
+                "alerts": [
+                  {
+                    "status": "firing",
+                    "labels": {
+                      "alertname": "DatabaseNodeDown",
+                      "severity": "critical",
+                      "instance": "db-01:5432"
+                    },
+                    "annotations": {
+                      "summary": "PostgreSQL primary node db-01 is unreachable",
+                      "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                    },
+                    "startsAt": "2026-11-26T12:00:00Z"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook received"
+          }
+        }
+      }
+    },
+    "/sms_before_call": {
+      "post": {
+        "summary": "Process alert with SMS followed by voice call escalation",
+        "description": "Sends an immediate SMS and escalates to a voice call after sms_before_call_wait_seconds if unacknowledged.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "version": "4",
+                "status": "firing",
+                "receiver": "py-phone-caller",
+                "groupLabels": {
+                  "alertname": "DatabaseNodeDown"
+                },
+                "commonLabels": {
+                  "alertname": "DatabaseNodeDown",
+                  "severity": "critical",
+                  "instance": "db-01:5432"
+                },
+                "commonAnnotations": {
+                  "summary": "PostgreSQL primary node db-01 is unreachable",
+                  "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                },
+                "alerts": [
+                  {
+                    "status": "firing",
+                    "labels": {
+                      "alertname": "DatabaseNodeDown",
+                      "severity": "critical",
+                      "instance": "db-01:5432"
+                    },
+                    "annotations": {
+                      "summary": "PostgreSQL primary node db-01 is unreachable",
+                      "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                    },
+                    "startsAt": "2026-11-26T12:00:00Z"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook received"
+          }
+        }
+      }
+    },
+    "/call_and_sms": {
+      "post": {
+        "summary": "Process alert with concurrent voice call and SMS",
+        "description": "Simultaneously dispatches both an outbound Asterisk voice call and an SMS / SIP MESSAGE.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "version": "4",
+                "status": "firing",
+                "receiver": "py-phone-caller",
+                "groupLabels": {
+                  "alertname": "DatabaseNodeDown"
+                },
+                "commonLabels": {
+                  "alertname": "DatabaseNodeDown",
+                  "severity": "critical",
+                  "instance": "db-01:5432"
+                },
+                "commonAnnotations": {
+                  "summary": "PostgreSQL primary node db-01 is unreachable",
+                  "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                },
+                "alerts": [
+                  {
+                    "status": "firing",
+                    "labels": {
+                      "alertname": "DatabaseNodeDown",
+                      "severity": "critical",
+                      "instance": "db-01:5432"
+                    },
+                    "annotations": {
+                      "summary": "PostgreSQL primary node db-01 is unreachable",
+                      "description": "TCP health check failed on db-01:5432 for more than 2 minutes."
+                    },
+                    "startsAt": "2026-11-26T12:00:00Z"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook received"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Liveness probe (/health, /healthz, /live)",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "healthy",
+                  "service": "caller_prometheus_webhook",
+                  "version": "1.1.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Dependency-aware readiness probe",
+        "responses": {
+          "200": {
+            "description": "Downstream dependencies (PostgreSQL / Redis / Asterisk ARI) ready"
+          },
+          "503": {
+            "description": "Dependency check degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus text-format telemetry metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition payload"
+          }
+        }
+      }
+    }
+  }
+}

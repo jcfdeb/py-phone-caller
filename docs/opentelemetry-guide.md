@@ -41,7 +41,7 @@ Every HTTP microservice automatically registers uniform JSON liveness endpoints 
 {
   "status": "healthy",
   "service": "asterisk_caller",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
 ```
 

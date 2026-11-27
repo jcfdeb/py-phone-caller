@@ -4,6 +4,7 @@ py-phone-caller provides a secure operator UI for scheduling calls, managing on-
 
 <a id="feature-tiles"></a>
 ## &#9635; Feature Tiles [&#9733;](#feature-tiles)
+
 | Alertmanager Webhooks | Scheduled Voice Alerts | Managed Call Lifecycle |
 | --- | --- | --- |
 | Retries + Acknowledgment | On-call Coverage Planner | PBX Event Telemetry |
@@ -155,7 +156,8 @@ Structured PBX event JSON tied to the call for troubleshooting.
 External systems can trigger calls via HTTP. Alertmanager is shown below.
 
 Note: example of HTTP **POST** request from the Alertmanager
-```http request
+
+```http
 POST http://py-phond-caller.lan:8084/call_only
 Content-Type: application/json
 

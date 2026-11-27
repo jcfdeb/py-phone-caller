@@ -6,10 +6,10 @@
 # Rockchip RK3588, AWS Graviton, Hetzner Ampere):
 #
 #   1. Fast Cross-Compilation from an x86_64 host (NO slow QEMU rustc emulation!):
-#      docker buildx build --platform linux/arm64 -f packaging/docker/Dockerfile.arm64 -t openalertd:1.0.0-arm64 --load .
+#      docker buildx build --platform linux/arm64 -f packaging/docker/Dockerfile.arm64 -t openalertd:1.1.0-arm64 --load .
 #
 #   2. Native compilation directly on an ARM64 Linux host:
-#      docker build -f packaging/docker/Dockerfile.arm64 -t openalertd:1.0.0-arm64 .
+#      docker build -f packaging/docker/Dockerfile.arm64 -t openalertd:1.1.0-arm64 .
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -72,7 +72,7 @@ RUN touch src/lib.rs src/main.rs && \
 FROM --platform=linux/arm64 docker.io/library/debian:bookworm-slim AS runtime
 
 LABEL org.opencontainers.image.title="OpenAlert Daemon (openalertd) [ARM64]" \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.version="1.1.0" \
       org.opencontainers.image.architecture="arm64" \
       org.opencontainers.image.description="Decentralized Edge Alert Router for ARM64 SBCs & Servers (Nostr NIP-ALERT, NIP-57 Lightning Zaps, 0xChat NIP-17 C2, BitChat BLE, LoRa RF, GSM SMS)" \
       org.opencontainers.image.authors="Jorge <https://github.com/jcfdeb>" \

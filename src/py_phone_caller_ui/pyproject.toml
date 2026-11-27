@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-phone-caller-ui"
-version = "1.0.0"
+version = "1.1.0"
 description = "Web Dashboard for py-phone-caller"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: asterisk-recaller
-          image: quay.io/py-phone-caller/asterisk_recaller:1.0.0
+          image: quay.io/py-phone-caller/asterisk_recaller:1.1.0
           imagePullPolicy: IfNotPresent
           env:
             - name: TZ

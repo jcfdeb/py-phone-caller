@@ -87,7 +87,7 @@ receivers:
         http_config:
           oauth2:
             client_id: 'py-phone-caller-m2m'
-            client_secret: '<YOUR_KEYCLOAK_M2M_SECRET>'
+            client_secret: '<PASSWORD>'
             token_url: 'https://alerts.example.com/realms/py-phone-caller/protocol/openid-connect/token'
             scopes: ['email', 'profile']
             tls_config:

@@ -1,0 +1,117 @@
+# Prometheus Self-Monitoring Alerting Rules ("Who Watches the Watchmen?")
+# Load in prometheus.yml via:
+#   rule_files:
+#     - "prometheus-alerting-rules.yml"
+#
+# IMPORTANT: Route alerts from these two groups to an INDEPENDENT out-of-band
+# receiver (e.g., direct OpenAlert Nostr/0xChat NIP-17 DM, direct GSM modem,
+# or secondary site) so an Asterisk PBX outage still pages the on-call engineer!
+
+groups:
+  - name: py_phone_caller_watchdog
+    interval: 30s
+    rules:
+      - alert: PyPhoneCallerServiceDown
+        expr: up{job=~"py-phone-caller.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: py-phone-caller
+        annotations:
+          summary: "py-phone-caller microservice {{ $labels.instance }} is DOWN"
+          description: "Prometheus failed to scrape {{ $labels.instance }} ({{ $labels.job }}) for over 1 minute."
+
+      - alert: PyPhoneCallerHighCallFailureRate
+        expr: |
+          (
+            sum(rate(py_phone_caller_calls_total{status=~"failed|error|unavailable"}[10m]))
+            /
+            clamp_min(sum(rate(py_phone_caller_calls_total[10m])), 0.001)
+          ) > 0.20
+          and sum(increase(py_phone_caller_calls_total[10m])) >= 3
+        for: 2m
+        labels:
+          severity: critical
+          component: asterisk_caller
+        annotations:
+          summary: "More than 20% of outbound emergency voice calls are failing"
+          description: "Check Asterisk ARI (:8088) connectivity, PJSIP trunk registration (`pjsip show registrations`), and ARI circuit breaker state."
+
+      - alert: PyPhoneCallerZeroAcknowledgmentRate
+        expr: |
+          sum(increase(py_phone_caller_calls_total[30m])) >= 5
+          and sum(increase(py_phone_caller_calls_total{status="acknowledged"}[30m])) == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: caller_register
+        annotations:
+          summary: "Zero DTMF '4' acknowledgments across 5+ alert calls in 30m"
+          description: "Verify on-call responder availability and ensure Asterisk dialplan CURL callback can reach caller_register (:8083/ack)."
+
+      - alert: PyPhoneCallerSmsDeliveryFailures
+        expr: sum(increase(py_phone_caller_sms_dispatched_total{status=~"failed|error"}[15m])) >= 2
+        for: 1m
+        labels:
+          severity: critical
+          component: caller_sms
+        annotations:
+          summary: "SMS / SIP MESSAGE delivery failures detected (carrier={{ $labels.carrier }})"
+          description: "Inspect USB GSM modem link (`/dev/modem_primary`), SIM signal/credit, or PJSIP endpoint registration."
+
+      - alert: PyPhoneCallerTtsSynthesisSlow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(py_phone_caller_tts_duration_seconds_bucket[5m])) by (le, engine)
+          ) > 8.0
+        for: 5m
+        labels:
+          severity: warning
+          component: generate_audio
+        annotations:
+          summary: "TTS p95 synthesis latency above 8s on engine {{ $labels.engine }}"
+          description: "Check CPU saturation on generate_audio (:8082) or preload offline voice weights in [generate_audio.preload]."
+
+  - name: openalertd_mesh_watchdog
+    interval: 30s
+    rules:
+      - alert: OpenAlertDaemonDown
+        expr: up{job=~"openalert.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: openalertd
+        annotations:
+          summary: "OpenAlert mesh daemon ({{ $labels.instance }}) is unreachable"
+          description: "Check `systemctl status openalertd` on {{ $labels.instance }}."
+
+      - alert: OpenAlertWebhookCircuitBreakerOpen
+        expr: openalert_webhook_circuit_breaker_state == 2
+        for: 1m
+        labels:
+          severity: critical
+          component: openalertd
+        annotations:
+          summary: "OpenAlert downstream webhook circuit breaker OPEN for {{ $labels.url }}"
+          description: "openalertd cannot deliver Alertmanager payloads to {{ $labels.url }}; alerts are buffering in SQLite spool."
+
+      - alert: OpenAlertSqliteSpoolBacklogGrowing
+        expr: openalert_storage_alerts_count{status="pending"} > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: openalertd
+        annotations:
+          summary: "OpenAlert persistent SQLite spool has {{ $value }} undelivered alerts"
+          description: "Run `openalertd spool` and `openalertd peers` to inspect Nostr relay quorum or LoRa/VPN backhaul connectivity."
+
+      - alert: OpenAlertLoraRfLinkDegraded
+        expr: openalert_peering_rf_rssi_dbm < -118 or openalert_peering_rf_snr_db < -10
+        for: 10m
+        labels:
+          severity: warning
+          component: openalertd
+        annotations:
+          summary: "LoRa RF signal degraded for peer {{ $labels.peer }} (RSSI/SNR near noise floor)"
+          description: "Inspect antenna VSWR, coax connectors, Fresnel zone obstruction, or weather attenuation on peer {{ $labels.peer }}."

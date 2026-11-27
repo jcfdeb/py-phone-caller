@@ -160,7 +160,7 @@ echo "Status HTTP: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:809
 systemctl show -p ActiveState -p MemoryCurrent -p MemoryHigh -p MemoryMax -p CPUQuotaPerSecUSec -p TasksMax openalertd
 ```
 
-**Pass criterion:** `/health` returns `{"status":"ok",...,"version":"1.0.0"}`, `/api/v1/status` returns `200`, and cgroup limits (`MemoryHigh`, `MemoryMax`, `CPUQuota`, `TasksMax`) match your inventory.
+**Pass criterion:** `/health` returns `{"status":"ok",...,"version":"1.1.0"}`, `/api/v1/status` returns `200`, and cgroup limits (`MemoryHigh`, `MemoryMax`, `CPUQuota`, `TasksMax`) match your inventory.
 
 ---
 

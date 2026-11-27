@@ -34,7 +34,7 @@ spec:
     spec:
       containers:
         - name: asterisk-caller
-          image: quay.io/py-phone-caller/asterisk_caller:1.0.0
+          image: quay.io/py-phone-caller/asterisk_caller:1.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081

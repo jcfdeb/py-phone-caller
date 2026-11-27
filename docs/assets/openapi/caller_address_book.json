@@ -1,0 +1,189 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "caller_address_book",
+    "description": "Address Book and On-Call Responder Directory Management Service",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8087",
+      "description": "Direct service listener"
+    },
+    {
+      "url": "https://alerts.example.com/api/v1/contacts",
+      "description": "Via APISIX Gateway"
+    }
+  ],
+  "paths": {
+    "/contact_add": {
+      "post": {
+        "summary": "Create new on-call responder contact",
+        "description": "Adds a dual-channel responder contact (voice + optional SMS number) and on-call shift window.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Alice Rossi"
+                  },
+                  "phone_number": {
+                    "type": "string",
+                    "example": "1000",
+                    "description": "Voice SIP extension or E.164/00-prefixed number"
+                  },
+                  "sms_phone_number": {
+                    "type": "string",
+                    "example": "+39000000000",
+                    "description": "Optional dedicated cellular SMS number"
+                  },
+                  "on_call": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "example": 1
+                  },
+                  "on_call_start": {
+                    "type": "string",
+                    "example": "2026-11-27T08:00:00Z"
+                  },
+                  "on_call_end": {
+                    "type": "string",
+                    "example": "2026-11-28T08:00:00Z"
+                  }
+                },
+                "required": [
+                  "name",
+                  "phone_number"
+                ]
+              },
+              "example": {
+                "name": "Alice Rossi",
+                "phone_number": "1000",
+                "sms_phone_number": "+39000000000",
+                "on_call": true,
+                "priority": 1,
+                "on_call_start": "2026-11-27T08:00:00Z",
+                "on_call_end": "2026-11-28T08:00:00Z"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contact created"
+          }
+        }
+      }
+    },
+    "/contact_on_call": {
+      "get": {
+        "summary": "Resolve active on-call responder",
+        "description": "Returns the highest-priority responder whose shift covers the current UTC timestamp.",
+        "responses": {
+          "200": {
+            "description": "Current on-call contact JSON (phone_number, sms_phone_number, name)"
+          }
+        }
+      }
+    },
+    "/contacts_export_csv": {
+      "get": {
+        "summary": "Export contacts directory to CSV",
+        "responses": {
+          "200": {
+            "description": "CSV stream attachment"
+          }
+        }
+      }
+    },
+    "/contacts_import_csv": {
+      "post": {
+        "summary": "Bulk import contacts from CSV file",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "UTF-8 CSV file of contacts"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              },
+              "example": {
+                "file": "@contacts.csv"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contacts imported"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Liveness probe (/health, /healthz, /live)",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "healthy",
+                  "service": "caller_address_book",
+                  "version": "1.1.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Dependency-aware readiness probe",
+        "responses": {
+          "200": {
+            "description": "Downstream dependencies (PostgreSQL / Redis / Asterisk ARI) ready"
+          },
+          "503": {
+            "description": "Dependency check degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus text-format telemetry metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition payload"
+          }
+        }
+      }
+    }
+  }
+}

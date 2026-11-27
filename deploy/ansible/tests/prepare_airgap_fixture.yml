@@ -1,0 +1,43 @@
+---
+# Run this playbook ON the acknowledged disposable builder, never from a controller.
+# It invokes only a pre-staged local helper. No inventory hosts, SSH, roles or downloads.
+# Supply airgap_fixture_spec as documented in tests/files/prepare_airgap_fixture.py.
+# The parent must join the connected-build work and stop cache writers before invocation.
+- name: Export already prepared offline artifacts on this disposable builder only
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Require explicit local disposable preparation authorization
+      ansible.builtin.assert:
+        that:
+          - stack_disposable_test_acknowledged | default(false) | bool
+          - airgap_fixture_prepare_acknowledged | default(false) | bool
+          - ansible_connection | default('local') == 'local'
+          - airgap_fixture_spec is defined
+          - airgap_fixture_spec is mapping
+          - not ansible_check_mode
+        fail_msg: >-
+          Run locally as root only on the authorized disposable Debian 13 / Ubuntu 26.04 builder,
+          after the parent has joined preparation work. This does not install or qualify an offline stack.
+
+    - name: Export supplied artifacts and validate with the unchanged role contract
+      ansible.builtin.command:
+        argv:
+          - "{{ airgap_fixture_python | default('/usr/bin/python3') }}"
+          - "{{ playbook_dir }}/../../../tests/files/prepare_airgap_fixture.py"
+          - --acknowledge-disposable
+          - --checker
+          - "{{ (playbook_dir ~ '/../roles/stack_airgap/library/stack_airgap_check.py') | realpath }}"
+          - export
+          - --spec
+          - '-'
+        stdin: "{{ airgap_fixture_spec | to_json }}"
+        stdin_add_newline: true
+      register: airgap_fixture_export
+      changed_when: airgap_fixture_export.rc == 0
+
+    - name: Report preparation evidence without claiming offline installation
+      ansible.builtin.debug:
+        msg: "{{ airgap_fixture_export.stdout | from_json }}"

@@ -102,7 +102,7 @@ def instrument_aiohttp_app(app, service_name: Optional[str] = None):
                 {
                     "status": "healthy",
                     "service": service_name or "py-phone-caller",
-                    "version": "1.0.0",
+                    "version": "1.1.0",
                 }
             )
 
@@ -158,7 +158,7 @@ def instrument_flask_app(app, service_name: Optional[str] = "py_phone_caller_ui"
                 {
                     "status": "healthy",
                     "service": service_name or "py_phone_caller_ui",
-                    "version": "1.0.0",
+                    "version": "1.1.0",
                 }
             )
 
@@ -168,7 +168,7 @@ def instrument_flask_app(app, service_name: Optional[str] = "py_phone_caller_ui"
                 {
                     "status": "healthy",
                     "service": service_name or "py_phone_caller_ui",
-                    "version": "1.0.0",
+                    "version": "1.1.0",
                 }
             )
 

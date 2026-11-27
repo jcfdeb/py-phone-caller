@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py_phone_caller_utils"
-version = "1.0.0"
+version = "1.1.0"
 description = "Shared utility library for the py-phone-caller alerting platform"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }

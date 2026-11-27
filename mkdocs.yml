@@ -1,0 +1,134 @@
+site_name: "py-phone-caller & OpenAlert Manual (v1.1.0)"
+site_description: "Documentation & Deployment Manual for py-phone-caller and OpenAlert (openalertd)"
+site_url: "https://jcfdeb.github.io/py-phone-caller/manual/"
+repo_url: "https://github.com/jcfdeb/py-phone-caller"
+repo_name: "jcfdeb/py-phone-caller"
+edit_uri: "blob/main/docs/"
+docs_dir: ".pages-stage/docs"
+site_dir: "_site/manual"
+
+theme:
+  name: material
+  font: false
+  language: en
+  logo: assets/logo-asterisk.svg
+  favicon: assets/logo-asterisk.svg
+  icon:
+    view: material/file-eye-outline
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tabs
+    - navigation.sections
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.action.view
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - sane_lists
+  - tables
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Overview:
+      - Documentation Home: index.md
+      - "5-Minute Quickstart (No Trunk)": quickstart-5-minutes.md
+      - Interactive OpenAPI 3.0 Explorer: api-explorer.md
+      - Architecture & Call Flows: architecture-and-call-flows.md
+      - Services & Endpoints API: services-and-endpoints.md
+      - Web UI Operator Tour: web-ui-tour/README.md
+      - Suite Showcase (↗): https://jcfdeb.github.io/py-phone-caller/
+      - OpenAlert Showcase (↗): https://jcfdeb.github.io/py-phone-caller/openalert/
+  - Deployment Hub:
+      - Choose Your Deployment Pillar: deploy/README.md
+      - "01. Architecture & Prerequisites": deploy/01-architecture-and-prerequisites.md
+      - "02. Native Ansible Installer": deploy/02-ansible-deployment.md
+      - "03. Docker & Podman Compose": deploy/03-docker-compose-deployment.md
+      - "04. Kubernetes & Helm v3": deploy/04-kubernetes-and-helm-deployment.md
+      - "05. Native .deb & .rpm Packages": deploy/05-linux-deb-rpm-deployment.md
+      - "06. PyPI Wheels & Systemd": deploy/06-pypi-and-systemd-deployment.md
+      - "07. Enterprise Gateway & OIDC": deploy/07-enterprise-gateway-and-observability.md
+      - "08. Release Packaging & Build": deploy/08-release-packaging.md
+      - "09. ARM64 & Air-Gapped Appliance": deploy/09-arm64-appliance-and-airgapped-deployment.md
+      - "10. 12-Gate End-to-End Validation": deploy/10-end-to-end-installation-validation.md
+      - Hardware & Field-Kit BOM: hardware-and-field-kit-bom.md
+  - OpenAlert Mesh:
+      - OpenAlert Overview: openalert/README.md
+      - Configuration Guide: openalert/CONFIGURATION_GUIDE.md
+      - NIP-ALERT Specification: openalert/NIP-ALERT.md
+  - Telephony, IAM & Monitoring:
+      - Asterisk PBX Configuration & Examples: asterisk-pbx-configuration-guide.md
+      - FreePBX & Asterisk GUI Setup: freepbx-asterisk-setup-guide.md
+      - Enterprise APISIX & Keycloak Guide: ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md
+      - Monitoring Integrations:
+          - Prometheus Alertmanager Webhook: integrations/prometheus-alertmanager.md
+          - Nagios Event Handler: integrations/nagios.md
+          - Zabbix Alert Media Script: integrations/zabbix.md
+      - OpenTelemetry & Metrics: opentelemetry-guide.md
+      - Grafana Tempo Distributed Tracing: tempo_traces.md
+      - Day-2 SRE & Self-Monitoring: sre-day2-operations-and-watchdog.md
+  - Engineering & Releases:
+      - UV Workspace & Rust SMS Packaging: uv-migration-and-workspace-guide.md
+      - AppSec & Supply-Chain Guide: appsec-and-supply-chain-guide.md
+      - Changelog: CHANGELOG.md
+      - v1.0.1 Enhancement Notes: 1.0.1-release.md
+      - Security Policy: SECURITY.md
+      - Contributing: CONTRIBUTING.md
+      - Code of Conduct: CODE_OF_CONDUCT.md
+      - Historical Archive:
+          - Archive Index: archive/README.md
+          - v1.0.0 Release Notes: archive/1.0.0-release.md
+          - Legacy Operator Installation Guide: archive/OPERATOR_INSTALLATION_GUIDE.md
+          - Release Candidate Guide: archive/RELEASE_CANDIDATE_GUIDE.md
+          - Deployment Validation Report: archive/deployment-validation-report.md
+          - Legacy Install Walkthrough: archive/how_to_install_this_stuff.md
+          - Pre-Release 2026 Notes: archive/pre-release-2026.md
+          - Architecture 2025.05: archive/py-phone-caller_2025.05.md
+          - v1.0.0 Audit Report: archive/release-1.0.0-audit-report.md
+          - VirtualBox Lab Setup: archive/virtualbox-setup.md

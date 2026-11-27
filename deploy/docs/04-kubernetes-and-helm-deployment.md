@@ -1,8 +1,8 @@
 # 04. Kubernetes & Helm v3 Deployment Guide (`deploy/k8s` & `deploy/helm`)
 
 This guide provides step-by-step instructions for deploying **`py-phone-caller`** and **`openalertd`** onto any Kubernetes cluster (`GKE`, `EKS`, `AKS`, `k3s`, `OpenShift`, or `kubeadm`) using either:
-- **Option A: The Production Helm v3 Chart** (`deploy/helm/py-phone-caller` or `dist/k8s/py-phone-caller-1.0.0.tgz`) — *Recommended for parameterized installations and upgrades*.
-- **Option B: Raw Kustomize / Kubernetes Manifests** (`deploy/k8s/` or `dist/k8s/py-phone-caller-k8s-manifests-v1.0.0.tar.gz`) — *Recommended for GitOps (`ArgoCD` / `Flux`) or declarative manifest inspection*.
+- **Option A: The Production Helm v3 Chart** (`deploy/helm/py-phone-caller` or `dist/k8s/py-phone-caller-1.1.0.tgz`) — *Recommended for parameterized installations and upgrades*.
+- **Option B: Raw Kustomize / Kubernetes Manifests** (`deploy/k8s/` or `dist/k8s/py-phone-caller-k8s-manifests-v1.1.0.tar.gz`) — *Recommended for GitOps (`ArgoCD` / `Flux`) or declarative manifest inspection*.
 
 > [!NOTE]
 > **Live Kubernetes Qualification (`k3s` & Google Kubernetes Engine `GKE`)**
@@ -17,8 +17,8 @@ This guide provides step-by-step instructions for deploying **`py-phone-caller`*
 ## Step 1: Prepare Container Images for Your Cluster
 
 By default, the Helm chart and raw manifests reference:
-- **Helm Chart (`values.yaml`)**: `global.imageRegistry: "quay.io/py-phone-caller"` and `global.imageTag: "1.0.0"`
-- **Raw Manifests (`deploy/k8s/*.yml`)**: `quay.io/py-phone-caller/<service>:1.0.0`
+- **Helm Chart (`values.yaml`)**: `global.imageRegistry: "quay.io/py-phone-caller"` and `global.imageTag: "1.1.0"`
+- **Raw Manifests (`deploy/k8s/*.yml`)**: `quay.io/py-phone-caller/<service>:1.1.0`
 
 ### If Using a Private Container Registry (e.g. Google Artifact Registry, ECR, ACR, Harbor)
 Build and push all 12 images using `./src/build_all_images.sh`:
@@ -26,30 +26,30 @@ Build and push all 12 images using `./src/build_all_images.sh`:
 ```bash
 CONTAINER_ENGINE=docker \
 IMAGE_REGISTRY=registry.example.com/py-phone-caller \
-IMAGE_TAG=1.0.0 \
+IMAGE_TAG=1.1.0 \
 ./src/build_all_images.sh
 
 for svc in asterisk_caller asterisk_recaller asterisk_ws_monitor caller_prometheus_webhook \
            caller_register caller_scheduler caller_sms generate_audio caller_address_book \
            py_phone_caller_ui celery_worker openalertd; do
-  docker push "registry.example.com/py-phone-caller/${svc}:1.0.0"
+  docker push "registry.example.com/py-phone-caller/${svc}:1.1.0"
 done
 ```
 
 ### If Using a Single-Node `k3s` Cluster (Air-Gapped / Local Import)
-If you built the images locally on your `k3s` node with `IMAGE_REGISTRY=quay.io/py-phone-caller IMAGE_TAG=1.0.0`, import them directly into `k3s` `containerd` without needing an external registry:
+If you built the images locally on your `k3s` node with `IMAGE_REGISTRY=quay.io/py-phone-caller IMAGE_TAG=1.1.0`, import them directly into `k3s` `containerd` without needing an external registry:
 
 ```bash
 for svc in asterisk_caller asterisk_recaller asterisk_ws_monitor caller_prometheus_webhook \
            caller_register caller_scheduler caller_sms generate_audio caller_address_book \
            py_phone_caller_ui celery_worker openalertd; do
-  docker save "quay.io/py-phone-caller/${svc}:1.0.0" | sudo k3s ctr images import -
+  docker save "quay.io/py-phone-caller/${svc}:1.1.0" | sudo k3s ctr images import -
 done
 ```
 
 > [!IMPORTANT]
 > **Cloud VPC Firewall Note for GKE / EKS / AKS External Asterisk PBX (`:8088`)**
-> When Kubernetes pods connect to your external Asterisk PBX via `asterisk-service:8088` (`Endpoints/asterisk-service`), packets originate from the cluster's **Pod CIDR** (for example, GKE's secondary IP range `clusterIpv4Cidr`, such as `10.80.0.0/14`). On Google Cloud (`GKE`), the default `default-allow-internal` VPC firewall rule only covers primary VM subnet ranges (`10.128.0.0/9`), **not** the GKE secondary Pod CIDR. Ensure your VPC firewall allows ingress to `tcp:8088` on your Asterisk PBX host from the cluster's Pod CIDR:
+> When Kubernetes pods connect to your external Asterisk PBX via `asterisk-service:8088` (`EndpointSlice/asterisk-service-ext`), packets originate from the cluster's **Pod CIDR** (for example, GKE's secondary IP range `clusterIpv4Cidr`, such as `10.80.0.0/14`). On Google Cloud (`GKE`), the default `default-allow-internal` VPC firewall rule only covers primary VM subnet ranges (`10.128.0.0/9`), **not** the GKE secondary Pod CIDR. Ensure your VPC firewall allows ingress to `tcp:8088` on your Asterisk PBX host from the cluster's Pod CIDR:
 > ```bash
 > POD_CIDR=$(gcloud container clusters describe <CLUSTER_NAME> --zone=<ZONE> --format="value(clusterIpv4Cidr)")
 > gcloud compute firewall-rules create allow-gke-pods-to-asterisk \
@@ -60,7 +60,7 @@ done
 
 ## Step 2: Deploy via Option A — Helm v3 Chart (Recommended)
 
-The Helm chart lives in `deploy/helm/py-phone-caller/` and is also packaged as `dist/k8s/py-phone-caller-1.0.0.tgz`.
+The Helm chart lives in `deploy/helm/py-phone-caller/` and is also packaged as `dist/k8s/py-phone-caller-1.1.0.tgz`.
 
 ### 1. Create a Custom `my-values.yaml` (or use `--set`)
 
@@ -69,7 +69,7 @@ Create a `my-values.yaml` file (keep it outside Git if it contains credentials, 
 ```yaml
 global:
   imageRegistry: "quay.io/py-phone-caller"
-  imageTag: "1.0.0"
+  imageTag: "1.1.0"
   imagePullPolicy: IfNotPresent
   timezone: "Europe/Rome"
 
@@ -121,7 +121,7 @@ ingress:
 # Lint the chart first
 helm lint deploy/helm/py-phone-caller -f my-values.yaml
 
-# Install (or upgrade) from the directory or from dist/k8s/py-phone-caller-1.0.0.tgz
+# Install (or upgrade) from the directory or from dist/k8s/py-phone-caller-1.1.0.tgz
 helm upgrade --install py-phone-caller deploy/helm/py-phone-caller \
   --namespace py-phone-caller --create-namespace \
   -f my-values.yaml
@@ -131,7 +131,7 @@ helm upgrade --install py-phone-caller deploy/helm/py-phone-caller \
 > **Minimal One-Line Helm Install**
 > You can also install directly from the packaged archive using `--set` flags:
 > ```bash
-> helm upgrade --install py-phone-caller dist/k8s/py-phone-caller-1.0.0.tgz \
+> helm upgrade --install py-phone-caller dist/k8s/py-phone-caller-1.1.0.tgz \
 >   --namespace py-phone-caller --create-namespace \
 >   --set asterisk.externalIp="192.0.2.10" \
 >   --set secrets.asteriskPass="your-ari-secret" \
@@ -151,7 +151,7 @@ If you prefer raw YAML manifests over Helm, `deploy/k8s/` contains all 20 manife
 | Manifest File | Kubernetes Objects | Purpose |
 | :--- | :--- | :--- |
 | `00_py_phone_caller_namespace.yml` | `Namespace` (`py-phone-caller`) | Isolates all resources |
-| `01_asterisk_endpoint.yml` | `Service` + `Endpoints` (`asterisk-service`) | Bridges cluster traffic to your external Asterisk PBX IP (`:8088`) |
+| `01_asterisk_endpoint.yml` | `Service` + `EndpointSlice` (`asterisk-service`) | Bridges cluster traffic to your external Asterisk PBX IP (`:8088`) |
 | `02_ingress.yml` | `Ingress` | Exposes HTTP/HTTPS routes through your cluster Ingress controller |
 | `03_postgresql.yml` | `PVC`, `Deployment`, `Service` (`postgresql-service:5432`) | PostgreSQL 17 database (`PGDATA=/var/lib/postgresql/data/pgdata` for cloud `ext4` CSI volumes) |
 | `03_redis.yml` | `Deployment`, `Service` (`redis-service:6379`) | Redis 7 message broker |
@@ -164,7 +164,7 @@ If you prefer raw YAML manifests over Helm, `deploy/k8s/` contains all 20 manife
 
 ### 1. Edit Asterisk IP, Secrets & Registry Prefix Before Applying
 
-1. Edit `deploy/k8s/01_asterisk_endpoint.yml` and replace `192.168.1.200` with your Asterisk PBX IP (note that Kubernetes `Endpoints` reject loopback `127.0.0.0/8` addresses).
+1. Edit `deploy/k8s/01_asterisk_endpoint.yml` and replace `192.168.1.200` with your Asterisk PBX IP (note that Kubernetes `EndpointSlice` addresses reject loopback `127.0.0.0/8` addresses).
 2. Edit `deploy/k8s/04_caller_secrets.yml` and replace `CHANGE_ME_*` / `use-a-secure-password` placeholders with your real Asterisk ARI, PostgreSQL, and UI passwords.
 3. If you pushed images to a custom registry (e.g. Google Artifact Registry `europe-west4-docker.pkg.dev/my-project/py-phone-caller`), update the image registry prefix across `deploy/k8s/*.yml`:
    ```bash

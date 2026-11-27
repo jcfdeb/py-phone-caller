@@ -1,5 +1,5 @@
 Name:           openalertd
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        OpenAlert Daemon - Resilient Multi-Transport Alert Routing
 License:        BSD-3-Clause

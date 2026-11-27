@@ -2,8 +2,8 @@
 
 > [!TIP]
 > **Looking for the modern 1.0.0 Architecture & API reference?**
-> - For current end-to-end call flows, state machines, and sequence diagrams: see **[Architecture & Call Flows Guide](architecture-and-call-flows.md)**.
-> - For full REST API endpoint specifications: see **[Services and Endpoints Reference](services-and-endpoints.md)**.
+> - For current end-to-end call flows, state machines, and sequence diagrams: see **[Architecture & Call Flows Guide](../architecture-and-call-flows.md)**.
+> - For full REST API endpoint specifications: see **[Services and Endpoints Reference](../services-and-endpoints.md)**.
 > - For deployment instructions: see **[Operator Installation Guide (A to Z)](OPERATOR_INSTALLATION_GUIDE.md)**.
 >
 > *This document is preserved for historical reference.*

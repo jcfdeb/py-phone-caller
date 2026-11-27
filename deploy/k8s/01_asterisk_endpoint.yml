@@ -5,17 +5,25 @@ metadata:
   name: asterisk-service
 spec:
   ports:
-    - protocol: TCP
+    - name: ari-http
+      protocol: TCP
       port: 8088
       targetPort: 8088
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
   namespace: py-phone-caller
-  name: asterisk-service
-subsets:
+  name: asterisk-service-ext
+  labels:
+    kubernetes.io/service-name: asterisk-service
+addressType: IPv4
+ports:
+  - name: ari-http
+    protocol: TCP
+    port: 8088
+endpoints:
   - addresses:
-      - ip: 192.168.1.200
-    ports:
-      - port: 8088
+      - "192.168.1.200"
+    conditions:
+      ready: true

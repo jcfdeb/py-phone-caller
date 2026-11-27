@@ -1,4 +1,4 @@
-### Systemd User Units for Podman Containers (py-phone-caller 1.0.0)
+### Systemd User Units for Podman Containers (py-phone-caller 1.1.0)
 
 Place these unit files in your user systemd directory:
 `~/.config/systemd/user/`

@@ -88,11 +88,11 @@
     fail_msg: AllStarLink requires Debian 13 AMD64/ARM64, loopback ARI binding and an exact reviewed deb13 package version.
   when: asterisk_package_provider == 'allstarlink'
 
-- name: Restrict Tucny to its reviewed online Rocky 10 AMD64 package contract
+- name: Restrict Tucny to its reviewed online Rocky/AlmaLinux 10 AMD64 package contract
   ansible.builtin.assert:
     that:
       - ansible_facts['os_family'] == 'RedHat'
-      - ansible_facts['distribution'] == 'Rocky'
+      - ansible_facts['distribution'] in ['Rocky', 'AlmaLinux']
       - ansible_facts['distribution_major_version'] == '10'
       - ansible_facts['architecture'] == 'x86_64'
       - py_phone_caller_connectivity | default('online') == 'online'
@@ -104,7 +104,7 @@
       - asterisk_tucny_sounds_version is string
       - asterisk_tucny_sounds_version is match('^[0-9]+[.][0-9]+[.][0-9]+-[0-9]+[.]el10$')
       - "'\n' not in asterisk_tucny_sounds_version and '\r' not in asterisk_tucny_sounds_version"
-    fail_msg: Tucny requires online Rocky 10 AMD64, loopback ARI and exact reviewed EL10 Asterisk 22 and sounds versions; no platform override is supported.
+    fail_msg: Tucny requires online Rocky/AlmaLinux 10 AMD64, loopback ARI and exact reviewed EL10 Asterisk 22 and sounds versions; no platform override is supported.
   when: asterisk_package_provider == 'tucny'
 
 - name: Require non-placeholder ARI credentials for the opt-in provider

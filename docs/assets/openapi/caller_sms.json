@@ -1,0 +1,199 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "caller_sms",
+    "description": "Caller SMS emergency alert dispatch service for py-phone-caller",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8085",
+      "description": "Direct service listener"
+    },
+    {
+      "url": "https://alerts.example.com/api/v1/sms",
+      "description": "Via APISIX Gateway"
+    }
+  ],
+  "paths": {
+    "/send_sms": {
+      "post": {
+        "summary": "Send an SMS message",
+        "description": "Sends an SMS alert via configured carrier (Twilio or on-premise serial modem). Accepts JSON body or query parameters.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "0039123456789"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Critical server room overheat"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "message"
+                ]
+              },
+              "example": {
+                "phone": "0039123456789",
+                "message": "Critical server room overheat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SMS sent successfully"
+          },
+          "400": {
+            "description": "Missing required phone or message parameter"
+          },
+          "500": {
+            "description": "Carrier sending failure"
+          }
+        }
+      }
+    },
+    "/get_sms": {
+      "get": {
+        "summary": "Retrieve SMS log records",
+        "description": "Fetches recent SMS delivery records from Piccolo database.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "example": 50
+            },
+            "example": 50
+          },
+          {
+            "name": "phone",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "1000"
+            },
+            "example": "1000"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "sent"
+            },
+            "example": "sent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of SMS log records"
+          }
+        }
+      }
+    },
+    "/sms/inbound": {
+      "post": {
+        "summary": "Ingest inbound SMS event from cellular modem",
+        "description": "Records an incoming GSM/LTE SMS received by the on-premise modem poller.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sender": {
+                    "type": "string",
+                    "example": "+39000000000"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "ACK"
+                  },
+                  "modem_id": {
+                    "type": "string",
+                    "example": "primary_carrier"
+                  }
+                },
+                "required": [
+                  "sender",
+                  "message"
+                ]
+              },
+              "example": {
+                "sender": "+39000000000",
+                "message": "ACK",
+                "modem_id": "primary_carrier"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inbound SMS processed"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Liveness probe (/health, /healthz, /live)",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "healthy",
+                  "service": "caller_sms",
+                  "version": "1.1.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Dependency-aware readiness probe",
+        "responses": {
+          "200": {
+            "description": "Downstream dependencies (PostgreSQL / Redis / Asterisk ARI) ready"
+          },
+          "503": {
+            "description": "Dependency check degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus text-format telemetry metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition payload"
+          }
+        }
+      }
+    }
+  }
+}

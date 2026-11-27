@@ -18,7 +18,7 @@ members = [
     "py-phone-caller-utils",
     "py-phone-caller-workspace",
 ]
-build-constraints = [{ name = "cython", specifier = "<3.1" }]
+build-constraints = [{ name = "cython", specifier = "==3.0.12" }]
 
 [[package]]
 name = "addict"
@@ -194,7 +194,7 @@ wheels = [
 
 [[package]]
 name = "asterisk-caller"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/asterisk_caller" }
 dependencies = [
     { name = "aiobreaker" },
@@ -213,7 +213,7 @@ requires-dist = [
 
 [[package]]
 name = "asterisk-recaller"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/asterisk_recaller" }
 dependencies = [
     { name = "aiohttp" },
@@ -228,7 +228,7 @@ requires-dist = [
 
 [[package]]
 name = "asterisk-ws-monitor"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/asterisk_ws_monitor" }
 dependencies = [
     { name = "aiohttp" },
@@ -422,7 +422,7 @@ wheels = [
 
 [[package]]
 name = "caller-address-book"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/caller_address_book" }
 dependencies = [
     { name = "aiohttp" },
@@ -439,7 +439,7 @@ requires-dist = [
 
 [[package]]
 name = "caller-prometheus-webhook"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/caller_prometheus_webhook" }
 dependencies = [
     { name = "aiohttp" },
@@ -454,7 +454,7 @@ requires-dist = [
 
 [[package]]
 name = "caller-register"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/caller_register" }
 dependencies = [
     { name = "aiohttp" },
@@ -469,7 +469,7 @@ requires-dist = [
 
 [[package]]
 name = "caller-scheduler"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/caller_scheduler" }
 dependencies = [
     { name = "aiohttp" },
@@ -486,7 +486,7 @@ requires-dist = [
 
 [[package]]
 name = "caller-sms"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/caller_sms" }
 dependencies = [
     { name = "aiohttp" },
@@ -537,7 +537,7 @@ redis = [
 
 [[package]]
 name = "celery-worker"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/celery_worker" }
 dependencies = [
     { name = "celery", extra = ["redis"] },
@@ -1069,7 +1069,7 @@ wheels = [
 
 [[package]]
 name = "generate-audio"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/generate_audio" }
 dependencies = [
     { name = "aiohttp" },
@@ -2467,7 +2467,7 @@ wheels = [
 
 [[package]]
 name = "py-phone-caller-ui"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/py_phone_caller_ui" }
 dependencies = [
     { name = "asgiref" },
@@ -2497,7 +2497,7 @@ requires-dist = [
 
 [[package]]
 name = "py-phone-caller-utils"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "src/py-phone-caller-utils" }
 dependencies = [
     { name = "asyncpg" },
@@ -2595,7 +2595,7 @@ provides-extras = ["audio"]
 
 [[package]]
 name = "py-phone-caller-workspace"
-version = "1.0.0"
+version = "1.1.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

@@ -1,6 +1,6 @@
 global:
   imageRegistry: "quay.io/py-phone-caller"
-  imageTag: "1.0.0"
+  imageTag: "1.1.0"
   imagePullPolicy: IfNotPresent
   timezone: "Europe/Rome"
 

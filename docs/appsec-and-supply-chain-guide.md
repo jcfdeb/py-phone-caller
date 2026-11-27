@@ -161,17 +161,21 @@ If `task sec:fast` fails, the commit is aborted with the exact file and line num
 
 ### 3.2 Before Opening or Updating a Pull Request
 
-Run the non-regression and static/IaC/Python-SCA gates locally before pushing:
+Rebuild the hybrid GitHub Pages site first, then run the full coherence, non-regression, and AppSec gates locally before pushing:
 
 ```bash
-# 1. Verify nothing is broken across Python (300 tests), Rust (114 tests), and fast SAST/secrets
+# 1. Rebuild the hybrid GitHub Pages site (_site/, /openalert/, /manual/)
+#    Must run before verify:py / verify:all so tests/test_docs_coherence.py also audits _site/manual/*.html
+task docs:build
+
+# 2. Run full coherence, Python/packaging tests, Rust Clippy/tests, and fast security checks
 task verify:all
 
-# 2. Run deep SAST (Bandit + Semgrep + Clippy), IaC scan (Trivy), and Python CVE audit (pip-audit)
-task sec:sast:full sec:iac sec:sca:py
+# 3. Run full AppSec CI gates (Bandit + Semgrep + Clippy, pip-audit + cargo-deny/audit + OSV, Trivy IaC)
+task sec:ci
 ```
 
-*(Or run `task sec:ci` to run the entire CI security suite including `cargo-audit`, `cargo-deny`, and `osv-scanner`.)*
+*(Need just a quick check? Run `task version:check` for version parity across all manifests, `task docs:serve` to preview `_site/` on `http://127.0.0.1:8008`, or `task sec:sast:full sec:iac sec:sca:py` for deep SAST, IaC, and Python SCA.)*
 
 ### 3.3 Before Cutting a Release or Building Production Images
 
@@ -185,7 +189,7 @@ task sec:secrets:history
 # Scan built Docker Compose core images (or all 12 service images)
 task sec:image:core
 # or:
-task sec:image:all REGISTRY=localhost VERSION=1.0.0
+task sec:image:all REGISTRY=localhost VERSION=1.1.0
 ```
 
 ---
@@ -222,13 +226,16 @@ Run `task --list` anytime from the repository root to view all tasks.
 | `task sec:dast TARGET_URL=...` | Live DAST | `nuclei -tags cve,misconfig,exposure,headers` against a live service | `nuclei.sarif` |
 | `task sec:sign:release` | Signing | `cosign sign-blob` over `dist/SHA256SUMS`, `RELEASE_MANIFEST.json`, `SBOM.cdx.json` | `dist/*.sigstore.json` |
 
-### 4.3 Non-Regression & Safe Remediation Tasks
+### 4.3 Non-Regression, Docs & Safe Remediation Tasks
 
 | Command | What It Verifies / Does |
 | :--- | :--- |
+| `task docs:build` | Builds the hybrid GitHub Pages site (`_site/`, `/openalert/`, `/manual/`) via `deploy/pages/build_pages.py` |
+| `task docs:serve` | Builds and serves `_site/` locally on `http://127.0.0.1:8008` |
+| `task version:check` | Verifies unified version parity across `pyproject.toml`, 12 workspace packages, PyPI meta-package, Rust crates, Helm, `Taskfile.yml`, and Pages HTML |
 | `task verify:build:sms-rust` | Compiles and installs the editable `rust_engine` (`sms_rust_backend`) PyO3 extension into `.venv` |
 | `task verify:smoke` | ~15s smoke gate: `uv lock --check` + headless import of all 12 Python services & `rust_engine` + `cargo check --locked` |
-| `task verify:py` | Runs all **300** Python unit, Web UI, SMS Rust engine, AppSec contract, and packaging tests (`test/`, `tests/`, Ansible bundle) |
+| `task verify:py` | Runs Python unit, Web UI, SMS Rust engine, AppSec contract, packaging, and documentation/site coherence tests (`test/`, `tests/`, `tests/test_docs_coherence.py`, Ansible bundle) |
 | `task verify:rust` | Runs `cargo clippy -- -D warnings` + all **114** `openalertd` unit & integration tests |
 | `task verify:all` | Runs `verify:smoke` -> `verify:py` -> `verify:rust` -> `sec:fast` |
 | `task sec:fix:py PKG=<name>` | Upgrades **one** Python package in `uv.lock`, runs `verify:smoke` + `verify:py`, and **auto-rolls back `uv.lock`** if anything fails |
@@ -238,16 +245,18 @@ Run `task --list` anytime from the repository root to view all tasks.
 
 ## 5. Non-Regression Guardrails ("Do Not Break Working Stuff")
 
-Security hardening and dependency updates must never break alerting, telephony, TTS audio synthesis, or mesh routing. Always rely on the built-in `verify:*` tasks when modifying dependencies or security-sensitive code:
+Security hardening and dependency updates must never break alerting, telephony, TTS audio synthesis, or mesh routing. Always rely on the built-in `verify:*` and `docs:*` tasks when modifying dependencies, documentation, or security-sensitive code:
 
 1. **Fast Headless Service Import Check (`task verify:smoke`):**
    - Verifies [`uv.lock`](../uv.lock) matches all `pyproject.toml` manifests (`uv lock --check`).
    - Imports every microservice entrypoint (`py_phone_caller_utils`, `asterisk_caller`, `asterisk_recaller`, `asterisk_ws_monitor`, `caller_address_book`, `caller_prometheus_webhook`, `caller_register`, `caller_scheduler`, `caller_sms`, `celery_worker`, `generate_audio`, `py_phone_caller_ui`) plus the native PyO3 `rust_engine` (`enqueue_sms is not None`) using synthetic test environment variables—catching broken imports, missing transitive packages, or ABI mismatches in seconds.
    - Runs `cargo check --all-targets --locked` on `openalertd`.
-2. **Full Python & Packaging Suite (`task verify:py`):**
-   - Runs the 300-test regression suite covering Asterisk ARI callers/recallers, WebSocket monitoring, Prometheus webhooks, Kokoro/Silero/Piper TTS generation, Flask Web UI routes, OIDC/gateway integration, SQLite/Rust SMS queueing, AppSec pipeline contracts, and PyPI/DEB/RPM/K8s/Air-gap/Ansible packaging.
+2. **Full Python, Packaging & Coherence Suite (`task verify:py`):**
+   - Runs the regression suite covering Asterisk ARI callers/recallers, WebSocket monitoring, Prometheus webhooks, Kokoro/Silero/Piper TTS generation, Flask Web UI routes, OIDC/gateway integration, SQLite/Rust SMS queueing, AppSec pipeline contracts, PyPI/DEB/RPM/K8s/Air-gap/Ansible packaging, and [`tests/test_docs_coherence.py`](../tests/test_docs_coherence.py) (unified version parity, zero broken relative links, zero raw LaTeX arrows, and rendered `_site/manual/*.html` checks when `_site/` is built).
 3. **Full Rust Suite (`task verify:rust`):**
    - Enforces zero Clippy warnings (`-D warnings`) and executes all 64 unit tests + 50 integration tests in `src/openalert`.
+4. **Hybrid GitHub Pages Build (`task docs:build`):**
+   - Stages and normalizes Markdown via [`deploy/pages/build_pages.py`](../deploy/pages/build_pages.py), builds the MkDocs Material portal from [`mkdocs.yml`](../mkdocs.yml) into `_site/manual/`, and copies the landing pages (`docs/index.html`, `docs/openalert/index.html`, `docs/404.html`, assets). Run this **before** `task verify:all` so `tests/test_docs_coherence.py` also inspects the freshly rendered `_site/manual/` HTML.
 
 ---
 
@@ -358,11 +367,11 @@ Follow these secure coding patterns across `src/` so Ruff `S`, Bandit, and Semgr
 - **Container Image Scanning (`task sec:image`):**
   ```bash
   # Build and scan a single service image
-  docker build -t localhost/openalertd:1.0.0 src/openalert
-  task sec:image IMAGE=localhost/openalertd:1.0.0
+  docker build -t localhost/openalertd:1.1.0 src/openalert
+  task sec:image IMAGE=localhost/openalertd:1.1.0
 
   # Or scan the core Compose images (openalertd, caller_prometheus_webhook, generate_audio, py_phone_caller_ui)
-  task sec:image:core REGISTRY=localhost VERSION=1.0.0
+  task sec:image:core REGISTRY=localhost VERSION=1.1.0
   ```
   `trivy image` fails only on `HIGH` or `CRITICAL` vulnerabilities that **have an upstream fix available** (`--ignore-unfixed`), avoiding unactionable base-OS noise.
 

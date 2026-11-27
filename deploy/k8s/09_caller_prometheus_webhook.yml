@@ -34,7 +34,7 @@ spec:
     spec:
       containers:
         - name: caller-prometheus-webhook
-          image: quay.io/py-phone-caller/caller_prometheus_webhook:1.0.0
+          image: quay.io/py-phone-caller/caller_prometheus_webhook:1.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8084

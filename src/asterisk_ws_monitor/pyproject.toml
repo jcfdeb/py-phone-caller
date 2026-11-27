@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asterisk-ws-monitor"
-version = "1.0.0"
+version = "1.1.0"
 description = "Asterisk WS Monitor service for py-phone-caller"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }

@@ -3,10 +3,9 @@
 **Phase 4 implementation and disposable `systemd` rehearsals on Debian 13 and
 Ubuntu 26.04 LTS AMD64 are complete; this is not live-migration authorization.**
 Always rehearse on an isolated target before using these operations on an existing
-site. All temporary qualification VMs have been deleted. Production maintenance
-and dispatch/ARM64 hardware tests require separate authorization. Phase 3's
-role-prefix naming findings remain explicitly deferred as tracked debt (not
-suppressed).
+site. All temporary qualification VMs have been deleted. Production maintenance and live dispatch/physical ARM64 hardware tests require separate
+authorization. Phase 3's role-prefix naming findings remain explicitly deferred as
+tracked debt (not suppressed).
 
 ## Explicit scope, not automatic discovery
 
@@ -309,5 +308,5 @@ were completed on 2026-11-07 (`ppc-qual-debian-standard-20261107` and
 
 See the [support matrix](support-matrix.md) for recorded image and artifact identities.
 Before any live-host migration, rehearse the exact site inventory/templates on an
-isolated target; physical Orange Pi 5 Plus ARM64 hardware and actual dispatch remain
-separate gates pending board arrival and authorization.
+isolated target; physical Orange Pi 5 Plus ARM64 hardware and live dispatch remain
+separate operational gates.

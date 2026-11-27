@@ -1,6 +1,6 @@
 # 09. ARM64 Appliance & Air-Gapped Deployment Guide (Orange Pi 5 Plus / RK3588)
 
-This guide walks through deploying the complete **16-service all-in-one alerting appliance** (`py-phone-caller` 11 Python services + native ARM64 Rust SMS engine + Asterisk 22 PBX + PostgreSQL 18 + Redis 8 + Caddy TLS reverse proxy + `openalertd v1.0.0` `arm64`) on 64-bit ARM64 (`aarch64`) single-board computers—qualified end-to-end on a physical **Orange Pi 5 Plus (Rockchip RK3588)** in both **connected (`online`)** and **100% air-gapped (`airgapped`)** modes.
+This guide walks through deploying the complete **16-service all-in-one alerting appliance** (`py-phone-caller` 11 Python services + native ARM64 Rust SMS engine + Asterisk 22 PBX + PostgreSQL 18 + Redis 8 + Caddy TLS reverse proxy + `openalertd v1.1.0` `arm64`) on 64-bit ARM64 (`aarch64`) single-board computers—qualified end-to-end on a physical **Orange Pi 5 Plus (Rockchip RK3588)** in both **connected (`online`)** and **100% air-gapped (`airgapped`)** modes.
 
 > [!IMPORTANT]
 > **Physical Hardware Qualification (`2026-11-19`)**
@@ -75,10 +75,10 @@ cd /path/to/py-phone-caller
 
 On an Orange Pi 5 Plus (RK3588, 8 cores), the full release build and link completes in roughly **~1m 20s** and produces:
 
-- `src/openalert/dist/openalertd-v1.0.0-linux-aarch64.tar.gz` (~12 MB)
-- `src/openalert/dist/openalertd-v1.0.0-linux-aarch64.tar.gz.sha256`
+- `src/openalert/dist/openalertd-v1.1.0-linux-aarch64.tar.gz` (~12 MB)
+- `src/openalert/dist/openalertd-v1.1.0-linux-aarch64.tar.gz.sha256`
 
-Copy both files back to your Ansible controller and record the SHA-256 digest (`sha256sum openalertd-v1.0.0-linux-aarch64.tar.gz`) for `openalert_release.sha256`.
+Copy both files back to your Ansible controller and record the SHA-256 digest (`sha256sum openalertd-v1.1.0-linux-aarch64.tar.gz`) for `openalert_release.sha256`.
 
 ---
 
@@ -212,7 +212,7 @@ all:
 
         # 8. Verified ARM64 OpenAlert release bundle & loopback hub instance
         openalert_release:
-          source: /abs/path/to/src/openalert/dist/openalertd-v1.0.0-linux-aarch64.tar.gz
+          source: /abs/path/to/src/openalert/dist/openalertd-v1.1.0-linux-aarch64.tar.gz
           sha256: "REPLACE_WITH_YOUR_BUILT_ARM64_TARBALL_SHA256"
         openalert_instances:
           hub:
@@ -259,30 +259,30 @@ Air-gapped mode enforces **zero external network access** during installation an
 
 ### Step 4.1: Build the Signed Local ARM64 `file:` APT Mirror (on a Connected Staging ARM64 Host)
 
-Use the repository's `deploy/ansible/tests/prepare_airgap_fixture.py` helper on an online ARM64 staging host (or on the Orange Pi 5 Plus before disconnecting it from the internet):
+Use the repository's `tests/files/prepare_airgap_fixture.py` helper (and `deploy/ansible/tests/prepare_airgap_fixture.yml`) on an online ARM64 staging host (or on the Orange Pi 5 Plus before disconnecting it from the internet):
 
 ```bash
-sudo mkdir -p /srv/offline/tools /srv/offline/apt-mirror /srv/offline/export-v1
-# Copy deploy/ansible/tests/prepare_airgap_fixture.py and
-# deploy/ansible/roles/stack_airgap/files/stack_airgap_check.py to /srv/offline/tools/
+sudo mkdir -p /srv/offline/tools /srv/offline/debs /srv/offline/apt-mirror /srv/offline/signing /srv/offline/export-v1
+# Copy tests/files/prepare_airgap_fixture.py to /srv/offline/tools/
+# Download target ARM64 .deb packages (plus dependencies, e.g. via apt-get download /
+# apt-get install --download-only) into /srv/offline/debs/, then generate a GPG key and repo:
 
 sudo python3 /srv/offline/tools/prepare_airgap_fixture.py apt \
-  --output-dir /srv/offline/apt-mirror \
-  --architecture arm64 \
-  --packages \
-    asterisk asterisk-modules postgresql redis-server caddy ffmpeg \
-    build-essential pkg-config libdbus-1-dev libudev-dev libssl-dev \
-    dbus ca-certificates curl acl sudo rsync git gnupg python3-psycopg2
+  --debs /srv/offline/debs/*.deb \
+  --output-root /srv/offline/apt-mirror \
+  --signing-home /srv/offline/signing \
+  --signing-key "airgap-signing@internal" \
+  --architecture arm64
 ```
 
-This downloads the ARM64 `.deb` packages, generates a local GPG signing key + keyring, builds `Packages.gz` + `Release` + `Release.gpg` + `InRelease`, and verifies signatures (`signatures_verified: true`).
+This indexes the ARM64 `.deb` packages, signs `Release` / `Release.gpg` / `InRelease` with the local GPG key, and exports the public key alongside the repository under `/srv/offline/apt-mirror`.
 
 ### Step 4.2: Build and Contract-Validate the ARM64 Offline Bundle
 
-Prepare a clean staged source tree (with exact build constraint pinning required by `stack_airgap_check.py`, e.g. `build-constraint-dependencies = ["cython==3.0.12"]`), clean ephemeral directories from the staging `uv` and Cargo caches, and run `prepare_airgap_fixture.py export`:
+Prepare a clean staged source tree (with exact build constraint pinning in `pyproject.toml`, e.g. `build-constraint-dependencies = ["cython==3.0.12"]`), clean ephemeral directories and test fixture keys/gits from staging `uv` and Cargo caches, and write a JSON spec (`export-spec.json`) for `prepare_airgap_fixture.py export --spec`:
 
 ```bash
-# 1. Clean ephemeral directories from staged uv & Cargo caches before export:
+# 1. Clean ephemeral directories and unpacked test fixtures from staged uv & Cargo caches before export:
 #    - Remove raw-cargo/registry/src (keep registry/cache/*.crate and registry/index/)
 #    - Remove uv-cache/environments-v2, uv-cache/sdists-v9/editable, uv-cache/sdists-v9/.git
 #    - Convert any absolute internal symlinks inside uv-cache to relative symlinks
@@ -299,30 +299,23 @@ for dirpath, dirnames, filenames in os.walk(root):
                 os.symlink(os.path.relpath(target, dirpath), p)
 PY
 
-# 2. Export & contract-validate the complete ARM64 offline bundle
+# 2. Export & contract-validate the complete ARM64 offline bundle via --spec
+#    (see deploy/ansible/tests/prepare_airgap_fixture.yml and tests/test_airgap_preparation.py
+#     for the full export spec schema covering python, uv, uv_cache, rust_toolchain, cargo,
+#     piper_models, spacy_wheel, openalert_release, and source_dir).
 sudo python3 /srv/offline/tools/prepare_airgap_fixture.py export \
-  --source-dir /srv/offline/staged-source \
-  --output-dir /srv/offline/export-v1 \
-  --architecture aarch64 \
-  --python-dir /srv/offline/raw-python-3.14.5 \
-  --uv-bin /opt/py-phone-caller/bin/uv \
-  --uv-cache-dir /srv/offline/raw-uv-cache \
-  --rust-toolchain-dir "$HOME/.rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu" \
-  --cargo-cache-dir /srv/offline/raw-cargo \
-  --piper-models-dir /srv/offline/raw-models/piper \
-  --spacy-wheel /srv/offline/raw-models/en_core_web_sm-*.whl \
-  --build-constraints "cython==3.0.12"
+  --spec /srv/offline/export-spec.json
 ```
 
-Verify the printed summary reports `"contract_validated": true`, and record:
+Verify the exported bundle-manifest and source-manifest JSON files (`bundle-manifest.json` and `source-manifest.json`), and record:
 - `py_phone_caller_airgap_manifest_checksum` (SHA-256 of `/srv/offline/export-v1/bundle-manifest.json`)
 - `py_phone_caller_airgap_source_manifest_checksum` (SHA-256 of `source-manifest.json`)
 
-Copy the staged source directory and `source-manifest.json` to your Ansible controller (e.g., `/srv/airgap-release/source` and `/srv/airgap-release/source-manifest.json`).
+Copy the staged source directory and `source-manifest.json` to your Ansible controller (e.g., `/srv/airgap-release/source` and `/srv/airgap-release/source-manifest.json`). Note: when running pre-checks with Python directly against an extracted bundle's `python/` runtime, invoke Python with `-B` (`PYTHONDONTWRITEBYTECODE=1`) so `__pycache__` `.pyc` timestamps do not drift from strict bundle checksums.
 
 ### Step 4.3: Switch Target SBC to the Signed Local `file:` APT Mirror & Clean Desktop Hooks
 
-On the target ARM64 appliance, back up online APT sources and any desktop/Armbian APT hook files that `stack_airgap_check.py` deliberately rejects in strict air-gapped mode:
+On the target ARM64 appliance (or Ubuntu 26.04 air-gapped target), back up online APT sources and any desktop/Armbian/ESM APT hook files (such as `/etc/apt/apt.conf.d/20apt-esm-hook.conf` or `Invoke` / `Pre-Install-Pkgs` hooks) that `stack_airgap_check.py` deliberately rejects in strict air-gapped mode:
 
 ```bash
 sudo mkdir -p /root/apt-backup/sources.list.d /root/apt-backup/apt.conf.d
@@ -462,7 +455,7 @@ The table below records real measurements captured on an **Orange Pi 5 Plus (RK3
 | **Unchanged `site.yml` Rerun** | `ok=225 changed=0 failed=0` (16/16 identical timestamps) | `ok=259 changed=0 failed=0` (16/16 identical timestamps) |
 | **`verify.yml` Read-Only Probe** | `ok=11 changed=0 failed=0` (11 units, 7 APIs, UI `200`, Caddy `200`) | `ok=11 changed=0 failed=0` (11 units, 7 APIs, UI `200`, Caddy `200`) |
 | **System RAM Used (Steady State / Post-Reboot)** | `2.5 GiB / 7.7 GiB` (`5.2 GiB` available) | `2.1 GiB / 7.7 GiB` (`5.6 GiB` available, `0 B` swap after reboot) |
-| **`openalertd v1.0.0` (`arm64`) RSS** | `3.3 MiB` (`MemoryHigh=100M`, `MemoryMax=256M`) | `5.6 MiB` (`MemoryHigh=100M`, `MemoryMax=256M`) |
+| **`openalertd v1.1.0` (`arm64`) RSS** | `3.3 MiB` (`MemoryHigh=100M`, `MemoryMax=256M`) | `5.6 MiB` (`MemoryHigh=100M`, `MemoryMax=256M`) |
 | **`generate_audio` / `ui` / `celery_worker` RSS** | `566 MiB` / `172 MiB` / `148 MiB` | Within configured cgroup v2 bounds (`4G` / `1G` / `2G`) |
 | **Piper TTS (`en_US.onnx`, `num_of_cpus=2`) Cold / Warm** | `7,438 ms` / `6,223 ms` (16-bit 8 kHz mono WAV) | `7,642 ms` (`86,828 B`) / `6,372 ms` (`51,756 B`) from offline bundle |
 | **Live USB GSM SMS (`SIMCOM_SIM7600E-H`)** | — | Delivered on Attempt 1 in `14s` (`+CMGS` / `OK`, handset receipt confirmed, `IPAddressDeny=any`) |

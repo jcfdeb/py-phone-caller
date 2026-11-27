@@ -166,12 +166,18 @@ def validate_metadata(metadata, architecture, binary):
     for key in ("version", "release_id", "source_revision"):
         require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]*", text(metadata.get(key))),
                 "invalid release identity")
-    flag(metadata, "source_dirty", None)
     build = table(metadata.get("build"))
     text(build.get("rustc_version"))
     text(build.get("baseline"))
-    flag(build, "prebuilt", None)
-    flag(build, "cargo_locked", None)
+    prebuilt = flag(build, "prebuilt", None)
+    if prebuilt:
+        require("source_dirty" in metadata
+                and (metadata["source_dirty"] is None or type(metadata["source_dirty"]) is bool))
+        require("cargo_locked" in build
+                and (build["cargo_locked"] is None or type(build["cargo_locked"]) is bool))
+    else:
+        flag(metadata, "source_dirty", None)
+        flag(build, "cargo_locked", None)
     record = table(metadata.get("binary"))
     require(record.get("path") == "bin/openalertd" and isinstance(record.get("sha256"), str)
             and HEX.fullmatch(record["sha256"]), "invalid binary metadata")

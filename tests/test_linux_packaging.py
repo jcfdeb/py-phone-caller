@@ -33,7 +33,7 @@ class LinuxPackagingTests(unittest.TestCase):
 
             out_dir = tmp_path / "dist"
             args = Namespace(
-                version="1.0.0",
+                version="1.1.0",
                 release="1",
                 arch="x86_64",
                 openalert_binary=str(fake_bin),
@@ -46,7 +46,7 @@ class LinuxPackagingTests(unittest.TestCase):
             self.assertTrue((out_dir / "release.json").is_file())
 
             # Validate .deb archives with `ar t` and inspect control.tar.gz + data.tar.gz
-            for deb_name in ("py-phone-caller_1.0.0-1_all.deb", "openalertd_1.0.0-1_amd64.deb"):
+            for deb_name in ("py-phone-caller_1.1.0-1_all.deb", "openalertd_1.1.0-1_amd64.deb"):
                 deb_path = out_dir / deb_name
                 self.assertTrue(deb_path.is_file())
                 raw = deb_path.read_bytes()
@@ -76,7 +76,7 @@ class LinuxPackagingTests(unittest.TestCase):
                         self.assertIn("./lib/systemd/system/openalertd.service", members)
 
             # Validate .rpm archives magic lead, signature header, main header, and cpio.gz payload
-            for rpm_name in ("py-phone-caller-1.0.0-1.noarch.rpm", "openalertd-1.0.0-1.x86_64.rpm"):
+            for rpm_name in ("py-phone-caller-1.1.0-1.noarch.rpm", "openalertd-1.1.0-1.x86_64.rpm"):
                 rpm_path = out_dir / rpm_name
                 self.assertTrue(rpm_path.is_file())
                 raw = rpm_path.read_bytes()
@@ -97,7 +97,7 @@ class LinuxPackagingTests(unittest.TestCase):
 
             m1 = LINUX_BUILDER.build_all(
                 Namespace(
-                    version="1.0.0",
+                    version="1.1.0",
                     release="1",
                     arch="x86_64",
                     openalert_binary=str(fake_bin),
@@ -107,7 +107,7 @@ class LinuxPackagingTests(unittest.TestCase):
             )
             m2 = LINUX_BUILDER.build_all(
                 Namespace(
-                    version="1.0.0",
+                    version="1.1.0",
                     release="1",
                     arch="x86_64",
                     openalert_binary=str(fake_bin),

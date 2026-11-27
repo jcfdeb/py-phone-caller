@@ -21,13 +21,13 @@
       - >-
         (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] == '13') or
         (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '26.04') or
-        (ansible_facts['distribution'] == 'Rocky' and ansible_facts['distribution_major_version'] == '10'
+        (ansible_facts['distribution'] in ['Rocky', 'AlmaLinux'] and ansible_facts['distribution_major_version'] == '10'
          and ansible_facts['architecture'] == 'x86_64') or
         ((stack_legacy_platform | default(false) | bool) and not stack_deploy_openalert
          and ansible_facts['os_family'] in ['Debian', 'RedHat'])
       - ansible_facts['service_mgr'] == 'systemd'
     fail_msg: >-
-      The native entry point accepts Debian 13 or Ubuntu 26.04 AMD64/ARM64 and Rocky 10 AMD64
+      The native entry point accepts Debian 13 or Ubuntu 26.04 AMD64/ARM64 and Rocky/AlmaLinux 10 AMD64
       with systemd; runtime and hardware qualification are separate.
 
 - name: Load component configuration only when selected

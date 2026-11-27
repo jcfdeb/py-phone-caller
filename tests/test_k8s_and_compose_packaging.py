@@ -25,12 +25,12 @@ class K8sAndComposePackagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix=".test-k8s-") as tmp:
             out_dir = Path(tmp) / "k8s"
             manifest = K8S_BUILDER.build_all(Namespace(output_dir=str(out_dir), force=False))
-            self.assertEqual(manifest["version"], "1.0.0")
+            self.assertEqual(manifest["version"], "1.1.0")
             self.assertIn("04_caller_secrets.yml", manifest["kustomize_resources"])
             self.assertIn("17_openalertd.yml", manifest["kustomize_resources"])
             self.assertIn("18_gateway_apisix_keycloak.yml", manifest["kustomize_resources"])
 
-            chart_tgz = out_dir / "py-phone-caller-1.0.0.tgz"
+            chart_tgz = out_dir / "py-phone-caller-1.1.0.tgz"
             self.assertTrue(chart_tgz.is_file())
             with tarfile.open(chart_tgz, "r:gz") as tf:
                 names = set(tf.getnames())
@@ -42,6 +42,13 @@ class K8sAndComposePackagingTests(unittest.TestCase):
                 ms_tpl = tf.extractfile("py-phone-caller/templates/microservices.yaml").read().decode("utf-8")
                 self.assertIn("/app/py-phone-caller/config/settings.toml", ms_tpl)
                 self.assertNotIn("/app/src/", ms_tpl)
+                ep_tpl = tf.extractfile("py-phone-caller/templates/asterisk-endpoint.yaml").read().decode("utf-8")
+                self.assertIn("kind: EndpointSlice", ep_tpl)
+                self.assertNotIn("kind: Endpoints\n", ep_tpl)
+
+            ast_ep_text = (REPO_ROOT / "deploy" / "k8s" / "01_asterisk_endpoint.yml").read_text(encoding="utf-8")
+            self.assertIn("kind: EndpointSlice", ast_ep_text)
+            self.assertNotIn("kind: Endpoints\n", ast_ep_text)
 
             for yml_file in sorted((REPO_ROOT / "deploy" / "k8s").glob("*.yml")):
                 text = yml_file.read_text(encoding="utf-8")
@@ -64,6 +71,7 @@ class K8sAndComposePackagingTests(unittest.TestCase):
         # Verify mounted APISIX config files exist on disk
         self.assertTrue((REPO_ROOT / "deploy" / "gateway" / "apisix" / "config.yaml").is_file())
         self.assertTrue((REPO_ROOT / "deploy" / "gateway" / "apisix" / "apisix.yaml").is_file())
+        self.assertTrue((REPO_ROOT / "deploy" / "gateway" / "apisix" / "dashboard_conf.yaml").is_file())
 
 
 if __name__ == "__main__":

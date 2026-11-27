@@ -9,14 +9,15 @@
     <meta property="og:description" content="py-phone-caller is a production-ready emergency alert and notification platform built with Python, Asterisk PBX, and cloud-native microservices.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://jcfdeb.github.io/py-phone-caller/">
-    <meta property="og:image" content="https://jcfdeb.github.io/py-phone-caller/assets/hero-wave.svg">
+    <meta property="og:image" content="https://jcfdeb.github.io/py-phone-caller/assets/og-py-phone-caller.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="py-phone-caller | Emergency Alert Platform">
-    <meta name="twitter:description" content="py-phone-caller is a production-ready emergency alert and notification platform built with Python, Asterisk PBX, and cloud-native microservices.">
-    <meta name="twitter:image" content="https://jcfdeb.github.io/py-phone-caller/assets/hero-wave.svg">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="twitter:title" content="py-phone-caller &amp; OpenAlert | Emergency Alert Platform">
+    <meta name="twitter:description" content="py-phone-caller &amp; OpenAlert is a sovereign, production-ready emergency alert, telephony, SMS, and off-grid mesh platform.">
+    <meta name="twitter:image" content="https://jcfdeb.github.io/py-phone-caller/assets/og-py-phone-caller.png">
+    <link rel="icon" type="image/svg+xml" href="assets/logo-asterisk.svg">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -36,7 +37,8 @@
         <a href="#services">Services</a>
         <a href="#capabilities">Capabilities</a>
         <a href="#deploy">Deploy</a>
-        <a href="openalert/" target="_blank" rel="noopener">OpenAlert NOC</a>
+        <a href="manual/">Docs Manual</a>
+        <a href="openalert/">OpenAlert Mesh</a>
       </nav>
       <div class="nav-actions">
         <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-nav">
@@ -67,35 +69,34 @@
       <section class="hero">
         <div class="hero-copy">
           <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;">
-            <span class="chip" style="color: var(--teal); border-color: rgba(92, 214, 199, 0.4); font-weight: 500;">🚀 Release v1.0.1</span>
-            <span class="chip" style="color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); font-weight: 500;">🛡️ Enterprise Hardened</span>
-            <span class="chip" style="color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 500;">🦀 OpenAlert v0.2.0 Hub</span>
+            <span class="chip" style="color: var(--teal); border-color: rgba(92, 214, 199, 0.4); font-weight: 500;">🚀 Suite Release v1.1.0</span>
+            <span class="chip" style="color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); font-weight: 500;">🛡️ Enterprise &amp; Air-Gap Qualified</span>
+            <span class="chip" style="color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 500;">🦀 OpenAlert v1.1.0 Mesh</span>
           </div>
-          <p class="eyebrow">Emergency-grade alerting and response</p>
+          <p class="eyebrow">Sovereign telephony, SMS &amp; off-grid mesh alerting</p>
           <h1>Command every call, every time.</h1>
           <p class="lead">
-            py-phone-caller is a production-ready emergency alert and notification platform that
-            orchestrates voice calls and SMS with Python microservices, Asterisk PBX, and a
-            cloud-native toolchain.
+            <strong>py-phone-caller</strong> and <strong>OpenAlert (<code>openalertd</code>)</strong> form a unified emergency alerting suite—bridging Prometheus, Grafana, Nostr, BitChat BLE, LoRa RF, and off-grid <code>/sos</code> Wi-Fi portals into Asterisk 22 voice calls, dual-channel GSM/Twilio SMS, and SIP messaging.
           </p>
           <div class="cta">
-            <a class="btn primary" href="#architecture">View architecture</a>
-            <a class="btn ghost" href="#services">Explore services</a>
-            <a class="btn ghost" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/1.0.1-release.md" target="_blank" rel="noopener">Release notes</a>
-            <a class="btn ghost" href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener">View on GitHub</a>
+            <a class="btn primary" href="manual/deploy/">Deployment Hub</a>
+            <a class="btn ghost" href="manual/">Documentation Manual</a>
+            <a class="btn ghost" href="openalert/">OpenAlert Control Plane</a>
+            <a class="btn ghost" href="manual/CHANGELOG/">Changelog v1.1.0</a>
+            <a class="btn ghost" href="https://github.com/jcfdeb/py-phone-caller" target="_blank" rel="noopener">GitHub</a>
           </div>
           <div class="hero-stats">
             <div class="stat">
-              <div class="stat-value">14</div>
-              <div class="stat-label">services & gateways</div>
+              <div class="stat-value">15</div>
+              <div class="stat-label">services &amp; gateways</div>
             </div>
             <div class="stat">
-              <div class="stat-value">5</div>
+              <div class="stat-value">6</div>
               <div class="stat-label">TTS engines</div>
             </div>
             <div class="stat">
-              <div class="stat-value">8081-9443</div>
-              <div class="stat-label">service ports</div>
+              <div class="stat-value">709+</div>
+              <div class="stat-label">automated tests</div>
             </div>
           </div>
         </div>
@@ -128,7 +129,8 @@
             that handles generation, playback, and escalation.
           </p>
           <p class="doc-link">
-            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/README.md" target="_blank" rel="noopener">Architecture details in src/README.md</a>
+            <a href="manual/architecture-and-call-flows/">Architecture &amp; Call Flows Guide</a> &bull;
+            <a href="manual/services-and-endpoints/">REST Services &amp; Endpoints Reference</a>
           </p>
         </div>
         <div class="grid two">
@@ -230,7 +232,7 @@
           </a>
           <a class="service-card" style="--delay: 0.2s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/generate_audio/README.md">
             <h3>generate_audio</h3>
-            <p>Text-to-speech engine supporting gTTS, MMS, Piper, AWS Polly, and Kokoro.</p>
+            <p>Neural &amp; cloud TTS engine supporting Kokoro-82M, Silero V3, Piper ONNX, Facebook MMS, AWS Polly, and gTTS.</p>
             <div class="service-meta">
               <span class="meta-chip">Port 8082</span>
             </div>
@@ -292,7 +294,7 @@
             </div>
             <div class="tag">Shared core</div>
           </a>
-          <a class="service-card" style="--delay: 0.6s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md">
+          <a class="service-card" style="--delay: 0.6s" href="manual/ENTERPRISE_GATEWAY_AND_IAM_GUIDE/">
             <h3>apache_apisix</h3>
             <p>Unified edge API gateway with SSL termination, dynamic path rewriting, rate limiting, and OIDC auth.</p>
             <div class="service-meta">
@@ -300,7 +302,7 @@
             </div>
             <div class="tag">API Gateway</div>
           </a>
-          <a class="service-card" style="--delay: 0.65s" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md">
+          <a class="service-card" style="--delay: 0.65s" href="manual/ENTERPRISE_GATEWAY_AND_IAM_GUIDE/">
             <h3>keycloak_iam</h3>
             <p>Enterprise identity and access management providing SSO, RBAC roles, and M2M credentials.</p>
             <div class="service-meta">
@@ -330,8 +332,8 @@
         <div class="grid three">
           <div class="panel tour-panel">
             <h3>Web UI tour</h3>
-            <p>See dashboards, schedules, call history, and live event logs in a guided walkthrough.</p>
-            <a class="btn ghost small" href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/web-ui-tour/README.md" target="_blank" rel="noopener">Open the tour</a>
+            <p>See multilingual RTL/LTR dashboards, schedules, call history, and live event logs in a guided walkthrough.</p>
+            <a class="btn ghost small" href="manual/web-ui-tour/">Open the tour</a>
           </div>
           <div class="panel">
             <h3>Enterprise SSO & Gateway</h3>
@@ -359,7 +361,7 @@
           </div>
           <div class="panel">
             <h3>Deployment choice</h3>
-            <p>Run via Docker Compose, systemd services, or full Ansible deployment.</p>
+            <p>Qualified on Native Ansible (Debian 13, Ubuntu 26.04, Rocky 10, AlmaLinux 10 &amp; ARM64 Air-Gap), Docker Compose, Kubernetes/Helm (GKE &amp; k3s), and .deb/.rpm packages.</p>
           </div>
           <div class="panel">
             <h3>Secure defaults</h3>
@@ -373,21 +375,21 @@
           <p class="eyebrow">Stack</p>
           <h2>Modern infrastructure, pragmatic choices</h2>
           <p>
-            Python 3.12, Asterisk 18/20, Redis, PostgreSQL, and Celery anchor the runtime.
+            Python 3.14, Rust 2024, Asterisk 22, PostgreSQL 16–18, and Redis/Valkey anchor the runtime across cloud, VM, and air-gapped ARM64 hardware.
           </p>
         </div>
         <div class="stack-chips">
-          <span>Asterisk PBX</span>
-          <span>Python 3.12+</span>
+          <span>Asterisk 22 PBX</span>
+          <span>Python 3.14 (uv)</span>
+          <span>Rust 2024 (OpenAlert &amp; GSM)</span>
           <span>Apache APISIX</span>
-          <span>Keycloak IAM</span>
-          <span>Rust (OpenAlert)</span>
-          <span>Celery + Redis</span>
-          <span>PostgreSQL 18 (also 15)</span>
-          <span>Kokoro TTS</span>
-          <span>Dynaconf</span>
+          <span>Keycloak OIDC</span>
+          <span>Kubernetes &amp; Helm v3</span>
+          <span>Celery + Redis / Valkey</span>
+          <span>PostgreSQL 16–18</span>
+          <span>Kokoro &amp; Silero Neural TTS</span>
+          <span>Ansible (Online &amp; Air-Gapped)</span>
           <span>Docker / Podman</span>
-          <span>Ansible</span>
           <span>OpenTelemetry</span>
         </div>
       </section>
@@ -479,16 +481,19 @@
             Configure once with Dynaconf and ship in the model that fits your environment.
           </p>
           <p class="doc-link">
-            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/deploy/ansible/README.md" target="_blank" rel="noopener">Ansible deployment README</a>
+            <a href="manual/deploy/">Centralized Deployment Documentation Hub (Guides 01–10)</a>
           </p>
           <p class="doc-link">
-            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/deploy/docs/README.md" target="_blank" rel="noopener">Centralized Deployment Documentation Hub (deploy/docs)</a>
+            <a href="manual/deploy/02-ansible-deployment/">02. Native Ansible Installer (Debian 13, Ubuntu 26.04, Rocky 10, AlmaLinux 10)</a>
           </p>
           <p class="doc-link">
-            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/1.0.1-release.md" target="_blank" rel="noopener">Release Notes &amp; Current Capabilities</a>
+            <a href="manual/deploy/04-kubernetes-and-helm-deployment/">04. Kubernetes &amp; Helm v3 Deployment (GKE &amp; k3s)</a>
           </p>
           <p class="doc-link">
-            <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/docs/ENTERPRISE_GATEWAY_AND_IAM_GUIDE.md" target="_blank" rel="noopener">Enterprise APISIX Gateway &amp; Keycloak SSO Guide</a>
+            <a href="manual/deploy/09-arm64-appliance-and-airgapped-deployment/">09. ARM64 Appliance &amp; 100% Air-Gapped Guide</a>
+          </p>
+          <p class="doc-link">
+            <a href="manual/ENTERPRISE_GATEWAY_AND_IAM_GUIDE/">Enterprise APISIX Gateway &amp; Keycloak SSO Guide</a>
           </p>
         </div>
         <div class="grid two">
@@ -499,16 +504,16 @@
 # OR
 export CALLER_CONFIG=/path/to/settings.toml</code></pre>
             <p class="doc-link">
-              <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/src/README.md" target="_blank" rel="noopener">Config notes in src/README.md</a>
+              <a href="manual/deploy/01-architecture-and-prerequisites/">Prerequisites &amp; Configuration Reference</a>
             </p>
           </div>
           <div class="panel">
             <h3>Docker Compose</h3>
-            <p>Bring up the full stack with containers and service definitions.</p>
+            <p>Bring up the full 15-container stack (or add gateway / hardware overlays).</p>
             <pre><code>cd deploy/compose
 docker compose up -d</code></pre>
             <p class="doc-link">
-              <a href="https://github.com/jcfdeb/py-phone-caller/blob/main/deploy/compose/README.md" target="_blank" rel="noopener">Docker Compose README</a>
+              <a href="manual/deploy/03-docker-compose-deployment/">03. Docker &amp; Podman Compose Guide</a>
             </p>
           </div>
         </div>
@@ -538,11 +543,11 @@ python3 -m asterisk_caller.asterisk_caller</code></pre>
         </div>
         <div>
           <span class="footer-label">Core dependencies</span>
-          <p>Asterisk PBX, PostgreSQL, Redis, Python 3.12+</p>
+          <p>Asterisk 22 PBX, PostgreSQL 16–18, Redis/Valkey, Python 3.14 &amp; Rust 2024</p>
         </div>
         <div>
           <span class="footer-label">Deployment options</span>
-          <p>Docker Compose, systemd services, Ansible automation</p>
+          <p>Ansible (Online &amp; Air-Gapped), Docker Compose, Kubernetes/Helm, .deb/.rpm, PyPI/systemd</p>
         </div>
       </div>
     </footer>
