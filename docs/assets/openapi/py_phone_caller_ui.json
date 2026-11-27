@@ -718,28 +718,6 @@
         }
       }
     },
-    "/api/docs": {
-      "get": {
-        "tags": [
-          "System & Observability"
-        ],
-        "summary": "Unified OpenAPI Developer Portal",
-        "description": "Aggregates OpenAPI 3.0 specifications for the Web UI and all internal microservices. Renders static same-origin OpenAPI JSON links when PPC_OFFLINE=1.",
-        "operationId": "getUnifiedApiDocsPortal",
-        "responses": {
-          "200": {
-            "description": "HTML developer portal page.",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/calls": {
       "get": {
         "tags": [
@@ -2633,6 +2611,28 @@
                 },
                 "example": {
                   "status": "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/docs": {
+      "get": {
+        "tags": [
+          "System & Observability"
+        ],
+        "summary": "Unified OpenAPI Developer Portal",
+        "description": "Aggregates OpenAPI 3.0 specifications for the Web UI and all internal microservices. Renders static same-origin OpenAPI JSON links when PPC_OFFLINE=1.",
+        "operationId": "getUnifiedApiDocsPortal",
+        "responses": {
+          "200": {
+            "description": "HTML developer portal page.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

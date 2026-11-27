@@ -155,6 +155,15 @@ class RepositoryCoherenceTests(unittest.TestCase):
                 resolved = (md.parent / path_part).resolve()
                 if not resolved.exists():
                     broken.append(f"{md.relative_to(REPO_ROOT)} -> {target}")
+                    continue
+                if resolved.is_relative_to(REPO_ROOT):
+                    ign = subprocess.run(
+                        ["git", "check-ignore", "-q", str(resolved.relative_to(REPO_ROOT))],
+                        cwd=REPO_ROOT,
+                        check=False,
+                    )
+                    if ign.returncode == 0:
+                        broken.append(f"{md.relative_to(REPO_ROOT)} -> {target} (points to gitignored path)")
 
         # Validate landing page relative href/src links (allowing `manual/...` and `../manual/...` built into _site/)
         for html_rel in ("docs/index.html", "docs/openalert/index.html"):

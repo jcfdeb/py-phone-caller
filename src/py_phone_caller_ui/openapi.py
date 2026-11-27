@@ -6,10 +6,10 @@ call records, scheduling engine, on-call contact rosters, SMS tracking, PBX even
 user management, and authentication flows.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 
-def get_ui_openapi_spec() -> Dict[str, Any]:
+def get_ui_openapi_spec() -> dict[str, Any]:
     """
     Constructs a complete, production-grade OpenAPI 3.0.3 specification for the Web UI.
     """
@@ -56,7 +56,7 @@ def get_ui_openapi_spec() -> Dict[str, Any]:
         },
     ]
 
-    components: Dict[str, Any] = {
+    components: dict[str, Any] = {
         "securitySchemes": {
             "cookieAuth": {
                 "type": "apiKey",
@@ -275,7 +275,7 @@ def get_ui_openapi_spec() -> Dict[str, Any]:
         },
     }
 
-    paths: Dict[str, Any] = {
+    paths: dict[str, Any] = {
         "/": {
             "get": {
                 "tags": ["NOC Operations & Telemetry"],
@@ -571,20 +571,6 @@ def get_ui_openapi_spec() -> Dict[str, Any]:
                                 }
                             }
                         },
-                    }
-                },
-            }
-        },
-        "/api/docs": {
-            "get": {
-                "tags": ["Diagnostics & Dispatches"],
-                "summary": "Unified OpenAPI Developer Portal",
-                "description": "Interactive developer portal aggregating all microservice OpenAPI 3.0 specifications with a dropdown selector and Keycloak Bearer token authentication.",
-                "operationId": "getUnifiedDocsPortal",
-                "responses": {
-                    "200": {
-                        "description": "Swagger UI 5 developer portal HTML page.",
-                        "content": {"text/html": {"schema": {"type": "string"}}},
                     }
                 },
             }

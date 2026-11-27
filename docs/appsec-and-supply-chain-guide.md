@@ -5,7 +5,7 @@ Welcome to the **Application Security (AppSec), Software Supply-Chain, and Non-R
 This guide is a practical, copy-and-paste handbook for **current developers, new contributors, and release maintainers**. It explains how to bootstrap the security toolchain in 5 minutes, run fast local checks before committing or pushing, upgrade vulnerable dependencies safely with **automatic rollback**, and handle findings across Python, Rust, Docker, Kubernetes, and Helm without breaking working functionality.
 
 > [!TIP]
-> Looking for the architectural rationale behind tool choices and design decisions? Read the companion High-Level Design: [`docs/openalert/dist/AppSec_for_py-phone-caller/app-sec_HLD.md`](openalert/dist/AppSec_for_py-phone-caller/app-sec_HLD.md).
+> Looking for the underlying policy and automation definitions? Inspect [`Taskfile.yml`](../Taskfile.yml), [`deny.toml`](../deny.toml), [`osv-scanner.toml`](../osv-scanner.toml), [`.trivyignore.yaml`](../.trivyignore.yaml), and [`.github/workflows/appsec.yml`](../.github/workflows/appsec.yml).
 
 ---
 

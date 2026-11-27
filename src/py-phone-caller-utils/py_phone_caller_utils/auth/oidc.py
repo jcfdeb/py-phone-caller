@@ -300,7 +300,7 @@ class OIDCClient:
         if verify_signature and self.issuer_url and self.issuer_url.startswith("http"):
             try:
                 import jwt
-                from jwt import PyJWClient
+                from jwt import PyJWKClient
 
                 if not hasattr(self, "_jwks_client") or self._jwks_client is None:
                     jwks_url = f"{self.issuer_url}/protocol/openid-connect/certs"
