@@ -19,6 +19,7 @@ Sovereign emergency alerting, voice telephony, dual-channel SMS/SIP messaging, a
 [![Release](https://img.shields.io/badge/release-v1.1.0-teal.svg)](CHANGELOG.md)
 [![CI](https://github.com/jcfdeb/py-phone-caller/actions/workflows/ci.yml/badge.svg)](https://github.com/jcfdeb/py-phone-caller/actions/workflows/ci.yml)
 [![AppSec](https://github.com/jcfdeb/py-phone-caller/actions/workflows/appsec.yml/badge.svg)](https://github.com/jcfdeb/py-phone-caller/actions/workflows/appsec.yml)
+[![GHCR](https://img.shields.io/badge/ghcr.io%2Fjcfdeb-12%20images-2496ed.svg?logo=docker&logoColor=white)](https://github.com/jcfdeb?tab=packages&repo_name=py-phone-caller)
 [![Pages](https://github.com/jcfdeb/py-phone-caller/actions/workflows/pages.yml/badge.svg)](https://jcfdeb.github.io/py-phone-caller/)
 [![Python](https://img.shields.io/badge/python-3.14-blue.svg)](pyproject.toml)
 [![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](src/openalert/Cargo.toml)
@@ -31,6 +32,10 @@ Sovereign emergency alerting, voice telephony, dual-channel SMS/SIP messaging, a
 > All internal microservice ports (`8081`–`8087`, `8090`) must remain private. See [`SECURITY.md`](SECURITY.md).
 
 ## Overview
+
+<p align="center">
+  <img src="docs/assets/live-signal-flow.svg" alt="Live Signal Flow — Field SOS & NOC Alert to Offline Neural TTS, Asterisk 22 Voice Call, SIP MESSAGE & DTMF 4 ACK" width="920">
+</p>
 
 The repository delivers two tightly integrated—yet independently deployable—pillars:
 

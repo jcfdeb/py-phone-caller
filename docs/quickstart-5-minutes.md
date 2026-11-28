@@ -49,9 +49,10 @@ Choose either the **Automated Native Ansible** track (on a disposable Debian 13,
 === "Option B: Docker / Podman Compose + Local Asterisk"
 
     1. Configure a local Asterisk instance with `[py-phone-caller]` ARI user and PJSIP extension `[1000]` using the copy-paste blocks in **[Asterisk PBX Configuration & Examples](asterisk-pbx-configuration-guide.md)** (setting `asterisk_pass` and extension `1000`'s password to `<PASSWORD>`).
-    2. Start the containerized `py-phone-caller` + `openalertd` stack, pointing it at your host IP (`<HOST_IP>`, e.g. `192.168.1.50`):
+    2. Start the containerized `py-phone-caller` + `openalertd` stack using the prebuilt **GitHub Container Registry (`ghcr.io/jcfdeb`)** images (or append `--build` with `MY_DOCKER_REGISTRY=localhost` to build locally), pointing it at your host IP (`<HOST_IP>`, e.g. `192.168.1.50`):
 
     ```bash
+    export MY_DOCKER_REGISTRY="ghcr.io/jcfdeb"
     export ASTERISK_HOST="<HOST_IP>"
     export ASTERISK_PASS="<PASSWORD>"
     export UI_ADMIN_PASSWORD="<PASSWORD>"
@@ -59,7 +60,8 @@ Choose either the **Automated Native Ansible** track (on a disposable Debian 13,
     export DYNACONF_ASTERISK_CALL__ASTERISK_CHAN_TYPE="PJSIP/{phone}"
     export DYNACONF_GENERATE_AUDIO__GENERATE_AUDIO_HOST="<HOST_IP>"
 
-    docker compose -f deploy/compose/docker-compose.yml up -d --build
+    docker compose -f deploy/compose/docker-compose.yml pull
+    docker compose -f deploy/compose/docker-compose.yml up -d
     ```
 
 ---

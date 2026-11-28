@@ -11,5 +11,12 @@ data/
 *.pid
 *.log
 
+# Exclude local configuration overrides, secrets, and environment files
+config/*.local.toml
+**/*.local.toml
+**/.secrets*
+**/.env*
+**/.vault_pass*
+
 # Exclude git repository metadata
 .git/

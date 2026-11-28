@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 264" width="980" height="264" role="img" aria-labelledby="flowTitle flowDesc">
+  <title id="flowTitle">py-phone-caller &amp; OpenAlert Live Signal Flow</title>
+  <desc id="flowDesc">Animated end-to-end emergency alert pipeline from field /sos, LoRa 868 MHz, BLE, and Prometheus Alertmanager through openalertd, offline neural TTS, and Asterisk 22 PBX to responder voice call, SIP MESSAGE, and DTMF 4 acknowledgment.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="55%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#111c33"/>
+    </linearGradient>
+
+    <linearGradient id="fwdLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="35%" stop-color="#38bdf8"/>
+      <stop offset="70%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#2dd4bf"/>
+    </linearGradient>
+
+    <linearGradient id="ackLine" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+
+    <filter id="glowAmber" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="glowGreen" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1e293b" stroke-width="0.7" opacity="0.55"/>
+    </pattern>
+
+    <path id="forwardSignalPath" d="M 110 118 L 870 118" fill="none"/>
+    <path id="ackReturnPath" d="M 870 184 C 870 222, 682 222, 682 222 L 306 222 C 306 222, 306 184, 306 184" fill="none"/>
+  </defs>
+
+  <!-- Outer Frame -->
+  <rect x="2" y="2" width="976" height="260" rx="16" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="1.5"/>
+  <rect x="2" y="2" width="976" height="260" rx="16" fill="url(#grid)"/>
+
+  <!-- Header Bar -->
+  <circle cx="28" cy="26" r="4.5" fill="#10b981">
+    <animate attributeName="opacity" values="1;0.35;1" dur="2.2s" repeatCount="indefinite"/>
+  </circle>
+  <text x="41" y="30" fill="#e2e8f0" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="0.8">LIVE SOVEREIGN ALERT &amp; DTMF ACKNOWLEDGMENT PIPELINE · ZERO CLOUD REQUIRED</text>
+  <text x="952" y="30" text-anchor="end" fill="#64748b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11">v1.1.0</text>
+
+  <!-- Forward Conduit Base & Animated Dash -->
+  <line x1="110" y1="118" x2="870" y2="118" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+  <line x1="110" y1="118" x2="870" y2="118" stroke="url(#fwdLine)" stroke-width="2.2" stroke-dasharray="8 8" opacity="0.8">
+    <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Return DTMF '4' ACK Conduit -->
+  <path d="M 870 184 L 870 222 L 306 222 L 306 184" fill="none" stroke="#064e3b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M 870 184 L 870 222 L 306 222 L 306 184" fill="none" stroke="url(#ackLine)" stroke-width="1.8" stroke-dasharray="6 6">
+    <animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.4s" repeatCount="indefinite"/>
+  </path>
+  <rect x="442" y="210" width="296" height="22" rx="11" fill="#064e3b" stroke="#10b981" stroke-width="1"/>
+  <text x="590" y="225" text-anchor="middle" fill="#a7f3d0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="600">DTMF '4' ACK → /ack → Escalation Halted ✓</text>
+
+  <!-- Traveling Signal Pulses (Forward) -->
+  <circle r="6" fill="#38bdf8" filter="url(#glowAmber)">
+    <animateMotion dur="4.2s" repeatCount="indefinite" rotate="auto">
+      <mpath href="#forwardSignalPath"/>
+    </animateMotion>
+  </circle>
+  <circle r="5" fill="#f59e0b" filter="url(#glowAmber)">
+    <animateMotion dur="4.2s" begin="2.1s" repeatCount="indefinite" rotate="auto">
+      <mpath href="#forwardSignalPath"/>
+    </animateMotion>
+  </circle>
+
+  <!-- Traveling ACK Pulse (Return) -->
+  <circle r="5.5" fill="#34d399" filter="url(#glowGreen)">
+    <animateMotion dur="3.6s" begin="1.2s" repeatCount="indefinite" rotate="auto">
+      <mpath href="#ackReturnPath"/>
+    </animateMotion>
+  </circle>
+
+  <!-- Stage 1: Ingress -->
+  <g transform="translate(26, 54)">
+    <rect width="168" height="128" rx="12" fill="#0f172a" stroke="#f59e0b" stroke-width="1.4"/>
+    <rect x="12" y="12" width="58" height="18" rx="9" fill="#451a03"/>
+    <text x="41" y="24.5" text-anchor="middle" fill="#fbbf24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.5" font-weight="700">INGRESS</text>
+    <text x="12" y="49" fill="#f8fafc" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif" font-size="13" font-weight="700">Field &amp; NOC Triggers</text>
+    <text x="12" y="69" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• /sos Captive Portal</text>
+    <text x="12" y="85" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• LoRa 868 MHz · BLE</text>
+    <text x="12" y="101" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• Alertmanager / Zabbix</text>
+    <text x="12" y="117" fill="#fbbf24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.8">POST :8090 / :8084</text>
+  </g>
+
+  <!-- Stage 2: openalertd + caller_register -->
+  <g transform="translate(218, 54)">
+    <rect width="176" height="128" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="1.4"/>
+    <rect x="12" y="12" width="84" height="18" rx="9" fill="#082f49"/>
+    <text x="54" y="24.5" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.5" font-weight="700">RUST + STATE</text>
+    <text x="12" y="49" fill="#f8fafc" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif" font-size="13" font-weight="700">openalertd &amp; Register</text>
+    <text x="12" y="69" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• NIP-ALERT Kind 30000</text>
+    <text x="12" y="85" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• Store &amp; Forward WAL</text>
+    <text x="12" y="101" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• On-Call + P0 Queue</text>
+    <text x="12" y="117" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.8">PostgreSQL · Redis</text>
+  </g>
+
+  <!-- Stage 3: Offline Neural TTS -->
+  <g transform="translate(418, 54)">
+    <rect width="172" height="128" rx="12" fill="#0f172a" stroke="#818cf8" stroke-width="1.4"/>
+    <rect x="12" y="12" width="82" height="18" rx="9" fill="#1e1b4b"/>
+    <text x="53" y="24.5" text-anchor="middle" fill="#a5b4fc" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.5" font-weight="700">NEURAL TTS</text>
+    <text x="12" y="49" fill="#f8fafc" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif" font-size="13" font-weight="700">generate_audio</text>
+    <text x="12" y="69" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• Kokoro-82M (Offline)</text>
+    <text x="12" y="85" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• Silero · Piper ONNX</text>
+    <text x="12" y="101" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• 8 kHz Mono PCM WAV</text>
+    <!-- Animated Audio Waveform Bars -->
+    <g transform="translate(12, 108)" fill="#818cf8">
+      <rect x="0" y="4" width="3" height="8" rx="1"><animate attributeName="height" values="4;12;4" dur="0.9s" repeatCount="indefinite"/><animate attributeName="y" values="6;2;6" dur="0.9s" repeatCount="indefinite"/></rect>
+      <rect x="6" y="2" width="3" height="12" rx="1"><animate attributeName="height" values="12;5;12" dur="0.8s" repeatCount="indefinite"/><animate attributeName="y" values="2;5.5;2" dur="0.8s" repeatCount="indefinite"/></rect>
+      <rect x="12" y="5" width="3" height="6" rx="1"><animate attributeName="height" values="5;13;5" dur="1.0s" repeatCount="indefinite"/><animate attributeName="y" values="5.5;1.5;5.5" dur="1.0s" repeatCount="indefinite"/></rect>
+      <rect x="18" y="3" width="3" height="10" rx="1"><animate attributeName="height" values="11;4;11" dur="0.75s" repeatCount="indefinite"/><animate attributeName="y" values="2.5;6;2.5" dur="0.75s" repeatCount="indefinite"/></rect>
+      <text x="28" y="10" fill="#a5b4fc" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.8">:8082 WAV stream</text>
+    </g>
+  </g>
+
+  <!-- Stage 4: Asterisk 22 PBX + GSM -->
+  <g transform="translate(614, 54)">
+    <rect width="168" height="128" rx="12" fill="#0f172a" stroke="#2dd4bf" stroke-width="1.4"/>
+    <rect x="12" y="12" width="84" height="18" rx="9" fill="#042f2e"/>
+    <text x="54" y="24.5" text-anchor="middle" fill="#5eead4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.5" font-weight="700">PBX &amp; MODEM</text>
+    <text x="12" y="49" fill="#f8fafc" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif" font-size="13" font-weight="700">Asterisk 22 &amp; SMS</text>
+    <text x="12" y="69" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• ARI Stasis :8088</text>
+    <text x="12" y="85" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• RFC 3428 SIP MESSAGE</text>
+    <text x="12" y="101" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• USB GSM UCS-2 / SIP</text>
+    <text x="12" y="117" fill="#5eead4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.8">Circuit-Breaker Safe</text>
+  </g>
+
+  <!-- Stage 5: Responder Handset -->
+  <g transform="translate(806, 54)">
+    <rect width="148" height="128" rx="12" fill="#0f172a" stroke="#34d399" stroke-width="1.6"/>
+    <rect x="12" y="12" width="76" height="18" rx="9" fill="#064e3b"/>
+    <text x="50" y="24.5" text-anchor="middle" fill="#6ee7b7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9.5" font-weight="700">RESPONDER</text>
+    <text x="12" y="49" fill="#f8fafc" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif" font-size="13" font-weight="700">On-Call Phone</text>
+    <text x="12" y="69" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• Voice Alert Played</text>
+    <text x="12" y="85" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2">• Instant Text Alert</text>
+    <rect x="12" y="96" width="124" height="22" rx="6" fill="#065f46">
+      <animate attributeName="fill" values="#064e3b;#047857;#064e3b" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="74" y="110.5" text-anchor="middle" fill="#ecfdf5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.2" font-weight="700">Press [4] → ACK ✓</text>
+  </g>
+</svg>

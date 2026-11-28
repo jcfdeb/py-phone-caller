@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+      - "[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
 
 permissions:
@@ -17,31 +18,108 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Install native Linux headers & packaging utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libdbus-1-dev \
+            libudev-dev \
+            libssl-dev \
+            binutils \
+            ffmpeg
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
-      - name: Set up Python 3.14
-        run: uv python install 3.14
-
-      - name: Install workspace dependencies
-        run: uv sync --frozen
-
-      - name: Install Rust toolchain for openalertd
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Run packaging test suites
+      - name: Set up Python 3.14 & sync frozen workspace
         run: |
-          uv run pytest \
+          uv python install 3.14 3.12
+          uv sync --frozen --all-packages
+
+      - name: Install pinned Rust toolchain for openalertd & rust_engine
+        uses: dtolnay/rust-toolchain@1.99.1
+
+      - name: Install pinned supply-chain tools (task & syft) via mise
+        uses: jdx/mise-action@v5
+
+      - name: Build native rust_engine SMS extension
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+        run: |
+          uv run --no-sync maturin develop --manifest-path src/py-phone-caller-utils/py_phone_caller_utils/sms/rust_engine/Cargo.toml --locked
+
+      - name: Compile stripped release openalertd Linux ELF binary
+        run: |
+          cargo build --release --locked --manifest-path src/openalert/Cargo.toml --target x86_64-unknown-linux-gnu
+          strip -s src/openalert/target/x86_64-unknown-linux-gnu/release/openalertd
+
+      - name: Run packaging & documentation coherence test suites
+        run: |
+          uv run --no-sync pytest \
             deploy/ansible/tests/test_ansible_bundle.py \
+            src/openalert/packaging/tests/test_release_bundle.py \
             tests/test_pypi_packaging.py \
             tests/test_linux_packaging.py \
             tests/test_k8s_and_compose_packaging.py \
             tests/test_docs_coherence.py -v
 
-      - name: Build all release artifacts (Ansible, PyPI, RPM/DEB, K8s/Helm)
-        run: uv run python deploy/packaging/build_all_releases.py
+      - name: Build all suite release artifacts (Ansible, PyPI, RPM/DEB, K8s/Helm)
+        run: |
+          uv run --no-sync python deploy/packaging/build_all_releases.py \
+            --openalert-binary src/openalert/target/x86_64-unknown-linux-gnu/release/openalertd
+
+      - name: Build standalone openalertd Linux release bundle
+        run: |
+          uv run --no-sync python src/openalert/packaging/release_bundle.py \
+            --target x86_64-unknown-linux-gnu \
+            --binary src/openalert/target/x86_64-unknown-linux-gnu/release/openalertd \
+            --source-revision "$(git rev-parse HEAD)" \
+            --build-baseline "Ubuntu 24.04 LTS (GitHub Actions)" \
+            --rustc-version "1.99.1" \
+            --output-dir dist/openalert
+
+      - name: Generate CycloneDX SBOM, verify SHA256SUMS & extract CHANGELOG notes
+        run: |
+          task sec:sbom
+          uv run --no-sync python - <<'PY'
+          import hashlib
+          import pathlib
+          import re
+          import tomllib
+
+          dist = pathlib.Path("dist")
+          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+          sums_path = dist / "SHA256SUMS"
+          lines = [ln for ln in sums_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+          extra_files = sorted((dist / "openalert").glob("*.tar.gz")) + [dist / "SBOM.cdx.json"]
+          for fpath in extra_files:
+              if fpath.is_file():
+                  digest = hashlib.file_digest(fpath.open("rb"), "sha256").hexdigest()
+                  rel = fpath.relative_to(dist).as_posix()
+                  entry = f"{digest}  {rel}"
+                  if entry not in lines:
+                      lines.append(entry)
+          sums_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          changelog = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)"
+          match = re.search(pattern, changelog, flags=re.MULTILINE | re.DOTALL)
+          body = match.group(1).strip() if match else f"Unified py-phone-caller & OpenAlert release v{version}."
+          header = (
+              f"## py-phone-caller & OpenAlert `v{version}`\n\n"
+              f"{body}\n\n---\n"
+              f"### Verification & Supply-Chain Artifacts\n"
+              f"- Verify checksums: `(cd dist && sha256sum -c SHA256SUMS)`\n"
+              f"- CycloneDX SBOM: `SBOM.cdx.json`\n"
+              f"- Container images: `ghcr.io/jcfdeb/<service>:{version}`\n"
+          )
+          (dist / "RELEASE_NOTES.md").write_text(header, encoding="utf-8")
+          PY
+          (cd dist && sha256sum -c SHA256SUMS)
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7
@@ -50,18 +128,24 @@ jobs:
           path: |
             dist/SHA256SUMS
             dist/RELEASE_MANIFEST.json
+            dist/SBOM.cdx.json
+            dist/RELEASE_NOTES.md
             dist/ansible/*
             dist/pypi/*
             dist/linux/*
             dist/k8s/*
+            dist/openalert/*
 
       - name: Publish GitHub Release on Tag
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: dist/RELEASE_NOTES.md
+          generate_release_notes: true
           files: |
             dist/SHA256SUMS
             dist/RELEASE_MANIFEST.json
+            dist/SBOM.cdx.json
             dist/ansible/*.tar.gz
             dist/ansible/*.sha256
             dist/pypi/*.whl
@@ -70,4 +154,5 @@ jobs:
             dist/linux/*.rpm
             dist/k8s/*.tgz
             dist/k8s/*.tar.gz
-          generate_release_notes: true
+            dist/openalert/*.tar.gz
+            dist/openalert/*.sha256

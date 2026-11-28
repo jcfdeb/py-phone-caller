@@ -16,9 +16,10 @@ This guide provides step-by-step instructions for deploying **`py-phone-caller`*
 
 ## Step 1: Prepare Container Images for Your Cluster
 
-By default, the Helm chart and raw manifests reference:
-- **Helm Chart (`values.yaml`)**: `global.imageRegistry: "quay.io/py-phone-caller"` and `global.imageTag: "1.1.0"`
-- **Raw Manifests (`deploy/k8s/*.yml`)**: `quay.io/py-phone-caller/<service>:1.1.0`
+Prebuilt release images for all 12 services are published on **GitHub Container Registry (`ghcr.io/jcfdeb/<service>:1.1.0`)**:
+- **Public GHCR Images (Recommended Quick Install)**: Set `global.imageRegistry: "ghcr.io/jcfdeb"` and `global.imageTag: "1.1.0"` in `my-values.yaml` (or pass `--set global.imageRegistry=ghcr.io/jcfdeb`).
+- **Helm Chart Default (`values.yaml`)**: `global.imageRegistry: "quay.io/py-phone-caller"` and `global.imageTag: "1.1.0"`
+- **Raw Manifests (`deploy/k8s/*.yml`)**: `quay.io/py-phone-caller/<service>:1.1.0` (override with `sed -i 's|quay.io/py-phone-caller/|ghcr.io/jcfdeb/|g' deploy/k8s/*.yml` to pull directly from GHCR).
 
 ### If Using a Private Container Registry (e.g. Google Artifact Registry, ECR, ACR, Harbor)
 Build and push all 12 images using `./src/build_all_images.sh`:

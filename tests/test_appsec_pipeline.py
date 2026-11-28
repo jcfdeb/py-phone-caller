@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import datetime
-from pathlib import Path
 import subprocess
 import tomllib
+from pathlib import Path
 
 import yaml
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -120,7 +119,7 @@ def test_deny_toml_policy_contract():
         )
 
     osv_cfg = tomllib.loads((REPO_ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
-    today = datetime.date.today()
+    today = datetime.datetime.now(tz=datetime.UTC).date()
     ignored_vulns = osv_cfg.get("IgnoredVulns", [])
     assert ignored_vulns, "osv-scanner.toml must define explicit baseline entries"
     for vuln in ignored_vulns:
@@ -139,7 +138,7 @@ def test_trivyignore_governance_invariants():
     assert trivy_path.is_file()
     cfg = yaml.safe_load(trivy_path.read_text(encoding="utf-8"))
 
-    today = datetime.date.today()
+    today = datetime.datetime.now(tz=datetime.UTC).date()
     entries = cfg.get("misconfigurations", [])
     assert entries, ".trivyignore.yaml should contain documented baseline entries"
     for entry in entries:
@@ -479,21 +478,17 @@ exit 0
 
 def test_ruff_s_canary_catches_injected_vulnerabilities_under_real_config(tmp_path):
     """Negative canary test: verify root pyproject.toml Ruff S config catches SQLi, shell=True, pickle, YAML, eval."""
-    canary_src = "\n".join(
-        [
-            "import pickle",
-            "import subprocess",
-            "import yaml",
-            "",
-            "def insecure_handler(user_id: str, raw_blob: bytes, cmd: str):",
-            '    query = f"SELECT * FROM calls WHERE id = \'{user_id}\'"',
-            "    subprocess.Popen(cmd, shell=True)",
-            "    obj = pickle.loads(raw_blob)",
-            "    cfg = yaml.load(user_id, Loader=yaml.Loader)",
-            "    res = eval(user_id)",
-            "    return query, obj, cfg, res",
-            "",
-        ]
+    canary_src = (
+        "import pickle\n"
+        "import subprocess\n"
+        "import yaml\n\n"
+        "def insecure_handler(user_id: str, raw_blob: bytes, cmd: str):\n"
+        '    query = f"SELECT * FROM calls WHERE id = \'{user_id}\'"\n'
+        "    subprocess.Popen(cmd, shell=True)\n"
+        "    obj = pickle.loads(raw_blob)\n"
+        "    cfg = yaml.load(user_id, Loader=yaml.Loader)\n"
+        "    res = eval(user_id)\n"
+        "    return query, obj, cfg, res\n"
     )
 
     proc = subprocess.run(
@@ -666,5 +661,52 @@ exec "{shutil.which('uv') or '/home/jcf/.local/bin/uv'}" "$@"
         text=True,
     )
     assert blocked_fast.returncode != 0, "task sec:fast must fail when a secret is staged"
+
+
+def test_dockerignore_and_release_ghcr_workflows_contract():
+    """Ensure Docker build contexts block local secrets and release/GHCR workflows cover all 12 images."""
+    import xml.etree.ElementTree as ET
+
+    root_ignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    for required_rule in ("**/.secrets.toml", "**/*.local.toml", "**/.env", "**/.vault_pass*"):
+        assert required_rule in root_ignore, f"Root .dockerignore must exclude {required_rule}"
+
+    oa_ignore = (REPO_ROOT / "src" / "openalert" / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    for required_rule in ("config/*.local.toml", "**/*.local.toml", "**/.secrets*", "**/.env*"):
+        assert required_rule in oa_ignore, f"src/openalert/.dockerignore must exclude {required_rule}"
+
+    rel_wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "release-packaging.yml").read_text(encoding="utf-8"))
+    rel_steps_blob = str(rel_wf["jobs"]["build-and-verify-packages"]["steps"])
+    for expected in ("libdbus-1-dev", "libudev-dev", "--all-packages", "--openalert-binary", "SBOM.cdx.json"):
+        assert expected in rel_steps_blob, f"release-packaging.yml missing {expected}"
+
+    ghcr_wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "container-images.yml").read_text(encoding="utf-8"))
+    assert ghcr_wf["permissions"].get("packages") == "write"
+    matrix_items = ghcr_wf["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+    services = {item["service"] for item in matrix_items}
+    expected_services = {
+        "asterisk_caller",
+        "asterisk_recaller",
+        "asterisk_ws_monitor",
+        "caller_address_book",
+        "caller_prometheus_webhook",
+        "caller_register",
+        "caller_scheduler",
+        "caller_sms",
+        "celery_worker",
+        "generate_audio",
+        "py_phone_caller_ui",
+        "openalertd",
+    }
+    assert services == expected_services
+    for item in matrix_items:
+        assert (REPO_ROOT / item["dockerfile"]).is_file(), f"Missing Dockerfile: {item['dockerfile']}"
+
+    svg_path = REPO_ROOT / "docs" / "assets" / "live-signal-flow.svg"
+    assert svg_path.is_file(), "Animated signal-flow SVG must exist"
+    root_el = ET.fromstring(svg_path.read_text(encoding="utf-8"))  # noqa: S314
+    assert root_el.tag.endswith("svg")
+    assert "docs/assets/live-signal-flow.svg" in (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
 
 

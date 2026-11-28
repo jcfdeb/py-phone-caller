@@ -6,10 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
-## [1.1.0] - 2026-11-26
+## [1.1.0] - 2026-11-28
 
 ### Added
-- **Unified Suite Release (`v1.1.0`)**: Synchronized release versioning across all 13 Python packages (`py-phone-caller` workspace & meta-package), `openalertd` (`src/openalert`), `rust_engine` SMS native extension, Helm v3 chart (`py-phone-caller-1.1.0.tgz`), native `.deb`/`.rpm` packages, and container tags.
+- **Unified Suite Release (`v1.1.0`)**: Synchronized release versioning across all 13 Python packages (`py-phone-caller` workspace & meta-package), `openalertd` (`src/openalert`), `rust_engine` SMS native extension, Helm v3 chart (`py-phone-caller-1.1.0.tgz`), native `.deb`/`.rpm` packages, standalone `openalertd` Linux bundle, and container tags.
+- **Automated GHCR Container Registry & Hardened Release Pipeline**:
+  - Added `.github/workflows/container-images.yml` building and publishing all 12 service images (`asterisk_caller` … `py_phone_caller_ui` + `openalertd`) to `ghcr.io/jcfdeb/<service>:1.1.0` and `:latest`.
+  - Hardened `.github/workflows/release-packaging.yml` to compile stripped `openalertd` ELF64 binaries, build all 33 suite artifacts + standalone `openalertd` tarball + CycloneDX `SBOM.cdx.json`, verify `SHA256SUMS`, and publish structured release notes automatically on tag push.
+- **Interactive OpenAPI 3.0 Explorer & Operations Guides**:
+  - Shipped zero-CDN interactive OpenAPI 3.0.3 Explorer (`/manual/api-explorer/`) covering 122 HTTP operations across 9 services with concrete parameter/payload/response examples and 1-click `curl` copy.
+  - Added Native Asterisk 22 PBX Configuration & Examples (`docs/asterisk-pbx-configuration-guide.md`), 5-Minute Linphone Quickstart (`docs/quickstart-5-minutes.md`), Hardware & Field-Kit BOM (`docs/hardware-and-field-kit-bom.md`), SRE Day-2 Operations & Watchdog Guide (`docs/sre-day2-operations-and-watchdog.md`), and animated signal-flow SVG (`docs/assets/live-signal-flow.svg`).
 - **AlmaLinux 10 First-Class Qualification**: Enabled and live-qualified AlmaLinux 10 AMD64 (`SELinux Enforcing`) alongside Debian 13, Ubuntu 26.04 LTS, and Rocky Linux 10 across `deploy/ansible` (`site.yml`, `verify.yml`, Tucny Asterisk `22.9.0-1.el10`).
 - **OpenAlert (`openalertd`) Off-Grid Mesh & Nostr Bridge**:
   - LoRa 868 MHz RF SLIP framing with ETSI EN 300 220 1.0% duty-cycle pacing, in-band RSSI/SNR link-cost routing, and 3-tier authenticated off-grid time sync.

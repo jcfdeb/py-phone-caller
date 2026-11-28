@@ -1,0 +1,120 @@
+name: Publish Container Images (GHCR)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: "GHCR: ${{ matrix.service }}"
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: asterisk_caller
+            context: .
+            dockerfile: src/asterisk_caller/Dockerfile
+          - service: asterisk_recaller
+            context: .
+            dockerfile: src/asterisk_recaller/Dockerfile
+          - service: asterisk_ws_monitor
+            context: .
+            dockerfile: src/asterisk_ws_monitor/Dockerfile
+          - service: caller_address_book
+            context: .
+            dockerfile: src/caller_address_book/Dockerfile
+          - service: caller_prometheus_webhook
+            context: .
+            dockerfile: src/caller_prometheus_webhook/Dockerfile
+          - service: caller_register
+            context: .
+            dockerfile: src/caller_register/Dockerfile
+          - service: caller_scheduler
+            context: .
+            dockerfile: src/caller_scheduler/Dockerfile
+          - service: caller_sms
+            context: .
+            dockerfile: src/caller_sms/Dockerfile
+          - service: celery_worker
+            context: .
+            dockerfile: src/celery_worker/Dockerfile
+          - service: generate_audio
+            context: .
+            dockerfile: src/generate_audio/Dockerfile
+          - service: py_phone_caller_ui
+            context: .
+            dockerfile: src/py_phone_caller_ui/Dockerfile
+          - service: openalertd
+            context: src/openalert
+            dockerfile: src/openalert/Dockerfile
+
+    steps:
+      - name: Reclaim runner disk space for heavy TTS builder
+        if: matrix.service == 'generate_audio'
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute OCI tags and labels
+        id: meta
+        run: |
+          owner_lc="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          pkg_ver="$(python3 -c 'import tomllib; print(tomllib.loads(open("pyproject.toml").read())["project"]["version"])')"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            raw_tag="${GITHUB_REF#refs/tags/}"
+            clean_ver="${raw_tag#v}"
+          else
+            clean_ver="${pkg_ver}"
+          fi
+          short_sha="${GITHUB_SHA::12}"
+          repo_image="ghcr.io/${owner_lc}/${{ matrix.service }}"
+          {
+            echo "version=${clean_ver}"
+            echo "tags<<EOF"
+            echo "${repo_image}:${clean_ver}"
+            echo "${repo_image}:v${clean_ver}"
+            echo "${repo_image}:latest"
+            echo "${repo_image}:sha-${short_sha}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ${{ matrix.service }} to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.service }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=BSD-3-Clause
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

@@ -23,15 +23,25 @@ The Compose directory (`deploy/compose/`) provides three composable YAML files:
 
 ---
 
-## Step 1: Build the Container Images
+## Step 1: Pull Prebuilt GHCR Images or Build from Source
+
+All 12 application images (`asterisk_caller` … `py_phone_caller_ui` + `openalertd`) are published to **GitHub Container Registry (`ghcr.io/jcfdeb/<service>:1.1.0`)** on every tagged release. You can either pull them directly in seconds or build all 12 images locally from source.
+
+### Option A: Pull Official Prebuilt Images from GHCR (Fastest — Zero Build Disk Needed)
+
+Set `MY_DOCKER_REGISTRY=ghcr.io/jcfdeb` (in your shell or `deploy/compose/.env`) and pull:
+
+```bash
+export MY_DOCKER_REGISTRY=ghcr.io/jcfdeb
+export VERSION=1.1.0
+docker compose -f deploy/compose/docker-compose.yml pull
+```
+
+### Option B: Build from Source via `docker compose build`
 
 Every Python microservice `Dockerfile` (`src/<service>/Dockerfile`) installs workspace dependencies from the repository root (`pyproject.toml` and `uv.lock`) and copies `/app/py-phone-caller/config/settings.toml` into the runtime image.
 
 > **Disk Space Requirement for Local Builds**: Building all 12 images from source (including the PyTorch/HuggingFace TTS image `generate_audio` and the Rust `openalertd` builder cache) requires **at least 45–50 GB of free disk space** in `/var/lib/docker` (or `/var/lib/containerd`).
-
-You have **two ways** to build all 12 application images:
-
-### Option A: Build Directly via `docker compose build` (Recommended for Docker)
 
 From `deploy/compose/`:
 
@@ -47,7 +57,7 @@ docker compose build
 > docker compose build --build-arg PRELOAD_ALL_MODELS=true generate_audio
 > ```
 
-### Option B: Build via `./src/build_all_images.sh` (Supports Podman & Docker)
+### Option C: Build via `./src/build_all_images.sh` (Supports Podman & Docker)
 
 From the **repository root**, run the unified build script. Note that `deploy/compose/docker-compose.yml` defaults to image tag `1.1.0` (`${MY_DOCKER_REGISTRY:-localhost}/<service>:${VERSION:-1.1.0}`), so pass `IMAGE_TAG=1.1.0`:
 
